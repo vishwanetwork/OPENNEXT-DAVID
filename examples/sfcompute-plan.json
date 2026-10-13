@@ -1,0 +1,9 @@
+{
+  "pool": "dev",
+  "sku": "replace-with-actual-sku-id",
+  "image": "replace-with-actual-image-id",
+  "node_count": 1,
+  "duration_hours": 1,
+  "max_rate_per_node_hour": "20.00",
+  "allow_standing": true
+}
