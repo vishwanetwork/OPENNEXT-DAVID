@@ -29,6 +29,8 @@ chmod 600 .env
 
 Alternatively, run `docker compose up --build -d`. Container data is stored in the `spotbot-data` volume. Use one service process per database; backend-specific locks reject additional service or CLI collector processes using the same store.
 
+For a Linux host with local MySQL and an HTTPS reverse proxy, see [Deployment](docs/deployment.md) and `compose.production.yaml`.
+
 ## Configuration
 
 Set cloud resource keys in `.env`. Model inference keys are not interchangeable with cloud resource keys.

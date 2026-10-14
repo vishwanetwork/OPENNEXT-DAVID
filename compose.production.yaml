@@ -1,0 +1,32 @@
+services:
+  spotbot:
+    build: .
+    image: spot-order-bot:${SPOTBOT_RELEASE:-local}
+    container_name: spot-order-bot
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    command: ["spotbot", "serve", "--host", "127.0.0.1", "--port", "18082"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - spotbot-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  spotbot-data:
