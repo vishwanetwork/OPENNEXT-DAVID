@@ -1,4 +1,5 @@
 import copy
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -6,7 +7,9 @@ import pytest
 from botocore.exceptions import ClientError, ReadTimeoutError
 from botocore.session import get_session
 from botocore.validate import validate_parameters
+from fastapi.testclient import TestClient
 
+from spotbot.api import create_app
 from spotbot.aws_provider import AWSProvider
 from spotbot.config import Settings
 from spotbot.models import LaunchOptions, OrderRequest
@@ -31,6 +34,8 @@ class FakeAWS:
         self.malformed = False
         self.tags = []
         self.client_configs = []
+        self.spot_instances = []
+        self.spot_requests = []
 
     def get_credentials(self):
         return object()
@@ -61,7 +66,20 @@ class FakeAWS:
             }
         ]
         values = {
-            "describe_instance_types": [{"InstanceTypes": [p5, fraction]}],
+            "describe_instance_types": [
+                {
+                    "InstanceTypes": [
+                        p5,
+                        fraction,
+                        {"InstanceType": "vt1.3xlarge", "VCpuInfo": {"DefaultVCpus": 12}},
+                    ]
+                }
+            ],
+            "describe_instances": [{"Reservations": [{"Instances": self.spot_instances}]}],
+            "describe_spot_instance_requests": [
+                {"SpotInstanceRequests": self.spot_requests[:1]},
+                {"SpotInstanceRequests": self.spot_requests[1:]},
+            ],
             "describe_subnets": [
                 {
                     "Subnets": [
@@ -194,7 +212,10 @@ async def test_zonal_prices_pagination_quota_and_fractional_gpu(aws_service):
     full = [o for o in offers if o.sku == "p5.4xlarge"]
     assert len({o.offer_id for o in full}) == 2
     assert {str(o.price_hourly) for o in full} == {"2.6", "2.7"}
-    assert all(o.region == "us-west-2" and o.available for o in full)
+    assert all(o.region == "us-west-2" and not o.available for o in full)
+    assert all(
+        o.public(600)["can_attempt"] and o.public(600)["capacity_status"] == "unknown" for o in full
+    )
     assert all(int(o.storage_gb) == 100 for o in full)
     partial = next(o for o in offers if o.sku == "g6f.large")
     assert partial.gpu_count == 1 and not partial.orderable and not partial.available
@@ -315,3 +336,138 @@ def test_pre_aws_order_fingerprint_is_preserved():
     assert (
         fingerprint(request) == "44b16e6c28a8bfd15cefaf2521a8338aad2b945f69e6a985e91a446c84a0782a"
     )
+
+
+async def test_account_quota_usage_deduplicates_requests_and_counts_vt(aws_service):
+    service, fake = aws_service
+    fake.spot_instances = [
+        {"InstanceId": "i-external", "InstanceType": "p5.4xlarge"},
+        {"InstanceId": "i-transcoder", "InstanceType": "vt1.3xlarge"},
+    ]
+    fake.spot_requests = [
+        {"InstanceId": "i-external", "LaunchSpecification": {"InstanceType": "p5.4xlarge"}},
+        {"LaunchSpecification": {"InstanceType": "p5.4xlarge"}},
+        {"LaunchSpecification": {"InstanceType": "p5.4xlarge"}},
+    ]
+    await service.collect("aws")
+    p5 = next(o for o in service.store.latest() if o.sku == "p5.4xlarge")
+    assert p5.details["quota_used_vcpus"] == 48
+    assert p5.details["quota_remaining_vcpus"] == 16 and p5.orderable
+    fraction = next(o for o in service.store.latest() if o.sku == "g6f.large")
+    assert fraction.details["quota_used_vcpus"] == 12
+    fake.spot_requests.append({"LaunchSpecification": {"InstanceType": "p5.4xlarge"}})
+    await service.collect("aws")
+    blocked = next(o for o in service.store.latest() if o.sku == "p5.4xlarge")
+    assert blocked.details["quota_remaining_vcpus"] == 0
+    assert not blocked.orderable and blocked.details["eligibility_status"] == "quota_insufficient"
+
+
+async def test_unknown_usage_fails_closed_and_blocks_submission(aws_service):
+    service, fake = aws_service
+    fake.spot_requests = [{"LaunchSpecification": {"InstanceType": "p-unknown"}}]
+    await service.collect("aws")
+    offer = next(o for o in service.store.latest() if o.sku == "p5.4xlarge")
+    assert offer.details["quota_remaining_vcpus"] is None
+    assert offer.details["eligibility_status"] == "quota_usage_unknown"
+    with pytest.raises(ValueError, match="quota_usage_unknown"):
+        service.create_order(
+            OrderRequest(offer_id=offer.offer_id, max_price_hourly="3"), "unknown-quota"
+        )
+    assert not fake.creates
+
+
+async def test_known_capacity_failure_pauses_retries_without_claiming_stock(aws_service):
+    service, fake = aws_service
+    await service.collect("aws")
+    offer = next(o for o in service.store.latest() if o.orderable)
+    fake.create_error = ClientError(
+        {
+            "Error": {"Code": "InsufficientInstanceCapacity"},
+            "ResponseMetadata": {"HTTPStatusCode": 500},
+        },
+        "RunInstances",
+    )
+    order, _ = service.create_order(
+        OrderRequest(offer_id=offer.offer_id, max_price_hourly="3"), "backoff"
+    )
+    await service.tick()
+    provider = service.providers["aws"]
+    public = provider.public_offer(offer, 600)
+    assert public["capacity_status"] == "unavailable" and not public["can_attempt"]
+    await service.tick()
+    assert len(fake.creates) == 1 and service.store.get_order(order["id"])["state"] == "queued"
+    provider.capacity_failures[offer.offer_id] = time.monotonic() - 1
+    fake.create_error = None
+    await service.tick()
+    assert len(fake.creates) == 2
+    assert provider.public_offer(offer, 600)["capacity_status"] == "unknown"
+
+
+async def test_api_separates_confirmed_stock_from_launch_candidates(aws_service):
+    service, _ = aws_service
+    await service.collect("aws")
+    with TestClient(create_app(service.settings, service)) as client:
+        headers = {"Authorization": "Bearer test-token"}
+        confirmed = client.get(
+            "/v1/prices/latest", params={"provider": "aws", "available_only": True}, headers=headers
+        ).json()
+        assert confirmed["total"] == 0
+        candidates = client.get(
+            "/v1/prices/latest",
+            params={"provider": "aws", "can_attempt_only": True},
+            headers=headers,
+        ).json()
+        assert candidates["total"] == 2
+        offer = candidates["groups"][0]["offers"][0]
+        assert offer["available"] is False and offer["capacity_status"] == "unknown"
+        assert offer["eligibility_status"] == "eligible"
+        assert offer["details"]["quota_remaining_vcpus"] == 64
+        model = client.get(
+            "/v1/gpus",
+            params={"model": "H100", "available_only": False, "can_attempt_only": True},
+            headers=headers,
+        ).json()
+        assert model["gpus"][0]["providers"] == ["aws"]
+        provider = service.providers["aws"]
+        provider.capacity_failures[offer["offer_id"]] = time.monotonic() + 60
+        detail = client.get("/v1/offers/" + offer["offer_id"], headers=headers).json()
+        assert not detail["can_attempt"] and detail["capacity_status"] == "unavailable"
+
+
+async def test_native_quota_race_is_not_reported_as_capacity_or_replayed(aws_service):
+    service, fake = aws_service
+    await service.collect("aws")
+    offer = next(o for o in service.store.latest() if o.orderable)
+    fake.create_error = ClientError(
+        {
+            "Error": {"Code": "MaxSpotInstanceCountExceeded"},
+            "ResponseMetadata": {"HTTPStatusCode": 400},
+        },
+        "RunInstances",
+    )
+    order, _ = service.create_order(
+        OrderRequest(offer_id=offer.offer_id, max_price_hourly="3"), "quota-race"
+    )
+    await service.tick()
+    public = service.providers["aws"].public_offer(offer, 600)
+    assert not public["can_attempt"] and public["capacity_status"] == "unknown"
+    assert public["eligibility_status"] == "quota_rejected_at_launch"
+    await service.tick()
+    assert len(fake.creates) == 1
+    assert service.store.get_order(order["id"])["error"] == "aws_quota_rejected_at_launch"
+
+
+async def test_quota_consumed_after_order_creation_blocks_billable_call(aws_service):
+    service, fake = aws_service
+    await service.collect("aws")
+    offer = next(o for o in service.store.latest() if o.orderable)
+    order, _ = service.create_order(
+        OrderRequest(offer_id=offer.offer_id, max_price_hourly="3"), "consumed-quota"
+    )
+    fake.spot_instances = [
+        {"InstanceId": "i-external-" + str(i), "InstanceType": "p5.4xlarge"} for i in range(4)
+    ]
+    await service.tick()
+    assert not fake.creates
+    current = service.store.get_order(order["id"])
+    assert current["state"] == "queued" and current["error"] == "quota_insufficient"

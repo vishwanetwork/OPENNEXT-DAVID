@@ -121,6 +121,12 @@ class Provider:
     async def collect(self) -> list[Offer]:
         raise NotImplementedError
 
+    def public_offer(self, offer: Offer, max_age: int):
+        return offer.public(max_age)
+
+    def note_failure(self, offer: Offer, error: ProviderError):
+        return None
+
     def plan(self, offer: Offer, launch: LaunchOptions, name: str, *, max_price_hourly=None) -> dict:
         raise NotImplementedError
 

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     spotbot_aws_root_volume_gb: int = Field(30, ge=8, le=16384)
     spotbot_aws_public_ip: bool = True
     spotbot_aws_ssh_user: str = "ubuntu"
+    spotbot_aws_capacity_backoff_seconds: int = Field(60, ge=15, le=3600)
     spotbot_database_path: Path = Path("data/spotbot.sqlite3")
     spotbot_storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"
     spotbot_mysql_url: SecretStr = SecretStr("")

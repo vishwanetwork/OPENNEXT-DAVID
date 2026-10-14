@@ -75,13 +75,13 @@ Lambda's `/api/v1/instances` lists existing account instances; prices come from 
 | GET | `/v1/gpus?model=H100&market=spot` | GPU models, providers, regions, and offers |
 | GET | `/v1/offers/{offer_id}` | Current details for one offer |
 
-Latest prices accept `provider/cloud/market/gpu/available_only/limit/offset`. History additionally accepts `sku/region/offer_id/since/until`. Time bounds must include a timezone, such as `2026-10-13T00:00:00+08:00`.
+Latest prices accept `provider/cloud/market/gpu/available_only/can_attempt_only/limit/offset`. GPU lookup also accepts `can_attempt_only`. History additionally accepts `sku/region/offer_id/since/until`. Time bounds must include a timezone, such as `2026-10-13T00:00:00+08:00`.
 
 Pagination defaults to 100 entries and permits up to 1,000. Latest prices paginate offers before grouping by provider; GPU queries paginate model groups. Use provider filters or additional pages for a complete catalog.
 
 Prices are Decimal strings in **USD per complete instance per hour**. `price_per_gpu_hourly` is a derived comparison value. Memory and storage units remain explicit. `market` distinguishes Spot from on-demand; `price_kind` distinguishes quoted prices from estimates.
 
-Availability is a snapshot, not a reservation. Offers become stale after ten minutes by default; available-only queries exclude stale offers. Latest prices use each provider's most recent successful complete collection. A successful empty catalog removes its current offers. A failed collection preserves previous snapshots and reports an error. History begins with this service's first collection.
+Availability is a snapshot, not a reservation. `capacity_status` distinguishes reported stock from unknown stock; `can_attempt` identifies a fresh candidate for a launch attempt. AWS publishes quotes with unknown stock, so its offers have `available=false`; use `can_attempt_only=true` for AWS candidates instead of treating prices as inventory. AWS candidates account for observed remaining quota, including other account resources, but allocation can still fail. Offers become stale after ten minutes by default; available-only queries exclude stale offers. Latest prices use each provider's most recent successful complete collection. A successful empty catalog removes its current offers. A failed collection preserves previous snapshots and reports an error. History begins with this service's first collection.
 
 TensorDock estimates include one GPU, four vCPUs, 8 GB RAM, and 100 GB storage by default. Changing this profile changes the offer identity. Vendor bills may include additional network charges or taxes.
 

@@ -79,7 +79,9 @@ class Service:
                 if not self.settings.enabled(provider.name):
                     return {"provider": provider.name, "status": "disabled", "count": 0}
                 if not provider.configured and provider.name != "vultr":
-                    missing = "missing_aws_credentials" if provider.name == "aws" else "missing_api_key"
+                    missing = (
+                        "missing_aws_credentials" if provider.name == "aws" else "missing_api_key"
+                    )
                     self.store.record_collection(provider.name, [], missing)
                     return {
                         "provider": provider.name,
@@ -120,6 +122,10 @@ class Service:
         if not self.settings.enabled(offer.provider):
             raise ValueError("provider_disabled")
         if not offer.orderable:
+            if offer.provider == "aws":
+                raise ValueError(
+                    "aws_" + offer.details.get("eligibility_status", "offer_not_orderable")
+                )
             raise ValueError("offer_not_orderable")
         if offer.price_hourly > request.max_price_hourly:
             raise ValueError("price_exceeds_limit")
@@ -171,7 +177,10 @@ class Service:
             or order["attempts"] >= req.max_attempts
         ):
             self.store.transition(
-                order_id, "expired", expected={"queued"}, error="wait_or_attempt_limit"
+                order_id,
+                "expired",
+                expected={"queued"},
+                error=order["error"] or "wait_or_attempt_limit",
             )
             return
         if not self.settings.spotbot_live_orders_enabled:
@@ -188,17 +197,30 @@ class Service:
             self.store.transition(order_id, "queued", error=result["error"])
             return
         fresh = self.store.get_offer(req.offer_id)
-        if not fresh or not fresh.available:
+        if not fresh:
             self.store.transition(order_id, "queued", error="no_capacity")
             return
-        if fresh.public(self.settings.spotbot_price_max_age_seconds)["stale"]:
-            self.store.transition(order_id, "queued", error="stale_price")
+        if not fresh.orderable:
+            state = "queued" if fresh.provider == "aws" else "failed"
+            self.store.transition(
+                order_id,
+                state,
+                error=fresh.details.get("eligibility_status") or "offer_not_orderable",
+            )
+            return
+        assessment = provider.public_offer(fresh, self.settings.spotbot_price_max_age_seconds)
+        if not assessment["can_attempt"]:
+            error = (
+                "stale_price"
+                if fresh.public(self.settings.spotbot_price_max_age_seconds)["stale"]
+                else "no_capacity"
+            )
+            if assessment["eligibility_status"] == "quota_rejected_at_launch":
+                error = "aws_quota_rejected_at_launch"
+            self.store.transition(order_id, "queued", error=error)
             return
         if fresh.price_hourly > req.max_price_hourly:
             self.store.transition(order_id, "queued", error="price_exceeds_limit")
-            return
-        if not fresh.orderable:
-            self.store.transition(order_id, "failed", error="offer_not_orderable")
             return
         try:
             plan = provider.plan(
@@ -222,6 +244,7 @@ class Service:
             self.store.ensure_ownership()
             instance_id = await provider.create(plan)
         except ProviderError as exc:
+            provider.note_failure(fresh, exc)
             state = (
                 "needs_reconciliation" if exc.ambiguous else "queued" if exc.retryable else "failed"
             )

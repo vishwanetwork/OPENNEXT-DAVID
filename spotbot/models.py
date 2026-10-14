@@ -79,6 +79,23 @@ class Offer(BaseModel):
         result["stale"] = (
             utcnow() - datetime.fromisoformat(self.observed_at)
         ).total_seconds() > max_age
+        result["capacity_status"] = self.details.get(
+            "capacity_status",
+            "unknown"
+            if self.provider == "aws"
+            else "available"
+            if self.available
+            else "unavailable",
+        )
+        result["eligibility_status"] = self.details.get("eligibility_status", "provider_quote")
+        result["can_attempt"] = (
+            self.orderable
+            and not result["stale"]
+            and (self.available or result["capacity_status"] == "unknown")
+        )
+        # AWS publishes quotes, not an inventory reservation or confirmed stock signal.
+        if self.provider == "aws":
+            result["available"] = False
         return result
 
 

@@ -67,7 +67,13 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         code = str(exc)
         status = (
             409
-            if code in {"idempotency_key_conflict", "price_exceeds_limit", "live_orders_disabled", "dry_run_disabled"}
+            if code
+            in {
+                "idempotency_key_conflict",
+                "price_exceeds_limit",
+                "live_orders_disabled",
+                "dry_run_disabled",
+            }
             else 400
         )
         raise HTTPException(status, code) from exc
@@ -127,7 +133,14 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     async def collect(provider: ProviderName | None = None):
         return {"results": await svc.collect(provider)}
 
-    def latest_offers(provider=None, cloud=None, market=None, model=None, available_only=False):
+    def latest_offers(
+        provider=None,
+        cloud=None,
+        market=None,
+        model=None,
+        available_only=False,
+        can_attempt_only=False,
+    ):
         offers = svc.store.latest(
             provider=provider,
             cloud=cloud,
@@ -135,12 +148,14 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             gpu_model=gpu_model(model) if model else None,
         )
         rows = [
-            o.public(config.spotbot_price_max_age_seconds)
+            svc.providers[o.provider].public_offer(o, config.spotbot_price_max_age_seconds)
             for o in offers
             if config.enabled(o.provider)
         ]
         if available_only:
             rows = [o for o in rows if o["available"] and not o["stale"]]
+        if can_attempt_only:
+            rows = [o for o in rows if o["can_attempt"]]
         return rows
 
     @app.get("/v1/prices/latest", dependencies=auth)
@@ -150,10 +165,11 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         market: Market | None = None,
         gpu: str | None = None,
         available_only: bool = False,
+        can_attempt_only: bool = False,
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
-        rows = latest_offers(provider, cloud, market, gpu, available_only)
+        rows = latest_offers(provider, cloud, market, gpu, available_only, can_attempt_only)
         selected = rows[offset : offset + limit]
         groups = [
             {"provider": name, "offers": [o for o in selected if o["provider"] == name]}
@@ -209,11 +225,16 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         provider: ProviderName | None = None,
         market: Market | None = None,
         available_only: bool = True,
+        can_attempt_only: bool = False,
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
         rows = latest_offers(
-            provider=provider, market=market, model=model, available_only=available_only
+            provider=provider,
+            market=market,
+            model=model,
+            available_only=available_only,
+            can_attempt_only=can_attempt_only,
         )
         models = sorted({o["gpu_model"] for o in rows})
         groups = [
@@ -236,7 +257,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         offer = svc.store.get_offer(offer_id)
         if not offer:
             raise HTTPException(404, "offer_not_found")
-        return offer.public(config.spotbot_price_max_age_seconds)
+        return svc.providers[offer.provider].public_offer(offer, config.spotbot_price_max_age_seconds)
 
     @app.post("/v1/orders", dependencies=auth)
     def order_create(

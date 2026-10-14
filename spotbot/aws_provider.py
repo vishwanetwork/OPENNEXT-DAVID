@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -19,6 +20,79 @@ class AWSProvider(Provider):
         self.clients = {}
         self.sdk_lock = asyncio.Lock()
         self.image_cache = {}
+        self.capacity_failures = {}
+        self.quota_failures = {}
+
+    def note_failure(self, offer, error):
+        if error.code in {"aws_InsufficientInstanceCapacity", "aws_InsufficientHostCapacity"}:
+            self.capacity_failures[offer.offer_id] = (
+                time.monotonic() + self.settings.spotbot_aws_capacity_backoff_seconds
+            )
+        if error.code in {"aws_MaxSpotInstanceCountExceeded", "aws_VcpuLimitExceeded"}:
+            key = (offer.region, self._quota_family(offer.sku))
+            self.quota_failures[key] = (
+                time.monotonic() + self.settings.spotbot_aws_capacity_backoff_seconds
+            )
+
+    def public_offer(self, offer, max_age):
+        data = super().public_offer(offer, max_age)
+        remaining = self.capacity_failures.get(offer.offer_id, 0) - time.monotonic()
+        if remaining > 0:
+            data["capacity_status"] = "unavailable"
+            data["can_attempt"] = False
+            data["capacity_retry_after_seconds"] = int(remaining) + 1
+        quota_retry = (
+            self.quota_failures.get((offer.region, self._quota_family(offer.sku)), 0)
+            - time.monotonic()
+        )
+        if quota_retry > 0:
+            data["can_attempt"] = False
+            data["eligibility_status"] = "quota_rejected_at_launch"
+            data["quota_retry_after_seconds"] = int(quota_retry) + 1
+        return data
+
+    @staticmethod
+    def _quota_family(sku):
+        if sku.startswith(("g", "vt")):
+            return "g"
+        return "p" if sku.startswith("p") else None
+
+    def _quota_usage(self, ec2, specs):
+        used = {"g": 0, "p": 0}
+        known = {"g": True, "p": True}
+        counted = set()
+
+        def count(sku):
+            family = self._quota_family(sku)
+            if family:
+                if sku not in specs:
+                    known[family] = False
+                else:
+                    used[family] += specs[sku]["VCpuInfo"]["DefaultVCpus"]
+
+        # Count the entire account, including instances launched outside this bot.
+        for page in ec2.get_paginator("describe_instances").paginate(
+            Filters=[
+                {"Name": "instance-lifecycle", "Values": ["spot"]},
+                {"Name": "instance-state-name", "Values": ["pending", "running"]},
+            ]
+        ):
+            for reservation in page["Reservations"]:
+                for instance in reservation["Instances"]:
+                    counted.add(instance["InstanceId"])
+                    count(instance["InstanceType"])
+        for page in ec2.get_paginator("describe_spot_instance_requests").paginate(
+            Filters=[{"Name": "state", "Values": ["open", "active"]}]
+        ):
+            for request in page["SpotInstanceRequests"]:
+                if request.get("InstanceId") in counted:
+                    continue
+                if request.get("InstanceId"):
+                    counted.add(request["InstanceId"])
+                count(request.get("LaunchSpecification", {}).get("InstanceType", ""))
+                if not request.get("LaunchSpecification", {}).get("InstanceType"):
+                    known = {"g": False, "p": False}
+        return used, known
 
     @property
     def regions(self):
@@ -79,12 +153,14 @@ class AWSProvider(Provider):
                     "InsufficientHostCapacity",
                     "InsufficientFreeAddressesInSubnet",
                 }
+                quota_rejected = code in {"MaxSpotInstanceCountExceeded", "VcpuLimitExceeded"}
                 raise ProviderError(
                     "aws_" + code,
                     retryable=capacity
+                    or quota_rejected
                     or code in {"RequestLimitExceeded", "Throttling", "ThrottlingException"},
                     ambiguous=mutation
-                    and not capacity
+                    and not (capacity or quota_rejected)
                     and (status >= 500 or code in {"InternalError", "RequestTimeout"}),
                 ) from exc
             except BotoCoreError as exc:
@@ -135,13 +211,17 @@ class AWSProvider(Provider):
         offers = []
         for region in self.regions:
             ec2 = self._client(region)
-            specs = {
+            all_specs = {
                 t["InstanceType"]: t
                 for page in ec2.get_paginator("describe_instance_types").paginate(
-                    Filters=[{"Name": "instance-type", "Values": ["g*", "p*"]}]
+                    Filters=[{"Name": "instance-type", "Values": ["g*", "p*", "vt*"]}]
                 )
                 for t in page["InstanceTypes"]
-                if t.get("GpuInfo", {}).get("Gpus")
+            }
+            specs = {
+                name: spec
+                for name, spec in all_specs.items()
+                if spec.get("GpuInfo", {}).get("Gpus")
             }
             if not specs:
                 continue
@@ -183,6 +263,8 @@ class AWSProvider(Provider):
                 )
                 for family, code in [("g", "L-3819A6DF"), ("p", "L-7212CCBC")]
             }
+            used, usage_known = self._quota_usage(ec2, all_specs)
+            remaining_quotas = {family: max(0, quotas[family] - used[family]) for family in quotas}
             effective = {}
             for page in ec2.get_paginator("describe_spot_price_history").paginate(
                 InstanceTypes=list(specs),
@@ -219,7 +301,10 @@ class AWSProvider(Provider):
                 compatible = bool(
                     image and groups and subnets.get(zone) and self.settings.spotbot_aws_key_name
                 )
-                quota_sufficient = spec["VCpuInfo"]["DefaultVCpus"] <= quotas[sku[0]]
+                quota_sufficient = (
+                    usage_known[sku[0]]
+                    and spec["VCpuInfo"]["DefaultVCpus"] <= remaining_quotas[sku[0]]
+                )
                 gpu_count = sum(g.get("LogicalGpuCount") or g.get("Count", 0) for g in gpus)
                 if not gpu_count:
                     continue
@@ -233,7 +318,14 @@ class AWSProvider(Provider):
                     if any(g.get("GpuPartitionSize", 1) < 1 for g in gpus)
                     else "physical",
                     "availability_kind": "launch_attempt_required",
+                    "capacity_status": "unknown",
                     "quota_vcpus": quotas[sku[0]],
+                    "quota_used_vcpus": used[sku[0]],
+                    "quota_remaining_vcpus": remaining_quotas[sku[0]]
+                    if usage_known[sku[0]]
+                    else None,
+                    "quota_usage_known": usage_known[sku[0]],
+                    "quota_usage_kind": "account_instance_and_request_snapshot",
                     "quota_sufficient": quota_sufficient,
                     "vpc_id": vpc,
                     "subnet_id": subnets.get(zone),
@@ -245,6 +337,15 @@ class AWSProvider(Provider):
                     "instance_storage": spec.get("InstanceStorageInfo"),
                     "vendor_price_timestamp": quote["Timestamp"].isoformat(),
                 }
+                details["eligibility_status"] = (
+                    "quota_usage_unknown"
+                    if not usage_known[sku[0]]
+                    else "quota_insufficient"
+                    if not quota_sufficient
+                    else "launch_defaults_incomplete"
+                    if not compatible
+                    else "eligible"
+                )
                 root_size = (
                     image["root_volume_gb"] if image else self.settings.spotbot_aws_root_volume_gb
                 )
@@ -265,7 +366,7 @@ class AWSProvider(Provider):
                         storage_gb=root_size,
                         storage_unit="GiB",
                         price_hourly=quote["SpotPrice"],
-                        available=compatible and quota_sufficient,
+                        available=False,
                         orderable=compatible and quota_sufficient,
                         source_url=f"https://ec2.{region}.amazonaws.com",
                         details=details,
