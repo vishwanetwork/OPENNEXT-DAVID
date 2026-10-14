@@ -25,7 +25,7 @@ def main():
     server.add_argument("--host", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8000)
     collector = commands.add_parser("collect")
-    collector.add_argument("--provider", choices=["lambda", "tensordock", "vultr", "shadeform"])
+    collector.add_argument("--provider", choices=["lambda", "tensordock", "vultr", "shadeform", "aws"])
     commands.add_parser("check-config")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -48,6 +48,9 @@ def main():
                     },
                     "enabled_providers": settings.spotbot_enabled_providers.split(","),
                     "live_orders_enabled": settings.spotbot_live_orders_enabled,
+                    "dry_run_enabled": settings.spotbot_dry_run_enabled,
+                    "aws_regions": settings.spotbot_aws_regions.split(","),
+                    "aws_authentication": "standard_sdk_credential_chain",
                     "storage_backend": settings.spotbot_storage_backend,
                     "api_auth_configured": bool(settings.spotbot_api_key.get_secret_value()),
                     "gateway_callback_configured": bool(settings.spotbot_gateway_webhook_url),

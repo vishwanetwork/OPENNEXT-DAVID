@@ -1,5 +1,4 @@
 import fcntl
-import hashlib
 import json
 import os
 import sqlite3
@@ -9,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from spotbot.models import Offer, OrderRequest, timestamp, utcnow
+from spotbot.storage.common import fingerprint as request_fingerprint
 
 
 def dump(value) -> str:
@@ -150,7 +150,7 @@ class Store:
 
     def create_order(self, request: OrderRequest, offer: Offer, key: str):
         payload = request.model_dump(mode="json")
-        fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()
+        fingerprint = request_fingerprint(request)
         now = timestamp()
         order_id = str(uuid4())
         state = "planned" if request.dry_run else "queued"

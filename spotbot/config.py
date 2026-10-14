@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     spotbot_api_key: SecretStr = SecretStr("")
     spotbot_enabled_providers: str = "lambda,vultr,shadeform"
     spotbot_live_orders_enabled: bool = False
+    spotbot_dry_run_enabled: bool = True
+    spotbot_aws_regions: str = "us-west-2"
+    spotbot_aws_vpc_id: str = ""
+    spotbot_aws_security_group_ids: str = ""
+    spotbot_aws_key_name: str = ""
+    spotbot_aws_image_id: str = ""
+    spotbot_aws_root_volume_gb: int = Field(30, ge=8, le=16384)
+    spotbot_aws_public_ip: bool = True
+    spotbot_aws_ssh_user: str = "ubuntu"
     spotbot_database_path: Path = Path("data/spotbot.sqlite3")
     spotbot_storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"
     spotbot_mysql_url: SecretStr = SecretStr("")
@@ -37,7 +46,7 @@ class Settings(BaseSettings):
     @classmethod
     def valid_providers(cls, value: str) -> str:
         names = [name.strip() for name in value.split(",") if name.strip()]
-        if set(names) - {"lambda", "tensordock", "vultr", "shadeform"}:
+        if set(names) - {"lambda", "tensordock", "vultr", "shadeform", "aws"}:
             raise ValueError("Unknown provider in SPOTBOT_ENABLED_PROVIDERS")
         return ",".join(dict.fromkeys(names))
 

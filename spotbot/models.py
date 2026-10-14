@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ProviderName = Literal["lambda", "tensordock", "vultr", "shadeform"]
+ProviderName = Literal["lambda", "tensordock", "vultr", "shadeform", "aws"]
 Market = Literal["spot", "on_demand"]
 
 
@@ -23,7 +23,7 @@ def gpu_model(text: str) -> str:
     # Keep original description separately; exact model queries match this normalized field.
     t = text.upper().replace("_", " ")
     match = re.search(
-        r"\b(MI\d{3}X|[ABHV]\d{2,3}|GH\d{3}|L\d{2}S?|T4|P\d{2}|RTX\s*(?:A)?\d{4}(?:\s*ADA)?)\b", t
+        r"\b(MI\d{3}X|[ABHV]\d{2,3}|GH\d{3}|L\d{2}S?|T4G?|P\d{2}|RTX\s*(?:A)?\d{4}(?:\s*ADA)?)\b", t
     )
     return re.sub(r"\s+", " ", match.group(1)) if match else re.sub(r"\s+", " ", t).strip()
 
@@ -33,6 +33,7 @@ class Offer(BaseModel):
     cloud: str
     sku: str
     region: str
+    availability_zone: str | None = None
     market: Market
     gpu_model: str
     gpu_description: str
@@ -67,6 +68,8 @@ class Offer(BaseModel):
             self.memory_unit,
             self.storage_unit,
         ]
+        if self.availability_zone:
+            identity.append(self.availability_zone)
         return hashlib.sha256(json.dumps(identity).encode()).hexdigest()[:24]
 
     def public(self, max_age: int) -> dict:
@@ -90,13 +93,18 @@ class LaunchOptions(BaseModel):
     os: str | None = None
     cloud_init: str | None = Field(None, max_length=65536)  # Lambda, Vultr, Shadeform
     tensordock_cloud_init: dict | None = None
+    image_id: str | None = None  # AWS; defaults to the catalog's resolved GPU image.
+    subnet_id: str | None = None  # AWS; must match the offer's Availability Zone.
+    security_group_ids: list[str] = Field(default_factory=list)  # AWS
+    key_name: str | None = None  # AWS
+    root_volume_gb: int | None = Field(None, ge=8, le=16384)  # AWS
 
 
 class OrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     offer_id: str = Field(min_length=24, max_length=24, pattern=r"^[0-9a-f]+$")
     max_price_hourly: Decimal = Field(gt=0, allow_inf_nan=False)
-    dry_run: bool = True
+    dry_run: bool = False
     wait_seconds: int = Field(900, ge=1, le=86400)
     max_attempts: int = Field(20, ge=1, le=500)
     launch: LaunchOptions = Field(default_factory=LaunchOptions)

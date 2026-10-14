@@ -55,6 +55,7 @@ def test_api_order_idempotency_redaction_handoff_and_live_guard(service_factory)
     request = OrderRequest(
         offer_id=offer.offer_id,
         max_price_hourly="2",
+        dry_run=True,
         launch=LaunchOptions(ssh_key_id="key", cloud_init="SECRET-BOOTSTRAP"),
     )
     body = request.model_dump(mode="json")

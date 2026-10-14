@@ -52,4 +52,4 @@ docker exec 1Panel-openresty-Wv3G nginx -t
 docker exec 1Panel-openresty-Wv3G nginx -s reload
 ```
 
-The installation collects Lambda, Vultr, and Shadeform prices automatically. TensorDock and paid instance creation remain disabled. SSH and HTTP handoff APIs are available; external gateway registration still requires a gateway receiver and its webhook configuration.
+The installation collects AWS, Lambda, Vultr, and Shadeform prices automatically. TensorDock remains disabled. Live ordering is enabled and simulations are disabled. AWS uses the dedicated `SpotOrderBotEC2Role` attached to the deployment host. See [AWS integration](aws.md) for defaults, price limits, and quota behavior. SSH and HTTP handoff APIs are available; external gateway registration still requires a gateway receiver and its webhook configuration.

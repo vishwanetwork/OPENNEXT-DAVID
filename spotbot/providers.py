@@ -121,7 +121,7 @@ class Provider:
     async def collect(self) -> list[Offer]:
         raise NotImplementedError
 
-    def plan(self, offer: Offer, launch: LaunchOptions, name: str) -> dict:
+    def plan(self, offer: Offer, launch: LaunchOptions, name: str, *, max_price_hourly=None) -> dict:
         raise NotImplementedError
 
     async def create(self, plan: dict) -> str:
@@ -173,7 +173,7 @@ class LambdaProvider(Provider):
                 )
         return offers
 
-    def plan(self, offer, launch, name):
+    def plan(self, offer, launch, name, *, max_price_hourly=None):
         validate_launch(launch, {"ssh_key_names", "cloud_init"})
         if offer.market != "on_demand":
             raise ValueError("Lambda public API exposes on-demand instances only")
@@ -263,7 +263,7 @@ class ShadeformProvider(Provider):
                 )
         return offers
 
-    def plan(self, offer, launch, name):
+    def plan(self, offer, launch, name, *, max_price_hourly=None):
         validate_launch(launch, {"ssh_key_id", "os", "cloud_init"})
         if not launch.ssh_key_id:
             raise ValueError("Shadeform requires launch.ssh_key_id")
@@ -368,7 +368,7 @@ class TensorDockProvider(Provider):
                 )
         return offers
 
-    def plan(self, offer, launch, name):
+    def plan(self, offer, launch, name, *, max_price_hourly=None):
         validate_launch(launch, {"ssh_public_key", "os", "tensordock_cloud_init"})
         if offer.market != "on_demand":
             raise ValueError(
@@ -506,7 +506,7 @@ class VultrProvider(Provider):
                     )
         return offers
 
-    def plan(self, offer, launch, name):
+    def plan(self, offer, launch, name, *, max_price_hourly=None):
         validate_launch(launch, {"sshkey_ids", "os_id", "cloud_init"})
         if offer.market == "spot":
             raise ValueError(
@@ -558,6 +558,8 @@ class VultrProvider(Provider):
 
 
 def providers(settings: Settings, client: httpx.AsyncClient) -> dict[str, Provider]:
+    from spotbot.aws_provider import AWSProvider
+
     return {
         p.name: p
         for p in [
@@ -565,5 +567,6 @@ def providers(settings: Settings, client: httpx.AsyncClient) -> dict[str, Provid
             TensorDockProvider(settings, client),
             VultrProvider(settings, client),
             ShadeformProvider(settings, client),
+            AWSProvider(settings, client),
         ]
     }

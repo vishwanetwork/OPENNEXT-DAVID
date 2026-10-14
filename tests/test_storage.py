@@ -115,6 +115,18 @@ def order_request(offer):
     )
 
 
+def test_aws_zonal_catalog_round_trip_across_backends(storage, offer):
+    west = offer.model_copy(update={"provider": "aws", "cloud": "aws", "region": "us-west-2",
+                                    "availability_zone": "us-west-2a"})
+    east = west.model_copy(update={"availability_zone": "us-west-2b"})
+    assert west.offer_id != east.offer_id
+    storage.record_collection("aws", [west, east])
+    rows = storage.latest(provider="aws")
+    assert {o.availability_zone for o in rows} == {"us-west-2a", "us-west-2b"}
+    assert len([o for o in storage.latest() if o.provider == "aws"]) == 2
+    assert storage.history(provider="aws", offer_id=west.offer_id)[0] == 1
+
+
 def test_catalog_history_latest_failure_and_empty_batch(storage, offer):
     storage.record_collection("shadeform", [copy.deepcopy(offer)])
     storage.record_collection(

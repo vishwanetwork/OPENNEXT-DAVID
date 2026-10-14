@@ -67,7 +67,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         code = str(exc)
         status = (
             409
-            if code in {"idempotency_key_conflict", "price_exceeds_limit", "live_orders_disabled"}
+            if code in {"idempotency_key_conflict", "price_exceeds_limit", "live_orders_disabled", "dry_run_disabled"}
             else 400
         )
         raise HTTPException(status, code) from exc
@@ -80,11 +80,19 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             "background_enabled": config.spotbot_background_enabled,
             "worker_running": bool(task and not task.done()),
             "live_orders_enabled": config.spotbot_live_orders_enabled,
+            "dry_run_enabled": config.spotbot_dry_run_enabled,
         }
 
     @app.get("/v1/providers", dependencies=auth)
     def provider_status():
         capabilities = {
+            "aws": {
+                "spot_catalog": True,
+                "spot_orders": True,
+                "on_demand_orders": False,
+                "native_spot_price_limit": True,
+                "limitation": "Capacity is confirmed only by a launch attempt; regional quotas apply",
+            },
             "lambda": {"spot_catalog": False, "spot_orders": False, "on_demand_orders": True},
             "tensordock": {
                 "spot_catalog": False,
@@ -259,7 +267,9 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
 
         request = OrderRequest.model_validate(order["request"])
         offer = Offer.model_validate(order["offer"])
-        plan = svc.providers[offer.provider].plan(offer, request.launch, "spotbot-" + order_id)
+        plan = svc.providers[offer.provider].plan(
+            offer, request.launch, "spotbot-" + order_id, max_price_hourly=request.max_price_hourly
+        )
         return {
             "order_id": order_id,
             "executed": bool(order["instance_id"]),

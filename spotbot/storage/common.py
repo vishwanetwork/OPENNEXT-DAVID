@@ -14,7 +14,12 @@ def dump(value) -> str:
 
 
 def fingerprint(request: OrderRequest) -> str:
-    return hashlib.sha256(dump(request.model_dump(mode="json")).encode()).hexdigest()
+    payload = request.model_dump(mode="json")
+    # Preserve business-key replays for orders persisted before AWS launch fields existed.
+    for key in {"image_id", "subnet_id", "security_group_ids", "key_name", "root_volume_gb"}:
+        if payload["launch"].get(key) in (None, []):
+            payload["launch"].pop(key, None)
+    return hashlib.sha256(dump(payload).encode()).hexdigest()
 
 
 def new_order(request: OrderRequest, offer: Offer, key: str) -> dict:
@@ -58,7 +63,7 @@ def new_event(order_id: str, state: str, now: str, handoff=None) -> dict:
 
 ORDER_FIELDS = {"instance_id", "error", "handoff", "attempts", "release_sent", "offer"}
 ACTIVE_STATES = {"queued", "provisioning", "ready", "releasing"}
-PROVIDERS = ("lambda", "tensordock", "vultr", "shadeform")
+PROVIDERS = ("lambda", "tensordock", "vultr", "shadeform", "aws")
 
 
 class Storage(Protocol):

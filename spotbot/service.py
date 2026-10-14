@@ -40,7 +40,7 @@ def sanitized_plan(plan: dict) -> dict:
         if isinstance(value, dict):
             return {
                 k: "[redacted]"
-                if k in {"user_data", "cloud_init", "launch_configuration", "ssh_key"}
+                if k in {"user_data", "UserData", "cloud_init", "launch_configuration", "ssh_key"}
                 else redact(v)
                 for k, v in value.items()
             }
@@ -79,12 +79,13 @@ class Service:
                 if not self.settings.enabled(provider.name):
                     return {"provider": provider.name, "status": "disabled", "count": 0}
                 if not provider.configured and provider.name != "vultr":
-                    self.store.record_collection(provider.name, [], "missing_api_key")
+                    missing = "missing_aws_credentials" if provider.name == "aws" else "missing_api_key"
+                    self.store.record_collection(provider.name, [], missing)
                     return {
                         "provider": provider.name,
                         "status": "skipped",
                         "count": 0,
-                        "error": "missing_api_key",
+                        "error": missing,
                     }
                 try:
                     offers = await provider.collect()
@@ -105,6 +106,8 @@ class Service:
             return await asyncio.gather(*(one(p) for p in selected))
 
     def create_order(self, request: OrderRequest, key: str):
+        if request.dry_run and not self.settings.spotbot_dry_run_enabled:
+            raise ValueError("dry_run_disabled")
         # Idempotent replay returns the original order even if its offer disappears later.
         row = self.store.get_order_by_key(key)
         if row:
@@ -122,7 +125,7 @@ class Service:
             raise ValueError("price_exceeds_limit")
         provider = self.providers[offer.provider]
         provider.plan(
-            offer, request.launch, "spotbot-preview"
+            offer, request.launch, "spotbot-preview", max_price_hourly=request.max_price_hourly
         )  # Validate vendor launch options early.
         if not request.dry_run:
             if not self.settings.spotbot_live_orders_enabled:
@@ -198,7 +201,9 @@ class Service:
             self.store.transition(order_id, "failed", error="offer_not_orderable")
             return
         try:
-            plan = provider.plan(fresh, req.launch, "spotbot-" + order_id)
+            plan = provider.plan(
+                fresh, req.launch, "spotbot-" + order_id, max_price_hourly=req.max_price_hourly
+            )
         except ValueError:
             self.store.transition(order_id, "failed", error="invalid_launch_options")
             return
@@ -269,7 +274,9 @@ class Service:
                 "host": ip,
                 "port": status["ssh_port"],
                 "user": req.launch.ssh_user or status["ssh_user"],
-                "key_reference": req.launch.ssh_key_id
+                "key_reference": req.launch.key_name
+                or status.get("key_reference")
+                or req.launch.ssh_key_id
                 or req.launch.ssh_key_names
                 or req.launch.sshkey_ids
                 or "scheduler-managed",

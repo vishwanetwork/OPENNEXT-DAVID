@@ -2,7 +2,7 @@
 
 SpotOrderBot provides GPU price history and capacity procurement for an upstream scheduler. It collects vendor prices and availability, accepts requests for a specific offer with a price ceiling, creates instances, and publishes SSH and HTTP connection records for a gateway.
 
-The current implementation uses Python and FastAPI with selectable SQLite, MySQL, or Amazon DynamoDB storage. Lambda, Vultr, and Shadeform have passed live, read-only catalog checks. Paid instance creation has not been tested. Live ordering is disabled by default.
+The implementation uses Python and FastAPI with selectable SQLite, MySQL, or Amazon DynamoDB storage. AWS EC2 Spot, Lambda, Vultr, and Shadeform are supported. The application-wide live-order switch is disabled in the example configuration; individual orders now default to `dry_run=false`. Check `/health` for the deployed service's live and simulation switches.
 
 See [Architecture](docs/architecture.md) for component responsibilities, state transitions, and recovery behavior.
 
@@ -53,13 +53,14 @@ Select `sqlite`, `mysql`, or `dynamodb` with `SPOTBOT_STORAGE_BACKEND`. Setup, l
 
 | Provider | Catalog collection | Implemented creation adapter | Current limitation |
 |---|---|---|---|
+| AWS | Linux GPU Spot quotes by Region and Availability Zone | One-time EC2 Spot with a native hourly limit | Actual capacity requires a launch attempt; quotas and compatible launch defaults apply |
 | Lambda | On-demand prices and regions with capacity | On-demand | No Spot creation in this adapter |
 | Vultr | GPU on-demand and preemptible prices, including regional costs | On-demand | Preemptible creation parameters require verification |
 | Shadeform | Separate on-demand and Spot entries for each region | On-demand and Spot | Spot uses Shade Cloud; the underlying cloud is preserved |
 | TensorDock | v2 location catalog and complete resource profile estimate | On-demand with a dedicated public IP | Disabled; v2 Spot creation and forwarding-only hosts are unsupported |
 | SF Compute | CLI workflow planning only | None | No collection, CLI execution, or transactions |
 
-Creation adapters have not been tested by creating paid instances. Unsupported markets are rejected without switching to on-demand. Query `/v1/providers` for enabled status, key configuration, capabilities, and collection results.
+Unsupported markets are rejected without switching to on-demand. Query `/v1/providers` for enabled status, credential configuration, capabilities, and collection results. See [AWS integration](docs/aws.md) for default launch configuration and permissions.
 
 Lambda's `/api/v1/instances` lists existing account instances; prices come from `/api/v1/instance-types`. Vultr uses `/v2/plans?type=vcg`; Shadeform uses `/v1/instances/types`. CPU-only types are excluded.
 
@@ -106,7 +107,7 @@ curl -X POST http://127.0.0.1:8000/v1/orders \
   }'
 ```
 
-Add the service authorization header when configured. `dry_run=true` stores a plan without creating resources. Live requests require `dry_run=false` and live ordering enabled. Replaying a business key with the same request returns the original order; different parameters with the same key return HTTP 409. Converting a dry run to a live request requires a new key.
+Add the service authorization header when configured. Omitting `dry_run` defaults to a live request. Live requests require live ordering enabled. Explicit `dry_run=true` stores a plan without creating resources only when `SPOTBOT_DRY_RUN_ENABLED=true`; disabling simulation rejects such requests. Existing planned orders remain planned. Replaying a business key with the same request returns the original order; different parameters with the same key return HTTP 409. Converting a dry run to a live request requires a new key.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -121,6 +122,7 @@ Add the service authorization header when configured. `dry_run=true` stores a pl
 
 Launch settings:
 
+- AWS: `launch` may be empty when the deployment defaults are configured. Optional `key_name`, `security_group_ids`, `root_volume_gb`, and plaintext `cloud_init` are supported. The selected offer supplies its zonal subnet and GPU image; changing images requires updating the configured image and recollecting.
 - Lambda: exactly one registered name in `launch.ssh_key_names`; optional plaintext `cloud_init`.
 - Shadeform: `launch.ssh_key_id`; optional `os` and startup script `cloud_init`.
 - Vultr: `launch.os_id` and `launch.sshkey_ids`; optional plaintext `cloud_init`. Retrieve OS IDs from the vendor's `/v2/os` API.
@@ -129,7 +131,7 @@ Launch settings:
 
 Unsupported options are rejected. Before creation, the worker refreshes the catalog and checks availability, freshness, and price. The ceiling is a client-side submission check, not a guaranteed native limit order or total budget cap. Waiting deadlines apply before creation and do not release running instances. The scheduler must release resources when their work ends.
 
-Creation timeouts, HTTP 5xx, malformed success responses, and crashes during creation produce `needs_reconciliation`. These requests are not automatically replayed. Locate the vendor instance named `spotbot-{order_id}`, then submit `{"instance_id":"..."}` to the reconciliation endpoint. The bot verifies the name before resuming monitoring. If no instance exists, establish the outcome before purchasing again with a new business key.
+Creation timeouts, HTTP 5xx, malformed success responses, and crashes during creation produce `needs_reconciliation`. These requests are not automatically replayed. Locate the vendor instance named `spotbot-{order_id}`, then submit `{"instance_id":"..."}` to the reconciliation endpoint. The bot verifies the name before resuming monitoring. AWS also receives a deterministic `ClientToken` for each order. If no instance exists, establish the outcome before purchasing again with a new business key.
 
 ## Gateway handoff
 

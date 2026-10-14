@@ -212,7 +212,8 @@ async def test_webhook_outbox_signature_and_retry(service_factory):
     await svc.collect("shadeform")
     offer = next(o for o in svc.store.latest() if o.market == "spot")
     req = OrderRequest(
-        offer_id=offer.offer_id, max_price_hourly="2", launch=LaunchOptions(ssh_key_id="key")
+        offer_id=offer.offer_id, max_price_hourly="2", dry_run=True,
+        launch=LaunchOptions(ssh_key_id="key")
     )
     order, _ = svc.create_order(req, "webhook-test")
     await svc.tick()
