@@ -242,20 +242,22 @@ async def test_live_default_native_limit_handoff_and_release(aws_service):
     assert fake.deleted and service.store.get_order(order["id"])["state"] == "released"
 
 
-@pytest.mark.parametrize("kind", ["timeout", "server", "capacity", "malformed"])
+@pytest.mark.parametrize("kind", ["timeout", "server", "capacity", "capacity-server", "malformed"])
 async def test_aws_create_failures_preserve_uncertain_outcomes(aws_service, kind):
     service, fake = aws_service
     await service.collect("aws")
     offer = next(o for o in service.store.latest() if o.orderable)
     if kind == "timeout":
         fake.create_error = ReadTimeoutError(endpoint_url="https://ec2.us-west-2.amazonaws.com")
-    elif kind in {"server", "capacity"}:
+    elif kind in {"server", "capacity", "capacity-server"}:
         fake.create_error = ClientError(
             {
                 "Error": {
                     "Code": "InternalError" if kind == "server" else "InsufficientInstanceCapacity"
                 },
-                "ResponseMetadata": {"HTTPStatusCode": 500 if kind == "server" else 400},
+                "ResponseMetadata": {
+                    "HTTPStatusCode": 500 if kind in {"server", "capacity-server"} else 400
+                },
             },
             "RunInstances",
         )
@@ -266,7 +268,7 @@ async def test_aws_create_failures_preserve_uncertain_outcomes(aws_service, kind
     )
     await service.tick()
     state = service.store.get_order(order["id"])["state"]
-    if kind == "capacity":
+    if kind.startswith("capacity"):
         assert state == "queued"
     else:
         assert state == "needs_reconciliation"

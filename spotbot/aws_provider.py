@@ -84,6 +84,7 @@ class AWSProvider(Provider):
                     retryable=capacity
                     or code in {"RequestLimitExceeded", "Throttling", "ThrottlingException"},
                     ambiguous=mutation
+                    and not capacity
                     and (status >= 500 or code in {"InternalError", "RequestTimeout"}),
                 ) from exc
             except BotoCoreError as exc:
