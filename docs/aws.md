@@ -21,3 +21,13 @@ AWS SDK retries are disabled for the adapter. Definite capacity errors return th
 The deployed role can read EC2 catalogs, public GPU-image parameters, and quota values; create tagged GPU Spot instances using approved network resources and the `test` key pair; tag resources during launch; and terminate only tagged managed instances. It cannot change IAM, network configuration, or launch on-demand instances. The host administrator provisions the AWS Spot service-linked role separately. When adding Regions, extend the role's allowed resources and network defaults as well.
 
 The deployed service enables live orders and sets `SPOTBOT_DRY_RUN_ENABLED=false`. Orders default to `dry_run=false`; explicit simulations are rejected. Authentication and a business `Idempotency-Key` remain required. Changing environment settings requires recreating the container with `docker compose -p spotbot -f compose.production.yaml up -d --force-recreate`; restarting the same container does not reload its environment.
+
+## Deployment regions and quotas
+
+The production installation collects `us-west-2` and `us-east-1`. It discovers each Region's default VPC, zonal subnets, and the dedicated `spotbot-gpu` group. The `test` key pair is registered in both Regions; only its public key was imported into `us-east-1`. GPU ingress allows SSH and port 8000 from the deployment host; the east-region group permits its public IP only.
+
+On 2026-10-14, the applied P Spot quota was 64 vCPUs in `us-west-2` and 16 vCPUs in `us-east-1`. The G/VT Spot quota was zero. An 8-vCPU G/VT Spot increase was requested in `us-west-2`; AWS opened support case `179194673600708`. Query Service Quotas for its current approval state before relying on G-family capacity.
+
+Real `RunInstances` requests were tested in all four configured west-region Availability Zones and all five launch-eligible east-region Availability Zones, in ascending price order within each regional test. All nine requests failed for capacity; no GPU instance was created. Resource audits found no managed instances, volumes, or active Spot requests. All test orders are terminal, so the worker will not continue purchasing for them. Actual GPU startup and SSH/HTTP verification remain unvalidated until capacity is allocated.
+
+The live test exposed and fixed the handling of a known capacity error returned as HTTP 500: the bot queues a retry instead of treating this definite failure as an uncertain purchase. AWS CloudTrail confirmed `Server.InsufficientInstanceCapacity` for the west-region attempts. The original misclassified order was corrected to `failed` only after checking AWS for its exact management tag and order name and confirming no instance existed.
