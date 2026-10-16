@@ -19,10 +19,28 @@ from spotbot.config import Settings
 from spotbot.models import LaunchOptions, Offer, OrderRequest, utcnow
 from spotbot.service import Service
 from spotbot.storage.dynamodb import DynamoDBStore
+from spotbot.storage.list_history import ListHistory
 from spotbot.storage.mysql import MySQLStore
 from spotbot.storage.spot_history import create_history_store
 from spotbot.storage.sqlite import Store
 from tests.test_orders import FakeShade
+
+
+def test_list_archives_are_atomic_idempotent_and_isolated(storage):
+    history = ListHistory(storage)
+    version = "20260925174521"
+    begin, end = "2026-09-01T00:00:00.000000+00:00", "2026-10-01T00:00:00.000000+00:00"
+    status = {"spec_hash": "hash", "since": begin, "checked_at": end, "versions": [{"version": version, "begin": begin, "end": end}]}
+    history.save("us-west-2", "STATUS", status)
+    assert history.query("us-west-2", "g5.xlarge", begin, end)["pending"]
+    doc = {"spec_hash": "hash", "prices": {"g5.xlarge": {"on_demand": {"price_hourly": "1.006", "effective_at": begin}}}}
+    for _ in range(2):
+        history.save("us-west-2", version, doc)
+    assert history.get("us-west-2", version) == doc
+    result = history.query("us-west-2", "g5.xlarge", begin, end)
+    assert not result["pending"] and len(result["items"]) == 1
+    assert result["items"][0]["valid_until"] == end
+    assert storage.latest(provider="aws") == []
 
 
 def test_spot_change_history_is_idempotent_and_keeps_boundary_price(storage):

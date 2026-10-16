@@ -30,15 +30,22 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     async def lifespan(app):
         task = None
         history_task = None
+        list_history_task = None
         try:
             svc.acquire()
             if config.spotbot_background_enabled:
                 task = asyncio.create_task(svc.run())
                 if config.enabled("aws") and config.spotbot_aws_spot_history_enabled:
                     history_task = asyncio.create_task(svc.run_history())
+                if config.enabled("aws") and config.spotbot_aws_list_history_enabled:
+                    list_history_task = asyncio.create_task(svc.run_list_history())
             app.state.worker_task = task
             yield
         finally:
+            if list_history_task:
+                list_history_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await list_history_task
             if history_task:
                 history_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -193,6 +200,33 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             if any(o["provider"] == name for o in selected)
         ]
         return {"total": len(rows), "limit": limit, "offset": offset, "groups": groups}
+
+    @app.get("/v1/prices/aws-list-history", dependencies=auth)
+    def aws_list_history(
+        region: str = Query(..., min_length=1, max_length=64),
+        sku: str = Query(..., min_length=1, max_length=128),
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = Query(1000, ge=1, le=5000),
+        offset: int = Query(0, ge=0),
+    ):
+        from spotbot.spot_history import iso
+
+        if any(value and value.tzinfo is None for value in (since, until)):
+            raise HTTPException(400, "timestamps_require_timezone")
+        end = (until or datetime.now(UTC)).astimezone(UTC)
+        start = (since or end - timedelta(days=90)).astimezone(UTC)
+        if start >= end or end - start > timedelta(days=90):
+            raise HTTPException(400, "history_window_must_be_between_zero_and_90_days")
+        data = svc.list_history.query(region, sku, iso(start), iso(end))
+        rows = data.pop("items")
+        return {
+            "provider": "aws", "region": region, "sku": sku,
+            "kind": "published_price_intervals", "unit": "USD / instance-hour",
+            "commitment": {"months": 12, "payment": "no_upfront"},
+            **data, "total": len(rows), "limit": limit, "offset": offset,
+            "items": rows[offset:offset + limit],
+        }
 
     @app.get("/v1/prices/aws-spot-history", dependencies=auth)
     def aws_spot_history(

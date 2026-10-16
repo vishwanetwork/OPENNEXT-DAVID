@@ -20,6 +20,20 @@ The chart bridge uses these events to reconstruct effective intervals and takes 
 
 Source: [AWS DescribeSpotPriceHistory](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSpotPriceHistory.html).
 
+## Historical On-demand and Reserved tariffs
+
+The worker also backfills the official EC2 Price List Bulk archives over the most recent 90 days. It reads the service version index and downloads only configured Regions. CSV files are streamed with bounded memory, a 2 GiB size limit and a 15-minute per-file limit; full price lists are not retained on disk. Only Linux, shared tenancy, no pre-installed software, no license charge, Used capacity and OnDemand market rows for GPU instance types are kept. Currency is USD and rates are per instance-hour. Reserved is one year, No Upfront, standard or convertible (the lower eligible rate in that version wins); positive upfront charges and three-year terms are excluded.
+
+`SPOTBOT_AWS_LIST_HISTORY_ENABLED=true` enables the separate read-only task whenever AWS and the background worker are enabled. `SPOTBOT_AWS_LIST_HISTORY_INTERVAL_SECONDS=86400` checks the index daily. Immutable versions already stored with the same GPU specification set are reused. Failed versions retry after ten minutes; only complete downloads are committed. No additional IAM pricing permissions are needed for the public archive URLs; the existing `ec2:DescribeInstanceTypes` permission identifies GPU instances.
+
+Filtered archive versions and index checkpoints are persisted in `aws_list_archive` in SQLite/MySQL or `AWS_LIST_ARCHIVE#<region>` in DynamoDB. They never replace current catalog batches or enter order processing. A version is an atomic document, guarded by DynamoDB's existing item-size check. History has no automatic deletion policy. Documents retain source URL, version, AWS product SKU, rate code, term effective date and retrieval time for audit.
+
+`GET /v1/prices/aws-list-history?region=us-west-2&sku=g5.xlarge` requires Bearer authentication. Timezone-aware `since` and `until` select at most 90 days. Pin both dates when paging with `limit` (maximum 5,000) and `offset`. `kind=published_price_intervals` distinguishes these records from observed snapshots and Spot change events. Responses include On-demand/Reserved `market`, `price_hourly`, `effective_at`, inclusive `valid_from`, exclusive `valid_until`, version and commitment attributes. `pending` and `missing_versions` report incomplete archive imports; existing successful versions remain queryable.
+
+An interval begins at the later of the version's effective beginning and the term's own effective date. It ends at the version's effective ending or the last index check. Some Reserved term dates occur late in the month even when the archive version starts at the beginning of the month. Earlier unconfirmed days remain gaps; unchanged prices in adjacent snapshots are not proof of uninterrupted historical validity. Newly introduced GPU sizes and unavailable one-year terms can have shorter coverage. The chart retains genuine live observations outside confirmed archive intervals and does not backdate today's rates.
+
+Sources: [AWS version validity](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/service-version-index-file-for-aws-service.html), [price-list fields and term effective dates](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/reading-service-price-list-file-for-services.html).
+
 ## On-demand and Reserved list prices
 
 The bot also reads published Linux On-demand and Reserved rates for GPU instances in `SPOTBOT_AWS_REGIONS` from the AWS Price List API (`pricing:GetProducts`, served from `us-east-1`). Filters: shared tenancy, no pre-installed software, no license charge, and the On-demand market option (excluding Capacity Blocks). These offers have `price_kind=list`, no Availability Zone, and `orderable=false` with `eligibility_status=list_price_only`. They are price references; the bot cannot buy On-demand or Reserved capacity.
