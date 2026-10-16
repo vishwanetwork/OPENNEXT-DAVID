@@ -2,7 +2,7 @@ import asyncio
 import secrets
 import shlex
 from contextlib import asynccontextmanager, suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -29,13 +29,20 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     @asynccontextmanager
     async def lifespan(app):
         task = None
+        history_task = None
         try:
             svc.acquire()
             if config.spotbot_background_enabled:
                 task = asyncio.create_task(svc.run())
+                if config.enabled("aws") and config.spotbot_aws_spot_history_enabled:
+                    history_task = asyncio.create_task(svc.run_history())
             app.state.worker_task = task
             yield
         finally:
+            if history_task:
+                history_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await history_task
             if task:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -186,6 +193,32 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             if any(o["provider"] == name for o in selected)
         ]
         return {"total": len(rows), "limit": limit, "offset": offset, "groups": groups}
+
+    @app.get("/v1/prices/aws-spot-history", dependencies=auth)
+    def aws_spot_history(
+        region: str = Query(..., min_length=1, max_length=64),
+        sku: str = Query(..., min_length=1, max_length=128),
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = Query(1000, ge=1, le=5000),
+        offset: int = Query(0, ge=0),
+    ):
+        from spotbot.spot_history import iso
+
+        if any(value and value.tzinfo is None for value in (since, until)):
+            raise HTTPException(400, "timestamps_require_timezone")
+        end = (until or datetime.now(UTC)).astimezone(UTC)
+        start = (since or end - timedelta(days=90)).astimezone(UTC)
+        if start >= end or end - start > timedelta(days=90):
+            raise HTTPException(400, "history_window_must_be_between_zero_and_90_days")
+        coverage = svc.spot_history.coverage(region, sku)
+        rows = svc.spot_history.read(region, sku, iso(start), iso(end)) if coverage else []
+        return {
+            "provider": "aws", "market": "spot", "region": region, "sku": sku,
+            "kind": "price_change_events", "unit": "USD / instance-hour",
+            "coverage": coverage, "total": len(rows), "limit": limit, "offset": offset,
+            "items": rows[offset:offset + limit],
+        }
 
     @app.get("/v1/prices/history", dependencies=auth)
     def history(

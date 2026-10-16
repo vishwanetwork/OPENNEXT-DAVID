@@ -12,6 +12,7 @@ from spotbot.models import OrderRequest, timestamp, utcnow
 from spotbot.providers import ProviderError, providers
 from spotbot.storage import create_store
 from spotbot.storage.common import dump, fingerprint
+from spotbot.storage.spot_history import create_history_store
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class Service:
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None):
         self.settings = settings
         self.store = create_store(settings)
+        self.spot_history = create_history_store(self.store)
         self.client = client or httpx.AsyncClient(
             timeout=settings.spotbot_http_timeout_seconds, follow_redirects=False
         )
@@ -418,6 +420,21 @@ class Service:
             except httpx.HTTPError:
                 delivered = False
             self.store.webhook_result(event["id"], delivered, event["attempts"] + 1)
+
+    async def run_history(self):
+        from spotbot.spot_history import backfill
+
+        while True:
+            try:
+                result = await backfill(self.settings, self.spot_history)
+                logger.info("AWS Spot history cycle completed: %s", result)
+                delay = 600 if result["failed"] else self.settings.spotbot_aws_spot_history_interval_seconds
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("AWS Spot history cycle failed: error_type=%s", type(exc).__name__)
+                delay = 600
+            await asyncio.sleep(delay)
 
     async def run(self):
         last_collect = 0.0

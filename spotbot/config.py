@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # AWS Price List (On-demand and Reserved). Requires pricing:GetProducts.
     spotbot_aws_list_prices_enabled: bool = True
     spotbot_aws_list_price_interval_seconds: int = Field(21600, ge=900)
+    spotbot_aws_spot_history_enabled: bool = True
+    spotbot_aws_spot_history_interval_seconds: int = Field(86400, ge=3600)
     spotbot_database_path: Path = Path("data/spotbot.sqlite3")
     spotbot_storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"
     spotbot_mysql_url: SecretStr = SecretStr("")

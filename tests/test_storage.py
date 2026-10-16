@@ -20,8 +20,28 @@ from spotbot.models import LaunchOptions, Offer, OrderRequest, utcnow
 from spotbot.service import Service
 from spotbot.storage.dynamodb import DynamoDBStore
 from spotbot.storage.mysql import MySQLStore
+from spotbot.storage.spot_history import create_history_store
 from spotbot.storage.sqlite import Store
 from tests.test_orders import FakeShade
+
+
+def test_spot_change_history_is_idempotent_and_keeps_boundary_price(storage):
+    history = create_history_store(storage)
+    def event(zone, at, price):
+        return {"availability_zone": zone, "effective_at": at, "price_hourly": price}
+    events = [event("zone-a", "2026-07-01T00:00:00.000000+00:00", "1"),
+              event("zone-a", "2026-08-01T00:00:00.000000+00:00", "2"),
+              event("zone-b", "2026-07-15T00:00:00.000000+00:00", "3"),
+              event("zone-a", "2026-10-01T00:00:00.000000+00:00", "4")]
+    coverage = {"since": "2026-07-20T00:00:00.000000+00:00", "until": "2026-10-10T00:00:00.000000+00:00"}
+    for _ in range(2):
+        history.save("us-west-2", "g5.xlarge", events, coverage)
+    assert history.coverage("us-west-2", "g5.xlarge") == coverage
+    rows = history.read("us-west-2", "g5.xlarge", "2026-09-01T00:00:00.000000+00:00", "2026-09-30T00:00:00.000000+00:00")
+    assert len(rows) == 2
+    assert {r["price_hourly"] for r in rows} == {"2", "3"}
+    assert storage.latest(provider="aws") == []
+    assert storage.history(provider="aws")[0] == 0
 
 
 @pytest.fixture(params=["sqlite", "mysql", "dynamodb", "dynamodb-local"])

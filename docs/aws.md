@@ -8,6 +8,18 @@ The default NVIDIA image is resolved through the public SSM parameter `/aws/serv
 
 Catalog records preserve `region` and `availability_zone`; the zone participates in the offer ID. Existing non-AWS offer IDs and order fingerprints remain compatible. Linux Spot prices come from `DescribeSpotPriceHistory`; observations are saved in the configured store. History and latest-price filters can use an `offer_id` to select one zone.
 
+## Ninety-day Spot history
+
+When AWS and the background worker are enabled, a separate read-only task backfills Linux GPU Spot price changes for every configured Region and GPU instance type. It uses `ec2:DescribeInstanceTypes` and `ec2:DescribeSpotPriceHistory`; it does not submit orders. The initial request covers the AWS 90-day window, with a one-minute boundary margin. AWS also returns the effective predecessor before the requested start. New GPU types and zones may have shorter histories.
+
+Set `SPOTBOT_AWS_SPOT_HISTORY_ENABLED=false` to disable this task. Successful series refresh daily (`SPOTBOT_AWS_SPOT_HISTORY_INTERVAL_SECONDS=86400`); failed series retry after ten minutes. Committed per-series coverage checkpoints resume subsequent requests with a one-hour overlap. Failed or interrupted requests do not advance coverage. Event identity is Region, SKU, Availability Zone and vendor effective timestamp, so retries do not duplicate events. SQLite and MySQL use dedicated `aws_spot_changes` and `aws_spot_coverage` tables; DynamoDB uses separate `AWS_SPOT_HISTORY#<region>#<sku>` partitions. Saved history has no automatic retention deletion.
+
+`GET /v1/prices/aws-spot-history?region=us-west-2&sku=g5.xlarge` requires the usual Bearer token. Optional timezone-aware `since` and `until` delimit a window of at most 90 days; `limit` (up to 5,000) and `offset` paginate ascending price-change events. Pin both dates when paging. The response includes completed `coverage`, vendor `effective_at`, zone, and USD per **instance-hour**. A predecessor per zone is included to establish the effective price at the start. An empty or missing coverage is not a promise of available capacity. Historical events never enter `/v1/prices/latest`, executable offers or order processing. The existing `/v1/prices/history` continues to return the bot's collection snapshots with their original observation times.
+
+The chart bridge uses these events to reconstruct effective intervals and takes the lowest zone price at each change within one Region and SKU. AWS confirms historical price validity only through `coverage.until`; live bot observations cover subsequent time. It divides instance prices by the verified physical GPU count. Published historical prices do not establish capacity or quota eligibility.
+
+Source: [AWS DescribeSpotPriceHistory](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSpotPriceHistory.html).
+
 ## On-demand and Reserved list prices
 
 The bot also reads published Linux On-demand and Reserved rates for GPU instances in `SPOTBOT_AWS_REGIONS` from the AWS Price List API (`pricing:GetProducts`, served from `us-east-1`). Filters: shared tenancy, no pre-installed software, no license charge, and the On-demand market option (excluding Capacity Blocks). These offers have `price_kind=list`, no Availability Zone, and `orderable=false` with `eligibility_status=list_price_only`. They are price references; the bot cannot buy On-demand or Reserved capacity.
