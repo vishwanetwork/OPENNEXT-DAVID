@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from spotbot.config import Settings
@@ -47,6 +48,8 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         lifespan=lifespan,
         description="GPU price history, capacity orders and SSH/HTTP gateway handoff",
     )
+    # Catalog pages are ~1 MB of repetitive JSON; compression keeps slow links within timeouts.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.state.service = svc
     bearer = HTTPBearer(auto_error=False)
 
@@ -97,6 +100,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                 "spot_orders": True,
                 "on_demand_orders": False,
                 "native_spot_price_limit": True,
+                "list_prices": "On-demand and Reserved from the AWS Price List (reference only)",
                 "limitation": "Capacity is confirmed only by a launch attempt; regional quotas apply",
             },
             "lambda": {"spot_catalog": False, "spot_orders": False, "on_demand_orders": True},
@@ -124,6 +128,11 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                     "public_catalog": name == "vultr",
                     "capabilities": capabilities[name],
                     "last_collection": collections.get(name),
+                    **(
+                        {"last_list_price_collection": collections.get("aws_list")}
+                        if name == "aws"
+                        else {}
+                    ),
                 }
                 for name, p in svc.providers.items()
             ]

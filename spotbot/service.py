@@ -61,6 +61,7 @@ class Service:
         self._own_client = client is None
         self.providers = providers(settings, self.client)
         self.collect_lock = asyncio.Lock()
+        self.list_prices_due = 0.0
         self.worker_lock = asyncio.Lock()
 
     def acquire(self):
@@ -105,7 +106,30 @@ class Service:
                 for name, p in self.providers.items()
                 if (only is None and self.settings.enabled(name)) or only == name
             ]
-            return await asyncio.gather(*(one(p) for p in selected))
+            results = await asyncio.gather(*(one(p) for p in selected))
+            aws = self.providers.get("aws")
+            if aws in selected and aws.configured and self.settings.spotbot_aws_list_prices_enabled:
+                listed = await self._collect_list_prices(aws)
+                if listed:
+                    results.append(listed)
+            return results
+
+    async def _collect_list_prices(self, aws):
+        # Published rates change rarely; storing them every Spot cycle would multiply history.
+        if time.monotonic() < self.list_prices_due:
+            return None
+        interval = self.settings.spotbot_aws_list_price_interval_seconds
+        try:
+            offers = await aws.collect_list_prices()
+            self.store.record_collection("aws_list", offers)
+            self.list_prices_due = time.monotonic() + interval
+            return {"provider": "aws_list", "status": "ok", "count": len(offers)}
+        except Exception as exc:
+            code = exc.code if isinstance(exc, ProviderError) else "invalid_catalog_schema"
+            self.store.record_collection("aws_list", [], code)
+            self.list_prices_due = time.monotonic() + min(interval, 1800)
+            logger.warning("Collection failed for aws_list: %s", code)
+            return {"provider": "aws_list", "status": "error", "count": 0, "error": code}
 
     def create_order(self, request: OrderRequest, key: str):
         if request.dry_run and not self.settings.spotbot_dry_run_enabled:

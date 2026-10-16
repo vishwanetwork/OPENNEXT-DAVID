@@ -13,8 +13,9 @@ from botocore.exceptions import ClientError
 from spotbot.models import Offer, timestamp, utcnow
 from spotbot.storage.common import (
     ACTIVE_STATES,
+    CATALOG_PROVIDER,
+    CATALOGS,
     ORDER_FIELDS,
-    PROVIDERS,
     dump,
     fingerprint,
     new_event,
@@ -254,7 +255,7 @@ class DynamoDBStore:
 
     def collection_status(self):
         result = []
-        for provider in sorted(PROVIDERS):
+        for provider in sorted(CATALOGS):
             item = self._get("PROVIDER#" + provider, "META")
             if item:
                 status = dict(json.loads(item["body"])["status"])
@@ -274,8 +275,9 @@ class DynamoDBStore:
 
     def latest(self, **filters):
         records = []
-        for provider in PROVIDERS:
-            if filters.get("provider") is not None and filters["provider"] != provider:
+        for provider in CATALOGS:
+            owner = CATALOG_PROVIDER.get(provider, provider)
+            if filters.get("provider") is not None and filters["provider"] != owner:
                 continue
             metadata = self._get("PROVIDER#" + provider, "META")
             success = json.loads(metadata["body"]).get("success") if metadata else None
@@ -296,8 +298,9 @@ class DynamoDBStore:
 
     def history(self, limit=100, offset=0, **filters):
         records = []
-        for provider in PROVIDERS:
-            if filters.get("provider") is not None and filters["provider"] != provider:
+        for provider in CATALOGS:
+            owner = CATALOG_PROVIDER.get(provider, provider)
+            if filters.get("provider") is not None and filters["provider"] != owner:
                 continue
             # Unpublished partial batches are deliberately excluded from history as well.
             committed = {

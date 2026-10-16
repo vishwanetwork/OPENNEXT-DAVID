@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     spotbot_aws_public_ip: bool = True
     spotbot_aws_ssh_user: str = "ubuntu"
     spotbot_aws_capacity_backoff_seconds: int = Field(60, ge=15, le=3600)
+    # AWS Price List (On-demand and Reserved). Requires pricing:GetProducts.
+    spotbot_aws_list_prices_enabled: bool = True
+    spotbot_aws_list_price_interval_seconds: int = Field(21600, ge=900)
     spotbot_database_path: Path = Path("data/spotbot.sqlite3")
     spotbot_storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"
     spotbot_mysql_url: SecretStr = SecretStr("")

@@ -47,6 +47,9 @@ def test_api_auth_grouping_history_and_gpu_filters(service_factory):
             == 400
         )
         assert client.get("/v1/prices/latest", params={"limit": 0}, headers=AUTH).status_code == 422
+        compressed = client.get("/v1/prices/latest", headers={**AUTH, "Accept-Encoding": "gzip"})
+        assert compressed.headers["content-encoding"] == "gzip"
+        assert compressed.json() == latest
 
 
 def test_api_order_idempotency_redaction_handoff_and_live_guard(service_factory):

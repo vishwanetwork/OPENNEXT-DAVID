@@ -2,12 +2,26 @@
 
 import asyncio
 import hashlib
+import json
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from spotbot.models import Offer, gpu_model
 from spotbot.providers import Provider, ProviderError, validate_launch
+
+# The Price List API is served from us-east-1 and covers every EC2 region.
+PRICE_LIST_REGION = "us-east-1"
+LIST_PRICE_FILTERS = {
+    "operatingSystem": "Linux",
+    "tenancy": "Shared",
+    "preInstalledSw": "NA",
+    "capacitystatus": "Used",
+    "marketoption": "OnDemand",
+    "licenseModel": "No License required",
+    "instanceFamily": "GPU instance",
+}
+RESERVED_HOURS = {"1yr": 8760, "3yr": 26280}
 
 
 class AWSProvider(Provider):
@@ -205,24 +219,143 @@ class AWSProvider(Provider):
     async def collect(self):
         return await self._execute(self._collect)
 
+    async def collect_list_prices(self):
+        return await self._execute(self._collect_list_prices)
+
+    @staticmethod
+    def _instance_types(ec2):
+        all_specs = {
+            t["InstanceType"]: t
+            for page in ec2.get_paginator("describe_instance_types").paginate(
+                Filters=[{"Name": "instance-type", "Values": ["g*", "p*", "vt*"]}]
+            )
+            for t in page["InstanceTypes"]
+        }
+        specs = {
+            name: spec for name, spec in all_specs.items() if spec.get("GpuInfo", {}).get("Gpus")
+        }
+        return all_specs, specs
+
+    @staticmethod
+    def _gpu_summary(spec):
+        gpus = spec["GpuInfo"]["Gpus"]
+        return {
+            "gpu_count": sum(g.get("LogicalGpuCount") or g.get("Count", 0) for g in gpus),
+            "description": ", ".join(f"{g['Manufacturer']} {g['Name']}" for g in gpus),
+            "details": {
+                "gpu_specifications": gpus,
+                "physical_gpu_count": sum(g["Count"] for g in gpus),
+                "gpu_count_kind": "logical"
+                if any(g.get("GpuPartitionSize", 1) < 1 for g in gpus)
+                else "physical",
+            },
+        }
+
+    def _collect_list_prices(self):
+        """Published Linux On-demand and Reserved rates, with the vendor's effective dates."""
+        pricing = self._client(PRICE_LIST_REGION, "pricing")
+        offers = []
+        for region in self.regions:
+            _, specs = self._instance_types(self._client(region))
+            filters = [
+                {"Type": "TERM_MATCH", "Field": field, "Value": value}
+                for field, value in {**LIST_PRICE_FILTERS, "regionCode": region}.items()
+            ]
+            for page in pricing.get_paginator("get_products").paginate(
+                ServiceCode="AmazonEC2", Filters=filters
+            ):
+                for raw in page["PriceList"]:
+                    product = json.loads(raw) if isinstance(raw, str) else raw
+                    offers.extend(self._list_offers(product, region, specs))
+        return offers
+
+    def _list_offers(self, product, region, specs):
+        sku = product.get("product", {}).get("attributes", {}).get("instanceType")
+        spec = specs.get(sku)
+        if not spec:
+            return []
+        summary = self._gpu_summary(spec)
+        if not summary["gpu_count"]:
+            return []
+        terms = product.get("terms", {})
+
+        def offer(market, price, term, extra):
+            return Offer(
+                provider=self.name,
+                cloud="aws",
+                sku=sku,
+                region=region,
+                market=market,
+                gpu_model=gpu_model(summary["description"]),
+                gpu_description=summary["description"],
+                gpu_count=summary["gpu_count"],
+                vcpus=spec["VCpuInfo"]["DefaultVCpus"],
+                memory_gb=Decimal(spec["MemoryInfo"]["SizeInMiB"]) / 1024,
+                memory_unit="GiB",
+                storage_gb=0,
+                storage_unit="GiB",
+                price_hourly=price,
+                price_kind="list",
+                available=False,
+                orderable=False,
+                source_url="https://pricing.us-east-1.amazonaws.com",
+                effective_at=term.get("effectiveDate"),
+                details={
+                    "aws_region": region,
+                    **summary["details"],
+                    "price_source": "aws_price_list",
+                    "offer_term_code": term.get("offerTermCode"),
+                    "eligibility_status": "list_price_only",
+                    **extra,
+                },
+            )
+
+        def dimensions(term):
+            values = {}
+            for dimension in term.get("priceDimensions", {}).values():
+                usd = dimension.get("pricePerUnit", {}).get("USD")
+                if usd is not None:
+                    values[dimension.get("unit")] = Decimal(usd)
+            return values
+
+        result = []
+        for term in terms.get("OnDemand", {}).values():
+            hourly = dimensions(term).get("Hrs")
+            if hourly and hourly > 0:
+                result.append(offer("on_demand", hourly, term, {}))
+        for term in terms.get("Reserved", {}).values():
+            attributes = term.get("termAttributes", {})
+            hours = RESERVED_HOURS.get(attributes.get("LeaseContractLength"))
+            if not hours or attributes.get("OfferingClass") not in {"standard", "convertible"}:
+                continue
+            values = dimensions(term)
+            recurring, upfront = values.get("Hrs", Decimal(0)), values.get("Quantity", Decimal(0))
+            # Effective hourly cost spreads any upfront payment across the whole term.
+            hourly = recurring + upfront / hours
+            if hourly > 0:
+                result.append(
+                    offer(
+                        "reserved",
+                        hourly.quantize(Decimal("0.000001")),
+                        term,
+                        {
+                            "lease_contract_length": attributes["LeaseContractLength"],
+                            "purchase_option": attributes.get("PurchaseOption"),
+                            "offering_class": attributes["OfferingClass"],
+                            "upfront_usd": str(upfront),
+                            "recurring_hourly_usd": str(recurring),
+                        },
+                    )
+                )
+        return result
+
     def _collect(self):
         from botocore.exceptions import ClientError
 
         offers = []
         for region in self.regions:
             ec2 = self._client(region)
-            all_specs = {
-                t["InstanceType"]: t
-                for page in ec2.get_paginator("describe_instance_types").paginate(
-                    Filters=[{"Name": "instance-type", "Values": ["g*", "p*", "vt*"]}]
-                )
-                for t in page["InstanceTypes"]
-            }
-            specs = {
-                name: spec
-                for name, spec in all_specs.items()
-                if spec.get("GpuInfo", {}).get("Gpus")
-            }
+            all_specs, specs = self._instance_types(ec2)
             if not specs:
                 continue
             vpc = self.settings.spotbot_aws_vpc_id

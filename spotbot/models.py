@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ProviderName = Literal["lambda", "tensordock", "vultr", "shadeform", "aws"]
-Market = Literal["spot", "on_demand"]
+Market = Literal["spot", "on_demand", "reserved"]
 
 
 def utcnow() -> datetime:
@@ -19,13 +19,33 @@ def timestamp() -> str:
     return utcnow().isoformat()
 
 
+_GPU_PATTERN = re.compile(
+    r"(?<![A-Z0-9])(?:"
+    r"(?P<pro>RTX\s*PRO\s*(?:SERVER\s*)?(?P<pro_n>\d{4}))"
+    r"|(?P<rtx>RTX\s*(?P<rtx_a>A)?\s*(?P<rtx_n>\d{4})(?P<rtx_ada>\s*ADA)?)"
+    r"|(?P<a_series>A(?P<a_n>[2-6]000))"
+    r"|(?P<plain>MI\d{3}X|G[BH]\d{3}|A\d{2,3}G?|[BHV]\d{2,3}|L\d{1,2}S?|T4G?|P\d{2,3})"
+    r")(?![A-Z0-9])"
+)
+
+
 def gpu_model(text: str) -> str:
     # Keep original description separately; exact model queries match this normalized field.
-    t = text.upper().replace("_", " ")
-    match = re.search(
-        r"\b(MI\d{3}X|[ABHV]\d{2,3}|GH\d{3}|L\d{2}S?|T4G?|P\d{2}|RTX\s*(?:A)?\d{4}(?:\s*ADA)?)\b", t
-    )
-    return re.sub(r"\s+", " ", match.group(1)) if match else re.sub(r"\s+", " ", t).strip()
+    # Providers spell the same GPU differently (RTX4090, RTXPRO6000, NVIDIA A10G); one
+    # canonical spelling lets catalog and history queries match across providers.
+    t = re.sub(r"\s+", " ", text.upper().replace("_", " ")).strip()
+    match = _GPU_PATTERN.search(t)
+    if not match:
+        return t
+    if match["pro"]:
+        return f"RTX PRO {match['pro_n']}"
+    if match["rtx"]:
+        return f"RTX {'A' if match['rtx_a'] else ''}{match['rtx_n']}" + (
+            " ADA" if match["rtx_ada"] else ""
+        )
+    if match["a_series"]:
+        return f"RTX A{match['a_n']}"
+    return match["plain"]
 
 
 class Offer(BaseModel):
@@ -46,11 +66,14 @@ class Offer(BaseModel):
     price_hourly: Decimal = Field(ge=0, allow_inf_nan=False)
     currency: Literal["USD"] = "USD"
     price_unit: Literal["instance_hour"] = "instance_hour"
-    price_kind: Literal["quoted", "estimated"] = "quoted"
+    # "list" marks published catalog rates (AWS Price List); they are price references, not orders.
+    price_kind: Literal["quoted", "estimated", "list"] = "quoted"
     available: bool
     orderable: bool = True
     source_url: str
     observed_at: str = Field(default_factory=timestamp)
+    # When the vendor says this rate took effect; None when the source does not publish one.
+    effective_at: str | None = None
     details: dict = Field(default_factory=dict)
 
     @property
@@ -70,6 +93,11 @@ class Offer(BaseModel):
         ]
         if self.availability_zone:
             identity.append(self.availability_zone)
+        if self.market == "reserved":
+            identity.extend(
+                self.details.get(key)
+                for key in ["lease_contract_length", "purchase_option", "offering_class"]
+            )
         return hashlib.sha256(json.dumps(identity).encode()).hexdigest()[:24]
 
     def public(self, max_age: int) -> dict:
