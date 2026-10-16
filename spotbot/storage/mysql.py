@@ -226,14 +226,18 @@ class MySQLStore:
             .where(self.collections.c.status == "ok")
             .group_by(self.collections.c.provider)
         )
-        query = self._filters(
-            sa.select(self.prices.c.payload).where(self.prices.c.collection_id.in_(batches)),
-            filters,
-        )
-        query = query.order_by(
-            *(self.prices.c[k] for k in ["provider", "cloud", "sku", "region", "market"])
-        )
         with self.engine.connect() as connection:
+            # Bind batch IDs so MySQL can use price_batch instead of scanning history
+            # for an IN subquery containing an aggregate. Both reads share a transaction.
+            batch_ids = [row[0] for row in connection.execute(batches)]
+            if not batch_ids:
+                return []
+            query = self._filters(
+                sa.select(self.prices.c.payload).where(self.prices.c.collection_id.in_(batch_ids)),
+                filters,
+            ).order_by(
+                *(self.prices.c[k] for k in ["provider", "cloud", "sku", "region", "market"])
+            )
             return [Offer.model_validate_json(r[0]) for r in connection.execute(query)]
 
     def get_offer(self, offer_id):

@@ -116,8 +116,14 @@ def order_request(offer):
 
 
 def test_aws_zonal_catalog_round_trip_across_backends(storage, offer):
-    west = offer.model_copy(update={"provider": "aws", "cloud": "aws", "region": "us-west-2",
-                                    "availability_zone": "us-west-2a"})
+    west = offer.model_copy(
+        update={
+            "provider": "aws",
+            "cloud": "aws",
+            "region": "us-west-2",
+            "availability_zone": "us-west-2a",
+        }
+    )
     east = west.model_copy(update={"availability_zone": "us-west-2b"})
     assert west.offer_id != east.offer_id
     storage.record_collection("aws", [west, east])
@@ -145,6 +151,68 @@ def test_catalog_history_latest_failure_and_empty_batch(storage, offer):
     assert storage.get_offer(offer.offer_id) is None
     assert storage.historical_offer(offer.offer_id) is not None
     assert storage.history()[0] == 2
+
+
+def test_mysql_latest_resolves_batches_before_reading_prices(offer):
+    # Exercise the adapter's relational reads without requiring a live MySQL server.
+    # The deployed MySQL EXPLAIN check separately verifies price_batch range access.
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    collections = sa.Table(
+        "collections",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("provider", sa.String),
+        sa.Column("status", sa.String),
+    )
+    prices = sa.Table(
+        "prices",
+        metadata,
+        sa.Column("collection_id", sa.Integer),
+        sa.Column("payload", sa.Text),
+        *(
+            sa.Column(name, sa.String)
+            for name in ["provider", "cloud", "sku", "region", "market", "offer_id"]
+        ),
+    )
+    metadata.create_all(engine)
+    adapter = MySQLStore.__new__(MySQLStore)
+    adapter.engine, adapter.collections, adapter.prices = engine, collections, prices
+    try:
+        assert adapter.latest() == []
+        old = offer.model_copy(update={"price_hourly": Decimal("3")})
+        current = offer.model_copy(update={"price_hourly": Decimal("2")})
+        with engine.begin() as connection:
+            connection.execute(
+                collections.insert(),
+                [
+                    {"id": 1, "provider": offer.provider, "status": "ok"},
+                    {"id": 2, "provider": offer.provider, "status": "ok"},
+                    {"id": 3, "provider": offer.provider, "status": "error"},
+                ],
+            )
+            for batch, value in [(1, old), (2, current)]:
+                connection.execute(
+                    prices.insert().values(
+                        collection_id=batch,
+                        payload=value.model_dump_json(),
+                        offer_id=value.offer_id,
+                        **{
+                            key: getattr(value, key)
+                            for key in ["provider", "cloud", "sku", "region", "market"]
+                        },
+                    )
+                )
+        assert adapter.latest()[0].price_hourly == Decimal("2")
+        assert adapter.latest(provider="lambda") == []
+        assert adapter.get_offer(current.offer_id).price_hourly == Decimal("2")
+        with engine.begin() as connection:
+            connection.execute(
+                collections.insert().values(id=4, provider=offer.provider, status="ok")
+            )
+        assert adapter.latest() == []
+    finally:
+        engine.dispose()
 
 
 def test_history_time_bounds(storage, offer):
