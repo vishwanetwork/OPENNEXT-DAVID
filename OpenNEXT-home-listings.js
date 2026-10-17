@@ -59,29 +59,65 @@
   ].map(item => ({...item,kind:'hardware',priceKind:'reference_purchase',observedAt}));
 
   const groups = [rentals, models, hardware];
+  const marketKinds = ['rental', 'model', 'hardware'];
+  let selectedSide = 'supply';
+  let renderedGroups = groups;
+  let currentCopy = null;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
   const tokenMoney = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:6});
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({left:'<path d="m14 6-6 6 6 6"/>',right:'<path d="m10 6 6 6-6 6"/>',pause:'<path d="M9 6v12M15 6v12"/>',play:'<path d="m9 5 10 7-10 7V5Z"/>',globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/>'})[name]}</svg>`;
   const metric = (label,value) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`;
-  const action = (item,label,target,intent) => `<button class="on-listing-cta${intent==='buy'?' on-listing-cta-buy':''}" type="button" data-public-action="open-workspace" data-target="${target}" data-listing-selection="${item.id}" data-listing-intent="${intent}"${item.kind==='rental'?' data-mode="rental"':item.kind==='hardware'?' data-mode="hardware"':''}${intent==='buy'?` aria-label="Buy ${escape(item.model)} capacity — request a separate quote"`:''}><span>${label}</span>${icon('right')}</button>`;
+  const action = (item,label,target,intent) => `<button class="on-listing-cta${intent==='buy'?' on-listing-cta-buy':''}" type="button" data-public-action="open-workspace" data-target="${target}" data-listing-selection="${escape(item.id)}" data-listing-intent="${intent}"${item.exchange?` data-exchange-id="${escape(item.id)}" data-exchange-intent="${intent}"`:''}${item.kind==='rental'?' data-mode="rental"':item.kind==='hardware'?' data-mode="hardware"':''} aria-label="${escape(label)}: ${escape(item.name)}"><span>${label}</span>${icon('right')}</button>`;
 
-  function card(item,index) {
+  function rowsFor(kind, side) {
+    if (typeof window.OpenNEXTExchange?.listPublic === 'function') {
+      return window.OpenNEXTExchange.listPublic(kind, side).map(item => ({
+        ...item, exchange:true, side, name:item.title || item.model,
+        note:item.description || '', region:item.region || 'Flexible region',
+        input:item.input ?? item.price, output:item.output ?? item.outputPrice,
+      }));
+    }
+    // Keep source observations available when the exchange module is not loaded,
+    // without recasting buyer targets as seller inventory.
+    return groups[marketKinds.indexOf(kind)].filter(item => (item.kind==='rental'?'demand':'supply')===side);
+  }
+
+  const urgencyBadge = urgency => /^(high(?:[\s_-]+urgency)?|urgent)$/i.test(String(urgency||'').trim()) ? '<span class="on-listing-urgency">High Urgency</span>' : '';
+
+  function exchangeCard(item,index,total) {
+    const demand=item.side==='demand', isModel=item.kind==='model', isHardware=item.kind==='hardware';
+    const unit=isModel?'1M tokens':isHardware?'GPU':'GPU-hour';
+    const specifications=isModel
+      ? metric('Model',item.model)+metric('Region',item.region)+metric('Allocation',item.count || 'On inquiry')+metric('Term',item.term || (item.hours?`${item.hours} hours`:'Confirm in quote'))
+      : metric('GPU model',item.model)+metric('Quantity',`${item.count || 'On inquiry'}${item.count?' GPUs':''}`)+metric(isHardware?'Delivery':'Usage window',item.hours?`${item.hours} hours`:item.term || 'Confirm in quote')+metric('Region',item.region);
+    const prices=isModel && !demand && Number.isFinite(Number(item.output))
+      ? `<div class="on-listing-token-prices"><div><span>Input / 1M tokens</span><strong>${tokenMoney(item.input)}</strong></div><div><span>Output / 1M tokens</span><strong>${tokenMoney(item.output)}</strong></div></div>`
+      : `<div class="on-listing-single-price"><span>${escape(item.priceLabel || (demand?'Buyer target price':'Supplier asking price'))}</span><div><strong>${Number.isFinite(Number(item.price))?money(item.price):'On inquiry'}</strong><small>${/total|budget/i.test(item.priceLabel || '')?'total':'/ '+unit}</small></div></div>`;
+    const label=demand?'Offer capacity':'Buy capacity';
+    return `<article class="on-listing-card" data-listing-id="${escape(item.id)}" data-listing-index="${index}" data-listing-side="${item.side}" role="group" aria-roledescription="slide" aria-label="${index+1} of ${total}: ${escape(item.name)}"><div class="on-listing-card-top"><span class="on-listing-kind"><i></i>${demand?'Buyer RFQ':'Supplier offer'}</span>${demand?urgencyBadge(item.urgency):''}</div><h3>${escape(item.name)}</h3><div class="on-listing-location">${icon('globe')}<span>${escape(item.region)}</span></div><p class="on-listing-description">${escape(item.note)}</p><dl class="on-listing-specs">${specifications}</dl><div class="on-listing-pricing">${prices}<p>${demand?'Respond to this requirement with your offer.':'Confirm availability and delivery before purchase.'}</p></div>${action(item,label,demand?'supply':isModel?'models':'rfq',demand?'offer':'buy')}</article>`;
+  }
+
+  function card(item,index,items) {
+    if(item.exchange)return exchangeCard(item,index,items.length);
     const isModel = item.kind==='model', isRental = item.kind==='rental';
     const tag = isModel?item.sourceLabel:isRental?'Buyer demand':item.unit==='server'?'Complete system':'Physical GPU';
     const place = isModel?item.brand:isRental?item.region:'NVIDIA';
     const tier = item.priceKind==='supplier_quote' ? item.context.replace('Not specified — confirm in quote','Confirm in quote').replace('context — threshold requires quote confirmation','· confirm threshold') : item.context;
     const specs = isModel?metric('Context / tier',tier)+metric('Billing','Per 1M tokens'):isRental?metric('Total GPUs',item.count)+metric('GPUs / node',8)+metric('Nodes',item.nodes)+metric('Minimum term',item.months+' months'):metric('Memory',item.memory)+metric('Form factor',item.form)+metric('Price unit','Per '+item.unit)+metric('Min. order',item.minimum);
     const prices = isModel?`<div class="on-listing-token-prices"><div><span>Input / 1M tokens</span><strong>${tokenMoney(item.input)}</strong></div><div><span>Output / 1M tokens</span><strong>${tokenMoney(item.output)}</strong></div></div>${Number.isFinite(item.cachedInput)?`<div class="on-listing-cached-price" title="Cache billing semantics require quote confirmation"><span>Cache / 1M tokens</span><strong>${tokenMoney(item.cachedInput)}</strong></div>`:''}`:`<div class="on-listing-single-price"><span>${isRental?'Buyer target price':'Reference purchase price'}</span><div><strong>${money(item.price)}</strong><small>${isRental?'/ GPU-hour':'/ '+item.unit}</small></div></div>`;
-    // Buying starts a separate inquiry; a buyer's target is never a supply offer.
-    const actions = isRental?`<div class="on-listing-actions">${action(item,'Buy capacity','rfq','buy')}${action(item,'Offer capacity','supply','offer')}</div>`:action(item,'Request quote',isModel?'models':'rfq','quote');
-    const marker=isRental?`<span class="on-listing-urgency">${escape(item.urgency)}</span>`:`<span class="on-listing-card-number">${String(index+1).padStart(2,'0')}</span>`;
-    return `<article class="on-listing-card" data-listing-id="${item.id}" data-listing-index="${index}" role="group" aria-roledescription="slide" aria-label="${index+1} of ${groups[isRental?0:isModel?1:2].length}: ${escape(item.name)}"><div class="on-listing-card-top"><span class="on-listing-kind"><i></i>${tag}</span>${marker}</div><h3>${escape(item.name)}</h3><div class="on-listing-location">${icon('globe')}<span>${escape(place)}</span></div><p class="on-listing-description">${escape(item.note)}</p><dl class="on-listing-specs">${specs}</dl><div class="on-listing-pricing">${prices}<p>${isModel?(item.priceKind==='supplier_quote'?'Supplier quote · final terms confirmed on inquiry':'Official reference · standard non-cached rate'):isRental?'Buyer budget · availability requires a separate quote':item.status||'Price and delivery subject to quote'}</p></div>${actions}</article>`;
+    const actions = action(item,isRental?'Offer capacity':'Buy capacity',isRental?'supply':isModel?'models':'rfq',isRental?'offer':'buy');
+    const marker=isRental?urgencyBadge(item.urgency):'<span class="on-listing-sample">Reference</span>';
+    return `<article class="on-listing-card" data-listing-id="${item.id}" data-listing-index="${index}" data-listing-side="${isRental?'demand':'supply'}" role="group" aria-roledescription="slide" aria-label="${index+1} of ${items.length}: ${escape(item.name)}"><div class="on-listing-card-top"><span class="on-listing-kind"><i></i>${tag}</span>${marker}</div><h3>${escape(item.name)}</h3><div class="on-listing-location">${icon('globe')}<span>${escape(place)}</span></div><p class="on-listing-description">${escape(item.note)}</p><dl class="on-listing-specs">${specs}</dl><div class="on-listing-pricing">${prices}<p>${isModel?(item.priceKind==='supplier_quote'?'Supplier quote · final terms confirmed on inquiry':'Official reference · standard non-cached rate'):isRental?'Buyer budget · availability requires a separate quote':item.status||'Price and delivery subject to quote'}</p></div>${actions}</article>`;
   }
 
+  const emptyCards = () => `<div class="on-listing-empty"><h3>${selectedSide==='supply'?'No published offers in this market yet.':'No open requirements in this market yet.'}</h3><p>${selectedSide==='supply'?'Tell suppliers what you need and invite a quote.':'Publish your capacity so buyers can find you.'}</p><button type="button" class="on-button on-button-outline" data-public-action="open-workspace" data-target="${selectedSide==='supply'?'rfq':'supply'}">${selectedSide==='supply'?'Post an RFQ':'List capacity'}</button></div>`;
+
   function render(copy) {
+    currentCopy=copy;
+    renderedGroups=marketKinds.map(kind=>rowsFor(kind,selectedSide));
     const names = [copy.rental,copy.models,copy.physical];
-    return `<div class="public-listing-preview on-listing-carousel" role="region" aria-roledescription="carousel" aria-label="Capacity market listings">${names.map((name,i)=>`<input class="public-listing-radio" type="radio" name="public-listings" id="public-listings-${i}"${i===0?' checked':''}><label class="public-listing-tab public-listing-tab-${i}" for="public-listings-${i}">${escape(name)}</label>`).join('')}<div class="on-listing-controls"><span class="on-listing-position" aria-hidden="true">01 — 05 / ${groups[0].length}</span><button type="button" data-listing-move="-1" aria-label="Previous listing">${icon('left')}</button><button type="button" data-listing-toggle aria-label="Pause listing carousel" aria-pressed="false">${icon('pause')}</button><button type="button" data-listing-move="1" aria-label="Next listing">${icon('right')}</button></div><div class="public-listing-panels">${groups.map((items,i)=>`<div class="public-listing-panel public-listing-panel-${i}" role="region" aria-label="${escape(names[i])}" data-listing-panel="${i}"><div class="on-listing-viewport"><div class="on-listing-track">${items.map(card).join('')}</div></div></div>`).join('')}</div><div class="on-listing-under"><span>USD · Final availability, fees and delivery confirmed by quote.</span><span class="on-listing-motion-hint">Hover to pause</span></div><span class="on-listing-announcement" role="status" aria-live="polite"></span></div>`;
+    return `<div class="public-listing-preview on-listing-carousel" role="region" aria-roledescription="carousel" aria-label="Capacity market listings"><div class="on-listing-sides"><div role="group" aria-label="Choose your side of the market"><button type="button" data-listing-side-filter="supply" aria-pressed="${selectedSide==='supply'}">Buy capacity<span>Browse supplier offers</span></button><button type="button" data-listing-side-filter="demand" aria-pressed="${selectedSide==='demand'}">Offer capacity<span>Respond to buyer RFQs</span></button></div><p>One workspace.<br>Both sides of the market.</p></div>${names.map((name,i)=>`<input class="public-listing-radio" type="radio" name="public-listings" id="public-listings-${i}"${i===0?' checked':''}><label class="public-listing-tab public-listing-tab-${i}" for="public-listings-${i}">${escape(name)}</label>`).join('')}<div class="on-listing-controls"><span class="on-listing-position" aria-hidden="true">${renderedGroups[0].length?`01 — ${String(Math.min(5,renderedGroups[0].length)).padStart(2,'0')} / ${renderedGroups[0].length}`:'No listings'}</span><button type="button" data-listing-move="-1" aria-label="Previous listing">${icon('left')}</button><button type="button" data-listing-toggle aria-label="Pause listing carousel" aria-pressed="false">${icon('pause')}</button><button type="button" data-listing-move="1" aria-label="Next listing">${icon('right')}</button></div><div class="public-listing-panels">${renderedGroups.map((items,i)=>`<div class="public-listing-panel public-listing-panel-${i}" role="region" aria-label="${escape(names[i])}" data-listing-panel="${i}"><div class="on-listing-viewport"><div class="on-listing-track">${items.map(card).join('')}</div>${items.length?'':emptyCards()}</div></div>`).join('')}</div><div class="on-listing-under"><span>${renderedGroups.flat().some(item=>item.sample)?'Preview marketplace · ':''}USD · Final availability, fees and delivery confirmed by quote.</span><span class="on-listing-motion-hint">Hover to pause</span></div><span class="on-listing-announcement" role="status" aria-live="polite"></span></div>`;
   }
 
   let component = null;
@@ -103,10 +139,11 @@
     if (!state) return;
     const cards = [...state.track.children];
     cards.forEach((item,i)=>{item.inert=i>=count;item.setAttribute('aria-hidden',String(i>=count));});
-    const start = Number(cards[0].dataset.listingIndex)+1;
-    const end = (start+count-2)%cards.length+1;
-    component.querySelector('.on-listing-position').textContent=`${String(start).padStart(2,'0')} — ${String(end).padStart(2,'0')} / ${cards.length}`;
-    if (manual) component.querySelector('.on-listing-announcement').textContent=`Showing ${count} listings, starting with ${cards[0].querySelector('h3').textContent}.`;
+    const start = cards.length?Number(cards[0].dataset.listingIndex)+1:0;
+    const end = cards.length?(start+Math.min(count,cards.length)-2)%cards.length+1:0;
+    component.querySelector('.on-listing-position').textContent=cards.length?`${String(start).padStart(2,'0')} — ${String(end).padStart(2,'0')} / ${cards.length}`:'No listings';
+    if (manual) component.querySelector('.on-listing-announcement').textContent=cards.length?`Showing ${Math.min(count,cards.length)} listings, starting with ${cards[0].querySelector('h3').textContent}.`:'No listings for this selection.';
+    component.querySelectorAll('[data-listing-move],[data-listing-toggle]').forEach(button=>{button.disabled=cards.length<=count;});
     const toggle = component.querySelector('[data-listing-toggle]');
     toggle.setAttribute('aria-label',`${paused?'Play':'Pause'} listing carousel`);
     toggle.setAttribute('aria-pressed',String(paused));
@@ -156,6 +193,23 @@
     component=null;
     inView=false;
   }
+  function refresh() {
+    if(!component || !currentCopy)return;
+    const tab=Number(component.querySelector('.public-listing-radio:checked')?.id.split('-').pop()||0);
+    const previous=component;
+    const markup=render(currentCopy);
+    destroy();
+    previous.outerHTML=markup;
+    const next=document.querySelector('.on-listing-carousel');
+    const selected=next?.querySelector(`#public-listings-${tab}`);
+    if(selected)selected.checked=true;
+    mount();
+  }
+  function selectSide(side) {
+    if(!['supply','demand'].includes(side))return;
+    selectedSide=side;
+    refresh();
+  }
   function mount() {
     const next=document.querySelector('.on-listing-carousel');
     if (next===component) return;
@@ -170,6 +224,8 @@
       update(true);
     });
     component.addEventListener('click',event=>{
+      const side=event.target.closest('[data-listing-side-filter]');
+      if(side){event.preventDefault();selectSide(side.dataset.listingSideFilter);component?.querySelector(`[data-listing-side-filter="${selectedSide}"]`)?.focus();return;}
       const move=event.target.closest('[data-listing-move]'),toggle=event.target.closest('[data-listing-toggle]');
       if(move){event.preventDefault();step(Number(move.dataset.listingMove),true);}
       if(toggle){event.preventDefault();paused=!paused;update();}
@@ -200,5 +256,6 @@
   }
   reducedMotion.addEventListener('change',event=>{if(event.matches){paused=true;update();}});
   new MutationObserver(mount).observe(document.getElementById('app'),{childList:true});
-  window.OpenNEXTListings={render,get:id=>groups.flat().find(item=>item.id===id),mount,step,destroy,groups};
+  window.addEventListener?.('opennext:exchange',refresh);
+  window.OpenNEXTListings={render,get:id=>renderedGroups.flat().find(item=>item.id===id)||window.OpenNEXTExchange?.get(id)||groups.flat().find(item=>item.id===id),mount,step,destroy,refresh,selectSide,groups};
 })();

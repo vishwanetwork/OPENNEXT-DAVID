@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function listings(loadQuotes = true) {
+function listings(loadQuotes = true, side = 'supply') {
   const context = {
     window: {},
     document: {getElementById: () => ({})},
@@ -16,36 +16,36 @@ function listings(loadQuotes = true) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
   }
   const api = context.window.OpenNEXTListings;
+  api.selectSide(side);
   const html = api.render({models: 'Model', rental: 'GPU rental', physical: 'Physical GPU'});
   const cards = new Map([...html.matchAll(/<article\b[^>]*data-listing-id="([^"]+)"[\s\S]*?<\/article>/g)].map(match => [match[1], match[0]]));
   return {api, html, cards, quotes:context.window.OpenNEXTModelQuotes};
 }
 
-test('every rental card separates buyer inquiry and supplier offer intents', () => {
-  const {api, cards} = listings();
+test('every buyer rental target has only a supplier response CTA, bound to that requirement', () => {
+  const {api, html: lane, cards} = listings(true, 'demand');
+  assert.match(lane, /data-listing-side-filter="demand" aria-pressed="true"/);
   for (const item of api.groups.find(items => items[0].kind === 'rental')) {
     const html = cards.get(item.id);
     const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
-    assert.equal(buttons.length, 2, item.id);
-    const buy = buttons.find(button => button.includes('data-listing-intent="buy"'));
+    assert.equal(buttons.length, 1, item.id);
     const offer = buttons.find(button => button.includes('data-listing-intent="offer"'));
-    assert.ok(buy, item.id + ' needs a buyer entry');
     assert.ok(offer, item.id + ' must retain the supplier entry');
     for (const button of buttons) {
       assert.ok(button.includes('data-listing-selection="' + item.id + '"'));
       assert.ok(button.includes('data-mode="rental"'));
       assert.ok(button.includes('data-public-action="open-workspace"'));
     }
-    assert.match(buy, /data-target="rfq"/);
-    assert.match(buy, /<span>Buy capacity<\/span>/);
-    assert.match(buy, /aria-label="Buy [^"]+ capacity — request a separate quote"/);
+    assert.doesNotMatch(html, /data-listing-intent="buy"|<span>Buy capacity<\/span>/);
+    assert.match(html, /data-listing-side="demand"/);
     assert.match(offer, /data-target="supply"/);
     assert.match(offer, /<span>Offer capacity<\/span>/);
+    assert.match(offer, /aria-label="Offer capacity: /);
   }
 });
 
 test('rental pricing remains buyer demand, not a sale or availability promise', () => {
-  const {api, cards} = listings();
+  const {api, cards} = listings(true, 'demand');
   for (const item of api.groups.find(items => items[0].kind === 'rental')) {
     assert.equal(item.priceKind, 'buyer_target');
     assert.equal(api.get(item.id), item);
@@ -55,18 +55,21 @@ test('rental pricing remains buyer demand, not a sale or availability promise', 
   }
 });
 
-test('model and hardware quote routes and three listing tabs stay intact', () => {
+test('model and hardware references remain in the buyer lane with one correct purchase-inquiry route', () => {
   const {api, html, cards} = listings();
   assert.equal((html.match(/class="public-listing-radio"/g) || []).length, 3);
   assert.equal((html.match(/data-listing-panel="/g) || []).length, 3);
   for (const item of api.groups.flat().filter(item => item.kind !== 'rental')) {
     const card = cards.get(item.id);
     assert.equal((card.match(/data-public-action="open-workspace"/g) || []).length, 1);
-    assert.match(card, /<span>Request quote<\/span>/);
-    assert.match(card, /data-listing-intent="quote"/);
+    assert.match(card, /<span>Buy capacity<\/span>/);
+    assert.match(card, /data-listing-intent="buy"/);
+    assert.match(card, /data-listing-side="supply"/);
+    assert.ok(card.includes('data-listing-selection="' + item.id + '"'));
     assert.ok(card.includes('data-target="' + (item.kind === 'model' ? 'models' : 'rfq') + '"'));
     if (item.kind === 'hardware') assert.match(card, /data-mode="hardware"/);
-    assert.doesNotMatch(card, /Buy capacity|Offer capacity/);
+    assert.doesNotMatch(card, /Offer capacity|data-listing-intent="offer"/);
+    assert.match(card, /confirmed on inquiry|Official reference|subject to quote|Temporarily unavailable/);
   }
 });
 
@@ -75,7 +78,12 @@ test('GPU rental is the first and default carousel tab', () => {
   assert.equal(api.groups[0][0].kind, 'rental');
   assert.equal(api.groups[1][0].kind, 'model');
   assert.match(html, /id="public-listings-0" checked><label[^>]*>GPU rental<\/label>/);
-  assert.match(html, /01 — 05 \/ 14/);
+  assert.match(html, /No listings/);
+  assert.match(html, /No published offers in this market yet/);
+  assert.doesNotMatch(html, /data-listing-id="rental-/);
+  const demand = listings(true, 'demand').html;
+  assert.match(demand, /id="public-listings-0" checked><label[^>]*>GPU rental<\/label>/);
+  assert.match(demand, /01 — 05 \/ 14/);
   assert.equal((html.match(/ checked/g) || []).length, 1);
 });
 

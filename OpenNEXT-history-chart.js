@@ -4,7 +4,7 @@
   const colors=['#315f49','#7393af','#b79150','#987ba7','#4b9994'];
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number=v=>typeof v==='number'&&Number.isFinite(v);
-  const money=v=>number(v)?'$'+v.toFixed(4):'—';
+  const money=v=>number(v)?'$'+v.toFixed(2):'—';
   const dayLabel=(date,year=false)=>new Date(date.slice(0,10)+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',...(year?{year:'numeric'}:{}),timeZone:'UTC'});
   const code=S=>D.regionCode(S.region);
   const key=S=>[D.modelOf(S.model).canonical,code(S),S.count,S.period||'1M',/PCIe|SXM|NVL72/.exec(S.model)?.[0]||'',/A100 80GB/.test(S.model)?80:''].join('|');

@@ -244,8 +244,52 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
     };
   }
 
-  return { load, query, catalog };
+  async function ticker() {
+    const snapshot = await load();
+    const window = windowFor(snapshot.asOf, '1M');
+    const priority = ['H100', 'H200', 'B200', 'A100', 'L40S', 'L4', 'A10G', 'V100', 'T4'];
+    const rank = model => priority.includes(model) ? priority.indexOf(model) : priority.length;
+    const seen = new Set(), groups = new Map();
+    // One actual configuration / availability zone per model and region. Never
+    // join different instances into a synthetic price history or choose by price.
+    const candidates = [...snapshot.series].sort((a, b) => rank(a.gpuModel) - rank(b.gpuModel)
+      || Number(b.gpuCount === 8) - Number(a.gpuCount === 8)
+      || String(a.instanceType).localeCompare(String(b.instanceType))
+      || String(a.zone).localeCompare(String(b.zone)));
+    for (const item of candidates) {
+      if (item.term !== 'Spot' || !(item.gpuCount > 0)) continue;
+      const key = [item.gpuModel, item.region].join('|');
+      if (seen.has(key)) continue;
+      const points = item.points.filter(p => isCalendarDate(p.date) && p.date >= window.from && p.date <= window.to)
+        .map(p => ({date: p.date, value: Number.isFinite(p.value) && p.value >= 0 ? p.value : null}))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const observed = points.filter(p => p.value !== null);
+      if (observed.length < 2) continue;
+      const latest = observed[observed.length - 1];
+      const region = snapshot.regions.find(r => r.code === item.region);
+      const row = {recordId: 'history:' + item.id, provider: item.provider, gpuModel: item.gpuModel,
+        region: item.region, regionName: region?.city || region?.name || item.region, zone: item.zone,
+        instanceType: item.instanceType, gpuCount: item.gpuCount, term: 'Spot',
+        perGpuHourly: latest.value, observedAt: latest.date, historical: true, points};
+      if (!groups.has(item.gpuModel)) groups.set(item.gpuModel, []);
+      groups.get(item.gpuModel).push(row);
+      seen.add(key);
+    }
+    // Round-robin keeps the ribbon varied instead of showing only one GPU model.
+    const records = [];
+    for (let index = 0; records.length < 48; index++) {
+      let added = false;
+      for (const rows of groups.values()) {
+        if (rows[index] && records.length < 48) {records.push(rows[index]); added = true;}
+      }
+      if (!added) break;
+    }
+    return {records, meta: {asOf: snapshot.asOf, aggregation: 'daily_average', livePrices: false,
+      unit: 'USD/GPU-hour', sourceKind: snapshot.sourceKind || 'uploaded_daily_history'}};
+  }
+
+  return { load, query, catalog, ticker };
 }
 
 const defaultStore = createSpotHistoryStore();
-module.exports = { createSpotHistoryStore, load: defaultStore.load, query: defaultStore.query, catalog: defaultStore.catalog, PERIOD_DAYS };
+module.exports = { createSpotHistoryStore, load: defaultStore.load, query: defaultStore.query, catalog: defaultStore.catalog, ticker: defaultStore.ticker, PERIOD_DAYS };

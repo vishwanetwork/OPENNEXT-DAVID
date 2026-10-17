@@ -1,0 +1,70 @@
+'use strict';
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {chromium}=require('C:/Users/asus/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+async function main(){
+ const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});
+ const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const modal=()=>page.locator('.modal');
+ const act=(x,scope=modal())=>scope.locator('[data-act="'+x+'"]').first();
+ try{
+  await page.goto('http://127.0.0.1:4188/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!!window.ONPreview);
+  await page.evaluate(()=>{const s=window.ONPreview.state;s.auth=true;s.role='Seller';window.ONPreview.navigate('supply');});
+  await act('new-supply',page).click();
+  let f=page.locator('form[data-form=review]');await f.locator('input[type=checkbox]').check();await f.locator('button').click();
+  f=page.locator('form[data-form=review]');await f.locator('[name=company]').fill('QA Compute');await f.locator('[name=registration]').fill('TEST-001');await f.locator('button').click();
+  f=page.locator('form[data-form=review]');await f.locator('[name=evidence]').fill('Preview authorization reference');await f.locator('input[type=checkbox]').check();await f.locator('button').click();
+  await page.locator('form[data-form=review] button').click();
+  f=page.locator('form[data-form=supply]');await f.locator('[name=name]').fill('H100');await f.locator('[name=rate]').fill('1.99');await f.locator('[name=host]').fill('preview.example.test');await f.locator('button').click();
+  await act('publish-listing').click();
+  const listing=await page.evaluate(()=>window.ONPreview.state.listings.at(-1));assert.equal(listing.status,'Published');
+  assert.equal(await page.evaluate(id=>window.OpenNEXTExchange.listPublic('rental','supply').some(r=>r.id===id),listing.id),true);
+  await page.evaluate(()=>window.ONPreview.navigate('market'));
+  await page.waitForSelector('.proc-match-viewport[data-scroll=best]');
+  const viewport=page.locator('.proc-match-viewport').first();
+  const start=await viewport.evaluate(el=>el.scrollTop);await page.waitForTimeout(700);
+  assert.ok(await viewport.evaluate(el=>el.scrollTop)>start);
+  await viewport.hover();const paused=await viewport.evaluate(el=>el.scrollTop);await page.waitForTimeout(400);assert.equal(await viewport.evaluate(el=>el.scrollTop),paused);
+  await page.mouse.move(10,10);
+  await page.locator('.matches').first().locator('[data-act=refresh-matches]').click();
+  assert.match(await page.locator('.matches').first().innerText(),/Buyer requirement/);
+  assert.doesNotMatch(await page.locator('.matches').first().innerText(),/Settled 17/);
+  await page.locator('[data-act=filter][data-type=model]').click();await page.locator('#modelSearch').fill('H200');await page.locator('[data-act=select-filter][data-type=model][data-value=H200]').click();
+  assert.match(await page.locator('.proc-market-listings').innerText(),/H200/);
+  assert.equal(await page.locator('.matches').first().locator('.match-cycle .match-top strong').first().textContent(),'H200');
+  await page.locator('[data-act=filter][data-type=region]').click();await page.locator('#regionSearch').fill('Singapore');await page.locator('[data-act=select-filter][data-type=region]').filter({hasText:'Singapore'}).first().click();
+  assert.match(await page.locator('.proc-market-listings tbody').innerText(),/Singapore/);
+  await page.locator('[data-act=market-menu]').click();await page.locator('[data-act=switch-market][data-value=models]').click();
+  assert.equal(await page.evaluate(()=>window.ONPreview.state.route),'models');
+  await page.goBack();await page.waitForFunction(()=>window.ONPreview.state.route==='market');
+  await page.evaluate(()=>window.ONPreview.navigate('rfqs'));
+  await page.locator('[data-act=user-toggle]').click();await page.locator('[data-act=role][data-value=Seller]').click();
+  assert.match(page.url(),/#terminal\/supply$/);
+  await page.reload();await page.waitForFunction(()=>window.ONPreview?.state.route==='supply');
+  for(const route of ['rfqs','supply','instances','billing','credentials','saved','cart','profile','settings','help','market']){
+   await page.evaluate(r=>window.ONPreview.navigate(r),route);assert.ok((await page.locator('#app').innerText()).length>100);
+  }
+  await page.evaluate(()=>{window.ONPreview.state.role='Buyer';window.ONPreview.navigate('market');});
+  await page.locator('.proc-market-listings [data-act=save]').first().click();
+  await page.locator('.proc-market-listings [data-act=cart]').nth(0).click();
+  await page.locator('.proc-market-listings [data-act=cart]').nth(1).click();
+  await page.evaluate(()=>window.ONPreview.navigate('cart'));await page.reload();await page.waitForSelector('.collection-card');
+  await page.locator('.collection-card [data-act=detail]').first().click();assert.match(await modal().innerText(),/Preview market record/);await act('close-modal').click();
+  for(const box of await page.locator('[data-compare]').all())await box.check();
+  await page.locator('[data-act=compare-selected]').click();assert.match(await modal().innerText(),/Same-model comparison/);await act('close-modal').click();
+  await page.locator('[data-act=collection-quotes]').click();
+  const cartRfq=await page.evaluate(()=>window.ONPreview.state.rfqs[0]);assert.ok(cartRfq.originSupply);assert.equal(cartRfq.visibility,'Private RFQ');
+  await page.locator('[data-act=view-rfq][data-id="'+cartRfq.id+'"]').first().click();await act('proc-sample-quotes').click();
+  assert.equal(await page.locator('.proc-quote').count(),1);await act('close-modal').click();
+  await page.evaluate(()=>window.ONPreview.navigate('instances'));
+  const instanceBefore=await page.evaluate(()=>JSON.parse(JSON.stringify(window.ONPreview.state.instances[0])));
+  await page.locator('[data-act=instance]').first().click();await page.locator('form[data-form=extend] [name=hours]').fill('2');await page.locator('form[data-form=extend] button').click();
+  const after=await page.evaluate(()=>({instance:window.ONPreview.state.instances[0],rfq:window.ONPreview.state.rfqs[0]}));
+  assert.equal(after.instance.end,instanceBefore.end);assert.equal(after.rfq.extensionOf,instanceBefore.id);assert.equal(after.rfq.status,'Open');
+  await act('close-modal').click();await page.evaluate(()=>window.ONPreview.navigate('market'));
+  assert.deepEqual(errors,[]);await page.screenshot({path:path.resolve(__dirname,'../.opennext-data/procurement-market-final.png'),fullPage:true});
+  console.log(JSON.stringify({ok:true,steps:['supplier review','publish supply','homepage mapping','auto-scroll','hover pause','refresh','model/region filters','switch market/back','11 routes'],errors}));
+ }catch(e){await page.screenshot({path:path.resolve(__dirname,'../.opennext-data/navigation-error.png'),fullPage:true});throw e;}finally{await browser.close();}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

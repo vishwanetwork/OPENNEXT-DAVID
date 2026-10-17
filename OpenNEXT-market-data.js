@@ -18,14 +18,15 @@
     {name:'Seoul',code:'ap-northeast-2',city:'Seoul'},{name:'Dubai',code:'me-central-1',city:'Dubai'}
   ];
   const news=[
-    {source:'AMD',date:'12 Oct 2026',title:'Introducing AMD Helion, Agentic AI Compute at Rack Scale',url:'https://ir.amd.com/news-events/press-releases/detail/1301/introducing-amd-helion-agentic-ai-compute-at-rack-scale'},
-    {source:'NVIDIA',date:'8 Oct 2026',title:'NVIDIA commits $1 billion to advance US science over the next five years',url:'https://nvidianews.nvidia.com/news/nvidia-commits-1-billion-to-advance-us-science-over-the-next-five-years'},
-    {source:'NVIDIA',date:'1 Oct 2026',title:'How NVIDIA AI factories maximize return on investment',url:'https://blogs.nvidia.com/blog/productive-durable-fungible-ai-factories/'},
-    {source:'AMD',date:'31 Aug 2026',title:'AMD, Cisco and HUMAIN expand Saudi Arabia’s AI infrastructure',url:'https://ir.amd.com/news-events/press-releases/detail/1298/amd-cisco-and-humain-expand-saudi-arabias-ai-infrastructure-as-amd-instinct-systems-go-live'}
+    {source:'NVIDIA Newsroom',date:'2026-10-16',title:'NVIDIA launches RTX Spark PCs for local AI workloads',url:'https://nvidianews.nvidia.com/news/nvidia-rtx-spark-pcs-available-today-a-new-beginning-for-windows-pcs'},
+    {source:'NVIDIA Newsroom',date:'2026-10-15',title:'Adobe and NVIDIA expand accelerated AI creation workflows',url:'https://nvidianews.nvidia.com/news/adobe-and-nvidia-expand-collaboration-to-speed-agentic-creation'},
+    {source:'AMD Newsroom',date:'2026-10-15',title:'AMD CTO discusses open infrastructure and heterogeneous AI compute',url:'https://newsroom.amd.com/news/ee-times-interview-mark-papermaster-future-a-video/'},
+    {source:'NVIDIA Newsroom',date:'2026-10-14',title:'Semiconductor leaders adopt NVIDIA AI tools for chip manufacturing',url:'https://nvidianews.nvidia.com/news/nvidia-and-semiconductor-leaders-advance-ai-across-chip-design-and-manufacturing-for-ai-defined-labs'},
+    {source:'AMD Newsroom',date:'2026-10-12',title:'AMD introduces Helion for rack-scale agentic AI compute',url:'https://newsroom.amd.com/news/open-rack-blueprint-scale-agentic-ai/'}
   ];
   let records=[],meta={status:'loading',message:'Connecting to the server price cache.'},pricePending=null;
   const histories=new Map(),historyPending=new Map();
-  const money=n=>n===null||n===undefined||!Number.isFinite(Number(n))?'—':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:4}).format(Number(n));
+  const money=n=>n===null||n===undefined||!Number.isFinite(Number(n))?'—':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n));
   const names={aws:'AWS',vultr:'Vultr',lambda:'Lambda',shadeform:'Shadeform'};
   const regionCode=value=>regions.find(r=>r.name===value||r.code===value||r.aliases?.includes(value))?.code||value;
   const regionLabel=value=>regions.find(r=>r.code===value)?.name||(value==='unspecified'?'Region not specified':value);
@@ -89,6 +90,20 @@
     if(pricePending)return pricePending;
     pricePending=(async()=>{try{const response=await fetch('/api/pricing/prices?limit=5000',{signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('Price cache unavailable');const data=await response.json();records=data.records||[];meta=data.meta||{};for(const m of catalog){m.onDemand=base(m,'On-demand');m.spot=base(m,'Spot');}return data;}catch{meta={status:'error',message:'Price API unavailable. Previously collected prices are retained, not replaced with generated values.'};return null;}finally{pricePending=null;}})();return pricePending;
   }
-  function tickerRows(){return records.filter(r=>Number.isFinite(r.perGpuHourly)).sort((a,b)=>(a.provider==='aws'?0:1)-(b.provider==='aws'?0:1)||a.perGpuHourly-b.perGpuHourly);}
-  window.ONMarket={catalog,regions,news,money,offers,history,reference,refresh,base,ensureHistory,historyFor,chartSeries,tickerRows,regionLabel,regionCode,modelOf,loadHistoryCatalog,get importedCatalog(){return importedCatalog;},get records(){return records;},get meta(){return meta;}};
+  let tickerHistory=[],tickerPending=null,tickerLoadedAt=0;
+  async function loadTickerHistory(){
+    if(tickerLoadedAt&&Date.now()-tickerLoadedAt<60000)return false;
+    if(tickerPending)return tickerPending;
+    tickerPending=(async()=>{
+      try{const response=await fetch('/api/pricing/ticker',{signal:AbortSignal.timeout(10000)});
+        if(!response.ok)throw Error('Ticker history unavailable');
+        const data=await response.json();
+        const valid=(data.records||[]).filter(row=>Number.isFinite(row.perGpuHourly)&&row.points?.filter(p=>Number.isFinite(p.value)).length>1);
+        if(valid.length)tickerHistory=valid;
+        tickerLoadedAt=Date.now();return valid.length>0;
+      }catch{tickerLoadedAt=Date.now();return false;}finally{tickerPending=null;}
+    })();return tickerPending;
+  }
+  function tickerRows(){return tickerHistory.length?tickerHistory:records.filter(r=>Number.isFinite(r.perGpuHourly)).sort((a,b)=>(a.provider==='aws'?0:1)-(b.provider==='aws'?0:1)||a.perGpuHourly-b.perGpuHourly);}
+window.ONMarket={catalog,regions,news,money,offers,history,reference,refresh,base,ensureHistory,historyFor,chartSeries,tickerRows,loadTickerHistory,regionLabel,regionCode,modelOf,loadHistoryCatalog,get importedCatalog(){return importedCatalog;},get records(){return records;},get meta(){return meta;}};
 })();

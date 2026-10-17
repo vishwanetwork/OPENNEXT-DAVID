@@ -14,6 +14,8 @@
 .agent-drawer:not(.open){display:none}.agent-drawer.open{animation:agentEnter .24s ease}@keyframes agentEnter{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @media(max-width:1060px){.sidebar .onx-brand>span{display:none}.sidebar .onx-brand svg{width:25px;height:29px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}.chart path{transition:none}}
+@media(max-width:800px){.terminal-head .credit{display:flex;align-items:center;white-space:nowrap}}
+@media(max-width:560px){.terminal-head .terminal-title{max-width:68px;line-height:1.35;font-size:11px}.terminal-head .credit{padding:7px 6px;font-size:9px}.terminal-head .credit strong{font-size:10px;margin-left:4px}.terminal-head .header-action{padding:4px}.terminal-head .agent-launch{padding:4px}.terminal-head .user-button{gap:3px}}
 
 /* Use the full ticker width, with evenly distributed data instead of fixed columns. */
 .public-page .ticker-row{width:100%;max-width:1500px;padding-inline:clamp(24px,4vw,60px);grid-template-columns:150px minmax(0,1fr) 54px;gap:22px}
@@ -23,6 +25,7 @@
 .public-page .ticker-divider{padding-left:clamp(12px,1.5vw,22px)}
 .public-page .ticker-control{width:54px}
 .public-page .ticker-detail{left:50%;transform:translate(-50%,-5px)}
+.ticker-chart-meta{display:flex;flex-direction:column;align-items:flex-end;gap:10px;white-space:nowrap;font-size:13px}.ticker-chart-meta .negative{color:#f0ad9d}.ticker-chart-dates{display:flex;justify-content:space-between;color:#a3afa6;font-size:10px;margin:0 0 14px}.ticker-detail .spark{display:block;margin:16px 0 6px}.ticker-observation-note{font-size:12px;line-height:1.6;color:#a3afa6}
 .public-page .ticker:hover .ticker-detail,.public-page .ticker:focus-within .ticker-detail{transform:translate(-50%,0)}
 .select-menu [hidden]{display:none!important}.filter-empty{padding:16px 9px;color:#859087;font-size:11px;line-height:1.6}
 .btn{line-height:16px}.btn-label{display:inline-block;line-height:16px;vertical-align:middle}.btn-icon{width:14px;height:14px;display:block;flex:0 0 14px}

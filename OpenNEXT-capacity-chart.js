@@ -12,7 +12,7 @@
   let timer = null, active = null, generation = 0;
   const number = value => typeof value === 'number' && Number.isFinite(value);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
-  const money = value => number(value) ? '$' + value.toFixed(4) : '—';
+  const money = value => number(value) ? '$' + value.toFixed(2) : '—';
   const timeLabel = value => value ? new Date(value).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' : 'Not observed';
   function queryFor(S) {
     const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: S.period || '1M'});
@@ -29,15 +29,15 @@
   }
   function summary(S) {return cache.get(queryFor(S)) || null;}
   function header(S, data) {
-    const selected = data.latest?.[S.term] || data.latest?.Spot;
+    const term = shown(S), selected = data.latest?.[term.name];
     const label = document.getElementById('marketPriceLabel');
-    if (label) label.textContent = (terms.some(t => t.name === S.term) ? S.term.toUpperCase() : 'SPOT') + ' / GPU-HR';
+    if (label) label.textContent = term.name.toUpperCase() + ' / GPU-HR';
     const price = document.getElementById('marketPrice'); if (price) price.textContent = money(selected?.value);
     const caption = document.getElementById('historyPrimaryCaption'); if (caption) caption.textContent = 'Same-offering reference';
     const count = document.getElementById('marketRecords'); if (count) count.textContent = String((data.points || []).filter(point => number(point.values[shown(S).name]?.value)).length);
     const change = document.getElementById('marketChange');
     if (change) {
-      const values = (data.points || []).map(point => point.values[S.term]?.value).filter(number);
+      const values = (data.points || []).map(point => point.values[term.name]?.value).filter(number);
       const delta = values.length > 1 && values[0] > 0 ? (values.at(-1) / values[0] - 1) * 100 : null;
       change.textContent = delta === null ? '—' : (delta >= 0 ? '+' : '') + delta.toFixed(2) + '%';
       change.className = delta === null ? '' : delta >= 0 ? 'positive' : 'negative';
@@ -94,7 +94,7 @@
         const px = from === to ? (plotWidth - 64) / 2 : 28 + (Date.parse(point.time) - from) / (to - from) * innerWidth;
         const cross = svg.querySelector('.capacity-crosshair'); cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
         const term = shown(snapshot);
-        tip.innerHTML = `<strong>${timeLabel(point.time)}</strong><div class="capacity-tip-row"><span>${term.name}</span><b>${money(point.values[term.name]?.value)}</b></div><small>USD / GPU-hour · — means not observed</small>`;
+        tip.innerHTML = `<div class="capacity-tip-row"><b>${money(point.values[term.name]?.value)}</b><span>${term.name}</span></div><small>USD / GPU-hour · — means not observed</small><small>${timeLabel(point.time)}</small>`;
         tip.hidden = false; const width = svg.getBoundingClientRect().width;
         tip.style.left = Math.max(4, Math.min(width - 250, px / plotWidth * width + 12)) + 'px'; tip.style.top = '12px';
         hit.setAttribute('aria-valuenow', String(selected));

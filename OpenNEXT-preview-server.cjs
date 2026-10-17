@@ -7,6 +7,7 @@ const {getMarket, getNews} = require('./OpenNEXT-market-feed.cjs');
 const {createPricingService} = require('./OpenNEXT-pricing-service.cjs');
 const {createPricingRouter} = require('./OpenNEXT-pricing-api.cjs');
 const {createCapacityPriceService} = require('./OpenNEXT-capacity-prices.cjs');
+const {createContactService, createContactRouter} = require('./OpenNEXT-contact-service.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
 // outside this allowlist are never exposed by the preview HTTP server.
@@ -22,6 +23,8 @@ const files = new Set([
   'OpenNEXT-auth.js', 'OpenNEXT-auth.css',
   'OpenNEXT-admin-console.html', 'OpenNEXT-admin.js', 'OpenNEXT-admin.css',
   'OpenNEXT-provider-console.js', 'OpenNEXT-provider-console.css', 'OpenNEXT-provider-logos.js',
+  'OpenNEXT-contact.js', 'OpenNEXT-contact.css', 'OpenNEXT-console-leads.js', 'OpenNEXT-console-leads.css',
+  'OpenNEXT-exchange.js', 'OpenNEXT-procurement.js', 'OpenNEXT-procurement.css', 'OpenNEXT-billing.js', 'OpenNEXT-billing.css',
 ]);
 const types = {
   '.html': 'text/html; charset=utf-8',
@@ -36,17 +39,19 @@ const types = {
 const SITE_HOST = (process.env.SITE_HOST || '').toLowerCase();
 const TERMINAL_HOST = (process.env.TERMINAL_HOST || '').toLowerCase();
 const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
-const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin');
+const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads');
 
 function createAppServer(options = {}) {
   const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
   const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
   const pricingRoute = createPricingRouter(pricing, {env:options.env || process.env, capacity});
+  const contacts = options.contactService || createContactService({dataDir:options.dataDir});
+  const contactRoute = createContactRouter(contacts, {security:pricingRoute.security});
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    if (!['GET', 'HEAD'].includes(req.method) && !String(req.url).startsWith('/api/admin/pricing/')) {
+    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:admin\/(?:pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
       res.writeHead(405, {Allow: 'GET, HEAD'});
       res.end('Method not allowed');
       return;
@@ -62,8 +67,10 @@ function createAppServer(options = {}) {
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].split(':')[0].trim().toLowerCase();
     const onTerminal = Boolean(TERMINAL_HOST) && host === TERMINAL_HOST;
     const onAdmin = Boolean(ADMIN_HOST) && host === ADMIN_HOST;
+    const restrictAdmin = onTerminal || (Boolean(ADMIN_HOST) && !onAdmin);
 
-    if (await pricingRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal})) return;
+    if (await pricingRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
+    if (await contactRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     
     if (ADMIN_HOST && SITE_HOST) {
       if (!onAdmin && !onTerminal && (pathname === '/admin' || pathname === '/admin/')) {
@@ -112,7 +119,7 @@ function createAppServer(options = {}) {
       '/admin/': 'admin/index.html',
     };
     const name = aliases[pathname] || pathname.slice(1);
-    if (!files.has(name) || (onTerminal && adminFile(name)) || (onAdmin && !adminFile(name))) {
+    if (!files.has(name) || (restrictAdmin && adminFile(name)) || (onAdmin && !adminFile(name))) {
       res.writeHead(404);
       res.end('Not found');
       return;
@@ -132,6 +139,7 @@ function createAppServer(options = {}) {
   });
   server.pricing = pricing;
   server.capacity = capacity;
+  server.contacts = contacts;
   server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {});});
   return server;
 }

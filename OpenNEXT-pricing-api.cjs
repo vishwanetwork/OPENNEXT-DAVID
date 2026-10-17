@@ -50,7 +50,7 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
     }
     return out;
   }
-  return async function route(req,res,url,{onTerminal=false}={}){
+  const route = async function route(req,res,url,{onTerminal=false}={}){
     const path=url.pathname;
     if(!path.startsWith('/api/pricing/')&&!path.startsWith('/api/admin/pricing/'))return false;
     try{
@@ -64,6 +64,7 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
           if(query.period&&!['1D','1W','1M','3M'].includes(query.period)){send(res,400,{error:'Invalid history period'});return true;}
           send(res,200,capacity.query(query));return true;
         }
+        if(path==='/api/pricing/ticker'){send(res,200,await importedHistory.ticker());return true;}
         if(path==='/api/pricing/imported-history'){send(res,200,await importedHistory.query(importedFilters(url)));return true;}
         if(path==='/api/pricing/history-catalog'){send(res,200,await importedHistory.catalog(importedFilters(url)));return true;}
         if(path==='/api/pricing/prices'){send(res,200,await service.getPrices(filters(url)));return true;}
@@ -85,7 +86,7 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
         const id=crypto.randomBytes(24).toString('hex'),time=Date.now();sessions.set(id,time);
         for(const [key,value]of sessions)if(time-value>30*60*1000)sessions.delete(key);
         const value=id+'.'+time,signature=crypto.createHmac('sha256',secret).update(value).digest('hex');
-        send(res,200,{ok:true},{'Set-Cookie':`on_pricing_admin=${value}.${signature}; HttpOnly; SameSite=Strict; Path=/api/admin/pricing; Max-Age=1800${secure(req)?'; Secure':''}`});return true;
+        send(res,200,{ok:true},{'Set-Cookie':`on_pricing_admin=${value}.${signature}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=1800${secure(req)?'; Secure':''}`});return true;
       }
       if(!authorized){send(res,401,{error:access.reason,access});return true;}
       if(!['GET','POST','PATCH'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
@@ -121,5 +122,9 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
       return true;
     }
   };
+  // Reuse the same server-side administrator session for private operations.
+  // No credential or session secret is exposed to browser code.
+  route.security = {authenticated, sameOrigin, bearerAuthenticated, local};
+  return route;
 }
 module.exports={createPricingRouter};
