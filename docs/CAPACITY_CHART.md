@@ -14,7 +14,7 @@ node --env-file=.env.local OpenNEXT-preview-server.cjs
 
 The bridge uses Node's own HTTP client, which ignores system and `HTTP(S)_PROXY` settings. Each catalog page has a 90-second timeout. The bot compresses catalog pages with gzip (about 50 KB per 1,000 offers), but an older bot sends roughly 1.2 MB per page and can time out on slow links.
 
-The public endpoint is `GET /api/pricing/capacity-history`. Filters: `gpuModel`, `gpuCount`, `gpuMemoryGb`, `formFactor`, `region`, `period` (`1D`, `1W`, `1M`, `3M`). The default is `1M`. `3M` means the most recent 90 days. Periods select real saved or vendor-published history; missing history stays empty. An example preview is `/?gpu=A10G&count=1#terminal/market`.
+The public endpoint is `GET /api/pricing/capacity-history`. Filters: `gpuModel`, `gpuCount`, `gpuMemoryGb`, `formFactor`, `region` (`all`, one area code or a comma-separated list such as `us-west-2,eu-north-1`), `period` (`1D`, `1W`, `1M`, `3M`). The default is `1M`. `3M` means the most recent 90 days. Periods select real saved or vendor-published history; missing history stays empty. An example preview is `/?gpu=A10G&count=8#terminal/market`.
 
 ## Comparison basis
 
@@ -30,11 +30,15 @@ Among offerings that match the selected GPU model, GPU count, region and any mem
 
 Live Spot first means the Spot line shows real movement for most models. The cost is that some configurations lose a line their Azure equivalent would have had, when the live offering has no matching rate (for example, an offering with Spot and On-demand but no one-year Reserved term).
 
+## Regions
+
+The Region filter is multi-select; no selection means all regions. Each selected region (an AWS Region code; other suppliers join a region only on an exact geographic match, and offerings without one form "Other locations") gets its own reference offering, chosen by the rules above. The response returns `times` (shared bucket starts) and one `series` entry per region: `area`, `reference` (GPU count, memory, form factor), `matchingOfferings`, `latest` per type, and `values` per type aligned to `times`. With all three types and nine regions the chart draws 27 lines: colour identifies the region and the dash pattern the type. The three cards switch each type on or off and show the lowest current rate of that type across the selected regions, with its region; region chips switch regions on or off. `latest` and `points` carry those lowest values for compatibility, and `meta.reference` is set only when one region is shown.
+
 The response reports the reference's region, GPU count, memory and form factor, and how many offerings matched. It never names the supplier. Within an offering, zone-level Spot quotes are reduced to the lowest one.
 
 ## Sources
 
-- **SpotOrderBot**: Spot and account On-demand quotes, plus AWS On-demand and Reserved list prices that the bot reads from the AWS Price List API. All catalog pages are read. Full physical GPUs only; fractional GPU offers are excluded. Of the Reserved terms, the chart uses one year with no upfront payment, standard or convertible (the lower rate wins). Bot list prices stay current for 13 hours, two of the bot's six-hour refreshes.
+- **SpotOrderBot**: Spot and account On-demand quotes, plus AWS On-demand and Reserved list prices that the bot reads from the AWS Price List API. All catalog pages are read. Full physical GPUs only; fractional GPU offers are excluded. Of the Reserved terms, the chart uses one year with no upfront payment, standard or convertible (the lower rate wins). Bot list prices stay current for 13 hours, two of the bot's six-hour refreshes. Spot quotes from the bot's price-only Regions refresh hourly and stay current for two hours; other bot quotes for 15 minutes.
 - **AWS public pricing JSON**: On-demand and Reserved (Linux, shared tenancy, one year, no upfront, standard) in `OPENNEXT_CAPACITY_REGIONS` (default `us-west-2,us-east-1`). It is a fallback when the bot has no list prices; equal rates from both sources are merged.
 - **Azure Retail Prices API** (`prices.azure.com`, no key): Spot, On-demand and one-year Reserved for documented whole-GPU sizes (A100, H100, H200, MI300X, T4, A10, V100) in `OPENNEXT_AZURE_REGIONS` (default `eastus,westus2`). Windows, Low Priority and partial-GPU sizes are excluded. Azure publishes the reservation price for the whole term; it is divided by 8,760 hours, and Azure can bill it monthly with no upfront payment. A Spot meter priced at or above On-demand is a placeholder and is dropped. Azure regions are mapped onto the chart's regions only where the geography matches (for example `eastus` → US East).
 

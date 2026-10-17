@@ -15,7 +15,11 @@
     {name:'US West',code:'us-west-2',city:'Oregon'},{name:'Singapore',code:'ap-southeast-1',city:'Singapore'},
     {name:'Frankfurt',code:'eu-central-1',city:'Frankfurt'},{name:'Ireland',code:'eu-west-1',city:'Dublin'},
     {name:'Tokyo',code:'ap-northeast-1',city:'Tokyo'},{name:'Mumbai',code:'ap-south-1',city:'Mumbai'},
-    {name:'Seoul',code:'ap-northeast-2',city:'Seoul'},{name:'Dubai',code:'me-central-1',city:'Dubai'}
+    {name:'Seoul',code:'ap-northeast-2',city:'Seoul'},{name:'Dubai',code:'me-central-1',city:'Dubai'},
+    {name:'US West · N. California',code:'us-west-1',city:'N. California'},{name:'Canada',code:'ca-central-1',city:'Montreal'},
+    {name:'São Paulo',code:'sa-east-1',city:'São Paulo'},{name:'London',code:'eu-west-2',city:'London'},
+    {name:'Paris',code:'eu-west-3',city:'Paris'},{name:'Stockholm',code:'eu-north-1',city:'Stockholm'},
+    {name:'Osaka',code:'ap-northeast-3',city:'Osaka'},{name:'Sydney',code:'ap-southeast-2',city:'Sydney'}
   ];
   const news=[
     {source:'AMD',date:'12 Oct 2026',title:'Introducing AMD Helion, Agentic AI Compute at Rack Scale',url:'https://ir.amd.com/news-events/press-releases/detail/1301/introducing-amd-helion-agentic-ai-compute-at-rack-scale'},

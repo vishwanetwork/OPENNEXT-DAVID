@@ -21,7 +21,12 @@ const HISTORY_SPAN = 90 * DAY, HISTORY_PAGES = 100, HISTORY_RETRY = 10 * MINUTE;
 // [window, bucket]: coarser buckets keep every period at a few hundred points.
 const PERIODS = {'1D': [DAY, 5 * MINUTE], '1W': [7 * DAY, 30 * MINUTE], '1M': [30 * DAY, 2 * HOUR],
   '3M': [90 * DAY, 6 * HOUR]};
-const AREAS = new Set(AWS_REGIONS.map(([id]) => id));
+// Chart areas: every AWS Region with GPU instances. Other suppliers join an area only on an exact code.
+const AWS_AREAS = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1', 'sa-east-1', 'eu-central-1', 'eu-west-1',
+  'eu-west-2', 'eu-west-3', 'eu-north-1', 'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3', 'ap-south-1', 'ap-southeast-1',
+  'ap-southeast-2', 'me-central-1'];
+const AREAS = new Set([...AWS_AREAS, ...AWS_REGIONS.map(([id]) => id)]);
+const areaOrder = area => {const index = AWS_AREAS.indexOf(area); return index < 0 ? AWS_AREAS.length + (area ? 0 : 1) : index;};
 // Azure regions are mapped onto chart areas only where the geography is equivalent.
 const AZURE_AREAS = {eastus: 'us-east-1', eastus2: 'us-east-1', westus2: 'us-west-2', northeurope: 'eu-west-1',
   germanywestcentral: 'eu-central-1', southeastasia: 'ap-southeast-1', japaneast: 'ap-northeast-1',
@@ -83,7 +88,9 @@ function normalizeBot(offer) {
     form: aws ? AWS_FORMS[offer.sku.split('.')[0]] || null : formOf(offer.details?.interconnect) || formOf(description),
     term: {spot: 'Spot', on_demand: 'On-demand', reserved: 'Reserved'}[offer.market],
     value: Number(offer.price_hourly) / offer.gpu_count,
-    observedAt: Date.parse(offer.observed_at), ttl: offer.price_kind === 'list' ? LIST_TTL : BOT_TTL,
+    // Price-only Regions refresh hourly in the bot, so their Spot quotes stay current for two hours.
+    observedAt: Date.parse(offer.observed_at),
+    ttl: offer.price_kind === 'list' ? LIST_TTL : offer.details?.eligibility_status === 'price_only_region' ? PUBLIC_TTL : BOT_TTL,
     ...(knownTime(offer.effective_at) ? {since: Date.parse(offer.effective_at)} : {}),
   };
 }
@@ -489,19 +496,22 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
     historyTail = work; importing.set(key, work);
   }
 
-  // One reference offering supplies all three terms, so the lines are directly comparable.
+  // Each region shows one reference offering, so its three lines are directly comparable.
   function query(filters = {}) {
     const now = clock();
     if (!lastSync || now - lastSync >= SYNC_INTERVAL) sync().catch(() => {});
     const [span, bucket] = PERIODS[filters.period] || PERIODS['1M'];
     const from = now - span, openByGroup = new Map();
+    const wanted = !filters.region || filters.region === 'all' ? null :
+      new Set(String(filters.region).split(',').map(region => region.trim()).filter(Boolean));
+    const hardware = {...filters, region: undefined};
     for (const segment of open.values()) {
       if (!openByGroup.has(segment.g)) openByGroup.set(segment.g, []);
       openByGroup.get(segment.g).push(segment);
     }
-    let reference = null, offerings = 0;
+    const areas = new Map();
     for (const [group, spec] of groups) {
-      if (!matches(spec, filters)) continue;
+      if (!matches(spec, hardware) || (wanted && !wanted.has(spec.area))) continue;
       const current = (openByGroup.get(group) || []).filter(s => now - s.l <= SEGMENT_GAP);
       const history = spotHistory.get(group);
       const saved = [...(archive.get(group) || []), ...(openByGroup.get(group) || [])];
@@ -515,47 +525,64 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
         [s.f < tariff.f ? {...s, l: tariff.f - 1} : null, s.l > tariff.l ? {...s, f: tariff.l + 1} : null].filter(Boolean));
       const segments = [...merged, ...(history?.segments || []), ...tariffs].filter(s => s.l >= from && s.f <= now);
       if (!segments.length) continue;
-      offerings++;
+      const area = AREAS.has(spec.area) ? spec.area : null;
+      if (!areas.has(area)) areas.set(area, {reference: null, offerings: 0});
+      const slot = areas.get(area);
+      slot.offerings++;
       // Prefer an offering whose Spot price the bot observes live (published Azure Spot rates are fixed),
       // then the most complete current offering, then the lowest On-demand reference.
       const valueOf = term => current.find(s => s.t === term)?.v ?? Infinity;
       const liveSpot = !group.startsWith('azure|') && current.some(s => s.t === 'Spot');
       const score = [liveSpot ? 0 : 1, -new Set(current.map(s => s.t)).size, -new Set(segments.map(s => s.t)).size,
         valueOf('On-demand'), Math.min(...TERMS.map(valueOf))];
-      const index = reference ? score.findIndex((value, i) => value !== reference.score[i]) : -1;
+      const reference = slot.reference, index = reference ? score.findIndex((value, i) => value !== reference.score[i]) : -1;
       if (!reference || (index < 0 ? group < reference.group : score[index] < reference.score[index]))
-        reference = {group, spec, segments, current, score};
+        slot.reference = {group, spec, segments, current, score};
     }
-    const points = [];
-    if (reference) {
+    const slots = [...areas].sort((a, b) => areaOrder(a[0]) - areaOrder(b[0]));
+    for (const [, {reference}] of slots) {
       if (reference.group.startsWith('aws|aws|')) {importSpotChanges(reference.group); importListHistory(reference.group);}
       else importOffering(reference.group);
-      // Buckets run from the first to the last observation; a bucket still awaiting its sync is not shown empty.
-      const last = Math.min(now, Math.max(...reference.segments.map(s => s.l)));
-      const first = Math.floor(Math.max(from, Math.min(...reference.segments.map(s => s.f))) / bucket) * bucket;
-      for (let time = first; time <= last; time += bucket) {
-        const values = {};
-        for (const term of TERMS) {
-          const covering = reference.segments.filter(s => s.t === term && s.f < time + bucket && s.l >= time);
-          values[term] = {value: covering.length ? Math.min(...covering.map(s => s.v)) : null};
-        }
-        points.push({time: iso(time), values});
-      }
     }
+    const references = slots.map(([, slot]) => slot.reference);
+    const times = [];
+    if (references.length) {
+      // Buckets run from the first to the last observation; a bucket still awaiting its sync is not shown empty.
+      const all = references.flatMap(reference => reference.segments);
+      const last = Math.min(now, Math.max(...all.map(s => s.l)));
+      for (let time = Math.floor(Math.max(from, Math.min(...all.map(s => s.f))) / bucket) * bucket; time <= last; time += bucket) times.push(time);
+    }
+    const valueAt = (segments, term, time) => {
+      const covering = segments.filter(s => s.t === term && s.f < time + bucket && s.l >= time);
+      return covering.length ? Math.min(...covering.map(s => s.v)) : null;
+    };
+    const series = slots.map(([area, {reference, offerings}]) => ({
+      area, matchingOfferings: offerings,
+      reference: {gpuCount: reference.spec.count, gpuMemoryGb: reference.spec.memory ?? null, formFactor: reference.spec.form ?? null},
+      latest: Object.fromEntries(TERMS.map(term => {
+        const segment = reference.current.find(s => s.t === term);
+        return [term, {value: segment?.v ?? null, observedAt: segment ? iso(segment.l) : null}];
+      })),
+      values: Object.fromEntries(TERMS.map(term => [term, times.map(time => valueAt(reference.segments, term, time))])),
+    }));
+    // Cards and the summary line show the lowest price of each type across the selected regions.
+    const lowest = (values, pick) => values.reduce((best, item) => pick(item) !== null && (best === null || pick(item) < pick(best)) ? item : best, null);
+    const points = times.map((time, index) => ({time: iso(time), values: Object.fromEntries(TERMS.map(term =>
+      [term, {value: lowest(series, item => item.values[term][index])?.values[term][index] ?? null}]))}));
     const latestValues = Object.fromEntries(TERMS.map(term => {
-      const segment = reference?.current.find(s => s.t === term);
-      return [term, {value: segment?.v ?? null, observedAt: segment ? iso(segment.l) : null}];
+      const best = lowest(series, item => item.latest[term].value);
+      return [term, {value: best?.latest[term].value ?? null, observedAt: best?.latest[term].observedAt ?? null, area: best ? best.area : null}];
     }));
     return {
-      terms: TERMS, points, latest: latestValues,
+      terms: TERMS, points, latest: latestValues, times: times.map(iso), series,
       meta: {status: errors.size ? 'partial' : lastSync ? 'ok' : 'loading',
         botConfigured: configured, syncing: Boolean(pending) || importing.size > 0, lastSync: lastSync ? iso(lastSync) : null,
         serverTime: iso(now), unit: 'USD / GPU-hour', bucketMinutes: bucket / MINUTE, refreshSeconds: 30,
-        basis: 'same_offering', matchingOfferings: offerings,
-        reference: reference ? {area: AREAS.has(reference.spec.area) ? reference.spec.area : null, gpuCount: reference.spec.count,
-          gpuMemoryGb: reference.spec.memory ?? null, formFactor: reference.spec.form ?? null} : null,
+        basis: 'same_offering_per_region', regions: series.length,
+        matchingOfferings: series.reduce((sum, item) => sum + item.matchingOfferings, 0),
+        reference: series.length === 1 ? {area: series[0].area, ...series[0].reference} : null,
         commitment: {months: 12, payment: 'no_upfront'}, synthetic: false,
-        coverage: TERMS.filter(term => reference?.segments.some(s => s.t === term)),
+        coverage: TERMS.filter(term => series.some(item => item.values[term].some(value => value !== null))),
         sourceIssue: Boolean(errors.size),
       },
     };

@@ -31,6 +31,7 @@ test('normalization keeps full GPU units, canonical names and hardware variants'
   assert.equal(normalizeBot({...offer, sku: 'p5.48xlarge', gpu_count: 8}).form, 'SXM5');
   assert.equal(normalizeBot({...offer, provider: 'shadeform', cloud: 'hyperstack', gpu_model: 'RTX4090'}).model, 'RTX 4090');
   assert.equal(normalizeBot({...offer, provider: 'shadeform', region: 'charlotte-usa-1'}).area, null);
+  assert.equal(normalizeBot({...offer, details: {eligibility_status: 'price_only_region'}}).ttl, 2 * 3600000);
   assert.equal(normalizeBot({...offer, details: {gpu_count_kind: 'logical'}}), null);
   assert.equal(normalizeBot({...offer, price_hourly: '-1'}), null);
   assert.equal(normalizeBot({...offer, observed_at: 'bad-date'}), null);
@@ -302,3 +303,34 @@ test('published On-demand and Reserved intervals fill 90-day history without bri
   assert.equal(valueAt(1, 'On-demand'), 1.2);
   assert.equal(requests, 1);
 });
+
+test('each selected region gets its own reference offering and the cards show the lowest rate', async t => {
+  const directory = temp(t);
+  const now = Date.parse(at);
+  const quote = (region, market, price, id) => ({...offer, region, availability_zone: null, market, price_hourly: price, offer_id: id,
+    observed_at: new Date(now).toISOString()});
+  const offers = [quote('us-west-2', 'spot', '0.5', 'w-spot'), quote('us-west-2', 'on_demand', '1.006', 'w-od'),
+    quote('eu-north-1', 'spot', '0.3', 'n-spot'), quote('eu-north-1', 'on_demand', '1.1', 'n-od'), quote('ap-south-1', 'spot', '0.9', 's-spot')];
+  const fetchImpl = async url => new Response(JSON.stringify(new URL(url).pathname === '/v1/prices/latest' ?
+    {total: offers.length, groups: [{offers}]} : {items: [], total: 0}));
+  const service = createCapacityPriceService({env: {...config, OPENNEXT_CAPACITY_REGIONS: '', OPENNEXT_AZURE_REGIONS: ''},
+    dataDir: directory, fetchImpl, clock: () => now});
+  t.after(() => service.close());
+  await service.sync();
+  const all = service.query({gpuModel: 'A10G', gpuCount: 1, region: 'all', period: '1D'});
+  assert.deepEqual(all.series.map(item => item.area), ['us-west-2', 'eu-north-1', 'ap-south-1']);
+  assert.equal(all.meta.regions, 3);
+  assert.equal(all.meta.reference, null);
+  assert(all.series.every(item => TERMS_LIST.every(term => item.values[term].length === all.times.length)));
+  assert.deepEqual(all.latest.Spot, {value: .3, observedAt: new Date(now).toISOString(), area: 'eu-north-1'});
+  assert.equal(all.latest['On-demand'].area, 'us-west-2');
+  assert.equal(all.series[2].latest['On-demand'].value, null);
+  const picked = service.query({gpuModel: 'A10G', gpuCount: 1, region: 'us-west-2,ap-south-1', period: '1D'});
+  assert.deepEqual(picked.series.map(item => item.area), ['us-west-2', 'ap-south-1']);
+  assert.equal(picked.latest.Spot.value, .5);
+  const one = service.query({gpuModel: 'A10G', gpuCount: 1, region: 'eu-north-1', period: '1D'});
+  assert.equal(one.series.length, 1);
+  assert.equal(one.meta.reference.area, 'eu-north-1');
+  assert.doesNotMatch(JSON.stringify(all), /aws|provider|sku|xlarge|https?:/i);
+});
+const TERMS_LIST = ['Spot', 'On-demand', 'Reserved'];
