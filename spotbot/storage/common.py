@@ -66,8 +66,8 @@ ACTIVE_STATES = {"queued", "provisioning", "ready", "releasing"}
 PROVIDERS = ("lambda", "tensordock", "vultr", "shadeform", "aws")
 # Catalog batches are recorded per catalog. AWS list prices refresh on their own schedule, so
 # they are a separate catalog whose offers still belong to the "aws" provider.
-CATALOGS = (*PROVIDERS, "aws_list")
-CATALOG_PROVIDER = {"aws_list": "aws"}
+CATALOGS = (*PROVIDERS, "aws_list", "aws_regions")
+CATALOG_PROVIDER = {"aws_list": "aws", "aws_regions": "aws"}
 
 
 class Storage(Protocol):

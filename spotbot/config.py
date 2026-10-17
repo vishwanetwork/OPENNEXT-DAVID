@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     spotbot_live_orders_enabled: bool = False
     spotbot_dry_run_enabled: bool = True
     spotbot_aws_regions: str = "us-west-2"
+    # Extra Regions collected for price references only (no orders): current Spot, list prices
+    # and history. Comma-separated; the order Regions above are always included.
+    spotbot_aws_price_regions: str = ""
+    spotbot_aws_price_region_interval_seconds: int = Field(3600, ge=600)
     spotbot_aws_vpc_id: str = ""
     spotbot_aws_security_group_ids: str = ""
     spotbot_aws_key_name: str = ""
@@ -57,6 +61,16 @@ class Settings(BaseSettings):
         if set(names) - {"lambda", "tensordock", "vultr", "shadeform", "aws"}:
             raise ValueError("Unknown provider in SPOTBOT_ENABLED_PROVIDERS")
         return ",".join(dict.fromkeys(names))
+
+    @property
+    def aws_order_regions(self) -> list[str]:
+        return list(dict.fromkeys(r.strip() for r in self.spotbot_aws_regions.split(",") if r.strip()))
+
+    @property
+    def aws_price_regions(self) -> list[str]:
+        """Every Region with price data: order Regions first, then price-only Regions."""
+        extra = (r.strip() for r in self.spotbot_aws_price_regions.split(",") if r.strip())
+        return list(dict.fromkeys([*self.aws_order_regions, *extra]))
 
     def enabled(self, provider: str) -> bool:
         return provider in self.spotbot_enabled_providers.split(",")

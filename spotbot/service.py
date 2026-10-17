@@ -66,6 +66,8 @@ class Service:
         self.providers = providers(settings, self.client)
         self.collect_lock = asyncio.Lock()
         self.list_prices_due = 0.0
+        self.price_regions_due = 0.0
+        self.background_sweeps = {}
         self.worker_lock = asyncio.Lock()
 
     def acquire(self):
@@ -73,11 +75,13 @@ class Service:
         self.store.recover()
 
     async def close(self):
+        for task in self.background_sweeps.values():
+            task.cancel()
         if self._own_client:
             await self.client.aclose()
         self.store.close()
 
-    async def collect(self, only: str | None = None):
+    async def collect(self, only: str | None = None, *, background_sweeps: bool = False):
         async with self.collect_lock:
 
             async def one(provider):
@@ -112,11 +116,41 @@ class Service:
             ]
             results = await asyncio.gather(*(one(p) for p in selected))
             aws = self.providers.get("aws")
+            sweeps = []
             if aws in selected and aws.configured and self.settings.spotbot_aws_list_prices_enabled:
-                listed = await self._collect_list_prices(aws)
-                if listed:
-                    results.append(listed)
+                sweeps.append(("aws_list", self._collect_list_prices))
+            if aws in selected and aws.configured and len(self.settings.aws_price_regions) > len(
+                aws.regions
+            ):
+                sweeps.append(("aws_regions", self._collect_price_regions))
+            for name, sweep in sweeps:
+                if background_sweeps:
+                    # Multi-Region sweeps can take minutes; the worker keeps processing orders.
+                    running = self.background_sweeps.get(name)
+                    if not running or running.done():
+                        self.background_sweeps[name] = asyncio.create_task(sweep(aws))
+                    continue
+                result = await sweep(aws)
+                if result:
+                    results.append(result)
             return results
+
+    async def _collect_price_regions(self, aws):
+        # Price-only Regions refresh hourly; their change history comes from the Spot backfill.
+        if time.monotonic() < self.price_regions_due:
+            return None
+        interval = self.settings.spotbot_aws_price_region_interval_seconds
+        try:
+            offers = await aws.collect_price_regions()
+            self.store.record_collection("aws_regions", offers)
+            self.price_regions_due = time.monotonic() + interval
+            return {"provider": "aws_regions", "status": "ok", "count": len(offers)}
+        except Exception as exc:
+            code = exc.code if isinstance(exc, ProviderError) else "invalid_catalog_schema"
+            self.store.record_collection("aws_regions", [], code)
+            self.price_regions_due = time.monotonic() + min(interval, 900)
+            logger.warning("Collection failed for aws_regions: %s", code)
+            return {"provider": "aws_regions", "status": "error", "count": 0, "error": code}
 
     async def _collect_list_prices(self, aws):
         # Published rates change rarely; storing them every Spot cycle would multiply history.
@@ -461,7 +495,7 @@ class Service:
                     time.monotonic() - last_collect
                     >= self.settings.spotbot_collect_interval_seconds
                 ):
-                    await self.collect()
+                    await self.collect(background_sweeps=True)
                     last_collect = time.monotonic()
                 await self.tick()
             except asyncio.CancelledError:

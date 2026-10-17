@@ -143,7 +143,11 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                     "capabilities": capabilities[name],
                     "last_collection": collections.get(name),
                     **(
-                        {"last_list_price_collection": collections.get("aws_list")}
+                        {
+                            "last_list_price_collection": collections.get("aws_list"),
+                            "last_price_region_collection": collections.get("aws_regions"),
+                            "price_regions": config.aws_price_regions,
+                        }
                         if name == "aws"
                         else {}
                     ),

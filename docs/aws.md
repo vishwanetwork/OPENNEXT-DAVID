@@ -34,6 +34,16 @@ An interval begins at the later of the version's effective beginning and the ter
 
 Sources: [AWS version validity](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/service-version-index-file-for-aws-service.html), [price-list fields and term effective dates](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/reading-service-price-list-file-for-services.html).
 
+## Price-only Regions
+
+`SPOTBOT_AWS_PRICE_REGIONS` adds Regions that are collected for price references only. Orders, quotas, networks and images stay limited to `SPOTBOT_AWS_REGIONS`; the combined list (order Regions first) drives current prices, list prices and both history backfills.
+
+- Current Spot: every `SPOTBOT_AWS_PRICE_REGION_INTERVAL_SECONDS` (one hour by default) the bot records one offer per GPU instance type and price-only Region, priced at the lowest current zone. These offers have no Availability Zone and `orderable=false` with `eligibility_status=price_only_region`; `details` records `lowest_zone` and `zone_count`. They form a separate `aws_regions` catalog batch. Each sweep makes `DescribeInstanceTypes` and `DescribeSpotPriceHistory` calls per Region. The SDK lock is released between Regions, and a failing Region is skipped without discarding the others.
+- List prices: price-only Regions keep On-demand and the No Upfront Reserved terms; order Regions keep every term.
+- History: the 90-day Spot change backfill and the archived On-demand/Reserved backfill cover every price Region. The first run for new Regions downloads one archive CSV per Region and version and can take hours. Later daily runs reuse stored versions.
+
+The role needs `ec2:DescribeInstanceTypes` and `ec2:DescribeSpotPriceHistory` in each price-only Region. The deployed role grants them in a separate `ReadGpuPricesAllRegions` statement without the order-Region condition.
+
 ## On-demand and Reserved list prices
 
 The bot also reads published Linux On-demand and Reserved rates for GPU instances in `SPOTBOT_AWS_REGIONS` from the AWS Price List API (`pricing:GetProducts`, served from `us-east-1`). Filters: shared tenancy, no pre-installed software, no license charge, and the On-demand market option (excluding Capacity Blocks). These offers have `price_kind=list`, no Availability Zone, and `orderable=false` with `eligibility_status=list_price_only`. They are price references; the bot cannot buy On-demand or Reserved capacity.
@@ -42,7 +52,7 @@ The bot also reads published Linux On-demand and Reserved rates for GPU instance
 - `market=reserved`: one offer per term. `details` records `lease_contract_length` (`1yr` or `3yr`), `purchase_option` (No, Partial or All Upfront), `offering_class` (`standard` or `convertible`), `upfront_usd` and `recurring_hourly_usd`. `price_hourly` is the effective hourly cost: the recurring rate plus the upfront payment spread over 8,760 or 26,280 hours. Some families are sold only on some terms; for example, P5 has no one-year standard Reserved Instance, only one-year convertible.
 - `effective_at`: the price list's `effectiveDate`. It records the price-list version that contains the rate, not when the rate first applied. On-demand rates currently carry the first day of the month and Reserved rates the publication day.
 
-List prices refresh every `SPOTBOT_AWS_LIST_PRICE_INTERVAL_SECONDS` (6 hours by default), not every Spot cycle. They are recorded as a separate catalog batch named `aws_list`, so `latest` keeps them between refreshes and history grows by about 1,200 rows (about 1.2 MB) per refresh for two Regions. A failed refresh keeps the previous batch, is reported as `last_list_price_collection` on `/v1/providers`, and is retried after 30 minutes. Set `SPOTBOT_AWS_LIST_PRICES_ENABLED=false` to turn it off.
+List prices refresh every `SPOTBOT_AWS_LIST_PRICE_INTERVAL_SECONDS` (6 hours by default), not every Spot cycle. They are recorded as a separate catalog batch named `aws_list`, so `latest` keeps them between refreshes and history grows by about 1,200 rows (about 1.2 MB) per refresh for two Regions. A failed refresh keeps the previous batch, is reported as `last_list_price_collection` on `/v1/providers`, and is retried after 30 minutes. Set `SPOTBOT_AWS_LIST_PRICES_ENABLED=false` to turn it off. Current list prices cover every price Region (see above).
 
 Quota checks estimate remaining G/VT and P Spot vCPUs across the account in each Region. They count pending/running Spot instances and open/active Spot requests, deduplicate fulfilled requests by instance ID, and include VT transcoders in the G/VT bucket. This includes resources launched outside the bot. Unknown instance/request specifications fail closed instead of advertising eligibility. `quota_vcpus`, `quota_used_vcpus`, `quota_remaining_vcpus`, and `quota_usage_known` explain the result. Describe APIs provide a snapshot, not a quota reservation; concurrent launches, eventual consistency, and fleet behavior can still cause AWS to reject a launch. AWS remains authoritative.
 

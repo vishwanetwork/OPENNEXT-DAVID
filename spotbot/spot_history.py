@@ -49,10 +49,7 @@ async def backfill(settings, store, *, session=None, clock=lambda: datetime.now(
         connect_timeout=10, read_timeout=30, retries={"mode": "standard", "max_attempts": 3}
     )
     results = {"completed": 0, "failed": 0, "events_received": 0}
-    for region in dict.fromkeys(settings.spotbot_aws_regions.split(",")):
-        region = region.strip()
-        if not region:
-            continue
+    for region in settings.aws_price_regions:
         client = session.client("ec2", region_name=region, config=config)
         try:
             _, specs = await asyncio.to_thread(AWSProvider._instance_types, client)

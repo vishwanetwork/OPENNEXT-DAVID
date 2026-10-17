@@ -590,3 +590,68 @@ async def test_denied_price_list_keeps_spot_and_retries_later(aws_service):
     assert results[1]["error"] == "aws_AccessDeniedException"
     assert len(service.store.latest(provider="aws")) == 3
     assert service.list_prices_due - time.monotonic() <= 1800
+
+
+async def test_price_only_regions_add_region_level_spot_and_no_upfront_list_prices(tmp_path):
+    config = Settings(
+        _env_file=None,
+        spotbot_enabled_providers="aws",
+        spotbot_api_key="test-token",
+        spotbot_aws_key_name="test",
+        spotbot_background_enabled=False,
+        spotbot_aws_price_regions="eu-north-1,us-west-2",
+        spotbot_database_path=tmp_path / "regions.sqlite3",
+    )
+    assert config.aws_price_regions == ["us-west-2", "eu-north-1"]
+    client = httpx.AsyncClient()
+    service = Service(config, client)
+    fake = FakeAWS()
+    fake.price_list = [
+        price_product(
+            "p5.4xlarge",
+            "6.88",
+            [
+                ("1yr", "No Upfront", "standard", {"Hrs": "4.5"}),
+                ("1yr", "All Upfront", "standard", {"Hrs": "0", "Quantity": "30000"}),
+            ],
+        )
+    ]
+    service.providers["aws"] = AWSProvider(config, client, session=fake)
+    try:
+        results = {r["provider"]: r for r in await service.collect("aws")}
+        assert results["aws_regions"]["status"] == "ok"
+        regional = [o for o in service.store.latest(provider="aws") if o.region == "eu-north-1"]
+        spot = {o.sku: o for o in regional if o.market == "spot"}
+        # One reference per GPU type: the lowest zone, with no zone in the identity.
+        assert str(spot["p5.4xlarge"].price_hourly) == "2.6"
+        assert spot["p5.4xlarge"].availability_zone is None
+        assert spot["p5.4xlarge"].details["lowest_zone"] == "us-west-2a"
+        assert spot["p5.4xlarge"].details["zone_count"] == 2
+        assert not any(o.orderable for o in regional)
+        assert {o.details["eligibility_status"] for o in spot.values()} == {"price_only_region"}
+        regions = [
+            {f["Field"]: f["Value"] for f in call["Filters"]}["regionCode"]
+            for call in fake.price_list_calls
+        ]
+        assert regions == ["us-west-2", "eu-north-1"]
+        listed = [o for o in regional if o.price_kind == "list"]
+        # Price-only Regions keep only No Upfront Reserved terms; order Regions keep all of them.
+        assert {o.details.get("purchase_option") for o in listed} == {None, "No Upfront"}
+        west = [o for o in service.store.latest(provider="aws") if o.region == "us-west-2"]
+        assert "All Upfront" in {o.details.get("purchase_option") for o in west}
+        # The hourly price-only sweep waits for its interval.
+        before = len(fake.price_list_calls)
+        results = {r["provider"] for r in await service.collect("aws")}
+        assert "aws_regions" not in results and len(fake.price_list_calls) == before
+    finally:
+        service.store.close()
+
+
+async def test_worker_runs_list_price_sweep_in_background(aws_service):
+    service, fake = aws_service
+    fake.price_list = [price_product("p5.4xlarge", "6.88")]
+    results = await service.collect("aws", background_sweeps=True)
+    # The Spot cycle returns immediately; the list-price sweep finishes on its own task.
+    assert [r["provider"] for r in results] == ["aws"]
+    await service.background_sweeps["aws_list"]
+    assert any(o.price_kind == "list" for o in service.store.latest(provider="aws"))

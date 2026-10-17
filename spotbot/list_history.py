@@ -185,10 +185,7 @@ async def backfill(
     if not versions:
         raise ValueError("aws_archive_index_has_no_history")
     results = {"completed": 0, "cached": 0, "failed": 0}
-    for region in dict.fromkeys(settings.spotbot_aws_regions.split(",")):
-        region = region.strip()
-        if not region:
-            continue
+    for region in settings.aws_price_regions:
         client = session.client(
             "ec2",
             region_name=region,
