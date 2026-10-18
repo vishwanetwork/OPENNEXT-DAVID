@@ -2,10 +2,48 @@
   'use strict';
   const X=window.OpenNEXTExchange;
   let marketContext=null,settlementDays=3;
+  const submissionIds=new WeakMap(),submittingForms=new WeakSet();
+  const receiptFor=record=>record?.submission?.status==='Received'&&typeof record.submission.receiptId==='string'&&record.submission.receiptId.trim().length>0&&Number.isFinite(Date.parse(record.submission.receivedAt))?record.submission:null;
+  const isDemo=()=>!!window.OpenNEXTDemo?.active||!!window.OpenNEXTAuth?.getUser?.()?.demo;
+  function receiptDetails(c,record){
+    const receipt=receiptFor(record);
+    return receipt?'<section class="callout"><strong>'+ (isDemo()?'Demo submission received':'Received by OpenNEXT operations')+'</strong><p class="form-note">'+c.esc(receipt.receiptId)+' · '+date(receipt.receivedAt)+' · Revision '+c.esc(receipt.revision||1)+'</p><p class="form-note">Receipt confirms submission, not approval, publication or payment.</p></section>':'';
+  }
+  async function submitRecord(c,formEl,recordKind,data){
+    const button=formEl.querySelector('[type="submit"]');
+    if(submittingForms.has(formEl)||button?.disabled)return;
+    submittingForms.add(formEl);if(button)button.disabled=true;
+    let saved=null;
+    try{
+      const id=formEl.dataset.id;
+      if(!submissionIds.has(formEl))submissionIds.set(formEl,window.crypto?.randomUUID?.()||X.uid('REQ'));
+      const input=recordKind==='supply'?{...data,serviceStart:new Date(data.serviceStart+'Z').toISOString(),serviceEnd:new Date(data.serviceEnd+'Z').toISOString()}:{...data,start:new Date(data.start+'Z').toISOString(),quoteDeadline:new Date(data.quoteDeadline+'Z').toISOString(),shareClosingPrice:!!data.shareClosingPrice};
+      if(!id)input.clientSubmissionId=submissionIds.get(formEl);
+      const path='/api/marketplace/'+(recordKind==='supply'?'supplies':'rfqs')+(id?'/'+encodeURIComponent(id):'');
+      const result=await X.api(path,id?'PATCH':'POST',input);
+      const record=result?.[recordKind];
+      if(!record||typeof record.id!=='string'||!record.id)throw Error('The server did not return a submission reference. Refresh your records before trying again.');
+      saved={type:'proc-submission',id:record.id,recordKind,receipt:receiptFor(record),recordStatus:record.status||'Saved',warnings:[],demo:isDemo()};
+      c.S.modal=saved;c.S.route=recordKind==='supply'?'supply':'rfqs';
+      if(recordKind==='supply'){
+        try{
+          const installation=await X.api('/api/marketplace/supplies/'+encodeURIComponent(record.id)+'/agent','POST',{});
+          if(installation.message)saved.warnings.push(installation.message);
+        }catch{
+          saved.warnings.push('Capacity is saved. The agent setup request is pending; use Refresh status in My Supply instead of submitting the capacity again.');
+        }
+      }
+      try{await X.refresh(c.S);}catch{saved.warnings.push('Your submission is saved, but the workspace could not refresh. Keep this reference and refresh your records. Do not submit it again.');}
+      c.persist();c.render();
+      c.toast(saved.receipt?(saved.demo?'Saved to the isolated Demo workspace.':'Submission received by OpenNEXT operations.'):'Saved to your account. Operations receipt has not been confirmed.');
+    }catch(error){
+      c.toast(saved?'Your submission is saved. Keep reference '+saved.id+' and refresh your records.':error.message);
+    }finally{submittingForms.delete(formEl);if(button?.isConnected)button.disabled=false;}
+  }
   const settlementPeriods=[[1,'1D'],[3,'3D'],[7,'1W'],[30,'1M'],[90,'3M'],[180,'6M'],[365,'1Y'],['all','ALL']];
   function supplyPage(c) {
     const S=c.S,review=S.review||{},reviewed=review.status==='Approved',pending=review.status==='Reviewing';
-    return '<div class="page-content"><div class="page-heading"><div><h1>My Supply</h1><p>Verified capacity, visible to qualified buyers.</p></div>'+btn('List supply','new-supply','','',true)+'</div><section class="panel"><div class="row spread"><div><h2>Supplier review</h2><p class="form-note">Complete eligibility, business verification and capacity rights before publishing supply.</p></div><span class="tag '+(pending?'proc-reviewing':'')+'">'+c.esc(review.status||'Not started')+'</span></div><div class="proc-review-steps">'+['Eligibility','KYB','Rights'].map(label=>'<span class="'+(reviewed?'approved':pending?'reviewing':'')+'">'+(reviewed?'✓ ':pending?'◷ ':'')+label+(label==='KYB'&&pending?' · Reviewing':'')+'</span>').join('')+'</div>'+btn(reviewed?'View approval record':pending?'View submission':'Start supplier review','review')+(pending?'<p class="form-note">Your submission is being reviewed by operations. You will receive a workspace notification when a decision is ready.</p>':'')+'</section><section class="panel"><h2>Your capacity</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>GPU / quantity</th><th>Region</th><th>Your unit price</th><th>Buyer price</th><th>Verification</th><th></th></tr></thead><tbody>'+(S.listings||[]).map(r=>'<tr><td><strong>'+c.esc(r.model||r.name)+'</strong><small class="proc-sub">'+r.count+' GPU · '+r.hours+' hours</small></td><td>'+c.esc(r.region)+'</td><td>'+c.money(r.netPrice??r.rate)+'</td><td>'+c.money(r.buyerPrice)+'</td><td>'+c.esc(r.status)+'<small class="proc-sub">Agent: '+c.esc(r.agentStatus)+'</small></td><td>'+btn('View details','proc-supply-status',r.id)+'</td></tr>').join('')+(!(S.listings||[]).length?'<tr><td colspan="6">No supply submitted yet. Approved listings appear here after agent installation is verified.</td></tr>':'')+'</tbody></table></div></section>'+supplyDemand(c)+supplyExtra(c)+'</div>';
+    return '<div class="page-content"><div class="page-heading"><div><h1>My Supply</h1><p>Verified capacity, visible to qualified buyers.</p></div>'+btn('List supply','new-supply','','',true)+'</div><section class="panel"><div class="row spread"><div><h2>Supplier review</h2><p class="form-note">Complete eligibility, business verification and capacity rights before publishing supply.</p></div><span class="tag '+(pending?'proc-reviewing':'')+'">'+c.esc(review.status||'Not started')+'</span></div><div class="proc-review-steps">'+['Eligibility','KYB','Rights'].map(label=>'<span class="'+(reviewed?'approved':pending?'reviewing':'')+'">'+(reviewed?'✓ ':pending?'◷ ':'')+label+(label==='KYB'&&pending?' · Reviewing':'')+'</span>').join('')+'</div>'+btn(reviewed?'View approval record':pending?'View submission':'Start supplier review','review')+(pending?'<p class="form-note">Your submission is being reviewed by operations. You will receive a workspace notification when a decision is ready.</p>':'')+'</section><section class="panel"><h2>Your capacity</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>GPU / quantity</th><th>Region</th><th>Your unit price</th><th>Buyer price</th><th>Verification</th><th></th></tr></thead><tbody>'+(S.listings||[]).map(r=>'<tr><td><strong>'+c.esc(r.model||r.name)+'</strong><small class="proc-sub">'+r.count+' GPU · '+r.hours+' hours</small></td><td>'+c.esc(r.region)+'</td><td>'+c.money(r.netPrice??r.rate)+'</td><td>'+c.money(r.buyerPrice)+'</td><td>'+c.esc(r.status)+'<small class="proc-sub">Agent: '+c.esc(r.agentStatus)+'</small></td><td>'+btn('View details','proc-supply-status',r.id)+'</td></tr>').join('')+(!(S.listings||[]).length?'<tr><td colspan="6">No supply submitted yet. Saved submissions appear here immediately; publication waits for verification.</td></tr>':'')+'</tbody></table></div></section>'+supplyDemand(c)+supplyExtra(c)+'</div>';
   }
   function reviewDialog(c) {
     const r=c.S.review||{};
@@ -125,12 +163,17 @@
     return {title:'Supplier response · '+response.id,body:'<div class="details-grid">'+[['RFQ',response.rfqId],['Your unit price',c.money(response.netPrice??response.rate)],['Buyer unit price',c.money(response.buyerPrice)],['Status',response.status],['Valid until',date(response.validUntil)],['Verified supply',response.supplyId]].map(([label,value])=>field(c,label,value)).join('')+'</div><p class="proc-notes">'+c.esc(response.notes)+'</p><p class="form-note">The buyer reviews this quote in their account. Acceptance and payment are separate verified steps.</p>'+(response.orderId?btn('View order','bill-order',response.orderId):'')};
   }
   function modal(c,type,extra){
+   if(type==='proc-submission'){
+    const receipt=extra.receipt,confirmed=!!receipt,supply=extra.recordKind==='supply';
+    const title=extra.demo?'Demo submission saved':confirmed?'Submission received':'Submission saved';
+    return {title,body:'<p class="form-note">'+(extra.demo?'This record belongs only to your isolated test workspace. It is not a production submission.'+(confirmed?' Operations can find it in Console under Demo submissions while this workspace is active.':''):confirmed?'Your '+(supply?'capacity submission':'RFQ')+' is available in the OpenNEXT operations inbox.':'The server saved your record. A Console receipt has not been confirmed by the connected backend.')+'</p><div class="details-grid">'+[['Record',extra.id],['Operations receipt',receipt?.receiptId||'Not confirmed'],['Received',receipt?date(receipt.receivedAt):'Not confirmed'],['Version',receipt?.revision||'—'],['Marketplace status',extra.recordStatus]].map(([label,value])=>field(c,label,value)).join('')+'</div><div class="callout">'+(supply?'Receipt does not publish capacity. KYB approval and verified agent installation are still required.':'Receipt does not confirm a supplier match or place an order. Your RFQ can now be tracked in My RFQs.')+'</div>'+(extra.warnings||[]).map(message=>'<p class="form-note" role="status">'+c.esc(message)+'</p>').join('')+'<div class="modal-footer">'+btn('Close','close-modal')+btn(supply?'View My Supply':'View My RFQs','proc-submission-view',extra.recordKind,'',true)+'</div>'};
+   }
    if(type==='proc-history-upgrade')return {title:'More market history',body:'<p class="form-note">Historical data for up to 3 months is free. Contact Sales for access to 6M, 1Y or all available history.</p><div class="modal-footer">'+btn('Not now','close-modal')+btn('Contact Sales','proc-contact-sales','','',true)+'</div>'};
    const S=c.S,r=extra.requirement||S.rfqs.find(r=>r.id===extra.id),q=r?.quotes?.find(q=>q.id===extra.quoteId);
    if(type==='review')return reviewDialog(c);
    if(type==='supply-form'||type==='supply-type')return supplyForm(c);
-   if(type==='proc-supply-status'||type==='listing')return supplyStatus(c,extra.id);
-   if(type==='rfq'||type==='model-rfq')return {title:r?.title||'Requirement',body:record(c,r),wide:true};
+   if(type==='proc-supply-status'||type==='listing'){const view=supplyStatus(c,extra.id);view.body=receiptDetails(c,S.listings.find(row=>row.id===extra.id))+view.body;return view;}
+   if(type==='rfq'||type==='model-rfq')return {title:r?.title||'Requirement',body:receiptDetails(c,r)+record(c,r),wide:true};
    if(type==='rfq-form'||type==='proc-edit'){
     const item=extra.prefill||extra.offer||{};
     return {title:type==='proc-edit'?'Edit requirement':item.originSupply?'Request this listed offer':'Post capacity RFQ',body:form(c,type==='proc-edit'?r:{...item,model:extra.model||item.model||S.model,budget:item.budget??item.price},type==='proc-edit'),wide:true};
@@ -189,6 +232,7 @@
    try{
     switch(act){
      case'proc-contact-sales':S.modal=null;c.render();window.OpenNEXTContact?.open();return true;
+     case'proc-submission-view':S.modal=null;c.go(id==='supply'?'supply':'rfqs');return true;
      case'new-supply':if(S.role!=='Seller'){c.toast('Only Seller accounts can list supply.');return true;}c.open(S.review?.status==='Approved'?'supply-form':'review');return true;
      case'review':if(S.role!=='Seller'){c.toast('Supplier review is available to Seller accounts.');return true;}c.open('review');return true;
      case'proc-kyb-revise':S.review={...S.review,status:'Draft'};c.open('review');return true;
@@ -258,9 +302,9 @@
      case'proc-kyb':
       runServer(c,formEl.querySelector('[type="submit"]'),async()=>{await X.api('/api/marketplace/kyb','POST',{...data,eligibility:!!data.eligibility,rightsConfirmed:!!data.rightsConfirmed});S.modal=null;c.toast('Your supplier review is in progress. You will be notified when the review is complete.');});return true;
      case'proc-supply':
-      runServer(c,formEl.querySelector('[type="submit"]'),async()=>{const result=await X.api('/api/marketplace/supplies','POST',{...data,serviceStart:new Date(data.serviceStart+'Z').toISOString(),serviceEnd:new Date(data.serviceEnd+'Z').toISOString()});S.modal=null;await X.api('/api/marketplace/supplies/'+result.supply.id+'/agent','POST',{});c.toast('Capacity saved. Agent installation is required before publication.');});return true;
+      void submitRecord(c,formEl,'supply',data);return true;
      case'proc-rfq':
-      runServer(c,formEl.querySelector('[type="submit"]'),async()=>{const result=await X.api('/api/marketplace/rfqs'+(id?'/'+encodeURIComponent(id):''),id?'PATCH':'POST',{...data,start:new Date(data.start+'Z').toISOString(),quoteDeadline:new Date(data.quoteDeadline+'Z').toISOString(),shareClosingPrice:!!data.shareClosingPrice});S.modal={type:'rfq',id:result.rfq.id};S.route='rfqs';c.toast('Requirement saved to your account.');});return true;
+      void submitRecord(c,formEl,'rfq',data);return true;
      case'proc-response':
       runServer(c,formEl.querySelector('[type="submit"]'),async()=>{await X.api('/api/marketplace/rfqs/'+encodeURIComponent(id)+'/quotes','POST',{...data,validUntil:new Date(data.validUntil+'Z').toISOString()});S.modal=null;c.toast('Your quote has been submitted to the buyer.');});return true;
      case'proc-delivery':case'proc-verify':c.toast('Delivery must be confirmed by the backend provisioning integration.');return true;

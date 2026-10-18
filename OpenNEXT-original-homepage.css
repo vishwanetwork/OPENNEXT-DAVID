@@ -250,6 +250,8 @@
 .public-page .public-section-heading h2{font-size:46px;line-height:1.12;margin-bottom:0;letter-spacing:-1.9px}
 .public-page .public-section-description{font-size:16px;max-width:670px;margin-top:17px!important;line-height:1.65}
 .public-market-section{border-top:1px solid #bdc1b7}
+.public-market-section>.public-section-heading{max-width:none}
+@media(min-width:801px){.public-page #public-market-title{max-width:none;font-size:clamp(28px,3.5vw,46px);white-space:nowrap}}
 .public-page .public-market-row{padding:29px 0;border-color:#d9dcd4}
 .public-page .public-market-row:last-child{padding-bottom:0}
 .public-page .public-market-row h3{font-family:var(--on-serif);font-size:25px;letter-spacing:-.6px;font-weight:400}

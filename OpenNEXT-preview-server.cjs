@@ -51,10 +51,21 @@ const TERMINAL_HOST = (process.env.TERMINAL_HOST || '').toLowerCase();
 const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
 const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace');
 
+async function readDemoAdminBody(req) {
+  const fail = (status, message) => Object.assign(new Error(message), {status});
+  if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) throw fail(415, 'Use a JSON request.');
+  const chunks = []; let size = 0;
+  for await (const chunk of req) {size += chunk.length; if (size > 4096) throw fail(413, 'The request is too large.'); chunks.push(chunk);}
+  let input;
+  try {input = JSON.parse(Buffer.concat(chunks).toString('utf8'));} catch {throw fail(400, 'Invalid JSON request.');}
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail(400, 'Invalid request object.');
+  return input;
+}
+
 function createAppServer(options = {}) {
   const environment = options.env || process.env;
   const demoEnabled = environment.OPENNEXT_DEMO_ENABLED !== '0';
-  const demo = createDemoService({enabled:demoEnabled, secureCookies:options.secureCookies, trustProxy:environment.OPENNEXT_TRUST_PROXY === '1'});
+  const demo = options.demoService || createDemoService({enabled:demoEnabled, secureCookies:options.secureCookies, trustProxy:environment.OPENNEXT_TRUST_PROXY === '1'});
   const privateDataDir = options.dataDir || (options.env || process.env).OPENNEXT_DATA_DIR || (options.env || process.env).OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data');
   const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
   const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
@@ -69,7 +80,7 @@ function createAppServer(options = {}) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:demo\/|auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
+    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:demo\/|auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:demo\/marketplace(?:\/|\?|$)|marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
       res.writeHead(405, {Allow: 'GET, HEAD'});
       res.end('Method not allowed');
       return;
@@ -87,6 +98,25 @@ function createAppServer(options = {}) {
     const onTerminal = Boolean(TERMINAL_HOST) && host === TERMINAL_HOST;
     const onAdmin = Boolean(ADMIN_HOST) && host === ADMIN_HOST;
     const restrictAdmin = onTerminal || (Boolean(ADMIN_HOST) && !onAdmin);
+
+    if (pathname === '/api/admin/demo/marketplace' || pathname.startsWith('/api/admin/demo/marketplace/')) {
+      const send = (status, value) => {res.writeHead(status, {'Content-Type':'application/json; charset=utf-8'});res.end(req.method === 'HEAD' ? '' : JSON.stringify(value));};
+      const fail = (status, message) => Object.assign(new Error(message), {status});
+      try {
+        if (restrictAdmin || !demoEnabled) throw fail(404, 'Not found.');
+        const security = pricingRoute.security;
+        if (!security.authenticated(req)) throw fail(401, 'Administrator sign-in is required.');
+        if (!['GET', 'HEAD'].includes(req.method) && !security.sameOrigin(req) && !security.bearerAuthenticated(req)) throw fail(403, 'Origin not allowed.');
+        if (pathname === '/api/admin/demo/marketplace' && req.method === 'GET') {send(200, await demo.consoleSnapshot()); return;}
+        const match = pathname.match(/^\/api\/admin\/demo\/marketplace\/kyb\/(KYB-[A-F0-9]+)$/);
+        if (match && req.method === 'PATCH') {send(200, await demo.decideConsoleKyb(match[1], await readDemoAdminBody(req))); return;}
+        throw fail(404, 'Not found.');
+      } catch (error) {
+        const known = [400, 401, 403, 404, 409, 413, 415, 503].includes(error.status);
+        send(known ? error.status : 503, {error: known ? error.message : 'Demo submissions are temporarily unavailable.', demo: true, scope: 'demo'});
+        return;
+      }
+    }
 
     if(pathname==='/api/homepage/rfqs'){
       const allowedHost=!SITE_HOST||host===SITE_HOST||host==='www.'+SITE_HOST||onTerminal;

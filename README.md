@@ -7,8 +7,8 @@ Complete source for the current **OpenNEXT website / Capacity Terminal** and the
 Requires Node.js 20 or later. Public AWS On-demand and Vultr collection runs without third-party runtime dependencies or API keys. Authenticated collectors need server-side credentials; optional AWS Spot uses the AWS SDK.
 
 ```sh
-git clone https://github.com/Caliboy6/OPENNEXT.git
-cd OPENNEXT
+git clone https://github.com/vishwanetwork/OPENNEXT-DAVID.git
+cd OPENNEXT-DAVID
 npm start
 ```
 
@@ -42,7 +42,9 @@ The terminal includes searchable GPU model / region / GPU count filters, market 
 
 ### Operations Console
 
-The independent team interface includes overview, market datasets, advisory, orders, instances, schedules and execution history, platform-agent configuration, agent billing, user/supplier reviews and audit logs. Review, delivery, authorization and schedule actions persist within the browser.
+The independent team interface includes overview, market datasets, advisory, orders, instances, schedules and execution history, platform-agent configuration, agent billing, user/supplier reviews and audit logs. Some legacy dashboard modules remain browser-local previews. The RFQ/Supply inbox, KYB reviews, homepage approvals and contact inbox use protected server APIs.
+
+Terminal RFQs and supply submissions have durable server receipts and appear in Console immediately after saving, including supply awaiting Agent installation. The inbox supports search, market/status filters, full details and visible-page auto-refresh. A separate **Demo submissions** area supports isolated testing without adding guest records to the production marketplace. See [Terminal-to-Console integration](docs/TERMINAL_CONSOLE_SYNC.md) for endpoint contracts, retry behavior and backend handoff.
 
 **Price sources** (`/admin/#pricing`) manages 24 provider registrations in a searchable card grid. AWS and Vultr public collectors are connected. Lambda and Shadeform adapters are implemented and await server credentials. Other registrations document integration status and upstream APIs; they are not represented as connected. Manual runs, cadence/enable settings, actual run logs and cached price tables use the server API and survive a server restart. Credential inputs remain in server memory only.
 
@@ -56,7 +58,9 @@ See [all provider APIs](docs/PROVIDER_APIS.md) and [pricing operations / deploym
 | `OpenNEXT-original-homepage.js` / `.css` | Preserved landing-page content and visual system |
 | `OpenNEXT-home-listings.js` / `.css` | Three market-card carousels, dated price metadata and motion controls |
 | `OpenNEXT-gci-index-factory.html` | Homepage animation with bundled resources |
-| `OpenNEXT-auth.js` / `.css` | Authentication UI and local preview account flows |
+| `OpenNEXT-auth.js` / `.css`, `OpenNEXT-auth-service.cjs` | Authentication UI, verified-session adapters and onboarding |
+| `OpenNEXT-procurement.js`, `OpenNEXT-marketplace-service.cjs` | Submission forms, durable marketplace records and receipt/idempotency contracts |
+| `OpenNEXT-console-marketplace.js` / `.css` | Protected production and isolated Demo submission inboxes |
 | `OpenNEXT-terminal.js` / `.css` | Buyer, seller and broker workflows |
 | `OpenNEXT-market-data.js` | Browser client for real price/cache and legacy AWS history APIs |
 | `OpenNEXT-capacity-prices.cjs`, `OpenNEXT-capacity-chart.js` / `.css` | Server-only bot bridge, public fixed-tariff collector and live three-type GPU chart |
@@ -80,7 +84,7 @@ See [all provider APIs](docs/PROVIDER_APIS.md) and [pricing operations / deploym
 - Price-source administration has server-side access checks: direct localhost access, or a configured administrator token exchanged for a short-lived HttpOnly session over HTTPS. Terminal-host routing denies administrative APIs. This protects pricing operations only; the remaining preview Console does not have production identity/RBAC. Supplier approval, funding confirmation, SSH verification and agent execution remain demonstrations.
 - Pricing cache, raw source snapshots and observations persist in the private `.opennext-data` directory (excluded from Git and HTTP static serving). SMM settlement, supplier agents and production business-record storage are not connected.
 
-Before production, implement server-side identity/RBAC, tenant isolation, secure secret storage, authenticated supplier integrations, payment verification, durable audit logs, data licensing and operational monitoring. Do not expose this Console as a protected live admin service.
+Before production, complete identity adapters and administrator RBAC, shared transactional storage, secure secret storage, authenticated supplier integrations, payment verification, durable audit retention, data licensing and operational monitoring. Do not treat the legacy preview Console modules as completed production services.
 
 ## Verification
 
@@ -93,10 +97,4 @@ Checks cover syntax, site entry points and resource completeness, pricing units/
 
 ## Hosting
 
-The Node server runs both sites and the pricing API. Static hosting alone cannot run collectors, manage credentials or serve the Terminal price API; missing APIs show an unavailable state. Docker Compose mounts a persistent private pricing volume. This repository does not automatically deploy a production service or enable GitHub Pages.
-
-## 中文说明
-
-本仓库包含当前两个站点的完整运行代码：OpenNEXT 官网与交易 Terminal，以及独立的团队管理后台。安装 Node.js 20+ 后执行 `npm start` 即可同时启动，默认主站为 `http://127.0.0.1:4188/`，后台为 `http://127.0.0.1:4188/admin/`。
-
-定价部分已接入真实服务端采集与缓存：AWS 公开 On-demand、Vultr 公开目录；Lambda / Shadeform 待配置服务端密钥，AWS Spot 待 IAM 授权。后台 Price sources 可配置、采集、查日志与价格。历史只保留实际观测，不补造曲线。其余 OAuth、交付、SMM 结算与供应商 Agent 仍是待接入的演示流程。定价管理接口已有访问控制，但完整企业身份/RBAC 仍需建设。仓库不包含账户密钥和本地采集数据。
+The Node server runs both sites and their APIs. Static hosting alone cannot run collectors, persist submissions or serve protected Console data; missing APIs show an unavailable state. Docker Compose mounts private persistent storage. The manual GitHub Actions deployment workflow publishes the configured application image; deploying it does not configure OAuth, mail, payment or supplier-Agent providers. GitHub Pages is not used for the application backend.
