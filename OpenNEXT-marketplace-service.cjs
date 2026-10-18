@@ -21,12 +21,12 @@ function regionCountry(value){
 function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=null}={}) {
   if(!dataDir)throw Error('A private marketplace data directory is required.');
   const file=path.join(dataDir,'marketplace.json');
-  const fresh=()=>({version:2,rfqs:[],supplies:[],kyb:[],interests:[],instances:[],quotes:[],orders:[],notifications:[],audit:[]});
+  const fresh=()=>({version:2,rfqs:[],supplies:[],kyb:[],interests:[],instances:[],quotes:[],orders:[],notifications:[],audit:[],homepageReviews:[]});
   let pending=Promise.resolve(), loaded;
   const timestamp=()=>new Date(now()).toISOString();
   const uid=prefix=>prefix+'-'+crypto.randomBytes(8).toString('hex').toUpperCase();
-  async function read(){if(!loaded)loaded=(async()=>{try{const value=JSON.parse(await fs.readFile(file,'utf8'));if(value.version!==2)throw Error('Unsupported marketplace schema');for(const key of Object.keys(fresh()).filter(k=>k!=='version'))if(!Array.isArray(value[key]))throw Error('Invalid marketplace schema');return value;}catch(error){if(error.code==='ENOENT')return fresh();throw error;}})();return loaded;}
-  async function change(fn){const operation=pending.then(async()=>{const draft=clone(await read()),result=await fn(draft);await fs.mkdir(dataDir,{recursive:true});const temp=file+'.'+crypto.randomBytes(5).toString('hex')+'.tmp';try{await fs.writeFile(temp,JSON.stringify(draft),{mode:0o600,flag:'wx'});await fs.rename(temp,file);}catch(error){await fs.unlink(temp).catch(()=>{});throw error;}loaded=Promise.resolve(draft);return clone(result);});pending=operation.catch(()=>{});return operation;}
+  async function read(){if(!loaded)loaded=(async()=>{try{const value=JSON.parse(await fs.readFile(file,'utf8'));if(value.version!==2)throw Error('Unsupported marketplace schema');if(value.homepageReviews===undefined)value.homepageReviews=[];for(const key of Object.keys(fresh()).filter(k=>k!=='version'))if(!Array.isArray(value[key]))throw Error('Invalid marketplace schema');return value;}catch(error){if(error.code==='ENOENT')return fresh();throw error;}})();return loaded;}
+  async function change(fn){const operation=pending.then(async()=>{const draft=clone(await read()),result=await fn(draft);syncFeatured(draft);await fs.mkdir(dataDir,{recursive:true});const temp=file+'.'+crypto.randomBytes(5).toString('hex')+'.tmp';try{await fs.writeFile(temp,JSON.stringify(draft),{mode:0o600,flag:'wx'});await fs.rename(temp,file);}catch(error){await fs.unlink(temp).catch(()=>{});throw error;}loaded=Promise.resolve(draft);return clone(result);});pending=operation.catch(()=>{});return operation;}
   const authorized=user=>{if(!user?.id||!user.onboardingCompleted||!['buyer','seller'].includes(userRole(user)))throw fail(403,'Complete verified account onboarding first.');};
   const role=(user,required)=>{authorized(user);if(userRole(user)!==required.toLowerCase())throw fail(403,required+' account required.');};
   const owner=(rows,id,user)=>{const row=rows.find(r=>r.id===id);if(!row||row.ownerId!==user.id)throw fail(404,'Record not found.');return row;};
@@ -40,7 +40,62 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
   function bids(db,model){return new Set(db.interests.filter(i=>i.model===model&&now()-Date.parse(i.createdAt)<30*86400000).map(i=>i.buyerId)).size;}
   function publicRow(db,r,side){return {id:r.id,originSupply:side==='supply'?r.id:undefined,originRfq:side==='demand'?r.id:undefined,kind:({gpu_rental:'rental',model_capacity:'model',physical_gpu:'hardware'})[r.kind],side,model:r.model,title:r.title||r.name||r.model,region:r.region,count:r.count,hours:r.hours,term:r.term,price:side==='supply'?r.buyerPrice:r.budget,buyerPrice:side==='supply'?r.buyerPrice:undefined,priceLabel:side==='supply'?'Buyer price':'Maximum buyer price',description:r.notes||'',provider:side==='supply'?(kybFor(db,r.ownerId)?.company||'Verified supplier'):'Verified buyer',urgency:r.urgency||'Standard',status:r.status,created:r.createdAt,start:r.start||r.serviceStart,serviceEnd:r.serviceEnd,quoteDeadline:r.quoteDeadline,biddingParties:bids(db,r.model),serverRecord:true,sample:false};}
   function suspendUnsafeResales(db){for(const s of db.supplies.filter(s=>s.resaleOf&&s.status==='Published')){const i=db.instances.find(i=>i.id===s.resaleOf),t=i?.telemetry;if(!i||!t||now()-Date.parse(t.observedAt)>120000||Date.parse(t.observedAt)>now()+5000||Number(t.utilizationPercent)>=95||Date.parse(i.serviceEnd)<=now()){s.status='Paused';s.pauseReason='Fresh utilization below 95% and active service are required.';}}}
-  async function publicMarket(){return change(db=>{suspendUnsafeResales(db);const rfqs=db.rfqs.filter(r=>liveRfq(r)&&r.visibility!=='Private RFQ').map(r=>publicRow(db,r,'demand'));const supplies=db.supplies.filter(liveSupply).map(r=>publicRow(db,r,'supply'));const rank=m=>{const value=modelOrder.findIndex(n=>m.toUpperCase().includes(n));return value<0?999:value;};function top(rows,ascending){const map=new Map();for(const r of rows.filter(r=>r.kind==='rental'))if(!map.has(r.model)||(ascending?r.price<map.get(r.model).price:r.price>map.get(r.model).price))map.set(r.model,r);return [...map.values()].sort((a,b)=>rank(a.model)-rank(b.model)||a.model.localeCompare(b.model));}return {rfqs,supplies,featured:{rfqs:top(rfqs,false),supplies:top(supplies,true)},updatedAt:timestamp()};});}
+  const rankModel=model=>{const upper=String(model).toUpperCase(),rank=modelOrder.findIndex(name=>upper.includes(name));return rank<0?999:rank;};
+  const compareModel=(a,b)=>rankModel(a.model)-rankModel(b.model)||a.model.localeCompare(b.model);
+  function featuredWinners(db){
+    const select=(rows,side)=>{
+      const map=new Map();
+      for(const row of rows.filter(row=>row.kind==='gpu_rental')){
+        const price=side==='supply'?row.netPrice:row.budget,old=map.get(row.model);
+        const oldPrice=old&&(side==='supply'?old.netPrice:old.budget);
+        if(!old||(side==='supply'?price<oldPrice:price>oldPrice)||(price===oldPrice&&row.id.localeCompare(old.id)<0))map.set(row.model,row);
+      }
+      return [...map.values()].sort(compareModel).map(row=>({row,side}));
+    };
+    return [...select(db.rfqs.filter(row=>liveRfq(row)&&row.visibility!=='Private RFQ'),'demand'),...select(db.supplies.filter(liveSupply),'supply')];
+  }
+  function featuredMaterial(db,row,side){
+    const fields=['id','ownerId','kind','model','title','name','region','count','hours','term','notes','budget','netPrice','buyerPrice','markupPercent','start','serviceStart','serviceEnd','quoteDeadline','urgency','visibility','network','storage','image','sla','deliveryMethod','condition','incoterms','warranty','resaleOf'];
+    const material={side,provider:side==='supply'?(kybFor(db,row.ownerId)?.company||'Verified supplier'):'Verified buyer'};
+    for(const field of fields)material[field]=row[field]??null;
+    return material;
+  }
+  function syncFeatured(db){
+    suspendUnsafeResales(db);
+    const selected=featuredWinners(db).map(({row,side})=>{
+      const material=featuredMaterial(db,row,side),fingerprint=crypto.createHash('sha256').update(JSON.stringify(material)).digest('hex');
+      return {row,side,fingerprint};
+    });
+    for(const review of db.homepageReviews.filter(review=>review.current)){
+      if(!selected.some(item=>item.row.id===review.sourceId&&item.side===review.side&&item.fingerprint===review.fingerprint)){
+        review.current=false;review.retiredAt=timestamp();
+        log(db,'Homepage candidate superseded','Marketplace selection',review.id);
+      }
+    }
+    for(const {row,side,fingerprint} of selected){
+      if(db.homepageReviews.some(review=>review.current&&review.sourceId===row.id&&review.side===side&&review.fingerprint===fingerprint))continue;
+      const snapshot={...publicRow(db,row,side),ownerEmail:row.ownerEmail,netPrice:side==='supply'?row.netPrice:undefined,project:row.project,network:row.network,storage:row.storage,sla:row.sla};
+      const review={id:uid('HPR'),sourceId:row.id,side,model:row.model,fingerprint,snapshot,status:'Pending',current:true,submittedAt:timestamp()};
+      db.homepageReviews.unshift(review);log(db,'Homepage candidate awaiting review','Marketplace selection',review.id);
+    }
+    return selected;
+  }
+  async function publicMarket(){return change(db=>{
+    const winners=syncFeatured(db),rfqs=db.rfqs.filter(row=>liveRfq(row)&&row.visibility!=='Private RFQ').map(row=>publicRow(db,row,'demand')),supplies=db.supplies.filter(liveSupply).map(row=>publicRow(db,row,'supply'));
+    const approvedRows=side=>winners.filter(item=>item.side===side&&db.homepageReviews.some(review=>review.current&&review.status==='Approved'&&review.sourceId===item.row.id&&review.fingerprint===item.fingerprint)).map(item=>publicRow(db,item.row,side));
+    return {rfqs,supplies,featured:{rfqs:approvedRows('demand'),supplies:approvedRows('supply')},updatedAt:timestamp()};
+  });}
+  async function decideFeatured(id,input,operator='Administrator'){return change(db=>{
+    syncFeatured(db);
+    const review=db.homepageReviews.find(review=>review.id===id);
+    if(!review)throw fail(404,'Homepage candidate not found.');
+    if(!review.current||input.fingerprint!==review.fingerprint)throw fail(409,'This candidate has changed or is no longer the selected market price. Refresh before reviewing.');
+    if(!['Approved','Rejected'].includes(input.status))throw fail(400,'Choose Approve or Reject.');
+    if(review.status===input.status)throw fail(409,'This review already has that decision.');
+    review.reason=text(input.reason,2000,input.status==='Rejected');review.status=input.status;review.reviewedAt=timestamp();review.reviewedBy=text(operator,160,true);
+    log(db,'Homepage candidate '+review.status,review.reviewedBy,review.id);
+    return review;
+  });}
   function qualifies(s,r){return s.model===r.model&&s.region===r.region&&s.term===r.term&&s.count>=r.count&&s.hours>=r.hours&&s.buyerPrice<=r.budget&&Date.parse(s.serviceStart)<=Date.parse(r.start)&&Date.parse(s.serviceEnd)>=Date.parse(r.start)+r.hours*3600000;}
   function instanceView(db,user){
     return db.instances.filter(i=>i.ownerId===user.id||i.sellerId===user.id).map(i=>{
@@ -73,8 +128,8 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
   async function resell(user,id,input){role(user,'Buyer');return change(db=>{suspendUnsafeResales(db);const i=owner(db.instances,id,user),t=i.telemetry;if(i.resaleAllowed!==true)throw fail(409,'Your purchase does not grant resale rights.');if(i.paymentStatus!=='Paid'||i.status!=='Running')throw fail(409,'Only purchased, active capacity can be resold.');if(!t||now()-Date.parse(t.observedAt)>120000||Date.parse(t.observedAt)>now()+5000)throw fail(409,'Fresh verified telemetry is required before resale.');if(number(t.utilizationPercent,0,100)>=95)throw fail(409,'Resale is unavailable at or above 95% GPU utilization.');const existing=db.supplies.filter(s=>s.resaleOf===i.id&&['Published','Awaiting agent','Reserved'].includes(s.status)).reduce((n,s)=>n+s.count,0),count=number(input.count,1,Math.max(0,Number(t.idleGpuCount)-existing),true),hours=number(input.hours,1,26280,true);if(now()+hours*3600000>Date.parse(i.serviceEnd))throw fail(409,'Resale cannot exceed the purchased service window.');const netPrice=number(input.rate,0.000001,1e9),r={id:uid('SUP'),ownerId:user.id,ownerEmail:user.email,kind:'gpu_rental',model:i.model,region:i.region,term:i.term||'On-demand',title:i.model+' unused capacity',count,hours,netPrice,buyerPrice:round(netPrice*1.05),markupPercent:5,resaleOf:i.id,serviceStart:timestamp(),serviceEnd:new Date(now()+hours*3600000).toISOString(),agentStatus:'Succeeded',status:'Published',createdAt:timestamp(),serverRecord:true};db.supplies.push(r);log(db,'Verified idle capacity listed for resale',user.id,r.id);return r;});}
   async function telemetry(input){return change(db=>{const i=db.instances.find(i=>i.id===input.instanceId);if(!i)throw fail(404,'Instance not found.');const observedAt=date(input.observedAt);if(Math.abs(now()-Date.parse(observedAt))>120000)throw fail(400,'Telemetry is stale.');if(i.telemetry&&Date.parse(i.telemetry.observedAt)>Date.parse(observedAt))throw fail(409,'Telemetry must move forward in time.');i.telemetry={utilizationPercent:number(input.utilizationPercent,0,100),idleGpuCount:number(input.idleGpuCount,0,i.count,true),observedAt};suspendUnsafeResales(db);return {ok:true};});}
   async function recent(days=3){if(days>3)throw fail(402,'Contact sales to access settlements older than three days.');await pending;const db=await read();return clone(db.orders.filter(o=>o.status==='Completed'&&o.settledAt&&now()-Date.parse(o.settledAt)<=days*86400000).map(o=>({id:o.id,model:o.model,region:o.region,term:o.term,count:o.count,hours:o.hours,price:o.unitPrice,provider:'Settled transaction',settledAt:o.settledAt,serverRecord:true})));}
-  async function admin(){await pending;const db=await read();return clone({rfqs:db.rfqs,supplies:db.supplies.map(({sshHost,sshUser,...s})=>({...s,sshConfigured:!!sshHost})),kyb:db.kyb,audit:db.audit.slice(0,200)});}
-  return {publicMarket,mine,best,submitKyb,decideKyb,saveRfq,createSupply,requestAgent,agentResult,quoteInterest,submitQuote,decideQuote,instances,resell,telemetry,recent,admin};
+  async function admin(){return change(db=>{syncFeatured(db);return {rfqs:db.rfqs,supplies:db.supplies.map(({sshHost,sshUser,...s})=>({...s,sshConfigured:!!sshHost})),kyb:db.kyb,featured:db.homepageReviews.slice().sort((a,b)=>Number(b.current)-Number(a.current)||compareModel(a,b)||b.submittedAt.localeCompare(a.submittedAt)),audit:db.audit.slice(0,200)};});}
+  return {publicMarket,mine,best,submitKyb,decideKyb,saveRfq,createSupply,requestAgent,agentResult,quoteInterest,submitQuote,decideQuote,instances,resell,telemetry,recent,admin,decideFeatured};
 }
 function createMarketplaceRouter(service,{auth,security,env=process.env}={}) {
   const send=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
@@ -86,7 +141,7 @@ function createMarketplaceRouter(service,{auth,security,env=process.env}={}) {
       if(p==='/api/marketplace/public'&&req.method==='GET'){send(res,200,await service.publicMarket());return true;}
       if(p==='/api/marketplace/settlements'&&req.method==='GET'){send(res,200,{rows:await service.recent(number(url.searchParams.get('days')||3,1,365,true))});return true;}
       if(p.startsWith('/api/internal/marketplace/')){if(!internal(req))throw fail(401,'Integration authorization required.');if(req.method!=='POST')throw fail(405,'Method not allowed.');const input=await body(req);const match=p.match(/^\/api\/internal\/marketplace\/supplies\/(SUP-[A-F0-9]+)\/agent$/);if(match)send(res,200,await service.agentResult(match[1],input));else if(p==='/api/internal/marketplace/telemetry')send(res,200,await service.telemetry(input));else throw fail(404,'Not found.');return true;}
-      if(p.startsWith('/api/admin/marketplace')){if(onTerminal)throw fail(404,'Not found.');if(!security?.authenticated(req))throw fail(401,'Administrator sign-in is required.');if(req.method!=='GET'&&!security.sameOrigin(req)&&!security.bearerAuthenticated(req))throw fail(403,'Origin not allowed.');if(p==='/api/admin/marketplace'&&req.method==='GET'){send(res,200,await service.admin());return true;}const m=p.match(/^\/api\/admin\/marketplace\/kyb\/(KYB-[A-F0-9]+)$/);if(m&&req.method==='PATCH'){send(res,200,await service.decideKyb(m[1],await body(req)));return true;}throw fail(404,'Not found.');}
+      if(p.startsWith('/api/admin/marketplace')){if(onTerminal)throw fail(404,'Not found.');if(!security?.authenticated(req))throw fail(401,'Administrator sign-in is required.');if(req.method!=='GET'&&!security.sameOrigin(req)&&!security.bearerAuthenticated(req))throw fail(403,'Origin not allowed.');if(p==='/api/admin/marketplace'&&req.method==='GET'){send(res,200,await service.admin());return true;}const m=p.match(/^\/api\/admin\/marketplace\/kyb\/(KYB-[A-F0-9]+)$/);if(m&&req.method==='PATCH'){send(res,200,await service.decideKyb(m[1],await body(req)));return true;}const featured=p.match(/^\/api\/admin\/marketplace\/featured\/(HPR-[A-F0-9]+)$/);if(featured&&req.method==='PATCH'){send(res,200,await service.decideFeatured(featured[1],await body(req)));return true;}throw fail(404,'Not found.');}
       const user=await auth?.authenticate(req);if(!user)throw fail(401,'Sign in with a verified account.');if(req.method!=='GET'&&!auth.checkCsrf(req,user))throw fail(403,'The session or request origin is invalid. Refresh and try again.');
       if(p==='/api/marketplace/me'&&req.method==='GET')send(res,200,await service.mine(user));
       else if(p==='/api/marketplace/matches'&&req.method==='GET')send(res,200,await service.best(user,Object.fromEntries(url.searchParams)));

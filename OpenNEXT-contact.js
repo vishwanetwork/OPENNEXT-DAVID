@@ -2,7 +2,7 @@
   'use strict';
   let dialog = null;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
-  function open() {
+  function open(options={}) {
     if (dialog?.open) {dialog.focus(); return;}
     const trigger = document.activeElement;
     const current = document.createElement('dialog'); dialog = current;
@@ -10,6 +10,7 @@
     current.setAttribute('aria-labelledby', 'on-contact-heading');
     current.setAttribute('aria-describedby', 'on-contact-intro');
     current.innerHTML = `<header><div><h2 id="on-contact-heading">Let's talk capacity.</h2><p id="on-contact-intro">Tell us what you need. Our team will help you find the right next step.</p></div><button type="button" class="on-contact-close" aria-label="Close contact form">×</button></header><form class="on-contact-form"><div class="on-contact-grid"><label>Name<input name="name" autocomplete="name" required maxlength="100" placeholder="Your name"></label><label>Company<input name="company" autocomplete="organization" required maxlength="160" placeholder="Company name"></label><label>Title<input name="title" autocomplete="organization-title" required maxlength="100" placeholder="Your role"></label><label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@company.com"></label></div><label>How can we help?<textarea name="message" required maxlength="4000" rows="5" placeholder="Share your resource needs, timeline, or partnership ideas."></textarea></label><div class="on-contact-honey" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div><p class="on-contact-notice">Your details will be used by OpenNEXT to respond to this request. Please do not include passwords, API keys or payment details.</p><p class="on-contact-error" role="alert" hidden></p><footer><span>Capacity. Partnerships. Possibilities.</span><button type="submit" class="on-contact-submit">Submit request <span aria-hidden="true">↗</span></button></footer></form>`;
+    if(typeof options.message==='string')current.querySelector('[name="message"]').value=options.message.slice(0,4000);
     document.body.append(current);
     current.showModal();
     current.querySelector('input').focus();

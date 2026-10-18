@@ -195,7 +195,7 @@ test('AWS change history covers 90 days, reduces zones at each change and persis
   let service = make();
   await service.sync();
   const azure = service.query({gpuModel: 'A100', gpuCount: 1, gpuMemoryGb: 80, region: 'us-east-1', period: '3M'});
-  assert.equal(azure.points[0].time, '2026-07-18T12:00:00.000Z');
+  assert.equal(azure.points[0].time, '2026-07-18T12:05:00.000Z');
   assert(TERMS_PRESENT(azure.points[0]));
   service.query({gpuModel: 'A10G', gpuCount: 1, period: '3M'});
   await service.settled();
@@ -218,6 +218,28 @@ test('AWS change history covers 90 days, reduces zones at each change and persis
 });
 
 const TERMS_PRESENT = point => ['Spot', 'On-demand', 'Reserved'].every(term => point.values[term].value !== null);
+
+test('3D bucket timestamps and duration weighting stay within the exact requested window', async t => {
+  const directory=temp(t),now=Date.parse('2026-10-18T12:07:00.000Z'),from=now-3*86400000;
+  const {fetchImpl}=fixture({clock:()=>now,spotEvents:params=>{
+    const items=[
+      {availability_zone:'a',effective_at:new Date(from-86400000).toISOString(),price_hourly:'1'},
+      {availability_zone:'a',effective_at:new Date(from+60000).toISOString(),price_hourly:'9'},
+    ];
+    return {kind:'price_change_events',unit:'USD / instance-hour',total:items.length,items,coverage:{since:params.get('since'),until:params.get('until')}};
+  }});
+  const service=createCapacityPriceService({env:config,dataDir:directory,fetchImpl,clock:()=>now});
+  t.after(()=>service.close());await service.sync();
+  const query=()=>service.query({gpuModel:'A10G',gpuCount:1,region:'us-west-2',period:'3D'});
+  query();await service.settled();
+  const result=query();
+  assert.equal(result.points[0].time,new Date(from).toISOString());
+  assert.equal(result.points[0].values.Spot.min,1);
+  assert.equal(result.points[0].values.Spot.max,9);
+  assert.equal(result.points[0].values.Spot.avg,8);
+  assert.ok(result.points.every(point=>Date.parse(point.time)>=from&&Date.parse(point.time)<=now));
+  assert.equal(result.meta.bucketMinutes,15);
+});
 
 test('bot list prices supply On-demand and one-year no-upfront Reserved with their effective dates', async t => {
   const directory = temp(t);

@@ -70,10 +70,14 @@ test('ticker history, capacity history and contact collection coexist with share
   const ticker = await request('/api/pricing/ticker');
   assert.equal(ticker.status, 200);
   assert(ticker.json().records.length > 0);
-  const comparison = await request('/api/pricing/capacity-history?gpuModel=H100&gpuCount=8&period=1M');
+  const comparison = await request('/api/pricing/capacity-history?gpuModel=H100&gpuCount=8&period=3D');
   assert.equal(comparison.status, 200);
   assert.deepEqual(comparison.json().terms, ['Spot', 'On-demand', 'Reserved']);
   assert.equal(calls.capacityQueries[0].gpuModel, 'H100');
+  for (const period of ['1W','1M','3M']) {
+    const blocked=await request('/api/pricing/capacity-history?gpuModel=H100&period='+period);
+    assert.equal(blocked.status,403);assert.equal(blocked.json().code,'HISTORY_ACCESS_REQUIRED');
+  }
   const contact = await request('/api/contact', {method: 'POST', headers: {Origin: 'https://site.test'}, body: {name: 'Test Buyer', company: 'Fixture', title: 'Buyer', email: 'buyer@example.test', message: 'GPU capacity'}});
   assert.equal(contact.status, 201);
   assert.equal(calls.leads.length, 1);

@@ -7,11 +7,11 @@
   stored=Object.fromEntries(['model','region','priceMetric'].filter(k=>k in stored).map(k=>[k,stored[k]]));
   // Identity is provided by a verified server session.
 
-  // Every visit starts at one month; chart ranges remain session-local.
+  // Free history starts at three days; longer periods require a sales request.
   delete stored.period;
   // Every visit also starts at Spot with 8 GPUs; filter changes apply to the current visit.
   delete stored.term;delete stored.count;
-  const S={auth:false,identity:{name:'',email:''},role:'Buyer',view:'landing',route:'market',model:'H100',region:'All regions',term:'Spot',count:8,period:'1M',priceMetric:'avg',cart:[],saved:[],rfqs:[],instances:[],listings:[],review:{step:0,status:'Not started'},balance:0,promotionalCredit:0,ledger:[],keys:[],orders:[],notifications:[],responses:[],...stored,menu:null,userOpen:false,modal:null,agentOpen:false,agentMessages:[],offerIndex:{},selected:[],hiddenSeries:[],matchOffset:0,query:'',tab:'all',marketRoute:'market',pendingListing:null};
+  const S={auth:false,identity:{name:'',email:''},role:'Buyer',view:'landing',route:'market',model:'H100',region:'All regions',term:'Spot',count:8,period:'3D',priceMetric:'avg',cart:[],saved:[],rfqs:[],instances:[],listings:[],review:{step:0,status:'Not started'},balance:0,promotionalCredit:0,ledger:[],keys:[],orders:[],notifications:[],responses:[],...stored,menu:null,userOpen:false,modal:null,agentOpen:false,agentMessages:[],offerIndex:{},selected:[],hiddenSeries:[],matchOffset:0,query:'',tab:'all',marketRoute:'market',pendingListing:null};
   window.OpenNEXTExchange?.init(S); window.OpenNEXTBilling?.init(S);
   function context(){return {S,esc,money,persist,render,open,toast,go};}
   const routes=['market','models','rfqs','supply','instances','billing','credentials','saved','cart','profile','settings','help','mandates'];
@@ -97,7 +97,7 @@
   function chart(){
     if(window.OpenNEXTHistory){chartInfo=null;return window.OpenNEXTHistory.render(S);}
     const data=D.chartSeries(S),colors=['#2c5c42','#7592ac','#bb995f'];
-    const controls=`<div class="chart-head"><div class="periods">${['1D','1W','1M','3M'].map(p=>`<button class="period ${S.period===p?'active':''}" data-act="period" data-value="${p}">${p}</button>`).join('')}</div><span class="chart-unit">AWS · USD / GPU-hour · ${esc(S.term)}</span></div>`;
+    const controls=`<div class="chart-head"><div class="periods">${['1D','3D','1W','1M','3M'].map(p=>`<button class="period ${S.period===p?'active':''}" data-act="period" data-value="${p}">${p}</button>`).join('')}</div><span class="chart-unit">AWS · USD / GPU-hour · ${esc(S.term)}</span></div>`;
     if(!data.series.length){chartInfo=null;return controls+`<div class="aws-history-empty"><span class="eyebrow">AWS PRICE OBSERVATIONS</span><h3>${S.term==='Spot'?'AWS Spot access is not connected':data.meta?.status==='loading'?'Loading AWS observations…':'No AWS observations for this selection'}</h3><p>${esc(data.meta?.message||'The requested GPU configuration has no collected AWS prices. No history is generated to fill the gap.')}</p><div class="row">${S.term!=='On-demand'?button('View On-demand','select-filter','data-type="term" data-value="On-demand"','secondary small'):''}${button('Refresh data','refresh-prices','','secondary small')}</div></div>`;}
     const series=data.series.map((s,i)=>({...s,color:colors[i],values:s.points.map(p=>({...p,time:new Date(p.time).getTime()}))}));
     const visible=series.filter((s,i)=>!S.hiddenSeries.includes(i)),prices=visible.flatMap(s=>s.values.map(p=>p.value)),times=series.flatMap(s=>s.values.map(p=>p.time));
@@ -164,6 +164,36 @@
   }
   window.openNEXTPreviewTicker=ticker;
   function agent(){return `<aside class="agent-drawer ${S.agentOpen?'open':''}" id="agentDrawer"><div class="drawer-head"><div><strong>OpenNEXT Agent</strong><small>Capacity procurement assistant</small></div><button class="icon-btn" data-act="agent-close" aria-label="Close agent">×</button></div><div class="drawer-body" id="agentMessages"><div class="bubble">Tell me the model, region, start time and budget. I can compare suppliers, explain trade-offs and prepare a quote request for your review.</div>${S.agentMessages.map(m=>`<div class="bubble ${m.role==='user'?'user':''}">${esc(m.text).replace(/\n/g,'<br>')}</div>`).join('')}<div class="quick">${['Find the lowest Spot price','Compare best matches','Draft an 8-GPU RFQ'].map(q=>`<button data-act="agent-prompt" data-value="${q}">${q}</button>`).join('')}</div></div><form class="composer" data-form="agent"><input name="message" id="agentInput" placeholder="Ask about capacity…" required><button aria-label="Send message">↑</button></form></aside>`;}
+  let agentHint=null;
+  const robotMark='<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 9V5" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="4" r="2.5" fill="#95d1ac"/><rect x="9" y="11" width="30" height="27" rx="10" fill="#e7f2e9" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="17" width="20" height="12" rx="5" fill="#234d36"/><circle cx="20" cy="23" r="2" fill="#a8e5c0"/><circle cx="28" cy="23" r="2" fill="#a8e5c0"/><path d="M20 33h8M5 21v8m38-8v8M16 40v4m16-4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  function agentHintContent(){
+    if(!agentHint)return '';
+    const seller=S.role==='Seller',matching=agentHint.kind==='match';
+    const prompt=matching?(seller?'Would you like to respond to this buyer now?':'Would you like to order this capacity now?'):(seller?'Would you like to list capacity in this price range?':'Would you like to order within this price range?');
+    const context=agentHint.model+(Number.isFinite(agentHint.price)?' · '+money(agentHint.price)+' / GPU-hour':'');
+    return `<button class="agent-hint-dismiss" data-act="agent-hint-dismiss" aria-label="Dismiss suggestion">×</button><small>OPENNEXT AGENT</small><p>${prompt}</p><span>${esc(context)}</span><button class="agent-hint-action" data-act="agent-hint-action">${matching?(seller?'Review RFQ':'Review capacity'):(seller?'Prepare supply':'Prepare RFQ')} <span aria-hidden="true">→</span></button>`;
+  }
+  function companion(){
+    if(S.agentOpen||S.modal)return '';
+    if(agentHint&&(agentHint.model!==S.model||agentHint.role!==S.role||S.route!=='market'))agentHint=null;
+    return `<aside class="agent-companion" aria-label="OpenNEXT procurement assistant"><div class="agent-context-hint" id="agentContextHint" ${agentHint?'':'hidden'}>${agentHintContent()}</div><button class="agent-companion-launch" data-act="agent-open" aria-label="Open AI Agent">${robotMark}<i aria-hidden="true"></i></button></aside>`;
+  }
+  function suggestAgent(hint){
+    if(S.view!=='terminal'||S.route!=='market'||S.agentOpen||S.modal)return;
+    agentHint={...hint,model:S.model,role:S.role};
+    const box=document.getElementById('agentContextHint');if(box){box.innerHTML=agentHintContent();box.hidden=false;}
+  }
+  function contextualAgent(event){
+    const target=event.target;if(!target?.closest)return;
+    const card=target.closest('[data-match-id]');
+    if(card&&card.closest('[data-match-kind="best"]')){
+      const listing=window.OpenNEXTExchange?.get(card.dataset.matchId);
+      if(listing&&listing.model===S.model)suggestAgent({kind:'match',id:listing.id,side:listing.side,price:listing.price});
+    }else if(target.closest('.regional-price-plot,.capacity-plot,.chart-wrap')&&agentHint?.kind!=='chart')suggestAgent({kind:'chart'});
+  }
+  document.addEventListener('pointerover',contextualAgent);
+  document.addEventListener('focusin',contextualAgent);
+  window.addEventListener('opennext:pricehover',event=>{if(event.detail?.model===S.model)suggestAgent({kind:'chart',...event.detail});});
   function modelRFQForm(sku){
     const quotes=modelQuotes(),q=findModelQuote(sku)||quotes[0];if(!q)return empty('Model quotes are not available','Close this window and try again when supplier quotes have loaded.');
     const title=q.name+' capacity request';
@@ -177,6 +207,7 @@
   }
   function modalShell(title,body,wide=false,eyebrow='OPENNEXT WORKSPACE'){return `<div class="overlay" data-dismiss="modal"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><header class="modal-head"><div><span class="eyebrow muted">${eyebrow}</span><h2>${esc(title)}</h2></div><button class="icon-btn" data-act="close-modal" aria-label="Close dialog">×</button></header><div class="modal-body">${body}</div></section></div>`;}
   function modal(){if(!S.modal)return '';const custom=window.OpenNEXTPayments?.modal(context(),S.modal.type,S.modal)||window.OpenNEXTInstances?.modal(context(),S.modal.type,S.modal)||window.OpenNEXTBilling?.modal(context(),S.modal.type,S.modal)||window.OpenNEXTProcurement?.modal(context(),S.modal.type,S.modal);if(custom)return modalShell(custom.title,custom.body,!!custom.wide);const {type}=S.modal,o=S.modal.offer||findOffer(S.modal.id),r=S.modal.requirement||S.rfqs.find(r=>r.id===S.modal.id),i=S.instances.find(i=>i.id===S.modal.id);let body='',title='';
+    if(type==='history-access')return modalShell('More market history',`<p class="form-note">Free historical data is limited to 3 days. Contact Sales for access to more history.</p><div class="modal-footer">${button('Back to chart','close-modal','','secondary')}${button('Contact Sales','history-contact')}</div>`);
     if(type==='model-rfq-form'){const q=findModelQuote(S.modal.sku)||modelQuotes()[0];const request=q&&window.OpenNEXTProcurement?.modal(context(),'rfq-form',{prefill:{kind:'model_capacity',model:q.name,sku:q.sku}});return modalShell('Request model capacity',request?modelRateSummary(q)+request.body:'<p>Model request submission is currently unavailable. Please refresh.</p>',true,'MODEL CAPACITY REQUEST');}
     if(type==='model-rfq')return modalShell(r?.title||'Model capacity request',modelRFQRecord(r),true,'MODEL CAPACITY REQUEST');
     if(type==='detail'){
@@ -207,7 +238,7 @@
     return modalShell(title,body,['rfq','compare','review'].includes(type));
   }
   function open(type,extra={}){S.modal={type,...extra};closeMenu();S.userOpen=false;root.querySelector('.user-pop')?.remove();root.querySelector('.user-button')?.setAttribute('aria-expanded','false');renderOverlays();}
-  function renderOverlays(){overlays.innerHTML=(S.view==='terminal'?agent():'')+modal();if(S.modal)document.body.style.overflow='hidden';else document.body.style.overflow='';bindOverlays();}
+  function renderOverlays(){overlays.innerHTML=(S.view==='terminal'?agent()+companion():'')+modal();if(S.modal)document.body.style.overflow='hidden';else document.body.style.overflow='';bindOverlays();}
   function applySession(user){
     if((S.user?.id||null)!==(user?.id||null)){
       for(const field of ['cart','saved','rfqs','instances','listings','orders','notifications','responses','ledger','payouts','paymentSessions','keys','agentMessages','selected'])S[field]=[];
@@ -254,7 +285,16 @@
     case 'switch-market':if(['market','models'].includes(value)){go(value);document.querySelector('[data-act="market-menu"]')?.focus();}break;
     case 'filter':S.menu=S.menu===b.dataset.type?null:b.dataset.type;render();if(['model','region','count'].includes(S.menu))document.getElementById(S.menu+'Search')?.focus();break;
     case 'select-filter':S[b.dataset.type]=b.dataset.type==='count'?Number(value):value;S.menu=null;S.hiddenSeries=[];persist();render();if(['model','region'].includes(b.dataset.type))refreshWorkspace();break;
-    case 'period':S.period=value;S.hiddenSeries=[];render();break;
+    case 'period':if(['1W','1M','3M'].includes(value)){open('history-access');break;}if(!['1D','3D'].includes(value))break;S.period=value;S.hiddenSeries=[];render();break;
+    case 'history-contact':S.modal=null;renderOverlays();window.OpenNEXTContact?.open({message:'I would like access to more than 3 days of '+S.model+' GPU price history.'});break;
+    case 'agent-hint-dismiss':agentHint=null;document.getElementById('agentContextHint')?.setAttribute('hidden','');break;
+    case 'agent-hint-action':{
+      const hint=agentHint;if(!hint||hint.model!==S.model||hint.role!==S.role)break;
+      if(hint.kind==='match')window.OpenNEXTProcurement?.opportunity(context(),hint.id,hint.side==='demand'?'offer':'buy');
+      else if(S.role==='Seller')perform('new-supply',{dataset:{}});
+      else open('rfq-form',{prefill:{model:S.model,region:window.OpenNEXTExchange?.regionCountry?.(hint.region||S.region)||'',count:S.count,term:S.term,budget:Number.isFinite(hint.price)?hint.price:undefined,notes:'Reference price range: '+(Number.isFinite(hint.min)?money(hint.min):'To confirm')+' – '+(Number.isFinite(hint.max)?money(hint.max):'To confirm')+' per GPU-hour. Confirm the current executable quote before purchase.'}});
+      break;
+    }
     case 'series':{const n=Number(b.dataset.index);if(S.hiddenSeries.includes(n))S.hiddenSeries=S.hiddenSeries.filter(x=>x!==n);else if(S.hiddenSeries.length<Math.max(0,(chartInfo?.series.length||1)-1))S.hiddenSeries.push(n);render();break;}
     case 'refresh-matches':S.matchOffset+=3;document.querySelectorAll('.match-viewport').forEach(v=>{const kind=v.dataset.scroll;v.outerHTML=(new DOMParser()).parseFromString(matches(kind,currentOffers()),'text/html').querySelector('.match-viewport').outerHTML;});toast('Matched resources refreshed');break;
     case 'sources':open('sources');break;

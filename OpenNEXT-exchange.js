@@ -125,7 +125,7 @@ function regionCountry(value){
     S.ledger.unshift({id:paymentId,paymentReference:paymentId,orderId:order.id,type:'Capacity purchase',amount:-order.total,date:at,createdAt:at,role:S.role,side:'buy',status:'Completed',test:true});
     notify(S,'Seller','Payment confirmed',`${order.id} is funded. Prepare delivery.`,{supplier:order.provider,orderId:order.id});return true;
   }
-  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best:()=>bestRows,recent:()=>recentRows};
+  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best:()=>bestRows,recent:()=>recentRows};
   scope.OpenNEXTExchange=exposed;
   if(typeof module!=='undefined')module.exports=exposed;
 })(typeof window!=='undefined'?window:globalThis);

@@ -237,3 +237,37 @@ test('broker commission remains positive and seller example metrics also use neg
   S.role='Seller';S.billingUI.sample=true;
   assert.ok(Billing.analytics(S).sums.commission<0);
 });
+
+test('daily table with no spending keeps one current row and a blank history state', () => {
+  const {S,ctx} = fixture();
+  S.billingUI.from='2026-10-01';S.billingUI.to='2026-10-18';
+  const page=Billing.page(ctx);
+  const daily=page.match(/class="table-scroll bill-daily-scroll"[\s\S]*?<\/table>/)[0];
+  assert.match(daily, /2026-10-18/);
+  assert.doesNotMatch(daily, /2026-10-17|2026-10-01/);
+  assert.match(daily, /No spent history yet/);
+  assert.equal((daily.match(/<tr/g)||[]).length,3);
+  assert.equal(Billing.analytics(S).rows.length,18);
+  assert.deepEqual(S.ledger,[]);
+});
+
+test('seller and broker empty daily histories preserve their role-specific columns', () => {
+  const {S,ctx}=fixture({role:'Seller'});
+  let daily=Billing.page(ctx).match(/class="table-scroll bill-daily-scroll"[\s\S]*?<\/table>/)[0];
+  assert.match(daily, /Earnings/);assert.match(daily, /Commission paid/);assert.match(daily, /No earnings history yet/);
+  S.role='Broker';
+  daily=Billing.page(ctx).match(/class="table-scroll bill-daily-scroll"[\s\S]*?<\/table>/)[0];
+  assert.match(daily, /Trading margin/);assert.match(daily, /No financial history yet/);
+});
+
+test('daily histories remain complete when nonzero activity or example analytics is present', () => {
+  const {S,ctx}=fixture({ledger:[{id:'CHARGE',type:'Capacity purchase',amount:-10,createdAt:'2026-10-02T12:00:00Z',status:'Paid'}]});
+  S.billingUI.from='2026-10-01';S.billingUI.to='2026-10-03';
+  let daily=Billing.page(ctx).match(/class="table-scroll bill-daily-scroll"[\s\S]*?<\/table>/)[0];
+  assert.equal((daily.match(/<tr/g)||[]).length,4);
+  assert.match(daily, /\$10\.00/);assert.doesNotMatch(daily, /No spent history yet/);
+  S.ledger=[];S.billingUI.sample=true;
+  daily=Billing.page(ctx).match(/class="table-scroll bill-daily-scroll"[\s\S]*?<\/table>/)[0];
+  assert.equal((daily.match(/<tr/g)||[]).length,4);
+  assert.doesNotMatch(daily, /No spent history yet/);
+});

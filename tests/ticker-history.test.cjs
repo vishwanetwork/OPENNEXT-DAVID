@@ -25,6 +25,15 @@ test('ticker rejects empty, stale-window, invalid and single-point histories',as
   const data=await store([series('empty',{points:[]}),series('old',{points:[{date:'2025-01-01',value:2},{date:'2025-01-02',value:3}]}),series('bad',{points:[{date:'2026-10-10',value:null},{date:'2026-10-13',value:-1}]})]).ticker();
   assert.equal(data.records.length,0);
 });
+
+test('ticker defaults to three elapsed days without discarding the longer internal history',async()=>{
+  const source=store([series('windowed',{points:[{date:'2026-10-09',value:99},...points]})]);
+  const result=await source.ticker();
+  assert.equal(result.meta.window.period,'3D');
+  assert.deepEqual(result.records[0].points,points);
+  assert.equal((await source.query({period:'1M'})).series[0].points.length,5);
+  assert.equal((await source.ticker({period:'1M'})).records[0].points.length,5);
+});
 const terminal=fs.readFileSync(require.resolve('../OpenNEXT-terminal.js'),'utf8');
 const spark=vm.runInNewContext('('+terminal.slice(terminal.indexOf('  function tickerSpark('),terminal.indexOf('  function paintTicker('))+')',{Intl,Date});
 test('spark has a visible path, date labels, and never bridges missing days',()=>{

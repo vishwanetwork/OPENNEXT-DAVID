@@ -20,7 +20,7 @@ const RETENTION = 365 * DAY, MAX_SEGMENTS = 500000;
 // Bot history is imported once per reference offering, newest first, within these bounds.
 const HISTORY_SPAN = 90 * DAY, HISTORY_PAGES = 100, HISTORY_RETRY = 10 * MINUTE;
 // [window, bucket]: coarser buckets keep every period at a few hundred points.
-const PERIODS = {'1D': [DAY, 5 * MINUTE], '1W': [7 * DAY, 30 * MINUTE], '1M': [30 * DAY, 2 * HOUR],
+const PERIODS = {'1D': [DAY, 5 * MINUTE], '3D': [3 * DAY, 15 * MINUTE], '1W': [7 * DAY, 30 * MINUTE], '1M': [30 * DAY, 2 * HOUR],
   '3M': [90 * DAY, 6 * HOUR]};
 const AREAS = new Set(AWS_REGIONS.map(([id]) => id));
 // Azure regions are mapped onto chart areas only where the geography is equivalent.
@@ -549,13 +549,17 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
       const last = Math.min(now, Math.max(...reference.segments.map(s => s.l)));
       const first = Math.floor(Math.max(from, Math.min(...reference.segments.map(s => s.f))) / bucket) * bucket;
       for (let time = first; time <= last; time += bucket) {
+        // Keep the first and last bucket inside the requested elapsed-time window.
+        // Segment endpoints are inclusive milliseconds; the statistics end is exclusive.
+        const start=Math.max(time,from),end=Math.min(time+bucket,now+1);
+        if(end<=start)continue;
         const values = {};
         for (const term of TERMS) {
-          const covering = reference.segments.filter(s => s.t === term && s.f < time + bucket && s.l >= time);
-          const statistics = intervalStatistics(covering, time, time + bucket);
+          const covering = reference.segments.filter(s => s.t === term && s.f < end && s.l >= start);
+          const statistics = intervalStatistics(covering, start, end);
           values[term] = {value: statistics.min, ...statistics};
         }
-        points.push({time: iso(time), values});
+        points.push({time: iso(start), values});
       }
     }
     const latestValues = Object.fromEntries(TERMS.map(term => {

@@ -34,7 +34,8 @@ test('capacity comparison is public read-only and validates exact hardware filte
  const response=await request('/api/pricing/capacity-history?gpuModel=A10G&gpuCount=1&region=us-west-2&period=1D');
  assert.equal(response.status,200);
  assert.deepEqual((await response.json()).terms,['Spot','On-demand','Reserved']);
- for(const query of ['gpuCount=-1','gpuCount=1.5','gpuMemoryGb=bad','period=invalid','period=1Y','period=ALL'])assert.equal((await request('/api/pricing/capacity-history?'+query)).status,400);
+ for(const query of ['gpuCount=-1','gpuCount=1.5','gpuMemoryGb=bad','period=invalid'])assert.equal((await request('/api/pricing/capacity-history?'+query)).status,400);
+ for(const period of ['1W','1M','3M','1Y','ALL'])assert.equal((await request('/api/pricing/capacity-history?period='+period)).status,403);
  assert.equal((await request('/api/pricing/capacity-history',{method:'POST'})).status,405);
 });
 test('remote and forwarded requests cannot use loopback admin bypass; Terminal blocks admin',async t=>{

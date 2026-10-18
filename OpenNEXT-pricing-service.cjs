@@ -485,7 +485,7 @@ function createPricingService(options = {}) {
   function getHistory(filters = {}) {
     // Terminal curves deliberately use AWS only, never a blend of unrelated supplier quotes.
     const query = { ...filters, provider: "aws" };
-    const periods = { "1D": 1, "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+    const periods = { "1D": 1, "3D": 3, "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
     const period = String(filters.period || "1M").toUpperCase();
     const days = periods[period] || 30;
     const from = millisNow() - days * DAY;

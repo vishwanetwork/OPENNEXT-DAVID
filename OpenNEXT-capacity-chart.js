@@ -15,7 +15,7 @@
   const money = value => number(value) ? '$' + value.toFixed(2) : '—';
   const timeLabel = value => value ? new Date(value).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' : 'Not observed';
   function queryFor(S) {
-    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: S.period || '1M', term: shown(S).name, metric: ['min','avg','max'].includes(S.priceMetric) ? S.priceMetric : 'avg'});
+    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: ['1D', '3D'].includes(S.period) ? S.period : '3D', term: shown(S).name, metric: ['min','avg','max'].includes(S.priceMetric) ? S.priceMetric : 'avg'});
     if (/PCIe|SXM|NVL72/i.test(S.model)) query.set('formFactor', /PCIe|SXM|NVL72/i.exec(S.model)[0]);
     if (['A100 80GB', 'A100 PCIe'].includes(S.model)) query.set('gpuMemoryGb', '80');
     return query.toString();
@@ -56,7 +56,7 @@
   function markup(S, data) {
     const points = data.points || [], term = shown(S);
     const values = points.map(p => p.values[term.name]?.value).filter(number);
-    const controls = `<div class="history-controls"><div class="periods">${['1D','1W','1M','3M'].map(period => `<button class="period ${S.period === period ? 'active' : ''}" data-act="period" data-value="${period}">${period}</button>`).join('')}</div><span class="capacity-unit">USD / GPU-hour · ${term.name}${term.name === 'Reserved' ? ' · 1 year, no upfront' : ''}</span></div>`;
+    const controls = `<div class="history-controls"><div class="periods">${['1D','3D','1W','1M','3M'].map(period => `<button class="period ${S.period === period ? 'active' : ''}" data-act="period" data-value="${period}">${period}</button>`).join('')}</div><span class="capacity-unit">USD / GPU-hour · ${term.name}${term.name === 'Reserved' ? ' · 1 year, no upfront' : ''}</span></div>`;
     if (!values.length) return controls + `<div class="aws-history-empty"><h3>${data.meta?.syncing ? 'Collecting price observations…' : `No ${term.name} prices for this configuration yet`}</h3><p>Missing prices remain empty. Try another model, region, GPU count or market term.</p><button class="btn secondary small" data-capacity-example>View A10G · 8 GPUs</button></div>`;
     const w = Math.max(360, Math.min(1000, (document.getElementById('capacityHistory')?.clientWidth || 900) - 40));
     const h = 320, left = 28, right = 92, top = 24, bottom = 43;
@@ -104,6 +104,7 @@
         const px = from === to ? (plotWidth - 64) / 2 : 28 + (Date.parse(point.time) - from) / (to - from) * innerWidth;
         const cross = svg.querySelector('.capacity-crosshair'); cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
         const term = shown(snapshot);
+        window.dispatchEvent(new CustomEvent('opennext:pricehover',{detail:{model:snapshot.model,region:snapshot.region,price:point.values[term.name]?.value,min:point.values[term.name]?.min,max:point.values[term.name]?.max}}));
         tip.innerHTML = `<div class="capacity-tip-row"><b>${money(point.values[term.name]?.value)}</b><span>${term.name}</span></div><small>USD / GPU-hour · — means not observed</small><small>${timeLabel(point.time)}</small>`;
         tip.hidden = false; const width = svg.getBoundingClientRect().width;
         tip.style.left = Math.max(4, Math.min(width - 250, px / plotWidth * width + 12)) + 'px'; tip.style.top = '12px';

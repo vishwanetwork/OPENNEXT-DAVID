@@ -155,7 +155,10 @@
   }
   function dailyTable(S, a) {
     const columns = seriesFor(S);
-    return `<section class="panel"><div class="bill-panel-head"><h2>Daily ${role(S) === 'Buyer' ? 'spend' : 'financial'} details${a.sample ? ' · example' : ''}</h2>${button('Export daily data', 'bill-export', 'data-value="daily"')}</div><div class="table-scroll bill-daily-scroll"><table class="data-table"><thead><tr><th>Date · UTC</th>${columns.map(([, label]) => `<th>${label}</th>`).join('')}<th>${role(S) === 'Broker' ? 'Trading margin' : 'Total'}</th></tr></thead><tbody>${a.rows.slice().reverse().map(r => `<tr><td>${r.day}</td>${columns.map(([key]) => `<td class="bill-number">${usd(r[key])}</td>`).join('')}<td class="bill-number"><strong>${usd(role(S) === 'Broker' ? r.revenue - r.purchase : columns.reduce((sum, [k]) => sum + r[k], 0))}</strong></td></tr>`).join('')}</tbody></table></div></section>`;
+    const hasActivity=a.rows.some(row=>columns.some(([key])=>Math.abs(num(row[key]))>0));
+    const rows=hasActivity?a.rows.slice().reverse():a.rows.slice(-1);
+    const emptyLabel=role(S)==='Buyer'?'No spent history yet':role(S)==='Seller'?'No earnings history yet':'No financial history yet';
+    return `<section class="panel"><div class="bill-panel-head"><h2>Daily ${role(S) === 'Buyer' ? 'spend' : 'financial'} details${a.sample ? ' · example' : ''}</h2>${button('Export daily data', 'bill-export', 'data-value="daily"')}</div><div class="table-scroll bill-daily-scroll"><table class="data-table"><thead><tr><th>Date · UTC</th>${columns.map(([, label]) => `<th>${label}</th>`).join('')}<th>${role(S) === 'Broker' ? 'Trading margin' : 'Total'}</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.day}</td>${columns.map(([key]) => `<td class="bill-number">${usd(r[key])}</td>`).join('')}<td class="bill-number"><strong>${usd(role(S) === 'Broker' ? r.revenue - r.purchase : columns.reduce((sum, [k]) => sum + r[k], 0))}</strong></td></tr>`).join('')}${hasActivity?'':`<tr class="bill-daily-empty"><td colspan="${columns.length+2}"><div>${emptyLabel}</div></td></tr>`}</tbody></table></div></section>`;
   }
   function payouts(S) {
     if (role(S) === 'Buyer') return '';

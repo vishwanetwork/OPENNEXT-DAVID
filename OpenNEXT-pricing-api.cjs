@@ -50,19 +50,33 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
     }
     return out;
   }
+  const publicHistoryPaths=new Set(['/api/pricing/regional-history','/api/pricing/capacity-history','/api/pricing/imported-history','/api/pricing/history','/api/pricing/ticker']);
+  function publicHistoryPeriod(url,res){
+    const requested=url.searchParams.getAll('period');
+    const period=String(requested[0]||'3D').trim().toUpperCase()||'3D';
+    if(requested.length>1||!['1D','3D','1W','1M','3M','6M','1Y','ALL'].includes(period)){
+      send(res,400,{error:'Invalid history period'});return null;
+    }
+    if(!['1D','3D'].includes(period)){
+      send(res,403,{code:'HISTORY_ACCESS_REQUIRED',error:'Free historical data is limited to 3 days. Contact Sales for access to more history.'});return null;
+    }
+    return period;
+  }
   const route = async function route(req,res,url,{onTerminal=false}={}){
     const path=url.pathname;
     if(!path.startsWith('/api/pricing/')&&!path.startsWith('/api/admin/pricing/'))return false;
     try{
       if(path.startsWith('/api/pricing/')){
         if(req.method!=='GET'){send(res,405,{error:'Read-only endpoint'},{Allow:'GET'});return true;}
+        const historyPeriod=publicHistoryPaths.has(path)?publicHistoryPeriod(url,res):null;
+        if(publicHistoryPaths.has(path)&&!historyPeriod)return true;
         if(path==='/api/pricing/regional-history'){
           const query=importedFilters(url);
           if(query.metric&&!['min','avg','max'].includes(query.metric)){send(res,400,{error:'Use metric min, avg or max'});return true;}
           if(query.term&&!['Spot','On-demand','Reserved'].includes(query.term)){send(res,400,{error:'Invalid market term'});return true;}
           for(const field of ['gpuCount','gpuMemoryGb'])if(query[field]!==undefined&&(!Number.isFinite(Number(query[field]))||Number(query[field])<0)){send(res,400,{error:'Invalid GPU specification'});return true;}
           if(query.gpuCount!==undefined&&!Number.isInteger(Number(query.gpuCount))){send(res,400,{error:'Invalid GPU count'});return true;}
-          if(query.period&&!['1D','1W','1M','3M'].includes(query.period)){send(res,400,{error:'Invalid history period'});return true;}
+          query.period=historyPeriod;
           query.term=query.term||'Spot';query.metric=query.metric||'avg';
           if(query.term==='Spot'){
             try{
@@ -79,14 +93,14 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
           const query=importedFilters(url);
           for(const field of ['gpuCount','gpuMemoryGb'])if(query[field]!==undefined&&(!Number.isFinite(Number(query[field]))||Number(query[field])<0)){send(res,400,{error:'Invalid GPU specification'});return true;}
           if(query.gpuCount!==undefined&&!Number.isInteger(Number(query.gpuCount))){send(res,400,{error:'Invalid GPU count'});return true;}
-          if(query.period&&!['1D','1W','1M','3M'].includes(query.period)){send(res,400,{error:'Invalid history period'});return true;}
+          query.period=historyPeriod;
           send(res,200,capacity.query(query));return true;
         }
-        if(path==='/api/pricing/ticker'){send(res,200,await importedHistory.ticker());return true;}
-        if(path==='/api/pricing/imported-history'){send(res,200,await importedHistory.query(importedFilters(url)));return true;}
+        if(path==='/api/pricing/ticker'){send(res,200,await importedHistory.ticker({period:historyPeriod}));return true;}
+        if(path==='/api/pricing/imported-history'){send(res,200,await importedHistory.query({...importedFilters(url),period:historyPeriod}));return true;}
         if(path==='/api/pricing/history-catalog'){send(res,200,await importedHistory.catalog(importedFilters(url)));return true;}
         if(path==='/api/pricing/prices'){send(res,200,await service.getPrices(filters(url)));return true;}
-        if(path==='/api/pricing/history'){send(res,200,await service.getHistory({...filters(url),provider:'aws'}));return true;}
+        if(path==='/api/pricing/history'){send(res,200,await service.getHistory({...filters(url),period:historyPeriod,provider:'aws'}));return true;}
         if(path==='/api/pricing/status'){
           const providers=asProviders(await service.listProviders());
           send(res,200,{providers:providers.map(p=>({id:p.id,name:p.name,status:p.status,recordCount:p.recordCount||0,lastRunAt:p.latestRun?.finishedAt||null})),historyProvider:'aws'});return true;

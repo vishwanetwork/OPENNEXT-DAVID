@@ -133,6 +133,20 @@ test("On-demand history begins at actual collection time and survives restart wi
   await restarted.close();
 });
 
+test("legacy recorded-history service recognizes 3D without falling back to its monthly internal default", async t => {
+  let current=AT;
+  const {service}=await fixture(t,async()=>response(AWS_FIXTURE),{clock:()=>current});
+  for(const time of [AT,'2026-10-14T01:00:00.000Z','2026-10-17T01:00:00.000Z']){
+    current=time;await settled(service,service.startRun('aws'));
+  }
+  const query={gpuModel:'B200',region:'us-east-1',gpuCount:8,term:'On-demand',period:'3D'};
+  const result=service.getHistory(query);
+  assert.equal(result.meta.requestedFrom,'2026-10-14T01:00:00.000Z');
+  assert.equal(result.meta.requestedTo,current);
+  assert.deepEqual(result.series[0].points.map(point=>point.time),['2026-10-14T01:00:00.000Z','2026-10-17T01:00:00.000Z']);
+  assert.equal(service.getHistory({...query,period:'1M'}).series[0].points.length,3);
+});
+
 test("partial AWS regional failure retains that region's last successful cache and marks gaps", async (t) => {
   let fail = false;
   let current = AT;

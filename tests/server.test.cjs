@@ -60,9 +60,12 @@ test('preview server routes price and history requests to the pricing API', asyn
   const catalog = await fetch(base + '/api/pricing/history-catalog');
   assert.equal(catalog.status, 200);
   assert((await catalog.json()).regions.length > 0);
-  const history = await fetch(base + '/api/pricing/imported-history?gpuModel=H100&gpuCount=8&period=1M');
+  const history = await fetch(base + '/api/pricing/imported-history?gpuModel=H100&gpuCount=8&period=3D');
   assert.equal(history.status, 200);
   assert((await history.json()).series.length > 0);
+  const restricted=await fetch(base+'/api/pricing/imported-history?gpuModel=H100&period=1M');
+  assert.equal(restricted.status,403);
+  assert.equal((await restricted.json()).code,'HISTORY_ACCESS_REQUIRED');
   assert.equal((await fetch(base + '/api/admin/pricing/providers', {headers: {'X-Forwarded-For': '203.0.113.1'}})).status, 401);
 });
 test('private files and unsupported operations are not served', async () => {

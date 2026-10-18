@@ -5,7 +5,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 
 const DAY = 24 * 60 * 60 * 1000;
-const PERIOD_DAYS = Object.freeze({ '1D': 1, '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 });
+const PERIOD_DAYS = Object.freeze({ '1D': 1, '3D': 3, '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 });
 const DEFAULT_FILE = path.join(__dirname, 'data', 'gpu-spot-history.json');
 const normal = value => String(value ?? '').trim().toLowerCase();
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -37,7 +37,7 @@ function windowFor(asOf, requested = 'ALL') {
   const period = String(requested || 'ALL').trim().toUpperCase();
   if (period === 'ALL') return { period, from: null, to: asOf, elapsedDays: null };
   const days = PERIOD_DAYS[period];
-  if (!days) throw failure('Use period 1D, 1W, 1M, 3M, 6M, 1Y or ALL');
+  if (!days) throw failure('Use period 1D, 3D, 1W, 1M, 3M, 6M, 1Y or ALL');
   // UTC is used only to do arithmetic on civil dates. The source timezone is unknown.
   const from = new Date(Date.parse(asOf + 'T00:00:00Z') - days * DAY).toISOString().slice(0, 10);
   return { period, from, to: asOf, elapsedDays: days };
@@ -286,9 +286,9 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
     };
   }
 
-  async function ticker() {
+  async function ticker({period='3D'} = {}) {
     const snapshot = await load();
-    const window = windowFor(snapshot.asOf, '1M');
+    const window = windowFor(snapshot.asOf, period);
     const priority = ['H100', 'H200', 'B200', 'A100', 'L40S', 'L4', 'A10G', 'V100', 'T4'];
     const rank = model => priority.includes(model) ? priority.indexOf(model) : priority.length;
     const seen = new Set(), groups = new Map();
@@ -302,7 +302,7 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
       if (item.term !== 'Spot' || !(item.gpuCount > 0)) continue;
       const key = [item.gpuModel, item.region].join('|');
       if (seen.has(key)) continue;
-      const points = item.points.filter(p => isCalendarDate(p.date) && p.date >= window.from && p.date <= window.to)
+      const points = item.points.filter(p => isCalendarDate(p.date) && (window.period==='ALL'||p.date >= window.from) && p.date <= window.to)
         .map(p => ({date: p.date, value: Number.isFinite(p.value) && p.value >= 0 ? p.value : null}))
         .sort((a, b) => a.date.localeCompare(b.date));
       const observed = points.filter(p => p.value !== null);
@@ -326,7 +326,7 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
       }
       if (!added) break;
     }
-    return {records, meta: {asOf: snapshot.asOf, aggregation: 'daily_average', livePrices: false,
+    return {records, meta: {asOf: snapshot.asOf, window, windowReference: 'snapshot_as_of', aggregation: 'daily_average', livePrices: false,
       unit: 'USD/GPU-hour', sourceKind: snapshot.sourceKind || 'uploaded_daily_history'}};
   }
 

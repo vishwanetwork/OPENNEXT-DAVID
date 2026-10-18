@@ -15,8 +15,8 @@ async function renderChart(term,data){
   const target={innerHTML:'',isConnected:true,clientWidth:940,contains:()=>false,querySelector:selector=>({'svg':svg,'.capacity-hit':hit,'.capacity-tooltip':tip}[selector]||null)};
   const document={hidden:false,activeElement:null,getElementById:id=>id==='capacityHistory'?target:metrics[id]||null};
   const requests=[],timers=[];
-  const window={ONMarket:{modelOf:()=>({canonical:'H100'}),regionCode:value=>value,regionLabel:value=>value}};
-  const context={window,document,URLSearchParams,AbortSignal,console,setTimeout:(fn,ms)=>{timers.push(ms);return timers.length;},clearTimeout:()=>{},fetch:async url=>{requests.push(url);return {ok:true,json:async()=>data};}};
+  const window={ONMarket:{modelOf:()=>({canonical:'H100'}),regionCode:value=>value,regionLabel:value=>value},dispatchEvent:event=>{window.lastPriceHover=event.detail;}};
+  const context={window,document,URLSearchParams,AbortSignal,console,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}},setTimeout:(fn,ms)=>{timers.push(ms);return timers.length;},clearTimeout:()=>{},fetch:async url=>{requests.push(url);return {ok:true,json:async()=>data};}};
   vm.runInNewContext(code,context,{filename:'OpenNEXT-capacity-chart.js'});
   window.OpenNEXTHistory.bind({model:'H100',count:8,region:'US East',period:'1M',term});
   await new Promise(resolve=>setImmediate(resolve));
@@ -60,6 +60,8 @@ test('tooltip has the selected-term price first in bold and time last',async()=>
   assert.match(chart.tip.innerHTML,/<small>16 Oct, 10:00 UTC<\/small>$/);
   assert.equal(chart.tip.hidden,false);
   assert.ok(!chart.tip.innerHTML.includes('$2.40'));
+  assert.equal(chart.window.lastPriceHover.model,'H100');
+  assert.equal(chart.window.lastPriceHover.price,4.6);
 });
 
 test('unrecognized term consistently falls back to Spot but null prices never become zero',async()=>{

@@ -26,12 +26,12 @@ test('imported-history and catalog endpoints are public GET only, isolated from 
     catalog(filters) { calls.push(['catalog', filters]); return { regions: [{ code: 'eu-west-1', name: 'Europe (Ireland)' }], filters }; },
   };
   const { request, liveCalls } = await setup(t, importedHistory);
-  let response = await request('/api/pricing/imported-history?gpuModel=H100&region=us-east-1&gpuCount=8&gpuMemoryGb=80&formFactor=unknown&instanceType=p5.48xlarge&period=ALL&unit=instance&limit=3', { headers: { Host: 'public.example' } });
+  let response = await request('/api/pricing/imported-history?gpuModel=H100&region=us-east-1&gpuCount=8&gpuMemoryGb=80&formFactor=unknown&instanceType=p5.48xlarge&period=3D&unit=instance&limit=3', { headers: { Host: 'public.example' } });
   assert.equal(response.status, 200);
   const history = await response.json();
   assert.equal(history.filters.gpuCount, '8');
   assert.equal(history.filters.unit, 'instance');
-  assert.equal(history.filters.period, 'ALL');
+  assert.equal(history.filters.period, '3D');
   assert.equal('limit' in history.filters, false);
   assert.equal(liveCalls.length, 0);
   response = await request('/api/pricing/history-catalog?q=Dublin');

@@ -144,12 +144,12 @@ test('calendar-date period arithmetic handles leap days without inferring source
   await assert.rejects(store(snapshot).instance.load(), error => error.status === 503);
 });
 
-test('elapsed-day windows include both endpoints: 1D has 2, 1W has 8 and 1M has 31 complete daily observations', async () => {
+test('elapsed-day windows include both endpoints: 1D has 2, 3D has 4, 1W has 8 and 1M has 31 complete daily observations', async () => {
   const snapshot = fixtureSnapshot();
   const end = Date.parse(snapshot.asOf + 'T00:00:00Z');
   snapshot.series = [{ ...snapshot.series[0], points: Array.from({ length: 32 }, (_, index) => ({ date: new Date(end - (31 - index) * 86400000).toISOString().slice(0, 10), value: 1 })) }];
   const { instance } = store(snapshot);
-  for (const [period, elapsedDays, count, start] of [['1D', 1, 2, '2026-10-12'], ['1W', 7, 8, '2026-10-06'], ['1M', 30, 31, '2026-09-13']]) {
+  for (const [period, elapsedDays, count, start] of [['1D', 1, 2, '2026-10-12'], ['3D', 3, 4, '2026-10-10'], ['1W', 7, 8, '2026-10-06'], ['1M', 30, 31, '2026-09-13']]) {
     const result = await instance.query({ period });
     assert.equal(result.meta.window.elapsedDays, elapsedDays);
     assert.equal(result.series[0].points.length, count);
