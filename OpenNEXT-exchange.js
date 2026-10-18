@@ -62,19 +62,48 @@
   }
 function regionCountry(value){
   const countries=scope.OpenNEXTCountries||{list:[]};
-  const label=String(value||'').trim(),known=countries.list.find(c=>c.name===label||c.code===label);if(known)return known.name;
+  const label=String(value||'').trim(),known=(countries.list||[]).find(c=>c.name===label||c.code===label);if(known)return known.name;
   const regions={'eu-west-1':'Ireland','eu-west-2':'United Kingdom','eu-west-3':'France','eu-central-1':'Germany','eu-central-2':'Switzerland','eu-north-1':'Sweden','eu-south-1':'Italy','eu-south-2':'Spain','ap-south-1':'India','ap-south-2':'India','ap-southeast-1':'Singapore','ap-southeast-2':'Australia','ap-southeast-3':'Indonesia','ap-southeast-4':'Australia','ap-southeast-5':'Malaysia','ap-southeast-6':'New Zealand','ap-southeast-7':'Thailand','ap-east-1':'Hong Kong SAR China','ap-east-2':'Taiwan','ap-northeast-1':'Japan','ap-northeast-2':'South Korea','ap-northeast-3':'Japan','af-south-1':'South Africa','me-south-1':'Bahrain','me-central-1':'United Arab Emirates','il-central-1':'Israel','mx-central-1':'Mexico','sa-east-1':'Brazil'};
   if(regions[label])return regions[label];if(/^us-|^US (East|West)/i.test(label))return 'United States';if(/^ca-/i.test(label))return 'Canada';if(/^cn-/i.test(label))return 'China';
   const cities={Frankfurt:'Germany',Tokyo:'Japan',Seoul:'South Korea',Mumbai:'India',Sydney:'Australia',London:'United Kingdom',Paris:'France',Stockholm:'Sweden',Zurich:'Switzerland',Jakarta:'Indonesia',Oregon:'United States','N. Virginia':'United States',Ohio:'United States',California:'United States'};return cities[label]||label;
 }
   const regionMatches=(a,b)=>regionCountry(regionCode(a))===regionCountry(regionCode(b));
+  const EUROPE=new Set('AL AD AT AX BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SJ SK SM TR UA VA'.split(' '));
+  const EUROPEAN_UNION=new Set('AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '));
+  function recordRegionMatches(row,selected){
+    if(!selected||selected==='All regions')return true;
+    if(!row.external)return regionMatches(row.region,selected);
+    const area=row.regionScope||{},country=regionCountry(regionCode(selected)),entry=(scope.OpenNEXTCountries?.list||[]).find(item=>item.name===country||item.code===country);
+    if(!entry)return selected===row.region;
+    if((area.excludedCountries||[]).some(value=>regionMatches(value,entry.name)))return false;
+    if(['worldwide','flexible'].includes(area.type))return true;
+    if(area.type==='europe')return (area.unionOnly?EUROPEAN_UNION:EUROPE).has(entry.code);
+    if(area.type==='countries')return (area.countries||[]).some(value=>regionMatches(value,entry.name));
+    return regionMatches(row.region,selected);
+  }
+  function recordCount(row){
+    if(!row.external)return Number(row.count);
+    const q=row.quantity||{},perNode=Number(q.gpusPerNode);
+    for(const value of [q.totalGpus,q.totalGpusMax,q.totalGpusMin])if(value!=null&&Number.isFinite(Number(value)))return Number(value);
+    const nodes=q.maxNodes??q.nodes??q.minNodes;
+    return nodes!=null&&perNode>0?Number(nodes)*perNode:null;
+  }
+  function eligible(row,filters){
+    const count=recordCount(row);
+    return row.model===filters.model&&recordRegionMatches(row,filters.region)&&(!filters.count||count==null||count>=Number(filters.count))&&(!filters.term||row.external&&!row.term||row.term===filters.term);
+  }
+  const priceSort=side=>(a,b)=>a.price==null?b.price==null?0:1:b.price==null?-1:side==='supply'?a.price-b.price:b.price-a.price;
+  function projectModel(row,selected){
+    if(!row.external||row.model!==selected&&!(row.modelOptions||[]).includes(selected))return row;
+    return {...row,model:selected,price:row.modelBudgets?.[selected]??(row.model===selected?row.price:null),bestMatch:false};
+  }
   function regionCode(region) {
     return scope.ONMarket?.regionCode(region) || regions.find(r => r.includes(region))?.[1] || region;
   }
   function listPublic(kind='rental',side='supply'){return (side==='demand'?market.rfqs:market.supplies).filter(r=>publicKind(r.kind)===publicKind(kind));}
   function get(id) { for (const kind of ['rental','model','hardware']) for(const side of ['supply','demand']) { const row=listPublic(kind,side).find(r=>r.id===id); if(row)return row; } return null; }
   function matches(filters={},side='supply') {
-    return listPublic('rental',side).filter(r=>r.model===filters.model && (!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)) && (!filters.count||r.count>=Number(filters.count)) && (!filters.term||r.term===filters.term)).sort((a,b)=>side==='supply'?a.price-b.price:b.price-a.price);
+    return listPublic('rental',side).map(r=>projectModel(r,filters.model)).filter(r=>eligible(r,filters)).sort(priceSort(side));
   }
   const generated = new Map();
   function referenceRows(filters={},side='supply') {
@@ -83,13 +112,13 @@ function regionCountry(value){
   }
   function marketRows(filters,side) {const actual=matches(filters,side),rows=actual.length?actual:referenceRows(filters,side);rows.forEach(r=>generated.set(r.id,r));return rows;}
   function best(filters=state||{}) {
-    const actual=bestRows.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)));
+    const actual=bestRows.map(r=>projectModel(r,filters.model)).filter(r=>r.model===filters.model&&recordRegionMatches(r,filters.region)).map(r=>r.external?{...r,bestMatch:false}:r);
     const rows=actual.length?actual:referenceRows(filters,filters.role==='Seller'?'demand':'supply');rows.forEach(r=>generated.set(r.id,r));return rows;
   }
   function recent(filters, days=3) {
     if(!filters)return recentRows;
     const cutoff=Date.now()-Number(days)*86400000;
-    const actual=recentRows.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region))&&Date.parse(r.settledAt)>=cutoff&&Date.parse(r.settledAt)<=Date.now());
+    const actual=recentRows.filter(r=>!r.external&&r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region))&&Date.parse(r.settledAt)>=cutoff&&Date.parse(r.settledAt)<=Date.now());
     return actual.length||scope.OpenNEXTDemo?.active?actual:referenceCatalog.recent.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)));
   }
   function find(id) {
@@ -98,6 +127,7 @@ function regionCountry(value){
     return [...(S.cart||[]),...(S.saved||[])].find(r=>r&&typeof r==='object'&&r.id===id&&r.side==='supply'&&['rental','model','hardware','gpu_rental','model_capacity','physical_gpu'].includes(r.kind)&&(/^(EX-|MATCH-|SUP)/.test(r.id)||r.originSupply))||null;
   }
   function sampleQuotes(r) {
+    if(r.external||r.executable===false)return [];
     const model=kindOf(r)==='model_capacity',physical=kindOf(r)==='physical_gpu',chosen=r.originSupply?find(r.originSupply):null;
     const base=Number(r.budget)|| (physical?24500:model?100:models.find(m=>m[0]===r.model)?.[1]||2.35);
     return (chosen?[chosen.provider]:suppliers.slice(0,3)).map((provider,i)=>{
@@ -110,6 +140,7 @@ function regionCountry(value){
   }
   function notify(S,role,subject,message,extra={}) {const n={id:uid('NTF'),role,subject,message,created:now(),read:false,delivery:'Workspace notification',...extra};S.notifications.unshift(n);return n;}
   function accept(S,r,q) {
+    if(r.external||r.executable===false)throw Error('Sourced requirements must be coordinated through OpenNEXT operations.');
     if(!['Open','Quoted'].includes(r.status)||r.accepted)throw Error('This requirement already has a selected quote.');
     if(q.status!=='Pending')throw Error('This quote is no longer available.');
     if(S.orders.some(order=>order.quoteId===q.id))throw Error('This quote already has an order. Open the existing order.');
@@ -143,7 +174,7 @@ function regionCountry(value){
     S.ledger.unshift({id:paymentId,paymentReference:paymentId,orderId:order.id,type:'Capacity purchase',amount:-order.total,date:at,createdAt:at,role:S.role,side:'buy',status:'Completed',test:true});
     notify(S,'Seller','Payment confirmed',`${order.id} is funded. Prepare delivery.`,{supplier:order.provider,orderId:order.id});return true;
   }
-  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best,recent};
+  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,recordRegionMatches,featured:()=>market.featured,best,recent};
   scope.OpenNEXTExchange=exposed;
   if(typeof module!=='undefined')module.exports=exposed;
 })(typeof window!=='undefined'?window:globalThis);

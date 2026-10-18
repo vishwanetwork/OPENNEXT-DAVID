@@ -126,7 +126,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       try {
         await fs.mkdir(workspace.directory, {mode: 0o700});
         await fs.writeFile(path.join(workspace.directory, 'marketplace.json'), JSON.stringify(createDemoData(now())), {flag: 'wx', mode: 0o600});
-        const marketplace = createMarketplaceService({dataDir: workspace.directory, now, agentAdapter: null});
+        const marketplace = createMarketplaceService({dataDir: workspace.directory, now, agentAdapter: null, provenanceKind:'demo'});
         await approveFixtureCandidates(marketplace);
         const value = {demo: true, ...await marketplace.publicMarket()};
         showcaseCache = {value, expiresAt: now() + 300000};
@@ -153,7 +153,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
           promotionalCreditWithdrawable: false, welcomeCreditGrantedAt: new Date(now()).toISOString()}};
       try {
         await fs.writeFile(path.join(directory, 'marketplace.json'), JSON.stringify(createDemoData(now())), {flag: 'wx', mode: 0o600});
-        session.marketplace = createMarketplaceService({dataDir: directory, now, agentAdapter: null});
+        session.marketplace = createMarketplaceService({dataDir: directory, now, agentAdapter: null, provenanceKind:'demo'});
         await approveFixtureCandidates(session.marketplace);
         const auth = {authenticate: async request => sessionFor(request) === session ? userFor(session) : null,
           checkCsrf: (request, user) => sameOrigin(request) && equal(request.headers['x-csrf-token'], user?.csrfToken)};

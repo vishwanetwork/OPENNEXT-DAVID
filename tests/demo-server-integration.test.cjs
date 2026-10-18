@@ -21,7 +21,7 @@ async function setup(t, enabled = true) {
     delete require.cache[modulePath];
   }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(),'opennext-demo-integration-'));
-  const server = createAppServer({dataDir, env:{OPENNEXT_DEMO_ENABLED:enabled?'1':'0'}, secureCookies:false});
+  const server = createAppServer({dataDir, env:{OPENNEXT_DEMO_ENABLED:enabled?'1':'0',OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED:'0'}, secureCookies:false});
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
   t.after(async () => {
     server.closeAllConnections();

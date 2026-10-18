@@ -86,6 +86,45 @@
   const btn=(label,act,id='',extra='',primary=false)=>`<button type="button" class="btn ${primary?'':'secondary'} small" data-act="${act}" data-id="${id}" ${extra}>${label}</button>`;
   const tag=s=>`<span class="tag">${s}</span>`;
   function field(c,label,value){return `<div><small>${c.esc(label)}</small><strong>${c.esc(value??'To be confirmed')}</strong></div>`;}
+  const externalName=row=>row?.side==='supply'?'Sourced offer':'Sourced requirement';
+  const externalNotice=row=>(row?externalName(row):'Sourced listings')+'. Availability and commercial terms are confirmed through OpenNEXT.';
+  const canInquire=(c,row)=>row?.side==='supply'?c.S.role==='Buyer':c.S.role==='Seller';
+  const numberLabel=value=>Number(value).toLocaleString('en-US');
+  function externalQuantity(row){
+    const q=row.quantity||{},parts=[];
+    if(q.nodes!=null)parts.push(numberLabel(q.nodes)+' '+(Number(q.nodes)===1?'node':'nodes'));
+    else if(q.minNodes!=null&&q.maxNodes!=null)parts.push(numberLabel(q.minNodes)+'–'+numberLabel(q.maxNodes)+' nodes');
+    else if(q.minNodes!=null)parts.push(numberLabel(q.minNodes)+'+ nodes');
+    else if(q.maxNodes!=null)parts.push('Up to '+numberLabel(q.maxNodes)+' nodes');
+    if(q.totalGpus!=null)parts.push(numberLabel(q.totalGpus)+' GPUs');
+    else if(q.totalGpusMin!=null&&q.totalGpusMax!=null)parts.push(numberLabel(q.totalGpusMin)+'–'+numberLabel(q.totalGpusMax)+' GPUs');
+    else if(q.totalGpusMin!=null)parts.push(numberLabel(q.totalGpusMin)+'+ GPUs');
+    else if(q.totalGpusMax!=null)parts.push('Up to '+numberLabel(q.totalGpusMax)+' GPUs');
+    else if(!parts.length&&row.count!=null)parts.push(numberLabel(row.count)+' GPUs');
+    return parts.join(' · ')||'Quantity to confirm';
+  }
+  function externalCommitment(row){
+    const term=row.rentalMonths||{},options=(term.options||[]).filter(value=>Number(value)>0);
+    const months=options.length?options.map(numberLabel).join(' / '):term.min!=null&&term.max!=null?Number(term.min)===Number(term.max)?numberLabel(term.min):numberLabel(term.min)+'–'+numberLabel(term.max):term.min!=null?'From '+numberLabel(term.min):term.max!=null?'Up to '+numberLabel(term.max):'';
+    return 'Commitment · '+(months?months+' months':'Term to confirm');
+  }
+  const rowRegionMatches=(r,selected)=>X.recordRegionMatches?X.recordRegionMatches(r,selected):!selected||selected==='All regions'||X.regionMatches(r.region,selected);
+  const rowPrice=(c,r)=>r.price==null?'To confirm':c.money(r.price);
+  function externalInquiry(c,item){
+    if(!item?.external||item.responseMode!=='operations'){c.toast('Refresh this requirement before contacting operations.');return;}
+    const supply=item.side==='supply';
+    if(!canInquire(c,item)){c.toast(supply?'Use a Buyer account to request this sourced capacity.':'Use a Seller account to offer capacity for this requirement.');return;}
+    if(!window.OpenNEXTContact?.open){c.toast('The operations contact form is unavailable. Please contact OpenNEXT with reference '+item.id+'.');return;}
+    c.S.modal=null;c.render();
+    window.OpenNEXTContact.open({message:[supply?'I would like to request a quote for this sourced offer.':'I would like to offer capacity for this sourced requirement.',(supply?'OpenNEXT offer: ':'OpenNEXT requirement: ')+item.id,'GPU model: '+item.model,'Region: '+item.region,'Quantity: '+externalQuantity(item),externalCommitment(item),(supply?'Listed price: ':'Buyer target: ')+rowPrice(c,item)+(item.price==null?'':' / GPU-hour'),'Please confirm availability and commercial terms with operations.'].join('\n')});
+  }
+  function externalDetails(c,item){
+    const supply=item.side==='supply',fields=[[supply?'Offer':'Requirement',item.id],['Record type',externalName(item)],['GPU model',item.model],['Country / region',item.region],['Quantity',externalQuantity(item)],['GPUs per node',item.quantity?.gpusPerNode??'To confirm'],['Rental commitment',externalCommitment(item)],[supply?'Listed price':'Buyer target price',rowPrice(c,item)+(item.price==null?'':' / GPU-hour')],['Urgency',item.urgency||'To confirm']];
+    if(item.modelOptions?.length>1)fields.push(['Acceptable GPU alternatives',item.modelOptions.join(' / ')]);
+    if(item.rentalMonths?.preferred!=null)fields.push(['Preferred commitment',numberLabel(item.rentalMonths.preferred)+' months']);
+    if(item.rentalMonths?.notes)fields.push(['Commitment notes',item.rentalMonths.notes]);
+    return {title:item.title||item.model+(supply?' capacity offer':' capacity requirement'),body:'<div class="details-grid">'+fields.map(([label,value])=>field(c,label,value)).join('')+'</div><p class="proc-notes">'+c.esc(item.description||'')+'</p><div class="callout">'+externalNotice(item)+'</div><p class="form-note">Submitting an inquiry does not place an order or confirm '+(supply?'supplier inventory':'a buyer account')+'. OpenNEXT operations coordinates the next step.</p><div class="modal-footer">'+btn('Close','close-modal')+(canInquire(c,item)?btn(supply?'Request quote':'Offer capacity','proc-external-inquiry',item.id,'',true):'')+'</div>'};
+  }
   function rfqStatus(r){return r.reviewStatus==='Approved'&&['Open','Quoted'].includes(r.status)?r.visibility==='Private RFQ'?'Approved · Private RFQ':'Live RFQ':r.status;}
   function rfqReviewNote(c,r){
     if(r.status==='Reviewing')return '<div class="callout proc-reviewing">Reviewing · Operations is reviewing your RFQ. It is not visible in the public market yet. You will receive a notification when the decision is ready.</div>';
@@ -101,23 +140,27 @@
   function notifications(c){const items=c.S.notifications.filter(n=>n.ownerId?n.ownerId===window.OpenNEXTAuth?.getUser?.()?.id:n.role===c.S.role||(c.S.role==='Broker'&&['Buyer','Seller'].includes(n.role))).slice(0,15);return `<section class="panel"><div class="row spread"><h2>Workspace notifications</h2>${items.some(n=>!n.read)?btn('Mark all read','proc-read'):''}</div>${items.map(n=>`<article class="proc-notice ${n.read?'read':''}"><div><strong>${c.esc(n.subject)}</strong><small>${date(n.created)}${n.supplier?' · '+c.esc(n.supplier):''}</small><p>${c.esc(n.message)}</p></div>${n.orderId?btn('Order details','bill-order',n.orderId):n.rfqId?btn('View RFQ','view-rfq',n.rfqId):''}</article>`).join('')||'<p class="form-note">Quote, payment and delivery updates will appear here.</p>'}<p class="form-note">Verified account notifications. Email delivery requires the configured notification service.</p></section>`;}
   function listingTable(c){
     const S=c.S,sides=S.role==='Buyer'?[['supply','Supply'],['demand','RFQs']]:[['demand','RFQs'],['supply','Supply']];
-    const hasReference=sides.some(([side])=>X.matches(S,side).some(r=>r.referenceOnly));
-    return '<div class="compare proc-market-listings"><div class="compare-title"><span>'+c.esc(S.model)+' Supply &amp; Demand</span><small>'+(hasReference?'Reference listings · confirmation required':'Verified marketplace records')+'</small></div>'+sides.map(([side,label])=>{
+    const allRows=sides.flatMap(([side])=>X.matches(S,side)),hasReference=allRows.some(r=>r.referenceOnly),hasExternal=allRows.some(r=>r.external);
+    return '<div class="compare proc-market-listings"><div class="compare-title"><span>'+c.esc(S.model)+' Supply &amp; Demand</span><small>'+(hasExternal?'Marketplace & sourced requirements':hasReference?'Reference listings · confirmation required':'Verified marketplace records')+'</small></div>'+sides.map(([side,label])=>{
       const rows=X.matches(S,side),supply=side==='supply',canAct=supply?S.role==='Buyer':S.role==='Seller';
-      const prices=rows.map(r=>r.price),best=prices.length>1&&new Set(prices).size>1?Math.min(...prices):null;
-      return '<section class="proc-market-section"><h3>'+label+'</h3><div class="table-scroll"><table><thead><tr><th>Counterparty</th><th>Country / region</th><th>$/GPU-hour</th><th>Quantity / term</th><th>'+(S.role==='Buyer'?'Bidding Parties':'Capacity')+'</th><th></th></tr></thead><tbody>'+rows.map(r=>'<tr><td><strong>'+c.esc(r.provider)+'</strong><small class="proc-sub">'+c.esc(r.id)+'</small></td><td>'+c.esc(r.region)+'</td><td '+(supply&&r.price===best?'class="best"':'')+'>'+c.money(r.price)+'</td><td>'+r.count+' GPU · '+r.hours+'h<small class="proc-sub">'+c.esc(r.term)+'</small></td><td>'+(S.role==='Buyer'?(r.referenceOnly?'—':Number(r.biddingParties||0)):r.count+' GPU')+'</td><td>'+btn('Details','proc-listing',r.id)+(canAct&&!r.referenceOnly?' '+btn(supply?'Buy capacity':'Offer capacity','proc-opportunity',r.id,'data-intent="'+(supply?'buy':'offer')+'"',true):'')+'</td></tr>').join('')+'<tr '+(rows.length?'hidden':'')+'><td colspan="6">No '+(supply?'published supply':'open RFQs')+' match these filters.</td></tr></tbody></table></div></section>';
-    }).join('')+'<p class="form-note proc-market-note">'+(hasReference?'Reference listings reuse the preview catalog; they are not verified inventory or executable quotes. ':'')+'Bidding Parties counts unique verified buyers who requested a quote for this GPU model in the last 30 days. Listed prices are base unit prices. OpenNEXT Fee 5% is shown separately at buyer checkout and deducted separately from seller settlement.</p></div>';
+      const prices=rows.filter(r=>r.price!=null).map(r=>r.price),best=prices.length>1&&new Set(prices).size>1?Math.min(...prices):null;
+      return '<section class="proc-market-section"><h3>'+label+'</h3><div class="table-scroll"><table><thead><tr><th>Counterparty</th><th>Country / region</th><th>$/GPU-hour</th><th>Quantity / term</th><th>'+(S.role==='Buyer'?'Bidding Parties':'Capacity')+'</th><th></th></tr></thead><tbody>'+rows.map(r=>{
+        const quantity=r.external?externalQuantity(r):r.count+' GPU',terms=r.external?externalCommitment(r):r.hours+'h · '+r.term;
+        const offerAction=r.external?'proc-external-inquiry':'proc-opportunity';
+        return '<tr><td><strong>'+c.esc(r.external?externalName(r):r.provider)+'</strong><small class="proc-sub">'+c.esc(r.id)+'</small></td><td>'+c.esc(r.region)+'</td><td '+(supply&&r.price===best?'class="best"':'')+'>'+rowPrice(c,r)+'</td><td>'+c.esc(quantity)+'<small class="proc-sub">'+c.esc(terms)+'</small></td><td>'+(S.role==='Buyer'?(r.referenceOnly||r.external?'—':Number(r.biddingParties||0)):c.esc(quantity))+'</td><td>'+btn('Details','proc-listing',r.id)+(canAct&&!r.referenceOnly&&(!r.external||r.responseMode==='operations')?' '+btn(supply?'Buy capacity':'Offer capacity',offerAction,r.id,'data-intent="'+(supply?'buy':'offer')+'"',true):'')+'</td></tr>';
+      }).join('')+'<tr '+(rows.length?'hidden':'')+'><td colspan="6">No '+(supply?'published supply':'open RFQs')+' match these filters.</td></tr></tbody></table></div></section>';
+    }).join('')+'<p class="form-note proc-market-note">'+(hasExternal?externalNotice()+' ':'')+(hasReference?'Reference listings reuse the preview catalog; they are not verified inventory or executable quotes. ':'')+'Bidding Parties counts unique verified buyers who requested a quote for this GPU model in the last 30 days. Listed prices are base unit prices. OpenNEXT Fee 5% is shown separately at buyer checkout and deducted separately from seller settlement.</p></div>';
   }
   function matches(c,kind){
     marketContext=c;
-    const S=c.S,status=X.status(),rows=kind==='best'?X.best(S).filter(r=>r.model===S.model&&(!S.region||S.region==='All regions'||X.regionMatches(r.region,S.region))):recent(S);
+    const S=c.S,status=X.status(),rows=kind==='best'?X.best(S).filter(r=>r.model===S.model&&rowRegionMatches(r,S.region)):recent(S);
     const hasReference=rows.some(r=>r.referenceOnly);
     const empty=kind==='best'?(status.matchReason||'No matches.'):'No matches.';
-    const cards=rows.map(r=>'<article class="match-card proc-match" data-match-id="'+c.esc(r.id)+'" data-match-side="'+c.esc(r.side||'settled')+'"><div class="match-top"><strong>'+c.esc(r.model)+'</strong><strong>'+c.money(r.price)+'<small> /GPU-hr</small></strong></div><p>'+c.esc(r.provider)+' · '+c.esc(r.region)+'<br>'+r.count+' GPU · '+c.esc(r.term)+' · '+r.hours+'h</p><div class="match-bottom"><span class="fit">'+(r.referenceOnly?(kind==='best'?'Same-model reference':'Reference activity'):(kind==='best'?(r.bestMatch?'Matches your submitted requirements':'Same-model recommendation'):'Settled '+date(r.settledAt)))+'</span>'+btn(r.referenceOnly?'Details':kind==='best'?(r.side==='demand'?'Offer':'Request quote'):'Details',r.referenceOnly?(kind==='best'?'proc-listing':'proc-settlement'):kind==='best'?'proc-opportunity':'proc-settlement',r.id,kind==='best'?'data-intent="'+(r.side==='demand'?'offer':'buy')+'"':'')+'</div></article>').join('');
+    const cards=rows.map(r=>'<article class="match-card proc-match" data-match-id="'+c.esc(r.id)+'" data-match-side="'+c.esc(r.side||'settled')+'"><div class="match-top"><strong>'+c.esc(r.model)+'</strong><strong>'+rowPrice(c,r)+(r.price==null?'':'<small> /GPU-hr</small>')+'</strong></div><p>'+c.esc(r.external?externalName(r):r.provider)+' · '+c.esc(r.region)+'<br>'+c.esc(r.external?externalQuantity(r)+' · '+externalCommitment(r):r.count+' GPU · '+r.term+' · '+r.hours+'h')+'</p><div class="match-bottom"><span class="fit">'+(r.external?'Sourced recommendation':r.referenceOnly?(kind==='best'?'Same-model reference':'Reference activity'):(kind==='best'?(r.bestMatch?'Matches your submitted requirements':'Same-model recommendation'):'Settled '+date(r.settledAt)))+'</span>'+btn(r.external?(canInquire(c,r)?r.side==='supply'?'Request quote':'Offer capacity':'Details'):r.referenceOnly?'Details':kind==='best'?(r.side==='demand'?'Offer':'Request quote'):'Details',r.external?(canInquire(c,r)?'proc-external-inquiry':'proc-listing'):r.referenceOnly?(kind==='best'?'proc-listing':'proc-settlement'):kind==='best'?'proc-opportunity':'proc-settlement',r.id,kind==='best'?'data-intent="'+(r.side==='demand'?'offer':'buy')+'"':'')+'</div></article>').join('');
     return '<section class="matches" data-match-kind="'+kind+'"><div class="matches-head"><div><h3>'+(kind==='best'?'Best Matches':hasReference?'Recent Matches':'Recent Settled')+'</h3><small>'+c.esc(S.model)+' · '+c.esc(S.region)+'</small></div>'+(kind==='best'?'<button class="icon-btn" data-act="proc-refresh" aria-label="Refresh matches">↻</button>':'<select class="field proc-history-days" aria-label="Settlement history" data-proc-days>'+settlementPeriods.map(([days,label])=>'<option value="'+days+'" '+(days===settlementDays?'selected':'')+'>'+label+'</option>').join('')+'</select>')+'</div>'+(kind==='best'&&status.matchPrompt?'<p class="proc-match-prompt">'+c.esc(status.matchPrompt)+'</p>':'')+'<div class="match-viewport proc-match-viewport" data-scroll="'+kind+'" tabindex="0"><div class="match-cycle">'+(cards||'<div class="proc-match-empty"><strong>'+c.esc(empty)+'</strong>'+(kind==='best'&&!rows.length?btn(S.role==='Seller'?'List supply':'Post RFQ',S.role==='Seller'?'new-supply':'new-rfq'):'')+'</div>')+'</div>'+(rows.length>3?'<div class="match-copy" aria-hidden="true" inert>'+cards+'</div>':'')+'</div><div class="match-foot"><span>'+rows.length+' '+(hasReference?'reference records':kind==='best'?'matches':'settlements')+'</span><span>Hover to pause</span></div></section>';
   }
   const settlements=new Map();
-  function recent(S){const cutoff=Date.now()-settlementDays*86400000,rows=X.recent(S,settlementDays).filter(r=>r.model===S.model&&(S.region==='All regions'||X.regionMatches(S.region,r.region))&&(r.referenceOnly&&r.timeBasis==='illustrative'||Date.parse(r.referenceOnly?r.activityAt:r.settledAt)>=cutoff&&Date.parse(r.referenceOnly?r.activityAt:r.settledAt)<=Date.now()));rows.forEach(r=>settlements.set(r.id,r));return rows;}
+  function recent(S){const cutoff=Date.now()-settlementDays*86400000,rows=X.recent(S,settlementDays).filter(r=>!r.external&&r.model===S.model&&(S.region==='All regions'||X.regionMatches(S.region,r.region))&&(r.referenceOnly&&r.timeBasis==='illustrative'||Date.parse(r.referenceOnly?r.activityAt:r.settledAt)>=cutoff&&Date.parse(r.referenceOnly?r.activityAt:r.settledAt)<=Date.now()));rows.forEach(r=>settlements.set(r.id,r));return rows;}
   function requirementFields(c,r){
    const common=[['Project / purpose',r.project||r.title],['Client / procurement owner',r.client||c.S.identity.company||c.S.identity.name],['GPU / model',r.model],['Capacity',volume(r)],['Region / data location',r.region],['Commercial terms',r.term||'Model capacity'],[hardware(r)?'Required arrival':'Start time',date(r.start)],['Budget',c.money(r.budget)+unit(r)+(model(r)?'':' · '+c.money(X.totalFor(r,r.budget))+' maximum')],['Quote deadline',date(r.quoteDeadline)],['Delivery method',r.deliveryMethod||X.deliveryMethod(r)],['Urgency',r.urgency],['Visibility',r.visibility]];
    const specific=hardware(r)?[['Condition',r.condition||'Brand new'],['Shipping address / destination',r.shippingAddress||'Confirm securely before shipment'],['Incoterms',r.incoterms||'DAP · confirm fees'],['Warranty',r.warranty||'Confirm in quotation']]:model(r)?[['Exact model / tier SKU',r.sku||'Confirm in quotation'],['Duration',r.days+' days'],['Required throughput',(r.tps||'To confirm')+' TPS'],['Access / data policy',r.accessPolicy||'Confirm authorization, retention and region']]:[['Duration',r.hours+' hours'],['Network / storage',`${r.network||'Confirm with supplier'} / ${r.storage||'Confirm with supplier'}`],['Image / runtime',r.image||'Confirm with supplier']];
@@ -172,11 +215,13 @@
   }
   function responseDialog(c,req){
     if(!req)return {title:'RFQ unavailable',body:'This RFQ is no longer available.'};
+    if(req.external)return externalDetails(c,req);
     const choices=c.S.listings.filter(s=>s.status==='Published'&&s.model===req.model&&s.region===req.region);
     return {title:'Respond to '+req.id,wide:true,body:'<p class="form-note">'+c.esc(req.model)+' · '+req.count+' GPU · '+c.esc(req.region)+'</p>'+(choices.length?'<form data-form="proc-response" data-id="'+req.id+'"><div class="form-grid"><div><label class="form-label">Verified supply</label><select class="field" name="supplyId" required>'+choices.map(s=>'<option value="'+s.id+'">'+c.esc(s.model)+' · '+s.count+' GPU · '+s.id+'</option>').join('')+'</select></div>'+input(c,'Your unit price (USD / GPU-hour)','rate','','number','required min="0.01" step="0.01" data-proc-net-price')+input(c,'Delivery lead time (minutes)','delivery','','number','required min="1"')+input(c,'Quote valid until (UTC)','validUntil','','datetime-local','required')+'<div class="full"><label class="form-label">Commercial and service terms</label><textarea name="notes" class="field" required maxlength="4000"></textarea></div>'+sellerEstimate(req.count,req.hours)+'</div><p class="form-note">Your base unit price is shown unchanged. OpenNEXT Fee 5% is deducted from your base order amount at settlement. The buyer pays their own 5% fee separately at checkout. Only verified installed capacity can be quoted.</p><div class="modal-footer"><button class="btn" type="submit">Submit quote</button></div></form>':'<div class="callout">Publish matching, agent-verified capacity before responding to this requirement.</div>'+btn('List matching supply','new-supply'))};
   }
   function listingDialog(c,type,item){
     if(!item)return {title:'Record unavailable',body:'Refresh the market to load this record.'};
+    if(item.external)return externalDetails(c,item);
     if(item.referenceOnly)return {title:item.model+' · Reference details',body:'<div class="details-grid">'+[['Record type',item.side==='activity'?'Reference activity':item.side==='supply'?'Supply reference':'RFQ reference'],['Country / region',item.region],['Price',c.money(item.price)+' / GPU-hour'],['Quantity',item.count+' GPU'],['Duration',item.hours+' hours'],['Market terms',item.term]].map(([label,value])=>field(c,label,value)).join('')+'</div><p class="proc-notes">'+c.esc(item.description||'')+'</p><div class="callout">This reference comes from the preview catalog. It does not confirm available inventory, an active buyer requirement or a completed transaction. Submit your own requirement to request current availability and pricing.</div><div class="modal-footer">'+btn('Close','close-modal')+(c.S.role==='Buyer'?btn('Post RFQ','new-rfq'):btn('List Supply','new-supply'))+'</div>'};
     const canAct=item.side==='supply'?c.S.role==='Buyer':c.S.role==='Seller';
     return {title:item.model+' · '+item.provider,body:'<div class="details-grid">'+[['Side',type==='proc-settlement'?'Settled':item.side],['Region',item.region],['Price',c.money(item.price)+unit(item)],['Capacity',item.count+' GPU'],['Term',item.term],['Duration',item.hours+' hours'],['Counterparty',item.provider],['Date',date(item.settledAt||item.created)]].map(([label,value])=>field(c,label,value)).join('')+'</div><p class="proc-notes">'+c.esc(item.description||'')+'</p>'+(type==='proc-listing'&&canAct?'<div class="modal-footer">'+btn(item.side==='supply'?'Buy capacity':'Offer capacity','proc-opportunity',item.id,'data-intent="'+(item.side==='supply'?'buy':'offer')+'"',true)+'</div>':'')};
@@ -211,6 +256,7 @@
   }
   function opportunity(c,id,intent){
     const item=X.get(id);if(!item){c.toast('Listing unavailable. Refresh the market.');return;}
+    if(item.external){externalInquiry(c,item);return;}
     if(item.referenceOnly){c.open('proc-listing',{id});return;}
     const user=window.OpenNEXTAuth?.getUser?.();
     if(user&&((intent==='offer'&&c.S.role!=='Seller')||(intent==='buy'&&c.S.role!=='Buyer'))){c.toast(intent==='offer'?'Use a verified Seller account to offer capacity.':'Use a Buyer account to request this capacity.');return;}
@@ -223,6 +269,7 @@
    const pending=c.S.pendingOpportunity;if(!pending||!c.S.auth)return;
    const item=X.get(pending.id);c.S.pendingOpportunity=null;c.persist();
    if(!item){c.toast('This listing is no longer available.');return;}
+   if(item.external){externalInquiry(c,item);return;}
    if(item.referenceOnly){c.open('proc-listing',{id:item.id});return;}
    const kind=X.kindOf(item);
    if(pending.intent==='offer'){
@@ -257,6 +304,7 @@
    try{
     switch(act){
      case'proc-contact-sales':S.modal=null;c.render();window.OpenNEXTContact?.open();return true;
+     case'proc-external-inquiry':externalInquiry(c,X.get(id));return true;
      case'proc-submission-view':S.modal=null;c.go(id==='supply'?'supply':'rfqs');return true;
      case'new-supply':if(S.role!=='Seller'){c.toast('Only Seller accounts can list supply.');return true;}c.open(S.review?.status==='Approved'?'supply-form':'review');return true;
      case'review':if(S.role!=='Seller'){c.toast('Supplier review is available to Seller accounts.');return true;}c.open('review');return true;
@@ -331,6 +379,7 @@
      case'proc-rfq':
       void submitRecord(c,formEl,'rfq',data);return true;
      case'proc-response':
+      if(/^EXT-/.test(id)||X.get(id)?.external){c.toast('Use Offer capacity to contact OpenNEXT operations for this sourced requirement.');return true;}
       runServer(c,formEl.querySelector('[type="submit"]'),async()=>{await X.api('/api/marketplace/rfqs/'+encodeURIComponent(id)+'/quotes','POST',{...data,validUntil:new Date(data.validUntil+'Z').toISOString()});S.modal=null;c.toast('Your quote has been submitted to the buyer.');});return true;
      case'proc-delivery':case'proc-verify':c.toast('Delivery must be confirmed by the backend provisioning integration.');return true;
 
@@ -407,7 +456,7 @@
   function supplyExtra(c){
    return `<section class="panel"><h2>My RFQ responses</h2>${c.S.responses.map(r=>`<div class="proc-notice"><div><strong>${c.esc(r.model)} · ${r.rfqId}</strong><p>${c.money(r.rate)}${unit(r)} · ${c.esc(r.status)} · valid ${date(r.validUntil)}</p></div>${btn('View response','proc-response',r.id)}</div>`).join('')||'<p class="form-note">Respond to a buyer requirement to start a capacity verification.</p>'}</section>${notifications(c)}`;
   }
-  function supplyDemand(c){const rows=X.matches(c.S,'demand').slice(0,5),reference=rows.some(r=>r.referenceOnly);return `<section class="panel"><h2>${reference?'Buyer requirement references':'Buyer requirements'}</h2><p class="form-note">Matched to ${c.esc(c.S.model)} · ${c.esc(c.S.region)}. ${reference?'Illustrative requirements from the preview catalog; not active buyer orders.':'Change market filters to explore other requirements.'}</p>${rows.map(r=>`<div class="proc-notice"><div><strong>${c.esc(r.model)} · ${r.count} GPU</strong><p>${c.esc(r.region)} · ${r.hours}h · target ${c.money(r.price)}/GPU-hour</p></div>${btn(r.referenceOnly?'Details':'Offer capacity',r.referenceOnly?'proc-listing':'proc-opportunity',r.id,r.referenceOnly?'':'data-intent="offer"')}</div>`).join('')}</section>`;}
+  function supplyDemand(c){const rows=X.matches(c.S,'demand').slice(0,5),reference=rows.some(r=>r.referenceOnly),sourced=rows.some(r=>r.external);return '<section class="panel"><h2>'+(reference?'Buyer requirement references':'Buyer requirements')+'</h2><p class="form-note">Matched to '+c.esc(c.S.model)+' · '+c.esc(c.S.region)+'. '+(sourced?externalNotice(rows.find(r=>r.external)):reference?'Illustrative requirements from the preview catalog; not active buyer orders.':'Change market filters to explore other requirements.')+'</p>'+rows.map(r=>'<div class="proc-notice"><div><strong>'+c.esc(r.model)+' · '+c.esc(r.external?externalQuantity(r):r.count+' GPU')+'</strong><p>'+c.esc(r.region)+' · '+c.esc(r.external?externalCommitment(r):r.hours+'h')+' · target '+rowPrice(c,r)+(r.price==null?'':'/GPU-hour')+'</p></div>'+btn(r.referenceOnly?'Details':'Offer capacity',r.referenceOnly?'proc-listing':r.external?'proc-external-inquiry':'proc-opportunity',r.id,r.referenceOnly?'':'data-intent="offer"')+'</div>').join('')+'</section>';}
 if(typeof document!=='undefined')document.addEventListener('input',event=>{
     if(event.target.matches('[data-proc-budget-range]')){const field=event.target.closest('form')?.querySelector('[name="budget"]');if(field)field.value=Number(event.target.value).toFixed(2);}
     if(event.target.matches('[data-proc-net-price], [name="count"], [name="hours"]')){

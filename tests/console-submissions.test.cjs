@@ -23,12 +23,12 @@ class Element{
 }
 function setup(initial=snapshot()){
   const root=new Element(),nodes=new Map(),requests=[],timers=new Map(),dialogs=[];
-  for(const selector of ['h1','.market-console-status','.market-console-sync','.market-console-results','.market-console-table','[data-market-action="refresh"]','[data-market-query]','[data-market-kind]','[data-market-status]','[data-review-filter]'])nodes.set(selector,new Element());
+  for(const selector of ['h1','.market-console-status','.market-console-sync','.market-console-results','.market-console-table','[data-market-action="refresh"]','[data-market-query]','[data-market-kind]','[data-market-status]','[data-market-source]','[data-review-filter]'])nodes.set(selector,new Element());
   const tabs=['rfqs','supplies','kyb','featured'].map(name=>{const e=new Element();e.dataset.marketTab=name;return e;}),counts=tabs.map(tab=>{const e=new Element();e.dataset.marketCount=tab.dataset.marketTab;return e;});
   root.querySelector=selector=>nodes.get(selector);root.querySelectorAll=selector=>selector==='[data-market-tab]'?tabs:selector==='[data-market-count]'?counts:[];
   const document=new Element();document.hidden=false;document.activeElement=new Element();document.querySelector=selector=>selector==='.on-marketplace-console'?root:null;document.createElement=()=>new Element();document.body={append:el=>dialogs.push(el)};
   const window=new Element();let next=initial,id=0;
-  const context={window,document,AbortController,console,FormData:class{constructor(form){return Object.entries(form.formValues||{});}},setInterval:(fn,ms)=>{timers.set(++id,{fn,ms});return id;},clearInterval:key=>timers.delete(key),fetch:async(url,options)=>{requests.push({url,options});if(typeof next==='function')return next(url,options);if(next instanceof Error)throw next;return {ok:!next.error,status:next.status||200,json:async()=>next};}};
+  const context={window,document,AbortController,console,URL,FormData:class{constructor(form){return Object.entries(form.formValues||{});}},setInterval:(fn,ms)=>{timers.set(++id,{fn,ms});return id;},clearInterval:key=>timers.delete(key),fetch:async(url,options)=>{requests.push({url,options});if(typeof next==='function')return next(url,options);if(next instanceof Error)throw next;return {ok:!next.error,status:next.status||200,json:async()=>next};}};
   vm.runInNewContext(source,context);
   const api=window.OpenNEXTConsoleMarketplace;
   const action=(name,id,workspace)=>({closest:selector=>selector==='[data-market-action]'?{dataset:{marketAction:name,id,workspace}}:null});
@@ -159,4 +159,108 @@ test('malformed server receipts remain Recorded rather than falsely acknowledged
 
 test('Console navigation exposes a dedicated Demo submissions page',()=>{
   const admin=fs.readFileSync(path.join(__dirname,'..','OpenNEXT-admin.js'),'utf8');assert.match(admin,/demoSubmissions:'Demo submissions'/);assert.match(admin,/demoSubmissions:\(\)=>window\.OpenNEXTConsoleMarketplace\.render\('rfqs',\{scope:'demo'\}\)/);
+});
+
+const externalRfq={
+  id:'EXT-packet-demand-1',external:true,executable:false,responseMode:'operations',kind:'gpu_rental',
+  title:'B200 or H200 cluster',model:'B200',modelOptions:['B200','H200'],modelBudgets:{B200:3,H200:1.7},
+  region:'US · UK',regionScope:{type:'countries',countries:['US','GB']},
+  quantity:{minNodes:64,maxNodes:128,gpusPerNode:8,totalGpusMin:512,sourceMinimum:true},
+  rentalMonths:{min:12,max:24,preferred:24,notes:'Longer term preferred'},budget:3,
+  status:'Approved',reviewStatus:'Approved',reviewRevision:2,reviewedBy:'User-confirmed batch approval',
+  reviewedAt:'2026-10-18T15:30:00Z',reviewReason:'Initial batch confirmed for publication.',
+  provenance:{kind:'external',sourceId:'packet',sourceName:'Packet.ai',sourceUrl:'https://packet.ai/demand',sourceRecordId:'packet-b200-64-128',observedAt:'2026-10-18T15:29:31Z',importedAt:'2026-10-18T15:30:00Z',batchId:'packet-demand-approved-2026-10-18'},
+  notes:'Dedicated interconnect; confirm delivery and payment terms with operations.',
+  audit:[{event:'Approved',at:'2026-10-18T15:30:00Z',actor:'User-confirmed approval',reason:'Approved batch'}]
+};
+
+test('Source columns distinguish first-party and external records without fake accounts or durations',async()=>{
+  const s=setup(snapshot({rfqs:[rental,externalRfq],supplies:[{...externalRfq,id:'EXT-supply-1',budget:undefined,netPrice:2.3}]}));await s.load();
+  assert.match(s.table(),/<th>Source<\/th>/);assert.match(s.table(),/OpenNEXT Terminal/);assert.match(s.table(),/Packet\.ai/);
+  assert.match(s.table(),/First-party submission/);assert.match(s.table(),/External · operations handled/);
+  assert.match(s.table(),/64–128 nodes · 512\+ GPUs · 8 GPUs \/ node/);assert.match(s.table(),/12–24 months/);
+  assert.match(s.table(),/Imported/);assert.match(s.table(),/no OpenNEXT account assigned/);
+  s.filter('[data-market-source]','external:packet');assert.doesNotMatch(s.table(),/RFQ-RENTAL|buyer@example\.test|Account email unavailable|hours|undefined|\[object Object\]/);
+  assert.equal(s.nodes.get('.market-console-results').textContent,'1 of 2 records');
+  await s.tab('supplies');assert.match(s.table(),/<th>Source<\/th>/);assert.match(s.table(),/Packet\.ai/);assert.match(s.table(),/\$2\.30/);
+  s.api.destroy();
+});
+
+test('Source filter and source/batch search combine with market and status filters',async()=>{
+  const other={...externalRfq,id:'EXT-other',provenance:{...externalRfq.provenance,sourceId:'other',sourceName:'Other Market',sourceRecordId:'other-123',batchId:'other-batch'}};
+  const s=setup(snapshot({rfqs:[rental,externalRfq,other]}));await s.load();
+  const sources=s.nodes.get('[data-market-source]').innerHTML;for(const value of ['All sources','OpenNEXT Terminal','Packet.ai','Other Market'])assert.ok(sources.includes(value),value);
+  s.filter('[data-market-query]','packet-demand-approved','input');assert.match(s.table(),/EXT-packet-demand-1/);assert.doesNotMatch(s.table(),/EXT-other|RFQ-RENTAL/);
+  s.filter('[data-market-query]','other market','input');assert.match(s.table(),/EXT-other/);assert.doesNotMatch(s.table(),/EXT-packet-demand-1/);
+  s.filter('[data-market-source]','terminal');assert.match(s.table(),/No matching records/);
+  s.filter('[data-market-query]','','input');assert.match(s.table(),/RFQ-RENTAL/);assert.doesNotMatch(s.table(),/EXT-other/);
+  s.filter('[data-market-source]','external:packet');s.filter('[data-market-status]','Open');assert.match(s.table(),/No matching records/);
+  s.api.destroy();
+});
+
+test('External details retain provenance, review audit, quantities, model variants and only factual dates',async()=>{
+  const s=setup(snapshot({rfqs:[externalRfq]}));await s.load();await s.click('details',externalRfq.id);
+  const html=s.dialogs.at(-1).innerHTML;
+  for(const text of ['Original external record ID','packet-b200-64-128','Source observed','Imported','Import batch','packet-demand-approved-2026-10-18','Review revision','Reviewed by','User-confirmed batch approval','B200 / H200','B200 target price','H200 target price','$1.70','64–128 nodes','512+ GPUs','12–24 months','24 months','Longer term preferred','US, GB','Approved batch'])assert.ok(html.includes(text),text);
+  assert.match(html,/href="https:\/\/packet\.ai\/demand" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html,/Withdraw from Terminal/);assert.doesNotMatch(html,/Reject external record|Approve for Terminal|data-market-form="rfq"|Account ID|Account name|Service start|Service end|Quote deadline|hours|Agent completion/);
+  s.api.destroy();
+});
+
+test('Source links allow HTTPS without credentials and escape all other source content',async()=>{
+  for(const sourceUrl of ['javascript:alert(1)','data:text/html,<script>alert(1)</script>','http://packet.ai/demand','https://user:pass@packet.ai/demand','not a url']){
+    const record={...externalRfq,provenance:{...externalRfq.provenance,sourceName:'<script>unsafe</script>',sourceUrl}};
+    const s=setup(snapshot({rfqs:[record]}));await s.load();await s.click('details',record.id);const html=s.dialogs.at(-1).innerHTML;
+    assert.doesNotMatch(html,/<a class="market-source-link"|<script>/);assert.match(html,/&lt;script&gt;unsafe&lt;\/script&gt;/);assert.doesNotMatch(s.table(),/<script>/);s.api.destroy();
+  }
+});
+
+function externalDecision(s,decision,reason,revision='2'){
+  const dialog=s.dialogs.at(-1),error=new Element(),form=new Element(),button=new Element();
+  form.dataset={marketForm:'external',id:externalRfq.id,revision};form.formValues={reason};form.querySelector=()=>error;button.value=decision;
+  return {error,send:()=>dialog.emit('submit',{target:form,submitter:button})};
+}
+
+test('External approval uses its protected endpoint with current revision, never native RFQ review',async()=>{
+  const pending={...externalRfq,status:'Reviewing',reviewStatus:'Reviewing'};
+  const s=setup(snapshot({rfqs:[pending]}));await s.load();await s.click('details',pending.id);
+  assert.match(s.dialogs.at(-1).innerHTML,/Approve for Terminal/);assert.match(s.dialogs.at(-1).innerHTML,/Reject external record/);assert.match(s.dialogs.at(-1).innerHTML,/data-market-form="external"/);assert.match(s.dialogs.at(-1).innerHTML,/data-revision="2"/);assert.doesNotMatch(s.dialogs.at(-1).innerHTML,/Withdraw from Terminal|data-market-form="rfq"/);
+  const decision=externalDecision(s,'Approved','Source facts reviewed.');
+  s.setNext((url,options)=>({ok:true,status:200,json:async()=>options.method==='PATCH'?externalRfq:snapshot({rfqs:[externalRfq]})}));
+  await decision.send();const patch=s.requests.find(r=>r.options.method==='PATCH');
+  assert.equal(patch.url,'/api/admin/marketplace/external/'+externalRfq.id);assert.equal(patch.options.credentials,'same-origin');assert.deepEqual(JSON.parse(patch.options.body),{status:'Approved',reason:'Source facts reviewed.',expectedRevision:2});
+  assert.equal(s.requests.filter(r=>r.url.includes('/marketplace/rfqs/')).length,0);s.api.destroy();
+});
+
+test('External withdrawal and rejection require reasons and cannot use stale review revisions',async()=>{
+  for(const decision of ['Withdrawn','Rejected']){
+    const record=decision==='Rejected'?{...externalRfq,status:'Reviewing',reviewStatus:'Reviewing'}:externalRfq;
+    const s=setup(snapshot({rfqs:[record]}));await s.load();await s.click('details',externalRfq.id);
+    const missing=externalDecision(s,decision,'');await missing.send();assert.match(missing.error.textContent,/Explain why/);assert.equal(s.requests.filter(r=>r.options.method==='PATCH').length,0);
+    const stale=externalDecision(s,decision,'Source withdrawn.','1');await stale.send();assert.match(stale.error.textContent,/current revision/);assert.equal(s.requests.filter(r=>r.options.method==='PATCH').length,0);
+    const valid=externalDecision(s,decision,'Source withdrawn.');await valid.send();const patch=s.requests.find(r=>r.options.method==='PATCH');assert.equal(JSON.parse(patch.options.body).status,decision);s.api.destroy();
+  }
+});
+
+test('External supply uses the same source audit and separate operations review',async()=>{
+  const s=setup(snapshot({supplies:[{...externalRfq,netPrice:2.8,status:'Reviewing',reviewStatus:'Reviewing'}]}));await s.load('supplies');await s.click('details',externalRfq.id);
+  const html=s.dialogs.at(-1).innerHTML;assert.match(html,/Original external record ID/);assert.match(html,/data-market-form="external"/);assert.match(html,/Approve for Terminal/);assert.match(html,/\$2\.80/);assert.doesNotMatch(html,/SSH endpoint|Agent completion|data-market-form="rfq"/);s.api.destroy();
+});
+
+test('Adapter-generated source keys are not misrepresented as source-site record IDs and audit details remain visible',async()=>{
+  const record={...externalRfq,provenance:{...externalRfq.provenance,sourceRecordIdKind:'adapter-key'},audit:[{at:'2026-10-18T15:30:00Z',action:'Initial batch approved',detail:'Approved by direct user confirmation.',actor:'Operations'}]};
+  const s=setup(snapshot({rfqs:[record]}));await s.load();await s.click('details',record.id);const html=s.dialogs.at(-1).innerHTML;
+  assert.match(html,/Source adapter key/);assert.doesNotMatch(html,/Original external record ID/);assert.match(html,/Initial batch approved/);assert.match(html,/Approved by direct user confirmation\./);assert.match(html,/Operations/);s.api.destroy();
+});
+
+test('Demo source remains isolated and cannot call external review even with forged external fields',async()=>{
+  const record={...demoRow(externalRfq),status:'Reviewing',reviewStatus:'Reviewing'};
+  const s=setup(demoSnapshot({rfqs:[record]}));await s.load('rfqs',{scope:'demo'});assert.match(s.table(),/Demo · test only/);assert.doesNotMatch(s.table(),/market-source external|Packet\.ai/);
+  await s.click('details',record.id,record.workspaceId);assert.doesNotMatch(s.dialogs.at(-1).innerHTML,/data-market-form="external"/);
+  const invalid=externalDecision(s,'Approved','Test');await invalid.send();assert.match(invalid.error.textContent,/valid external market record/);assert.equal(s.requests.filter(r=>r.options.method==='PATCH').length,0);s.api.destroy();
+});
+
+test('External quantities and month options preserve source values and do not fabricate absent capacity',async()=>{
+  const s=setup(snapshot({rfqs:[{...externalRfq,quantity:{nodes:128,gpusPerNode:8,totalGpusMin:1024,sourceMinimum:true},rentalMonths:{min:6,options:[6,12]}},{...externalRfq,id:'EXT-unspecified',quantity:null,rentalMonths:null}]}));await s.load();
+  assert.match(s.table(),/128 nodes · 1,024\+ GPUs · 8 GPUs \/ node/);assert.match(s.table(),/6 \/ 12 months/);assert.match(s.table(),/Quantity not provided/);assert.match(s.table(),/Rental duration not provided/);assert.doesNotMatch(s.table(),/undefined|NaN|0 hours|Not provided hours|\[object Object\]/);s.api.destroy();
 });

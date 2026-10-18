@@ -10,7 +10,7 @@ const {listCuratedRfqs} = require('../OpenNEXT-curated-rfqs.cjs');
 
 async function harness(t) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opennext-curated-api-'));
-  const server = createAppServer({dataDir, env: {}, secureCookies: false});
+  const server = createAppServer({dataDir, externalService:false, env: {}, secureCookies: false});
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
     server.closeAllConnections();

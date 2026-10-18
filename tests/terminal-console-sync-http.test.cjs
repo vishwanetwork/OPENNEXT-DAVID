@@ -25,7 +25,7 @@ async function fixture(t) {
   }
   const server=createAppServer({
     dataDir,secureCookies:false,publicOrigin:'http://terminal.example',
-    env:{OPENNEXT_ADMIN_TOKEN:ADMIN_TOKEN,OPENNEXT_TRUST_PROXY:'0',OPENNEXT_DEMO_ENABLED:'1'},
+    env:{OPENNEXT_ADMIN_TOKEN:ADMIN_TOKEN,OPENNEXT_TRUST_PROXY:'0',OPENNEXT_DEMO_ENABLED:'1',OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED:'0'},
     pricingService:{close:async()=>{},listProviders:async()=>[]},
     capacityService:{close:async()=>{}},contactService:{list:async()=>[]},
     // This identity adapter exists only inside the isolated HTTP test server.

@@ -20,8 +20,10 @@ async function setup(t,{enabled=true,sessionTtlMs=7200000}={}){
   finally{for(const key of Object.keys(hosts))saved[key]===undefined?delete process.env[key]:process.env[key]=saved[key];delete require.cache[modulePath];}
   let clock=Date.now();
   const service=createDemoService({enabled,secureCookies:false,now:()=>clock,sessionTtlMs});
+  const closeDemo=service.close.bind(service);let closePromise;
+  service.close=()=>closePromise||(closePromise=closeDemo());
   const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'opennext-demo-console-test-'));
-  const server=createAppServer({dataDir,demoService:service,env:{OPENNEXT_DEMO_ENABLED:enabled?'1':'0',OPENNEXT_ADMIN_TOKEN:TOKEN,OPENNEXT_TRUST_PROXY:'1'},secureCookies:false});
+  const server=createAppServer({dataDir,demoService:service,externalService:false,env:{OPENNEXT_DEMO_ENABLED:enabled?'1':'0',OPENNEXT_ADMIN_TOKEN:TOKEN,OPENNEXT_TRUST_PROXY:'1'},secureCookies:false});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await service.close();assert.equal(path.dirname(path.resolve(dataDir)),path.resolve(os.tmpdir()));await fs.rm(dataDir,{recursive:true,force:true});});
   function request(route,{host='terminal.test',method='GET',body,headers={}}={}){
