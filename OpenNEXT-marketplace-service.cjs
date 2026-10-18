@@ -19,7 +19,7 @@ function regionCountry(value){
   if(regions[label])return regions[label];if(/^us-|^US (East|West)/i.test(label))return 'United States';if(/^ca-/i.test(label))return 'Canada';if(/^cn-/i.test(label))return 'China';
   const cities={Frankfurt:'Germany',Tokyo:'Japan',Seoul:'South Korea',Mumbai:'India',Sydney:'Australia',London:'United Kingdom',Paris:'France',Stockholm:'Sweden',Zurich:'Switzerland',Jakarta:'Indonesia',Oregon:'United States','N. Virginia':'United States',Ohio:'United States',California:'United States'};return cities[label]||label;
 }
-function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=null, externalService=null, provenanceKind='first_party'}={}) {
+function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=null, externalService=null, provenanceKind='first_party', onRfqSubmitted=null}={}) {
   if(!dataDir)throw Error('A private marketplace data directory is required.');
   const file=path.join(dataDir,'marketplace.json');
   const fresh=()=>({version:2,rfqs:[],supplies:[],kyb:[],interests:[],instances:[],quotes:[],orders:[],notifications:[],audit:[],homepageReviews:[],submissionRequests:[]});
@@ -156,7 +156,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
   }
   async function submitKyb(user,input){role(user,'Seller');return change(db=>{const old=kybFor(db,user.id);if(old?.status==='Reviewing')throw fail(409,'Your supplier review is already in progress.');if(old?.status==='Approved')throw fail(409,'Your supplier review is already approved.');const company=text(input.company,160,true),registration=text(input.registration,160,true),country=text(input.country,100,true),rights=text(input.rights,3000,true),evidence=text(input.evidence,3000,true);if(!countries.valid(country))throw fail(400,'Select a valid registration country.');if(input.eligibility!==true||input.rightsConfirmed!==true)throw fail(400,'Confirm eligibility and capacity resale rights.');const record={id:old?.id||uid('KYB'),ownerId:user.id,email:user.email,name:user.name,company,registration,country,rights,evidence,status:'Reviewing',createdAt:old?.createdAt||timestamp(),submittedAt:timestamp(),updatedAt:timestamp()};if(old)Object.assign(old,record);else db.kyb.unshift(record);log(db,'Supplier review submitted',user.id,record.id);notify(db,user.id,'Supplier review submitted','Your business and capacity rights are being reviewed. We will notify you when the review is complete.');return record;});}
   async function decideKyb(id,input,operator='Administrator'){return change(db=>{const r=db.kyb.find(r=>r.id===id);if(!r)throw fail(404,'Supplier review not found.');if(r.status!=='Reviewing')throw fail(409,'This review already has a decision.');if(!['Approved','Rejected'].includes(input.status))throw fail(400,'Choose Approve or Reject.');r.reason=text(input.reason,2000,input.status==='Rejected');r.status=input.status;r.reviewedAt=timestamp();r.updatedAt=timestamp();r.reviewedBy=operator;log(db,'Supplier review '+r.status,operator,r.id);notify(db,r.ownerId,'Supplier review '+r.status.toLowerCase(),r.status==='Approved'?'Your supplier review is approved. You can submit capacity for agent installation.':r.reason);return r;});}
-  async function saveRfq(user,input,id){role(user,'Buyer');return change(db=>{
+  async function saveRfq(user,input,id){role(user,'Buyer');let submitted=null;const saved=await change(db=>{
     const request=id?null:submissionRequest(db,user,input,'rfqs');if(request?.record)return request.record;
     const previous=id?owner(db.rfqs,id,user):null;
     if(previous&&(previous.orderId||!['Open','Quoted','Reviewing','Rejected'].includes(previous.status)))throw fail(409,'This RFQ cannot be edited.');
@@ -172,8 +172,11 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     if(previous){Object.assign(previous,r);db.quotes.filter(q=>q.rfqId===r.id&&q.status==='Pending').forEach(q=>q.status='Needs refresh');}else db.rfqs.unshift(r);
     rememberSubmission(db,request,r);log(db,'RFQ submitted for operations review',user.id,r.id);
     notify(db,user.id,'RFQ under review',r.title+' was received. Operations will review it before suppliers can respond.',{rfqId:r.id,target:'rfq'});
-    return r;
-  });}
+    submitted=r;return r;
+  });
+  // Fire-and-forget: notification delivery must never delay or fail the saved RFQ.
+  if(submitted&&onRfqSubmitted)try{onRfqSubmitted(clone(submitted),{resubmitted:Boolean(id)});}catch{}
+  return saved;}
   async function decideRfq(id,input,operator='Administrator'){return change(db=>{
     const r=db.rfqs.find(row=>row.id===id);if(!r)throw fail(404,'RFQ submission not found.');
     if(!Number.isInteger(input.expectedRevision)||input.expectedRevision!==r.reviewRevision)throw fail(409,'This RFQ revision has changed. Refresh the submission before reviewing.');

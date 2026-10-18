@@ -11,6 +11,7 @@ const {createCapacityPriceService} = require('./OpenNEXT-capacity-prices.cjs');
 const {createContactService, createContactRouter} = require('./OpenNEXT-contact-service.cjs');
 const {createAuthService} = require('./OpenNEXT-auth-service.cjs');
 const {createOAuthAdapter} = require('./OpenNEXT-oauth-adapter.cjs');
+const {createRfqNotifier} = require('./OpenNEXT-rfq-notifier.cjs');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
 const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
@@ -80,7 +81,8 @@ function createAppServer(options = {}) {
   const contactRoute = createContactRouter(contacts, {security:pricingRoute.security});
   const auth = options.authService || createAuthService({dataDir:privateDataDir, adapter:options.authAdapter || createOAuthAdapter({env:options.env || process.env}), publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
   const external = options.externalService === false || environment.OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED === '0' ? null : options.externalService || createExternalMarketplace({dataDir:privateDataDir,checkedBatch:{sourceId:PACKET_APPROVED_BATCH.sourceId,sourceName:PACKET_APPROVED_BATCH.sourceName,batchId:PACKET_APPROVED_BATCH.id,approvalReason:PACKET_APPROVED_BATCH.approvalReason,expectedCount:PACKET_APPROVED_BATCH.expectedCount,observedAt:PACKET_APPROVED_BATCH.observedAt,records:listPacketDemands()}});
-  const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter, externalService:external});
+  const rfqNotifier = options.rfqNotifier || createRfqNotifier({env:options.env || process.env});
+  const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter, externalService:external, onRfqSubmitted:rfqNotifier.rfqSubmitted});
   const marketplaceRoute = createMarketplaceRouter(marketplace, {auth, security:pricingRoute.security, env:options.env || process.env});
   const paymentRoute = createPaymentRouter({auth, checkoutAdapter:options.checkoutAdapter, allowedOrigins:options.checkoutOrigins});
   const server = http.createServer(async (req, res) => {
@@ -262,7 +264,7 @@ function createAppServer(options = {}) {
   server.externalMarketplace = external;
   server.news = news;
   server.on('close', () => {Promise.resolve(news.close?.()).catch(() => {});});
-  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); demo.close().catch(() => {});});
+  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); rfqNotifier.close?.(); demo.close().catch(() => {});});
   return server;
 }
 
