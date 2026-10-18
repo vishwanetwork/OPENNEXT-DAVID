@@ -17,13 +17,7 @@
     {name:'Tokyo',code:'ap-northeast-1',city:'Tokyo'},{name:'Mumbai',code:'ap-south-1',city:'Mumbai'},
     {name:'Seoul',code:'ap-northeast-2',city:'Seoul'},{name:'Dubai',code:'me-central-1',city:'Dubai'}
   ];
-  const news=[
-    {source:'NVIDIA Newsroom',date:'2026-10-16',title:'NVIDIA launches RTX Spark PCs for local AI workloads',url:'https://nvidianews.nvidia.com/news/nvidia-rtx-spark-pcs-available-today-a-new-beginning-for-windows-pcs'},
-    {source:'NVIDIA Newsroom',date:'2026-10-15',title:'Adobe and NVIDIA expand accelerated AI creation workflows',url:'https://nvidianews.nvidia.com/news/adobe-and-nvidia-expand-collaboration-to-speed-agentic-creation'},
-    {source:'AMD Newsroom',date:'2026-10-15',title:'AMD CTO discusses open infrastructure and heterogeneous AI compute',url:'https://newsroom.amd.com/news/ee-times-interview-mark-papermaster-future-a-video/'},
-    {source:'NVIDIA Newsroom',date:'2026-10-14',title:'Semiconductor leaders adopt NVIDIA AI tools for chip manufacturing',url:'https://nvidianews.nvidia.com/news/nvidia-and-semiconductor-leaders-advance-ai-across-chip-design-and-manufacturing-for-ai-defined-labs'},
-    {source:'AMD Newsroom',date:'2026-10-12',title:'AMD introduces Helion for rack-scale agentic AI compute',url:'https://newsroom.amd.com/news/open-rack-blueprint-scale-agentic-ai/'}
-  ];
+  const news=[];
   let records=[],meta={status:'loading',message:'Connecting to the server price cache.'},pricePending=null;
   const histories=new Map(),historyPending=new Map();
   const money=n=>n===null||n===undefined||!Number.isFinite(Number(n))?'—':new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n));

@@ -5,6 +5,7 @@
   let state = null;
   let market = {rfqs:[],supplies:[],featured:{rfqs:[],supplies:[]}}, bestRows=[], recentRows=[], matchReason='', matchPrompt='', loaded=false, error='';
   let refreshJob=null,refreshIdentity=null,cacheIdentity='';
+  let referenceCatalog = {supplies:[],rfqs:[],recent:[]}, referenceLoaded = false;
   const refreshKey=S=>JSON.stringify([scope.OpenNEXTAuth?.getUser?.()?.id||null,scope.OpenNEXTAuth?.getUser?.()?.role||null,S?.model||'',S?.region||'']);
   async function api(path, method='GET', body) {
     const user=scope.OpenNEXTAuth?.getUser?.();
@@ -20,6 +21,9 @@
     refreshIdentity=identity;
     refreshJob=(async()=>{try{
       market=await api('/api/marketplace/public');generated.clear();error='';loaded=true;
+      if (!scope.OpenNEXTDemo?.active && !referenceLoaded) {
+        try {const result=await api('/api/marketplace/reference-catalog');referenceCatalog={supplies:result.supplies||[],rfqs:result.rfqs||[],recent:result.recent||[]};referenceLoaded=true;} catch { /* Real marketplace data remains available if reference data is offline. */ }
+      }
       const user=userSnapshot;
       if(user?.onboardingCompleted&&S){const own=await api('/api/marketplace/me');if(refreshKey(S)!==identity)return null;const result=await api('/api/marketplace/matches?'+new URLSearchParams({model:modelSnapshot,region:regionSnapshot}));if(refreshKey(S)!==identity)return null;for(const field of ['rfqs','listings','review','responses','orders','notifications','instances'])S[field]=own[field];S.marketplaceAuthoritative=true;bestRows=result.rows;matchReason=result.reason;matchPrompt=result.submissionPrompt||'';}
       else {bestRows=[];matchReason='No matches.';matchPrompt='Sign in to receive same-model recommendations.';}
@@ -73,7 +77,21 @@ function regionCountry(value){
     return listPublic('rental',side).filter(r=>r.model===filters.model && (!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)) && (!filters.count||r.count>=Number(filters.count)) && (!filters.term||r.term===filters.term)).sort((a,b)=>side==='supply'?a.price-b.price:b.price-a.price);
   }
   const generated = new Map();
-  function marketRows(filters,side) {const rows=matches(filters,side);rows.forEach(r=>generated.set(r.id,r));return rows;}
+  function referenceRows(filters={},side='supply') {
+    if(scope.OpenNEXTDemo?.active)return [];
+    return (side==='supply'?referenceCatalog.supplies:referenceCatalog.rfqs).filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region))&&(!filters.count||r.count>=Number(filters.count))&&(!filters.term||r.term===filters.term)).sort((a,b)=>side==='supply'?a.price-b.price:b.price-a.price);
+  }
+  function marketRows(filters,side) {const actual=matches(filters,side),rows=actual.length?actual:referenceRows(filters,side);rows.forEach(r=>generated.set(r.id,r));return rows;}
+  function best(filters=state||{}) {
+    const actual=bestRows.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)));
+    const rows=actual.length?actual:referenceRows(filters,filters.role==='Seller'?'demand':'supply');rows.forEach(r=>generated.set(r.id,r));return rows;
+  }
+  function recent(filters, days=3) {
+    if(!filters)return recentRows;
+    const cutoff=Date.now()-Number(days)*86400000;
+    const actual=recentRows.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region))&&Date.parse(r.settledAt)>=cutoff&&Date.parse(r.settledAt)<=Date.now());
+    return actual.length||scope.OpenNEXTDemo?.active?actual:referenceCatalog.recent.filter(r=>r.model===filters.model&&(!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)));
+  }
   function find(id) {
     const current=generated.get(id)||get(id);if(current)return current;
     const S=getState();
@@ -125,7 +143,7 @@ function regionCountry(value){
     S.ledger.unshift({id:paymentId,paymentReference:paymentId,orderId:order.id,type:'Capacity purchase',amount:-order.total,date:at,createdAt:at,role:S.role,side:'buy',status:'Completed',test:true});
     notify(S,'Seller','Payment confirmed',`${order.id} is funded. Prepare delivery.`,{supplier:order.provider,orderId:order.id});return true;
   }
-  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best:()=>bestRows,recent:()=>recentRows};
+  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best,recent};
   scope.OpenNEXTExchange=exposed;
   if(typeof module!=='undefined')module.exports=exposed;
 })(typeof window!=='undefined'?window:globalThis);

@@ -1,6 +1,7 @@
 'use strict';
 // Test fixtures used only by the isolated public demo service. Never seed production stores.
 const crypto = require('node:crypto');
+const {feePolicy, transactionAmounts} = require('./OpenNEXT-transaction-fees.cjs');
 
 const MODELS = [
   ['H100', 2.18], ['H100 SXM', 2.30], ['H100 PCIe', 1.98], ['H200', 2.86],
@@ -41,8 +42,8 @@ function createDemoData(now = Date.now()) {
       const supplyId=id('SUP',key);
       data.supplies.push({
         id:supplyId,ownerId:'fixture-supplier-'+index,ownerEmail:'operations'+index+'@capacity.invalid',
-        kind:'gpu_rental',model,region,term,count,hours,netPrice,buyerPrice:Math.round(netPrice*1.05*1e6)/1e6,
-        markupPercent:5,title:model+' dedicated capacity',
+        kind:'gpu_rental',model,region,term,count,hours,netPrice,buyerPrice:netPrice,
+        markupPercent:0,priceBasis:'base_rate',...feePolicy,title:model+' dedicated capacity',
         notes:`${count} GPUs with dedicated networking. ${term==='Spot'?'Interruptible capacity; checkpointing recommended.':'Reserved access window and service terms confirmed in the quote.'} SSH access, storage and network topology confirmed before delivery.`,
         serviceStart:at(-24),serviceEnd:at(24*180),start:at(-24),agentStatus:'Succeeded',
         agentId:'demo-fixture-agent-'+modelIndex+'-'+index,verifiedAt:at(-2),status:'Published',
@@ -57,7 +58,7 @@ function createDemoData(now = Date.now()) {
         notes:`${requiredCount} ${model} GPUs in ${region}. Dedicated SSH access required; confirm network bandwidth, storage and deployment readiness. ${index===0?'Urgent delivery requested.':'Quotes should include SLA and interruption terms.'}`,
         budget:price(base*([1.34,1.18,1.23,1.27,1.16,1.21,1.42,1.38,1.15][index])),
         start:at(72+index),quoteDeadline:at(48+index),urgency:index===0?'High urgency':'Standard',
-        visibility:'Public requirements',originSupply:null,shareClosingPrice:true,status:'Open',
+        visibility:'Public requirements',originSupply:null,shareClosingPrice:true,status:'Open',reviewStatus:'Approved',reviewRevision:1,reviewSubmittedAt:at(-13-index),reviewedAt:at(-12-index),reviewedBy:'Demo operations',reviewReason:'Approved for isolated demo testing only.',
         createdAt:at(-12-index),updatedAt:at(-1),serverRecord:true,
         network:'Dedicated interconnect; topology to be confirmed',storage:'1 TB fast workspace storage per node',
         image:'Ubuntu LTS with CUDA-compatible runtime',sla:'Service-level terms to be confirmed in quotation',
@@ -66,10 +67,11 @@ function createDemoData(now = Date.now()) {
       // These completed records belong to fixture counterparties, never to the preview account.
       if(index<6){
         const unitPrice=price(base*[0.98,1.01,0.96,1.06,1.03,1.00][index]);
+        const orderCount=[8,16,32,8,16,8][index];
         data.orders.push({
           id:id('ORDER',key),buyerId:'fixture-buyer-'+index,sellerId:'fixture-supplier-'+index,
-          supplyId,kind:'gpu_rental',model,region,term:'Spot',count:[8,16,32,8,16,8][index],hours:72,
-          unitPrice,total:price(unitPrice*[8,16,32,8,16,8][index]*72),status:'Completed',paymentStatus:'Paid',
+          supplyId,kind:'gpu_rental',model,region,term:'Spot',count:orderCount,hours:72,
+          unitPrice,priceBasis:'base_rate',...transactionAmounts({kind:'gpu_rental',rate:unitPrice,count:orderCount,hours:72}),currency:'USD',status:'Completed',paymentStatus:'Paid',
           provider:company,settledAt:at(-[0.3,2,8,20,38,60][index]),createdAt:at(-24*6),
           serviceStart:at(-24*5),serviceEnd:at(-24*2),serverRecord:true,
         });

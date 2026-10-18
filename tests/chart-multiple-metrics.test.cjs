@@ -99,7 +99,7 @@ test('empty or reordered time windows preserve region choices and colors without
   assert.doesNotMatch(target.innerHTML, /data-region-line=/);
   click(target, '[data-region-toggle]');
   assert.equal((target.innerHTML.match(/data-region-id="[^"]+" checked/g) || []).length, 9);
-  assert.equal((target.innerHTML.match(/<small>0 points<\/small>/g) || []).length, 9);
+  assert.doesNotMatch(target.innerHTML, /<small>\d+ points<\/small>/);
   api.mount(target, {...state, period: '3M', priceMetrics: metrics}, {...data, series: [...data.series].reverse()});
   assert.equal(window.__onHistoryChartInfo.series.length, 27);
   for (const series of window.__onHistoryChartInfo.series) assert.equal(series.color, original.get(series.id));

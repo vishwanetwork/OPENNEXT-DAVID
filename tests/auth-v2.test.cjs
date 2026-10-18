@@ -58,7 +58,7 @@ test('verified session uses HttpOnly signed cookie, not client-provided identity
   assert.equal(result.data.user.name, 'Verified Person'); assert.equal(result.data.user.role, null);
   assert.equal(result.data.user.promotionalCredit, 0); assert.equal(result.data.user.onboardingCompleted, false);
   assert.equal((await api.call('/api/auth/session')).data.user.id, result.data.user.id);
-  api.jar.set('opennext_session', api.jar.get('opennext_session').replace(/^./, 'X'));
+  api.jar.set('opennext_session', api.jar.get('opennext_session').replace(/^./, first => first === 'X' ? 'Y' : 'X'));
   assert.equal((await api.call('/api/auth/session')).data.user, null);
 });
 

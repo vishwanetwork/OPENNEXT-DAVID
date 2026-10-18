@@ -22,7 +22,7 @@ test('demo region rotation preserves every existing listing identity, price and 
       const rfq=data.rfqs.find(row=>row.id===fixtureId('RFQ',key));
       assert.ok(supply);assert.ok(rfq);
       assert.equal(supply.netPrice,round(base*[.93,1.02,.98,1.08,1.04,1.01,1.24,1.20,.91][index]));
-      assert.equal(supply.buyerPrice,Math.round(supply.netPrice*1.05*1e6)/1e6);
+      assert.equal(supply.buyerPrice,supply.netPrice);
       assert.equal(supply.count,[64,32,128,16,48,24,64,32,128][index]);
       assert.equal(supply.term,index<6?'Spot':index<8?'On-demand':'Reserved');
       assert.equal(rfq.budget,round(base*[1.34,1.18,1.23,1.27,1.16,1.21,1.42,1.38,1.15][index]));

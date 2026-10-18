@@ -87,6 +87,29 @@ test('Console aggregates only submitted guest RFQs with opaque stable workspace 
   assert.equal((await f.server.marketplace.admin()).rfqs[0].id,production.id);
 });
 
+test('Demo RFQ review is isolated, revision-bound, and visible to the submitting guest',async t=>{
+  const f=await setup(t),buyer=await f.start(),other=await f.start();
+  const submitted=await f.guest(buyer,'/marketplace/rfqs',{method:'POST',body:f.rfq()});
+  assert.equal(submitted.status,201,submitted.text);assert.equal(submitted.data.rfq.status,'Reviewing');
+  await f.guest(other,'/marketplace/rfqs',{method:'POST',body:f.rfq('Other requirement')});
+  const snapshot=(await f.admin()).data,row=snapshot.rfqs.find(r=>r.id===submitted.data.rfq.id),otherRow=snapshot.rfqs.find(r=>r.id!==row.id),endpoint=ADMIN+'/rfqs/'+row.id;
+  assert.equal((await f.guest(buyer,'/marketplace/public')).data.rfqs.some(r=>r.id===row.id),false);
+  assert.equal((await f.request(endpoint,{host:'admin.test',method:'PATCH',body:{status:'Approved',expectedRevision:1,workspaceId:row.workspaceId}})).status,401);
+  assert.equal((await f.admin(endpoint,{method:'PATCH',body:{status:'Approved',expectedRevision:1,workspaceId:otherRow.workspaceId}})).status,404);
+  assert.equal((await f.admin(endpoint,{method:'PATCH',body:{status:'Approved',workspaceId:row.workspaceId}})).status,409);
+  const approved=await f.admin(endpoint,{method:'PATCH',body:{status:'Approved',expectedRevision:1,workspaceId:row.workspaceId}});
+  assert.equal(approved.status,200,approved.text);assert.equal(approved.data.status,'Open');assert.equal(approved.data.reviewStatus,'Approved');
+  let own=(await f.guest(buyer,'/marketplace/me')).data;assert.equal(own.rfqs[0].status,'Open');assert.equal(own.notifications[0].rfqId,row.id);
+  assert.equal((await f.guest(buyer,'/marketplace/public')).data.rfqs.some(r=>r.id===row.id),true);
+  assert.equal((await f.server.marketplace.publicMarket()).rfqs.some(r=>r.id===row.id),false);
+  const edited=await f.guest(buyer,'/marketplace/rfqs/'+row.id,{method:'PATCH',body:{...f.rfq(),budget:4}});assert.equal(edited.data.rfq.status,'Reviewing');
+  assert.equal((await f.admin(endpoint,{method:'PATCH',body:{status:'Approved',expectedRevision:1,workspaceId:row.workspaceId}})).status,409);
+  const rejected=await f.admin(endpoint,{method:'PATCH',body:{status:'Rejected',expectedRevision:2,reason:'Clarify the start date.',workspaceId:row.workspaceId}});assert.equal(rejected.status,200,rejected.text);
+  own=(await f.guest(buyer,'/marketplace/me')).data;assert.equal(own.rfqs[0].status,'Rejected');assert.match(own.notifications[0].message,/Clarify the start date/);
+  assert.equal((await f.guest(buyer,'/marketplace/public')).data.rfqs.some(r=>r.id===row.id),false);
+  const fixtureRfq=createDemoData(Date.now()).rfqs[0];assert.equal((await f.admin(ADMIN+'/rfqs/'+fixtureRfq.id,{method:'PATCH',body:{status:'Rejected',expectedRevision:1,reason:'Do not mutate fixtures.',workspaceId:row.workspaceId}})).status,404);
+});
+
 test('Demo KYB approval targets its exact workspace and permits supply submission without publishing or installing',async t=>{
   const f=await setup(t),seller=await f.start('seller'),other=await f.start('seller');
   const submitted=await f.guest(seller,'/marketplace/kyb',{method:'POST',body:f.kyb()});

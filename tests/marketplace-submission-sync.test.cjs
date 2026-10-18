@@ -35,7 +35,7 @@ test('private RFQ is durably visible to Console with a server-owned receipt',asy
   assertReceipt(row);
   assert.equal(row.ownerName,buyer.name);
   assert.equal(row.ownerEmail,buyer.email);
-  assert.equal(row.status,'Open');
+  assert.equal(row.status,'Reviewing');
   assert.deepEqual((await service.publicMarket()).rfqs,[]);
   const restarted=createMarketplaceService({dataDir,now:()=>epoch});
   const consoleData=await restarted.admin();
@@ -54,7 +54,7 @@ test('Supply reaches Console before agent installation without becoming public',
   assert.equal(row.ownerName,seller.name);
   assert.equal(row.status,'Awaiting agent');
   assert.equal(row.agentStatus,'Pending');
-  assert.equal(row.buyerPrice,2.625);
+  assert.equal(row.buyerPrice,2.5);
   const restarted=createMarketplaceService({dataDir,now:()=>epoch});
   const consoleRow=(await restarted.admin()).supplies[0];
   assert.equal(consoleRow.id,row.id);

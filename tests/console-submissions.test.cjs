@@ -47,10 +47,10 @@ test('Console lists production submissions with independent receipts and market-
   assert.doesNotMatch(html,/0 GPU|0 hours|Preview buyer/);s.api.destroy();
 });
 
-test('supply rows show seller and buyer amounts without inventing price for missing values',async()=>{
+test('supply rows show the unmarked quoted price without inventing missing values',async()=>{
   const supply={...rental,id:'SUP-1',budget:undefined,netPrice:2,buyerPrice:2.1,status:'Awaiting agent',agentStatus:'Pending'};
   const s=setup(snapshot({supplies:[supply,{...hardware,id:'SUP-2',netPrice:null,buyerPrice:null}]}));await s.load('supplies');
-  assert.match(s.table(),/\$2\.00 \/ \$2\.10/);assert.match(s.table(),/Agent: Pending/);assert.match(s.table(),/Not provided \/ Not provided/);assert.doesNotMatch(s.table(),/\$0\.00/);
+  assert.match(s.table(),/\$2\.00/);assert.doesNotMatch(s.table(),/\$2\.10/);assert.match(s.table(),/Agent: Pending/);assert.match(s.table(),/Not provided/);assert.doesNotMatch(s.table(),/\$0\.00/);
   s.api.destroy();
 });
 
@@ -95,6 +95,21 @@ test('automatic refresh runs every thirty seconds only while visible, and resume
   s.document.hidden=true;for(const timer of s.timers.values())timer.fn();assert.equal(s.requests.length,1);
   s.document.hidden=false;s.window.emit('focus');await s.api.refresh();assert.equal(s.requests.length,2);
   for(const timer of s.timers.values())timer.fn();await s.api.refresh();assert.equal(s.requests.length,3);s.api.destroy();
+});
+
+test('RFQ review shows complete details and submits the required current revision',async()=>{
+  const record={...rental,status:'Reviewing',reviewStatus:'Reviewing',reviewRevision:3,reviewSubmittedAt:'2026-10-18T02:30:00Z'};
+  const s=setup(snapshot({rfqs:[record]}));await s.load();await s.click('details',record.id);
+  const dialog=s.dialogs.at(-1);assert.match(dialog.innerHTML,/Approve RFQ/);assert.match(dialog.innerHTML,/Reject RFQ/);assert.match(dialog.innerHTML,/data-revision="3"/);assert.match(dialog.innerHTML,/separate Homepage review/);
+  const error=new Element(),form=new Element();form.dataset={marketForm:'rfq',id:record.id,revision:'3'};form.formValues={reason:'Requirements verified.'};form.querySelector=()=>error;
+  const button=new Element();button.value='Approved';
+  s.setNext((url,options)=>({ok:true,status:200,json:async()=>options.method==='PATCH'?{...record,status:'Open',reviewStatus:'Approved'}:snapshot({rfqs:[{...record,status:'Open',reviewStatus:'Approved'}]})}));
+  await dialog.emit('submit',{target:form,submitter:button});
+  const sent=s.requests.find(r=>r.options.method==='PATCH');assert.equal(sent.url,'/api/admin/marketplace/rfqs/'+record.id);assert.deepEqual(JSON.parse(sent.options.body),{status:'Approved',reason:'Requirements verified.',expectedRevision:3});assert.match(s.table(),/Live RFQ/);s.api.destroy();
+});
+
+test('approved private RFQs remain explicitly private in Console',async()=>{
+  const s=setup(snapshot({rfqs:[{...rental,status:'Open',reviewStatus:'Approved',visibility:'Private RFQ'}]}));await s.load();assert.match(s.table(),/Approved · Private RFQ/);assert.doesNotMatch(s.table(),/Live RFQ/);s.api.destroy();
 });
 
 test('KYB and homepage review remain separate approval gates',async()=>{

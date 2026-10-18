@@ -295,6 +295,28 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       }
     });
   }
+  function decideConsoleRfq(id, input, operator = 'Demo operations') {
+    return trackAdmin(async () => {
+      requireAdminWorkspaceService();
+      await prune();
+      if (!/^DEMO-[a-f0-9-]{36}$/.test(String(input?.workspaceId || ''))) throw fail(400, 'Select a valid Demo workspace.');
+      const session = [...sessions.values()].find(value => value.workspaceId === input.workspaceId && !value.removed && value.expiresAt > now());
+      if (!session) throw fail(404, 'This Demo workspace has expired or is unavailable. Start a new Demo to continue testing.');
+      session.active++;
+      try {
+        const snapshot = await session.marketplace.admin();
+        if (!snapshot.rfqs.some(record => record.id === id && record.ownerId === session.user.id)) throw fail(404, 'The Demo RFQ submission was not found in this workspace.');
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired. Start a new Demo to continue testing.');
+        const record = await session.marketplace.decideRfq(id, {status: input.status, reason: input.reason, expectedRevision: input.expectedRevision}, operator);
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired. Start a new Demo to continue testing.');
+        return consoleRecord(record, session);
+      } finally {
+        session.active--;
+        if (session.expiresAt <= now() && !session.removed) await expire(session);
+        else if (session.removed) await removeWorkspace(session);
+      }
+    });
+  }
   const timer = setInterval(() => {prune().catch(() => {});}, 60000);
   timer.unref?.();
   async function close() {
@@ -308,7 +330,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
     }
     starts.clear(); showcaseCache = null;
   }
-  return {handle, close, enabled: !!enabled, consoleSnapshot, decideConsoleKyb};
+  return {handle, close, enabled: !!enabled, consoleSnapshot, decideConsoleKyb, decideConsoleRfq};
 }
 
 module.exports = {createDemoService};

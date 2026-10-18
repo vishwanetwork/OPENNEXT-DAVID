@@ -3,7 +3,8 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const {getMarket, getNews} = require('./OpenNEXT-market-feed.cjs');
+const {getMarket} = require('./OpenNEXT-market-feed.cjs');
+const {createNewsService} = require('./OpenNEXT-news-service.cjs');
 const {createPricingService} = require('./OpenNEXT-pricing-service.cjs');
 const {createPricingRouter} = require('./OpenNEXT-pricing-api.cjs');
 const {createCapacityPriceService} = require('./OpenNEXT-capacity-prices.cjs');
@@ -14,6 +15,7 @@ const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
 const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
 const {listCuratedRfqs} = require('./OpenNEXT-curated-rfqs.cjs');
+const {createReferenceCatalog} = require('./OpenNEXT-reference-catalog.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
 // outside this allowlist are never exposed by the preview HTTP server.
@@ -65,8 +67,10 @@ async function readDemoAdminBody(req) {
 function createAppServer(options = {}) {
   const environment = options.env || process.env;
   const demoEnabled = environment.OPENNEXT_DEMO_ENABLED !== '0';
+  const referenceCatalog = environment.OPENNEXT_REFERENCE_CATALOG_ENABLED === '0' ? {scope:'reference-only',supplies:[],rfqs:[],recent:[]} : createReferenceCatalog();
   const demo = options.demoService || createDemoService({enabled:demoEnabled, secureCookies:options.secureCookies, trustProxy:environment.OPENNEXT_TRUST_PROXY === '1'});
   const privateDataDir = options.dataDir || (options.env || process.env).OPENNEXT_DATA_DIR || (options.env || process.env).OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data');
+  const news = options.newsService || createNewsService({dataDir:privateDataDir, env:environment});
   const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
   const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
   const pricingRoute = createPricingRouter(pricing, {env:options.env || process.env, capacity});
@@ -110,12 +114,21 @@ function createAppServer(options = {}) {
         if (pathname === '/api/admin/demo/marketplace' && req.method === 'GET') {send(200, await demo.consoleSnapshot()); return;}
         const match = pathname.match(/^\/api\/admin\/demo\/marketplace\/kyb\/(KYB-[A-F0-9]+)$/);
         if (match && req.method === 'PATCH') {send(200, await demo.decideConsoleKyb(match[1], await readDemoAdminBody(req))); return;}
+        const rfqMatch = pathname.match(/^\/api\/admin\/demo\/marketplace\/rfqs\/(RFQ-[A-F0-9]+)$/);
+        if (rfqMatch && req.method === 'PATCH') {send(200, await demo.decideConsoleRfq(rfqMatch[1], await readDemoAdminBody(req))); return;}
         throw fail(404, 'Not found.');
       } catch (error) {
         const known = [400, 401, 403, 404, 409, 413, 415, 503].includes(error.status);
         send(known ? error.status : 503, {error: known ? error.message : 'Demo submissions are temporarily unavailable.', demo: true, scope: 'demo'});
         return;
       }
+    }
+
+    if(pathname==='/api/marketplace/reference-catalog'){
+      const allowed = !onAdmin && ['GET','HEAD'].includes(req.method);
+      res.writeHead(allowed ? 200 : 404, {'Content-Type':'application/json; charset=utf-8'});
+      res.end(req.method==='HEAD' ? '' : JSON.stringify(allowed ? referenceCatalog : {error:'Not found.'}));
+      return;
     }
 
     if(pathname==='/api/homepage/rfqs'){
@@ -205,7 +218,7 @@ function createAppServer(options = {}) {
     }
     if (!onAdmin && (pathname === '/api/market' || pathname === '/api/news')) {
       try {
-        const data = await (pathname === '/api/market' ? getMarket() : getNews());
+        const data = await (pathname === '/api/market' ? getMarket() : news.getNews());
         res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
         res.end(req.method === 'HEAD' ? undefined : JSON.stringify(data));
       } catch {
@@ -243,6 +256,8 @@ function createAppServer(options = {}) {
   server.contacts = contacts;
   server.auth = auth;
   server.marketplace = marketplace;
+  server.news = news;
+  server.on('close', () => {Promise.resolve(news.close?.()).catch(() => {});});
   server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); demo.close().catch(() => {});});
   return server;
 }
@@ -264,6 +279,7 @@ if (require.main === module) {
     console.log('Operations Console: http://' + host + ':' + actualPort + '/admin/');
     server.pricing.startScheduler();
     server.capacity.start();
+    server.news.start().catch(error => console.error('News refresh: ' + error.message));
   });
 }
 

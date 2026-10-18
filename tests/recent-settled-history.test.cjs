@@ -67,7 +67,7 @@ test('exchange loads the full free 90-day settlement window from the read-only s
   const fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>url.includes('/settlements?')?{rows}:{rfqs:[],supplies:[],featured:{rfqs:[],supplies:[]}}};};
   vm.runInNewContext(read('OpenNEXT-exchange.js'),{window,fetch,URLSearchParams,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail;}}},{filename:'OpenNEXT-exchange.js'});
   await window.OpenNEXTExchange.refresh({model:'H100',region:'All regions'});
-  assert.deepEqual(requests.map(r=>r.url),['/api/marketplace/public','/api/marketplace/settlements?days=90']);
+  assert.deepEqual(requests.map(r=>r.url),['/api/marketplace/public','/api/marketplace/reference-catalog','/api/marketplace/settlements?days=90']);
   assert.ok(requests.every(r=>r.options.method==='GET'));
   assert.equal(window.OpenNEXTExchange.recent()[0].id,'OLDER-VALID');
 });

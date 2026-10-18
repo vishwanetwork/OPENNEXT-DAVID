@@ -84,8 +84,11 @@ test('terminal host cannot read contact administration even with an administrato
   assert.equal(code,404);assert.equal(body.error,'Not found.');
 });
 
-test('news snapshot is refreshed as of 17 October without fabricating publication dates',async()=>{
-  const {getNews}=require('../OpenNEXT-market-feed.cjs');const news=await getNews();assert.equal(news.asOf,'2026-10-17');assert.match(news.verifiedAt,/^2026-10-17/);assert.equal(news.articles.length,5);
-  assert(news.articles.every(article=>article.date<='2026-10-17'&&article.source&&article.summary&&/^https:\/\//.test(article.url)));
-  assert.equal(news.articles[0].date,'2026-10-16');
+test('news preserves publisher dates separately from the actual collection timestamp',async t=>{
+  const {createNewsService}=require('../OpenNEXT-news-service.cjs');
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'opennext-news-date-'));
+  const service=createNewsService({dataDir:directory,now:()=>Date.parse('2026-10-18T01:00:00Z'),sources:[{id:'fixture',name:'Publisher',url:'https://example.test/rss',articleHosts:['example.test']}],fetchImpl:async()=>({ok:true,status:200,headers:new Headers(),text:async()=>'<rss><channel><item><title>H200 GPU capacity expands</title><link>https://example.test/gpu-capacity</link><pubDate>Fri, 16 Oct 2026 09:00:00 GMT</pubDate></item></channel></rss>'})});
+  t.after(async()=>{await service.close();await fs.rm(directory,{recursive:true,force:true});});
+  const news=await service.getNews();assert.equal(news.mode,'hourly-rss');assert.equal(news.fetchedAt,'2026-10-18T01:00:00.000Z');assert.equal(news.articles.length,1);
+  assert.equal(news.articles[0].publishedAt,'2026-10-16T09:00:00.000Z');assert.equal(news.articles[0].date,'2026-10-16');
 });

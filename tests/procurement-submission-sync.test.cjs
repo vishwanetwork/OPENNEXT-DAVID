@@ -60,7 +60,8 @@ test('a saved RFQ displays the server-issued operations receipt without insertin
   assert.equal(f.effects.persist,1);
   assert.equal(el.button.disabled,false);
   assert.match(submissionHtml(f),/available in the OpenNEXT operations inbox/);
-  assert.match(submissionHtml(f),/does not confirm a supplier match or place an order/);
+  assert.match(submissionHtml(f),/Operations must approve it before it becomes a Live RFQ/);
+  assert.match(submissionHtml(f),/no order has been placed/);
 });
 
 test('repeated submit clicks on one pending form create only one request',async()=>{

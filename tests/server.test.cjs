@@ -8,7 +8,7 @@ const {createAppServer} = require('../OpenNEXT-preview-server.cjs');
 let server;
 let base;
 before(async () => {
-  server = createAppServer({dataDir:fs.mkdtempSync(path.join(os.tmpdir(),'opennext-http-test-'))});
+  server = createAppServer({dataDir:fs.mkdtempSync(path.join(os.tmpdir(),'opennext-http-test-')),newsService:{getNews:async()=>({status:'live',mode:'hourly-rss',fetchedAt:'2026-10-18T01:00:00.000Z',refreshIntervalMs:3600000,articles:[{title:'GPU capacity availability update',source:'Publisher fixture',url:'https://example.test/gpu-news',publishedAt:'2026-10-17T08:00:00.000Z'}]}),start:async()=>{},close:async()=>{}}});
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -50,6 +50,9 @@ test('news endpoint preserves source attribution', async () => {
   const response = await fetch(base + '/api/news');
   assert.equal(response.status, 200);
   const data = await response.json();
+  assert.equal(data.mode,'hourly-rss');
+  assert.equal(data.refreshIntervalMs,3600000);
+  assert.equal(data.fetchedAt,'2026-10-18T01:00:00.000Z');
   assert(data.articles.length > 0);
   assert(data.articles.every(article => article.source && article.title && /^https:\/\//.test(article.url)));
 });

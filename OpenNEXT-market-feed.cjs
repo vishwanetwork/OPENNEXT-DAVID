@@ -22,47 +22,6 @@ const SNAPSHOT = [
   { gpu_type: "AMD_MI355X", gpu_count: 8, hourly_cost: 20.72, hourly_cost_preemptible: 20.72, locations: [], deploy_ondemand: false, deploy_preemptible: true },
 ];
 
-// Editorial snapshot rechecked against original publishers on 17 October 2026.
-// Publication dates remain the publisher's dates, not the refresh date.
-const NEWS_VERIFIED_AT = "2026-10-17T11:45:55.000Z";
-const NEWS = [
-  {
-    source: "NVIDIA Newsroom",
-    date: "2026-10-16",
-    title: "NVIDIA launches RTX Spark PCs for local AI workloads",
-    url: "https://nvidianews.nvidia.com/news/nvidia-rtx-spark-pcs-available-today-a-new-beginning-for-windows-pcs",
-    summary: "The launch adds Blackwell RTX graphics and unified memory to a new generation of Windows systems for developers and AI applications.",
-  },
-  {
-    source: "NVIDIA Newsroom",
-    date: "2026-10-15",
-    title: "Adobe and NVIDIA expand accelerated AI creation workflows",
-    url: "https://nvidianews.nvidia.com/news/adobe-and-nvidia-expand-collaboration-to-speed-agentic-creation",
-    summary: "The companies are extending GPU acceleration across creative applications, cloud media processing and enterprise conversational services.",
-  },
-  {
-    source: "AMD Newsroom",
-    date: "2026-10-15",
-    title: "AMD CTO discusses open infrastructure and heterogeneous AI compute",
-    url: "https://newsroom.amd.com/news/ee-times-interview-mark-papermaster-future-a-video/",
-    summary: "An interview at World Summit AI covers systems design, networking, software and the infrastructure needed for agentic AI.",
-  },
-  {
-    source: "NVIDIA Newsroom",
-    date: "2026-10-14",
-    title: "Semiconductor leaders adopt NVIDIA AI tools for chip manufacturing",
-    url: "https://nvidianews.nvidia.com/news/nvidia-and-semiconductor-leaders-advance-ai-across-chip-design-and-manufacturing-for-ai-defined-labs",
-    summary: "New CUDA-X tools and industry collaborations target simulation, inspection and production workflows in semiconductor manufacturing.",
-  },
-  {
-    source: "AMD Newsroom",
-    date: "2026-10-12",
-    title: "AMD introduces Helion for rack-scale agentic AI compute",
-    url: "https://newsroom.amd.com/news/open-rack-blueprint-scale-agentic-ai/",
-    summary: "AMD outlines an open rack-scale approach to the next generation of AI infrastructure.",
-  },
-];
-
 let cachedPlans = SNAPSHOT;
 let fetchedAt = SNAPSHOT_AT;
 let lastAttemptAt = 0;
@@ -176,15 +135,4 @@ async function getMarket() {
   return pendingRefresh;
 }
 
-async function getNews() {
-  return {
-    status: "cached",
-    fetchedAt: NEWS_VERIFIED_AT,
-    verifiedAt: NEWS_VERIFIED_AT,
-    asOf: "2026-10-17",
-    mode: "editorial-snapshot",
-    articles: NEWS.map((article) => ({ ...article })),
-  };
-}
-
-module.exports = { getMarket, getNews };
+module.exports = { getMarket };

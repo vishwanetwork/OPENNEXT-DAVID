@@ -13,6 +13,11 @@
   const number = value => typeof value === 'number' && Number.isFinite(value);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
   const money = value => number(value) ? '$' + value.toFixed(2) : '—';
+  const displayLabel = value => window.OpenNEXTRegionalHistory?.cleanLabel?.(value) ?? String(value ?? '')
+    .replace(/\b[a-z][a-z0-9-]*\.(?:\d*xlarge|large|medium|small|micro|nano|metal)\b/gi, '')
+    .replace(/\b(?:af|ap|ca|cn|eu|il|me|mx|sa|us)(?:-[a-z0-9]+)+-\d[a-z]?\b/gi, '')
+    .replace(/\(\s*\)|\[\s*\]/g, '').replace(/\s*[·|,]\s*(?=[·|,]|$)/g, '')
+    .replace(/^[\s·|,–—-]+|[\s·|,–—-]+$/g, '').replace(/\s{2,}/g, ' ').trim();
   const metricLabels = {max: 'Highest', avg: 'Average', min: 'Lowest'};
   const metricDash = {max: '8 4', avg: '', min: '2 4'};
   const metricsOf = S => {
@@ -33,7 +38,8 @@
   function referenceText(S, meta) {
     const ref = meta?.reference;
     if (!ref) return 'No single offering matches this configuration yet.';
-    const parts = [ref.gpuCount + ' × ' + S.model, number(ref.gpuMemoryGb) ? ref.gpuMemoryGb + ' GB' : null, ref.formFactor, ref.area ? D.regionLabel(ref.area) : 'Other region'].filter(Boolean);
+    const region = ref.area ? displayLabel(D.regionLabel(ref.area)) : '';
+    const parts = [ref.gpuCount + ' × ' + S.model, number(ref.gpuMemoryGb) ? ref.gpuMemoryGb + ' GB' : null, displayLabel(ref.formFactor), region || 'Region not specified'].filter(Boolean);
     return `Reference offering: ${parts.join(' · ')} (chosen from ${meta.matchingOfferings} matching ${meta.matchingOfferings === 1 ? 'offering' : 'offerings'}: live Spot first, then most complete, then lowest On-demand).`;
   }
   function summary(S) {return cache.get(queryFor(S)) || null;}

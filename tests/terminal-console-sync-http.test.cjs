@@ -127,7 +127,7 @@ test('HTTP Supply is received in Console after KYB approval and before the insta
   const consoleRow=consoleData.body.supplies[0];
   assert.equal(consoleRow.id,record.id);
   assert.deepEqual(consoleRow.submission,record.submission);
-  assert.equal(consoleRow.buyerPrice,2.625);
+  assert.equal(consoleRow.buyerPrice,2.5);
   assert.equal(consoleRow.sshConfigured,true);
   assert.equal(consoleRow.sshHost,undefined);
   const install=await seller.request('/api/marketplace/supplies/'+record.id+'/agent',{input:{},headers:seller.csrf});

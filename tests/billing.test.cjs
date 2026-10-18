@@ -107,7 +107,7 @@ test('order details include parties, financials, delivery, audit and escape exte
   const { ctx } = fixture({ orders: [{ id: 'ORDER-10086', title: '<img src=x onerror=alert(1)>', model: 'H100', count: 8, region: 'Singapore', term: 'Spot', hours: 24, rate: 2, subtotal: 384, fees: 4, tax: 0, total: 388, buyer: { name: 'Verified User', company: 'Vishwa', email: 'verified@example.com' }, seller: { name: 'Supplier', email: 'seller@example.com' }, status: 'Awaiting payment', paymentStatus: 'Unpaid', createdAt: '2026-10-17T12:00:00Z', quoteValidUntil: '2026-10-18T12:00:00Z', audit: [{ at: '2026-10-17T12:00:00Z', event: 'Quote accepted' }] }] });
   const modal = Billing.modal(ctx, 'bill-order', { id: 'ORDER-10086' });
   assert.equal(modal.wide, true);
-  for (const text of ['Buyer', 'Supplier', 'Platform fee', '$388.00', 'Service starts', 'Service ends', 'Quote valid until', 'Payment method', 'Quote accepted']) assert.ok(modal.body.includes(text));
+  for (const text of ['Buyer', 'Supplier', 'Recorded fee', '$388.00', 'Service starts', 'Service ends', 'Quote valid until', 'Payment method', 'Quote accepted']) assert.ok(modal.body.includes(text));
   assert.ok(!modal.body.includes('<img src=x'));
 });
 
