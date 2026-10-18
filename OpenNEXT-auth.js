@@ -28,11 +28,11 @@ const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
   function error(message){const box=currentRoot?.querySelector('[data-auth-error]');if(box){box.textContent=message;box.hidden=false;box.focus();}}
   function clearError(){const box=currentRoot?.querySelector('[data-auth-error]');if(box){box.textContent='';box.hidden=true;}}
   function submit(text){return '<button class="onx-auth-submit" type="submit"><span>'+text+'</span>'+arrow+'</button>';}
-  // Temporary local test entry. Remove this helper and its render call after QA.
-  // It opens the isolated demo server; it never bypasses production authentication.
+  // This entry opens a separate demo workspace, never a production session.
+  // Disable the server demo route when this temporary testing entry is retired.
   function demoEntry(){
-    if(!['127.0.0.1','localhost','[::1]'].includes(window.location?.hostname))return '';
-    return '<div class="onx-auth-demo"><a class="onx-auth-demo-button" data-auth-demo href="http://127.0.0.1:4199/preview?role=buyer"><span>Enter Demo</span>'+arrow+'</a><p>No sign-in required. Explore Buyer and Seller tools in an isolated test workspace.</p></div>';
+    const origin=['opennextlab.ai','www.opennextlab.ai'].includes(window.location?.hostname)?'https://terminal.opennextlab.ai':'';
+    return '<div class="onx-auth-demo"><a class="onx-auth-demo-button" data-auth-demo href="'+origin+'/demo/?role=buyer#terminal/market"><span>Enter Demo</span>'+arrow+'</a><p>No sign-in required. Explore Buyer and Seller tools with test data. No real transactions.</p></div>';
   }
   function shell(body){return '<main class="onx-auth-root" data-onx-auth-root><aside class="onx-auth-story">'+logo()+'<div class="onx-auth-story-copy"><div class="onx-auth-kicker">AI capacity, on your terms</div><h2>A clearer market.<br>A better match.</h2><p>Discover GPU capacity, compare market signals and connect with providers in one focused workspace.</p></div><div class="onx-auth-story-foot"><i></i>Private sourcing. Transparent terms.</div><div class="onx-auth-orbits" aria-hidden="true"><i></i><i></i><i></i></div></aside><section class="onx-auth-main"><button type="button" class="onx-auth-back" data-auth-back>'+arrow+'Back to OpenNEXT</button><div class="onx-auth-card"><div class="onx-auth-mobile-brand">'+logo()+'</div>'+body+'</div></section></main>';}
   function render(nextMode='signin'){

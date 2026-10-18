@@ -10,13 +10,14 @@ function auth(hostname) {
   vm.runInNewContext(source, {window, CustomEvent: class {}});
   return window.OpenNEXTAuth;
 }
-test('local sign-in and sign-up offer the isolated demo without creating an identity', () => {
-  for (const hostname of ['127.0.0.1', 'localhost', '[::1]']) {
+test('sign-in and sign-up offer the isolated demo without creating an identity', () => {
+  for (const hostname of ['127.0.0.1', 'localhost', '[::1]', 'terminal.opennextlab.ai']) {
     const api = auth(hostname);
     for (const mode of ['signin', 'signup']) {
       const html = api.render(mode);
-      assert.match(html, /data-auth-demo href="http:\/\/127\.0\.0\.1:4199\/preview\?role=buyer"/);
+      assert.match(html, /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
       assert.match(html, /Enter Demo/);
+      assert.match(html, /test data\. No real transactions\./);
       assert.ok(html.indexOf('data-auth-demo') < html.indexOf('data-auth-provider'));
       assert.match(html, /Continue with Google/);
       assert.match(html, /Continue with GitHub/);
@@ -25,11 +26,87 @@ test('local sign-in and sign-up offer the isolated demo without creating an iden
     }
   }
 });
-test('public and lookalike hosts never show a local authentication bypass', () => {
-  for (const hostname of ['opennextlab.ai', 'terminal.opennextlab.ai', 'localhost.example.com', '127.0.0.1.example.com', '', undefined]) {
+test('main-site demo entry goes to the Terminal host, never to a local preview', () => {
+  for (const hostname of ['opennextlab.ai', 'www.opennextlab.ai']) {
     const api = auth(hostname);
-    assert.doesNotMatch(api.render('signin'), /data-auth-demo/);
-    assert.doesNotMatch(api.render('signup'), /data-auth-demo/);
+    assert.match(api.render('signin'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
+    assert.match(api.render('signup'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
     assert.equal(api.getUser(), null);
   }
+});
+
+test('lookalike and custom hosts only use their own isolated demo route', () => {
+  for (const hostname of ['localhost.example.com', '127.0.0.1.example.com', 'opennextlab.ai.example.com', '', undefined]) {
+    const api = auth(hostname);
+    assert.match(api.render('signin'), /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
+    assert.doesNotMatch(api.render('signin'), /4199|\/preview\?|https:\/\/terminal\.opennextlab\.ai/);
+    assert.equal(api.getUser(), null);
+  }
+});
+
+const demoSource = fs.readFileSync(path.join(__dirname, '..', 'OpenNEXT-demo.js'), 'utf8');
+function demo(pathname='/demo/', startResult={user:{id:'demo-1',role:'buyer',csrfToken:'demo-csrf'}}, search='?role=buyer') {
+  const calls=[], events={}, location={pathname,search,hash:'',origin:'https://terminal.opennextlab.ai',href:'https://terminal.opennextlab.ai'+pathname+search};
+  const window={location,history:{replaceState(){}},document:{documentElement:{classList:{add(){}}},readyState:'loading',addEventListener(){}},setTimeout,clearTimeout,addEventListener(name,fn){events[name]=fn;},async fetch(input,options){const url=input instanceof Request?input.url:String(input);calls.push({url,options});const result=calls.length===1?startResult:url==='/api/demo/auth/role'?{user:{...startResult.user,role:JSON.parse(options.body).role}}:{ok:true};return new Response(JSON.stringify(result),{status:200});}};
+  vm.runInNewContext(demoSource,{window,URL,URLSearchParams,Request,Response,AbortController});
+  return {window,calls,events};
+}
+
+test('demo bootstrap never runs on ordinary production pages', () => {
+  const {window,calls}=demo('/');
+  assert.equal(calls.length,0);
+  assert.equal(window.OpenNEXTDemo,undefined);
+});
+
+test('demo waits for isolated session and remaps account, market, payment and contact requests', async () => {
+  const {window,calls}=demo();
+  await window.OpenNEXTDemo.ready;
+  for(const path of ['/api/auth/session','/api/marketplace/public','/api/billing/checkout','/api/contact'])await window.fetch(path,{method:path.endsWith('session')||path.endsWith('public')?'GET':'POST',body:path.endsWith('session')||path.endsWith('public')?undefined:'{}'});
+  assert.equal(calls[0].url,'/api/demo/start');
+  assert.equal(JSON.parse(calls[0].options.body).role,'buyer');
+  assert.deepEqual(calls.slice(1).map(c=>new URL(c.url).pathname),['/api/demo/auth/session','/api/demo/marketplace/public','/api/demo/billing/checkout','/api/demo/contact']);
+  assert.ok(calls.slice(1).every(c=>c.options.credentials==='same-origin'));
+});
+
+test('demo retains read-only public prices while blocking admin, internal and unknown writes', async () => {
+  const {window,calls}=demo();
+  await window.OpenNEXTDemo.ready;
+  await window.fetch('/api/pricing/regional-history?model=H100&period=3D');
+  await window.fetch('/api/news');
+  const before=calls.length;
+  for(const [path,method] of [['/api/admin/marketplace','GET'],['/api/internal/install','POST'],['/api/unknown','POST'],['https://payments.example/checkout','POST']])assert.equal((await window.fetch(path,{method})).status,403);
+  assert.equal(calls.length,before);
+  assert.deepEqual(calls.slice(1).map(c=>c.url),['/api/pricing/regional-history?model=H100&period=3D','/api/news']);
+});
+
+test('a failed demo start never falls through to production account APIs', async () => {
+  const {window,calls}=demo('/demo/',{error:'Demo is disabled.'});
+  assert.equal(await window.OpenNEXTDemo.ready,null);
+  const response=await window.fetch('/api/marketplace/rfqs',{method:'POST',body:'{}'});
+  assert.equal(response.status,403);
+  assert.equal(calls.length,1);
+});
+
+test('Request objects retain mutation payloads when routed to the sandbox', async () => {
+  const {window,calls}=demo();
+  await window.OpenNEXTDemo.ready;
+  await window.fetch(new Request('https://terminal.opennextlab.ai/api/marketplace/rfqs',{method:'POST',body:'{"model":"H100"}',headers:{'Content-Type':'application/json'}}));
+  assert.equal(calls.at(-1).url,'https://terminal.opennextlab.ai/api/demo/marketplace/rfqs');
+});
+
+test('explicit role links switch a resumed demo using its own CSRF token', async () => {
+  const {window,calls}=demo('/demo/',{user:{id:'demo-1',role:'buyer',csrfToken:'demo-csrf'}},'?role=seller');
+  const result=await window.OpenNEXTDemo.ready;
+  assert.equal(result.user.role,'seller');
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].url,'/api/demo/auth/role');
+  assert.equal(calls[1].options.headers['X-CSRF-Token'],'demo-csrf');
+  assert.equal(JSON.parse(calls[1].options.body).role,'seller');
+});
+
+test('plain demo URLs preserve the role of an existing test workspace', async () => {
+  const {window,calls}=demo('/demo/',{user:{id:'demo-1',role:'seller',csrfToken:'demo-csrf'}},'');
+  const result=await window.OpenNEXTDemo.ready;
+  assert.equal(result.user.role,'seller');
+  assert.equal(calls.length,1);
 });

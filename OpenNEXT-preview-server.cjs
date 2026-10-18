@@ -11,6 +11,7 @@ const {createContactService, createContactRouter} = require('./OpenNEXT-contact-
 const {createAuthService} = require('./OpenNEXT-auth-service.cjs');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
+const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
 // outside this allowlist are never exposed by the preview HTTP server.
@@ -24,6 +25,7 @@ const files = new Set([
   'OpenNEXT-gci-index-factory.html', 'OpenNEXT-market-data.js',
   'OpenNEXT-terminal.js', 'OpenNEXT-terminal.css',
   'OpenNEXT-auth.js', 'OpenNEXT-auth.css',
+  'OpenNEXT-demo.js', 'OpenNEXT-demo.css',
   'OpenNEXT-countries.js', 'OpenNEXT-instances.js', 'OpenNEXT-instances.css', 'OpenNEXT-payments.js',
   'OpenNEXT-console-marketplace.js', 'OpenNEXT-console-marketplace.css',
   'OpenNEXT-admin-console.html', 'OpenNEXT-admin.js', 'OpenNEXT-admin.css',
@@ -47,6 +49,9 @@ const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
 const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace');
 
 function createAppServer(options = {}) {
+  const environment = options.env || process.env;
+  const demoEnabled = environment.OPENNEXT_DEMO_ENABLED !== '0';
+  const demo = createDemoService({enabled:demoEnabled, secureCookies:options.secureCookies, trustProxy:environment.OPENNEXT_TRUST_PROXY === '1'});
   const privateDataDir = options.dataDir || (options.env || process.env).OPENNEXT_DATA_DIR || (options.env || process.env).OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data');
   const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
   const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
@@ -61,7 +66,7 @@ function createAppServer(options = {}) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
+    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:demo\/|auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
       res.writeHead(405, {Allow: 'GET, HEAD'});
       res.end('Method not allowed');
       return;
@@ -79,6 +84,42 @@ function createAppServer(options = {}) {
     const onTerminal = Boolean(TERMINAL_HOST) && host === TERMINAL_HOST;
     const onAdmin = Boolean(ADMIN_HOST) && host === ADMIN_HOST;
     const restrictAdmin = onTerminal || (Boolean(ADMIN_HOST) && !onAdmin);
+
+    // Demo workspaces have a separate cookie and API namespace. They never use
+    // the production auth, billing, marketplace or operations service instances.
+    if (pathname.startsWith('/api/demo/')) {
+      if (onAdmin || (TERMINAL_HOST && !onTerminal) || !demoEnabled) {
+        res.writeHead(404, {'Content-Type':'application/json; charset=utf-8'});
+        res.end(JSON.stringify({error:'Demo is unavailable on this host.'}));
+        return;
+      }
+      try {
+        if (await demo.handle(req, res, new URL(req.url, 'http://localhost'))) return;
+      } catch {
+        if (!res.headersSent) res.writeHead(503, {'Content-Type':'application/json; charset=utf-8'});
+        res.end(JSON.stringify({error:'The demo workspace is temporarily unavailable.'}));
+        return;
+      }
+      res.writeHead(404, {'Content-Type':'application/json; charset=utf-8'});
+      res.end(JSON.stringify({error:'Demo endpoint not found.'}));
+      return;
+    }
+    if (pathname === '/demo' || pathname === '/demo/') {
+      if (!['GET','HEAD'].includes(req.method) || !demoEnabled || onAdmin) {
+        res.writeHead(404); res.end('Not found'); return;
+      }
+      if (TERMINAL_HOST && !onTerminal) {
+        res.writeHead(308, {Location:'https://' + TERMINAL_HOST + '/demo/'});
+        res.end(); return;
+      }
+      const html = fs.readFileSync(path.join(__dirname, 'OpenNEXT-preview-entry.html'), 'utf8')
+        .replace(/(src|href)="\.\//g, '$1="/')
+        .replace('<head>', '<head><script src="/OpenNEXT-demo.js"></script>')
+        .replace('</head>', '<link rel="stylesheet" href="/OpenNEXT-demo.css"></head>');
+      res.writeHead(200, {'Content-Type':'text/html; charset=utf-8','X-Robots-Tag':'noindex, nofollow'});
+      res.end(req.method === 'HEAD' ? undefined : html);
+      return;
+    }
 
     if (await pricingRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     if (await contactRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
@@ -156,7 +197,7 @@ function createAppServer(options = {}) {
   server.contacts = contacts;
   server.auth = auth;
   server.marketplace = marketplace;
-  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.();});
+  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); demo.close().catch(() => {});});
   return server;
 }
 
