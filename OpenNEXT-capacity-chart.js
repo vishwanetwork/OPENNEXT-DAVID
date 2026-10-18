@@ -13,9 +13,18 @@
   const number = value => typeof value === 'number' && Number.isFinite(value);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
   const money = value => number(value) ? '$' + value.toFixed(2) : '—';
+  const metricLabels = {max: 'Highest', avg: 'Average', min: 'Lowest'};
+  const metricDash = {max: '8 4', avg: '', min: '2 4'};
+  const metricsOf = S => {
+    const selected = Array.isArray(S.priceMetrics) ? ['max', 'avg', 'min'].filter(metric => S.priceMetrics.includes(metric)) : [];
+    return selected.length ? selected : [metricLabels[S.priceMetric] ? S.priceMetric : 'avg'];
+  };
+  const primaryMetric = S => metricsOf(S).includes('avg') ? 'avg' : metricsOf(S)[0];
+  const hasStatistics = item => item && ['min', 'avg', 'max'].some(metric => Object.prototype.hasOwnProperty.call(item, metric));
+  const metricValue = (item, metric) => number(item?.[metric]) ? item[metric] : !hasStatistics(item) && metric === 'avg' && number(item?.value) ? item.value : null;
   const timeLabel = value => value ? new Date(value).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' : 'Not observed';
   function queryFor(S) {
-    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: ['1D', '3D'].includes(S.period) ? S.period : '3D', term: shown(S).name, metric: ['min','avg','max'].includes(S.priceMetric) ? S.priceMetric : 'avg'});
+    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: ['1D', '3D', '1W', '1M', '3M'].includes(S.period) ? S.period : '3D', term: shown(S).name, metric: primaryMetric(S)});
     if (/PCIe|SXM|NVL72/i.test(S.model)) query.set('formFactor', /PCIe|SXM|NVL72/i.exec(S.model)[0]);
     if (['A100 80GB', 'A100 PCIe'].includes(S.model)) query.set('gpuMemoryGb', '80');
     return query.toString();
@@ -39,24 +48,25 @@
       {min: Infinity, max: -Infinity, model: D.modelOf(S.model).canonical});
   }
   function header(S, data) {
-    const term = shown(S), selected = data.latest?.[term.name];
+    const term = shown(S), metric = primaryMetric(S), statistical = (data.points || []).some(point => hasStatistics(point.values?.[term.name]));
+    const selected = statistical ? (data.points || []).filter(point => number(metricValue(point.values?.[term.name], metric))).at(-1)?.values?.[term.name] : data.latest?.[term.name];
     const label = document.getElementById('marketPriceLabel');
-    if (label) label.textContent = term.name.toUpperCase() + ' / GPU-HR';
-    const price = document.getElementById('marketPrice'); if (price) price.textContent = money(selected?.value);
-    const caption = document.getElementById('historyPrimaryCaption'); if (caption) caption.textContent = 'Same-offering reference';
-    const count = document.getElementById('marketRecords'); if (count) count.textContent = String((data.points || []).filter(point => number(point.values[shown(S).name]?.value)).length);
+    if (label) label.textContent = (statistical || metricsOf(S).length > 1 ? metricLabels[metric].toUpperCase() + ' ' : '') + term.name.toUpperCase() + ' / GPU-HR';
+    const price = document.getElementById('marketPrice'); if (price) price.textContent = money(metricValue(selected, metric));
+    const caption = document.getElementById('historyPrimaryCaption'); if (caption) caption.textContent = 'Same-offering reference' + (statistical ? ' · Latest recorded bucket' : '');
+    const count = document.getElementById('marketRecords'); if (count) count.textContent = String((data.points || []).filter(point => number(metricValue(point.values?.[term.name], metric))).length);
     const change = document.getElementById('marketChange');
     if (change) {
-      const values = (data.points || []).map(point => point.values[term.name]?.value).filter(number);
+      const values = (data.points || []).map(point => metricValue(point.values?.[term.name], metric)).filter(number);
       const delta = values.length > 1 && values[0] > 0 ? (values.at(-1) / values[0] - 1) * 100 : null;
       change.textContent = delta === null ? '—' : (delta >= 0 ? '+' : '') + delta.toFixed(2) + '%';
       change.className = delta === null ? '' : delta >= 0 ? 'positive' : 'negative';
     }
   }
   function markup(S, data) {
-    const points = data.points || [], term = shown(S);
-    const values = points.map(p => p.values[term.name]?.value).filter(number);
-    const controls = `<div class="history-controls"><div class="periods">${['1D','3D','1W','1M','3M'].map(period => `<button class="period ${S.period === period ? 'active' : ''}" data-act="period" data-value="${period}">${period}</button>`).join('')}</div><span class="capacity-unit">USD / GPU-hour · ${term.name}${term.name === 'Reserved' ? ' · 1 year, no upfront' : ''}</span></div>`;
+    const points = data.points || [], term = shown(S), metrics = metricsOf(S);
+    const values = points.flatMap(point => metrics.map(metric => metricValue(point.values?.[term.name], metric))).filter(number);
+    const controls = `<div class="history-controls"><div class="periods">${['1D','3D','1W','1M','3M','6M','1Y','ALL'].map(period => `<button class="period ${S.period === period ? 'active' : ''}" data-act="period" data-value="${period}">${period}</button>`).join('')}</div><span class="capacity-unit">${metrics.map(metric => metricLabels[metric]).join(' / ')} · USD / GPU-hour · ${term.name}${term.name === 'Reserved' ? ' · 1 year, no upfront' : ''}</span></div>`;
     if (!values.length) return controls + `<div class="aws-history-empty"><h3>${data.meta?.syncing ? 'Collecting price observations…' : `No ${term.name} prices for this configuration yet`}</h3><p>Missing prices remain empty. Try another model, region, GPU count or market term.</p><button class="btn secondary small" data-capacity-example>View A10G · 8 GPUs</button></div>`;
     const w = Math.max(360, Math.min(1000, (document.getElementById('capacityHistory')?.clientWidth || 900) - 40));
     const h = 320, left = 28, right = 92, top = 24, bottom = 43;
@@ -68,29 +78,31 @@
     const grid = Array.from({length: 4}, (_, index) => {const value = min + (max - min) * index / 3, py = y(value);return `<line x1="${left}" x2="${w - right}" y1="${py}" y2="${py}" stroke="#e3ebe5" stroke-dasharray="4 7"/><text x="${w - right + 14}" y="${py + 4}" class="history-axis">$${value.toFixed(2)}</text>`;}).join('');
     // Points arrive as consecutive buckets; an empty bucket or a gap breaks the line instead of joining it.
     const gap = 1.5 * (data.meta?.bucketMinutes || 5) * 60000;
-    const paths = [term].map(term => {
+    const paths = metrics.map(metric => {
       const runs = [];
       for (const point of points) {
-        const value = point.values[term.name]?.value, time = Date.parse(point.time), run = runs.at(-1);
+        const value = metricValue(point.values?.[term.name], metric), time = Date.parse(point.time), run = runs.at(-1);
         if (!number(value)) {if (run) run.done = true; continue;}
         if (!run || run.done || time - run.at(-1).time > gap) runs.push(Object.assign([], {done: false}));
         runs.at(-1).push({time, value});
       }
       const d = runs.map(run => run.map((p, i) => (i ? 'L' : 'M') + x(p.time).toFixed(2) + ',' + y(p.value).toFixed(2)).join(' ')).join(' ');
       const dots = runs.flatMap(run => run.length === 1 ? run : [run[0], run.at(-1)]), last = runs.at(-1)?.at(-1);
-      return `<path data-capacity-line="${term.name}" d="${d}" fill="none" stroke="${term.color}" stroke-width="2.5" stroke-dasharray="${term.dash}" stroke-linejoin="round"/>${dots.map(p => `<circle cx="${x(p.time)}" cy="${y(p.value)}" r="3" fill="${term.color}"/>`).join('')}${last ? `<text x="${x(last.time) < left + 90 ? x(last.time) + 5 : x(last.time) - 5}" y="${y(last.value) - 10}" text-anchor="${x(last.time) < left + 90 ? 'start' : 'end'}" fill="${term.color}" class="history-end-name">${term.name}</text>` : ''}`;
+      if (!runs.length) return '';
+      return `<path data-capacity-line="${term.name}" data-price-metric="${metric}" d="${d}" fill="none" stroke="${term.color}" stroke-width="2.5" stroke-dasharray="${metrics.length > 1 ? metricDash[metric] : term.dash}" stroke-linejoin="round"/>${dots.map(p => `<circle cx="${x(p.time)}" cy="${y(p.value)}" r="3" fill="${term.color}"/>`).join('')}${last && metrics.length === 1 ? `<text x="${x(last.time) < left + 90 ? x(last.time) + 5 : x(last.time) - 5}" y="${y(last.value) - 10}" text-anchor="${x(last.time) < left + 90 ? 'start' : 'end'}" fill="${term.color}" class="history-end-name">${term.name}</text>` : ''}`;
     }).join('');
     const tickCount = w < 600 ? 3 : 4;
     const ticks = from === to ? [from] : Array.from({length: tickCount}, (_, i) => from + (to - from) * i / (tickCount - 1));
     const axis = ticks.map((time, i) => `<text class="history-axis" x="${x(time)}" y="${h - 12}" text-anchor="${ticks.length === 1 ? 'middle' : i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}">${esc(new Date(time).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}))}</text>`).join('');
-    const rows = points.filter(point => number(point.values[term.name]?.value)).slice(-12).reverse().map(point => `<tr><td>${timeLabel(point.time)}</td><td>${money(point.values[term.name].value)}</td></tr>`).join('');
-    return controls + `<div class="history-plot capacity-plot"><svg data-plot-width="${w}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.model)} ${term.name} price history">${grid}${paths}${axis}<line class="capacity-crosshair" y1="${top}" y2="${h - bottom}" stroke="#90a493" stroke-dasharray="3 4" visibility="hidden"/><rect class="capacity-hit" x="${left}" y="${top}" width="${w - left - right}" height="${h - top - bottom}" fill="transparent" tabindex="0" role="slider" aria-label="Price observation time" aria-valuemin="0" aria-valuemax="${points.length - 1}" aria-valuenow="${points.length - 1}"/></svg><div class="history-tooltip capacity-tooltip" hidden></div></div><div class="capacity-footnote"><span>${bucketLabel(data.meta?.bucketMinutes)} buckets · UTC · No inferred inventory</span><span>Updated ${timeLabel(data.meta?.lastSync)}</span></div><div class="capacity-method">${esc(referenceText(S, data.meta))} Spot, On-demand and Reserved all come from this one offering (same GPU configuration, supplier and region); switch Market terms to compare them. Reserved: 12 months, no upfront. Quotes do not confirm capacity.${points.length < 4 ? ' History is building from real observations.' : ''}</div><details class="capacity-data"><summary>View recorded prices</summary><div class="table-scroll"><table><thead><tr><th>TIME · UTC</th><th>${esc(term.name.toUpperCase())}${term.name === 'Reserved' ? ' · 1 YEAR' : ''}</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+    const rows = points.filter(point => metrics.some(metric => number(metricValue(point.values?.[term.name], metric)))).slice(-12).reverse().map(point => `<tr><td>${timeLabel(point.time)}</td>${metrics.map(metric => `<td>${money(metricValue(point.values?.[term.name], metric))}</td>`).join('')}</tr>`).join('');
+    const metricKey = metrics.length > 1 ? `<div class="history-metric-key" aria-label="Price metric line styles"><span>Line style</span>${metrics.map(metric => `<span class="history-metric-chip"><svg viewBox="0 0 28 10" aria-hidden="true"><line x1="1" x2="27" y1="5" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="${metricDash[metric]}"/></svg>${metricLabels[metric]}</span>`).join('')}</div>` : '';
+    return controls + metricKey + `<div class="history-plot capacity-plot"><svg data-plot-width="${w}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(S.model)} ${term.name} ${metrics.map(metric => metricLabels[metric]).join(', ')} price history">${grid}${paths}${axis}<line class="capacity-crosshair" y1="${top}" y2="${h - bottom}" stroke="#90a493" stroke-dasharray="3 4" visibility="hidden"/><rect class="capacity-hit" x="${left}" y="${top}" width="${w - left - right}" height="${h - top - bottom}" fill="transparent" tabindex="0" role="slider" aria-label="Price observation time" aria-valuemin="0" aria-valuemax="${points.length - 1}" aria-valuenow="${points.length - 1}"/></svg><div class="history-tooltip capacity-tooltip" hidden></div></div><div class="capacity-footnote"><span>${bucketLabel(data.meta?.bucketMinutes)} buckets · UTC · No inferred inventory</span><span>Updated ${timeLabel(data.meta?.lastSync)}</span></div><div class="capacity-method">${esc(referenceText(S, data.meta))} Spot, On-demand and Reserved all come from this one offering (same GPU configuration, supplier and region); switch Market terms to compare them. Reserved: 12 months, no upfront. Quotes do not confirm capacity.${points.length < 4 ? ' History is building from real observations.' : ''}</div><details class="capacity-data"><summary>View recorded prices</summary><div class="table-scroll"><table><thead><tr><th>TIME · UTC</th>${metrics.map(metric => `<th>${metricLabels[metric].toUpperCase()} ${esc(term.name.toUpperCase())}${term.name === 'Reserved' ? ' · 1 YEAR' : ''}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></details>`;
   }
   function render() {return '<section id="capacityHistory" class="capacity-history"><div class="aws-history-empty"><h3>Loading prices…</h3></div></section>';}
   function bind(S) {
     if (timer) clearTimeout(timer);
     const target = document.getElementById('capacityHistory'); if (!target) {generation++; active = null; return;}
-    const snapshot = {model: S.model, region: S.region, count: S.count, period: S.period, term: S.term, priceMetric: S.priceMetric || 'avg'};
+    const snapshot = {model: S.model, region: S.region, count: S.count, period: S.period, term: S.term, priceMetric: primaryMetric(S), priceMetrics: metricsOf(S)};
     const key = queryFor(snapshot), token = ++generation;
     active = {snapshot}; let data = cache.get(key);
     function bindPlot() {
@@ -103,13 +115,13 @@
         selected = Math.max(0, Math.min(points.length - 1, index)); const point = points[selected];
         const px = from === to ? (plotWidth - 64) / 2 : 28 + (Date.parse(point.time) - from) / (to - from) * innerWidth;
         const cross = svg.querySelector('.capacity-crosshair'); cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
-        const term = shown(snapshot);
-        window.dispatchEvent(new CustomEvent('opennext:pricehover',{detail:{model:snapshot.model,region:snapshot.region,price:point.values[term.name]?.value,min:point.values[term.name]?.min,max:point.values[term.name]?.max}}));
-        tip.innerHTML = `<div class="capacity-tip-row"><b>${money(point.values[term.name]?.value)}</b><span>${term.name}</span></div><small>USD / GPU-hour · — means not observed</small><small>${timeLabel(point.time)}</small>`;
+        const term = shown(snapshot), metrics = metricsOf(snapshot), metric = primaryMetric(snapshot), item = point.values?.[term.name];
+        window.dispatchEvent(new CustomEvent('opennext:pricehover',{detail:{model:snapshot.model,region:snapshot.region,metric,price:metricValue(item, metric),min:item?.min,max:item?.max}}));
+        tip.innerHTML = metrics.map(metric => `<div class="capacity-tip-row"><b>${money(metricValue(item, metric))}</b><span>${term.name}${metrics.length > 1 || hasStatistics(item) ? ' · ' + metricLabels[metric] : ''}</span></div>`).join('') + `<small>USD / GPU-hour · — means not observed</small><small>${timeLabel(point.time)}</small>`;
         tip.hidden = false; const width = svg.getBoundingClientRect().width;
         tip.style.left = Math.max(4, Math.min(width - 250, px / plotWidth * width + 12)) + 'px'; tip.style.top = '12px';
         hit.setAttribute('aria-valuenow', String(selected));
-        hit.setAttribute('aria-valuetext', timeLabel(point.time) + '; ' + term.name + ' ' + money(point.values[term.name]?.value));
+        hit.setAttribute('aria-valuetext', timeLabel(point.time) + '; ' + term.name + ' ' + metrics.map(metric => metricLabels[metric] + ' ' + money(metricValue(item, metric))).join('; '));
       }
       hit.addEventListener('pointermove', event => {
         const rect = svg.getBoundingClientRect(), x = (event.clientX - rect.left) / rect.width * plotWidth;

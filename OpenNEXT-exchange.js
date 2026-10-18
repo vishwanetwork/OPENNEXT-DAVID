@@ -23,7 +23,7 @@
       const user=userSnapshot;
       if(user?.onboardingCompleted&&S){const own=await api('/api/marketplace/me');if(refreshKey(S)!==identity)return null;const result=await api('/api/marketplace/matches?'+new URLSearchParams({model:modelSnapshot,region:regionSnapshot}));if(refreshKey(S)!==identity)return null;for(const field of ['rfqs','listings','review','responses','orders','notifications','instances'])S[field]=own[field];S.marketplaceAuthoritative=true;bestRows=result.rows;matchReason=result.reason;matchPrompt=result.submissionPrompt||'';}
       else {bestRows=[];matchReason='No matches.';matchPrompt='Sign in to receive same-model recommendations.';}
-      recentRows=(await api('/api/marketplace/settlements?days=3')).rows;
+      recentRows=(await api('/api/marketplace/settlements?days=90')).rows;
       return market;
     }catch(e){error=e.message;throw e;}finally{refreshJob=null;scope.dispatchEvent?.(new CustomEvent('opennext:marketplace',{detail:{error}}));}})();return refreshJob;
   }

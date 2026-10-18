@@ -75,6 +75,10 @@ test('ticker history, capacity history and contact collection coexist with share
   assert.deepEqual(comparison.json().terms, ['Spot', 'On-demand', 'Reserved']);
   assert.equal(calls.capacityQueries[0].gpuModel, 'H100');
   for (const period of ['1W','1M','3M']) {
+    const available=await request('/api/pricing/capacity-history?gpuModel=H100&period='+period);
+    assert.equal(available.status,200);
+  }
+  for (const period of ['6M','1Y','ALL']) {
     const blocked=await request('/api/pricing/capacity-history?gpuModel=H100&period='+period);
     assert.equal(blocked.status,403);assert.equal(blocked.json().code,'HISTORY_ACCESS_REQUIRED');
   }

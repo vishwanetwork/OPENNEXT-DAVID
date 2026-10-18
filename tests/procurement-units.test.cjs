@@ -96,8 +96,8 @@ test('supply and demand have separate role-correct actions and real bidding coun
 test('best matches and recent settlements do not synthesize records and offer gated older history',()=>{
  const f=fixture();f.X.status=()=>({matchReason:'Submit an RFQ to receive best matches.'});
  const html=f.P.matches(f.c,'best');assert.match(html,/Submit an RFQ/);assert.match(html,/Post RFQ/);assert.doesNotMatch(html,/data-resource/);
- const recent=f.P.matches(f.c,'recent');assert.match(recent,/No matches\./);assert.match(recent,/data-proc-days/);for(const label of ['1D','3D','1W','1M','3M'])assert.ok(recent.includes('>'+label+'</option>'));
- const upgrade=f.P.modal(f.c,'proc-history-upgrade',{});assert.match(upgrade.body,/Free historical data is limited to 3 days\. Contact Sales for access to more history\./);assert.match(upgrade.body,/data-act="proc-contact-sales"/);
+ const recent=f.P.matches(f.c,'recent');assert.match(recent,/No matches\./);assert.match(recent,/data-proc-days/);for(const label of ['1D','3D','1W','1M','3M','6M','1Y','ALL'])assert.ok(recent.includes('>'+label+'</option>'));
+ const upgrade=f.P.modal(f.c,'proc-history-upgrade',{});assert.match(upgrade.body,/Historical data for up to 3 months is free\./);assert.match(upgrade.body,/6M, 1Y or all available history/);assert.match(upgrade.body,/data-act="proc-contact-sales"/);
  assert.equal(f.X.listPublic('rental','supply').length,0);assert.equal(f.X.matches(f.S,'supply').length,0);
 });
 test('physical and model edit forms keep their unit-specific fields',()=>{

@@ -63,7 +63,9 @@ test('preview server routes price and history requests to the pricing API', asyn
   const history = await fetch(base + '/api/pricing/imported-history?gpuModel=H100&gpuCount=8&period=3D');
   assert.equal(history.status, 200);
   assert((await history.json()).series.length > 0);
-  const restricted=await fetch(base+'/api/pricing/imported-history?gpuModel=H100&period=1M');
+  const free=await fetch(base+'/api/pricing/imported-history?gpuModel=H100&period=3M');
+  assert.equal(free.status,200);
+  const restricted=await fetch(base+'/api/pricing/imported-history?gpuModel=H100&period=6M');
   assert.equal(restricted.status,403);
   assert.equal((await restricted.json()).code,'HISTORY_ACCESS_REQUIRED');
   assert.equal((await fetch(base + '/api/admin/pricing/providers', {headers: {'X-Forwarded-For': '203.0.113.1'}})).status, 401);

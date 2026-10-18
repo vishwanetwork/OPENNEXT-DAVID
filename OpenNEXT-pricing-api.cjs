@@ -57,8 +57,8 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
     if(requested.length>1||!['1D','3D','1W','1M','3M','6M','1Y','ALL'].includes(period)){
       send(res,400,{error:'Invalid history period'});return null;
     }
-    if(!['1D','3D'].includes(period)){
-      send(res,403,{code:'HISTORY_ACCESS_REQUIRED',error:'Free historical data is limited to 3 days. Contact Sales for access to more history.'});return null;
+    if(!['1D','3D','1W','1M','3M'].includes(period)){
+      send(res,403,{code:'HISTORY_ACCESS_REQUIRED',error:'Free historical data includes up to 3 months. Contact Sales for access to more history.'});return null;
     }
     return period;
   }
