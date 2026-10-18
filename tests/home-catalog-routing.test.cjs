@@ -133,38 +133,3 @@ test('catalog references cannot be offered as if they were buyer RFQs',()=>{
   assert.equal(h.context.queue('hardware-h100','offer'),false);
   assert.equal(h.state.pendingListing,null);
 });
-
-function demoDestination(search,pendingListing=null){
-  const window=catalog([{id:'SUP-LIVE',kind:'model',side:'supply',model:'Live supply'}]);
-  window.location={hostname:'terminal.opennextlab.ai',search};window.dispatchEvent=()=>{};
-  window.ONPreview={state:{pendingListing}};
-  vm.runInNewContext(fs.readFileSync(path.join(root,'OpenNEXT-auth.js'),'utf8'),{window,URLSearchParams,CustomEvent:class{}});
-  const href=window.OpenNEXTAuth.render('signin').match(/data-auth-demo href="([^"]+)"/)[1].replaceAll('&amp;','&');
-  return new URL(href,'https://terminal.opennextlab.ai');
-}
-
-test('Enter Demo retains validated static model and hardware catalog selections',()=>{
-  for(const [id,route] of [['model-quote-gpt-5.6-sol-long','models'],['hardware-h200','rfqs']]){
-    const destination=demoDestination('?listing='+id+'&intent=buy');
-    assert.equal(destination.pathname,'/demo/');
-    assert.equal(destination.searchParams.get('listing'),id);
-    assert.equal(destination.searchParams.get('intent'),'buy');
-    assert.equal(destination.searchParams.get('role'),'buyer');
-    assert.equal(destination.hash,'#terminal/'+route);
-  }
-});
-
-test('Enter Demo does not carry production supply IDs, unknown IDs or invalid catalog intents',()=>{
-  for(const query of ['?opportunity=SUP-LIVE&intent=buy','?listing=SUP-LIVE&intent=buy','?listing=unknown&intent=buy','?listing=hardware-h200&intent=offer']){
-    const destination=demoDestination(query);
-    assert.equal(destination.search,'?role=buyer');
-    assert.equal(destination.hash,'#terminal/market');
-  }
-});
-
-test('local in-page sign-in keeps the selected catalog item when entering Demo',()=>{
-  const destination=demoDestination('',{id:'hardware-h100',intent:'buy'});
-  assert.equal(destination.searchParams.get('listing'),'hardware-h100');
-  assert.equal(destination.hash,'#terminal/rfqs');
-  assert.equal(demoDestination('',{id:'SUP-LIVE',intent:'buy'}).search,'?role=buyer');
-});

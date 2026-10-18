@@ -10,37 +10,17 @@ function auth(hostname) {
   vm.runInNewContext(source, {window, CustomEvent: class {}});
   return window.OpenNEXTAuth;
 }
-test('sign-in and sign-up offer the isolated demo without creating an identity', () => {
-  for (const hostname of ['127.0.0.1', 'localhost', '[::1]', 'terminal.opennextlab.ai']) {
+test('sign-in and sign-up offer only real sign-in methods, with no demo entry', () => {
+  for (const hostname of ['127.0.0.1', 'localhost', 'opennextlab.ai', 'terminal.opennextlab.ai']) {
     const api = auth(hostname);
     for (const mode of ['signin', 'signup']) {
       const html = api.render(mode);
-      assert.match(html, /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
-      assert.match(html, /Enter Demo/);
-      assert.match(html, /test data\. No real transactions\./);
-      assert.ok(html.indexOf('data-auth-demo') < html.indexOf('data-auth-provider'));
+      assert.doesNotMatch(html, /data-auth-demo|Enter Demo|\/demo\//);
       assert.match(html, /Continue with Google/);
       assert.match(html, /Continue with GitHub/);
       assert.match(html, /Send verification code/);
       assert.equal(api.getUser(), null);
     }
-  }
-});
-test('main-site demo entry goes to the Terminal host, never to a local preview', () => {
-  for (const hostname of ['opennextlab.ai', 'www.opennextlab.ai']) {
-    const api = auth(hostname);
-    assert.match(api.render('signin'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
-    assert.match(api.render('signup'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
-    assert.equal(api.getUser(), null);
-  }
-});
-
-test('lookalike and custom hosts only use their own isolated demo route', () => {
-  for (const hostname of ['localhost.example.com', '127.0.0.1.example.com', 'opennextlab.ai.example.com', '', undefined]) {
-    const api = auth(hostname);
-    assert.match(api.render('signin'), /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
-    assert.doesNotMatch(api.render('signin'), /4199|\/preview\?|https:\/\/terminal\.opennextlab\.ai/);
-    assert.equal(api.getUser(), null);
   }
 });
 
@@ -109,4 +89,41 @@ test('plain demo URLs preserve the role of an existing test workspace', async ()
   const result=await window.OpenNEXTDemo.ready;
   assert.equal(result.user.role,'seller');
   assert.equal(calls.length,1);
+});
+
+function element(extra = {}) {
+  const attributes = {};
+  return {...extra, focused: false, focus() {this.focused = true;}, setAttribute(name, value) {attributes[name] = value;}, removeAttribute(name) {delete attributes[name];}, getAttribute(name) {return attributes[name];}, hasAttribute(name) {return name in attributes;}};
+}
+function signInForm() {
+  const fetches = [], window = {location: {hostname: 'terminal.opennextlab.ai'}, dispatchEvent() {}};
+  vm.runInNewContext(source, {window, CustomEvent: class {}, fetch: async (...args) => {fetches.push(args); return new Response('{}');}, FormData: class {constructor(form) {this.form = form;} get(name) {return this.form.inputs.find(input => input.name === name).value;}}, Response});
+  const input = element({name: 'email', value: ''}), submit = element({disabled: false}), box = element({textContent: '', hidden: true});
+  const form = element({inputs: [input], querySelector: selector => selector === '[type="submit"]' ? submit : null, querySelectorAll: selector => selector === 'input[name]' ? [input] : []});
+  const root = {matches: () => true, querySelector: selector => ({'[data-auth-back]': element(), '[data-auth-email]': form, '[data-auth-error]': box})[selector] || null,
+    querySelectorAll: selector => selector === '[aria-invalid]' ? [input].filter(item => item.hasAttribute('aria-invalid')) : []};
+  window.OpenNEXTAuth.bind(root, {});
+  return {form, input, box, fetches, submit: () => form.onsubmit({preventDefault() {}})};
+}
+test('forms opt out of browser-native validation bubbles', () => {
+  const html = auth('localhost').render('signin');
+  assert.match(html, /<form data-auth-email novalidate>/);
+  assert.doesNotMatch(source, /reportValidity/);
+  assert.match(source, /<form data-auth-verify novalidate>/);
+});
+test('email validation errors render in-page in English and never call the API', async () => {
+  const page = signInForm();
+  await page.submit();
+  assert.equal(page.box.hidden, false);
+  assert.equal(page.box.textContent, 'Enter your email address.');
+  assert.equal(page.input.getAttribute('aria-invalid'), 'true');
+  assert.equal(page.input.focused, true);
+  page.input.value = 'not-an-email';
+  await page.submit();
+  assert.equal(page.box.textContent, 'Enter a valid email address, like you@company.com.');
+  assert.equal(page.fetches.length, 0);
+  page.input.value = 'buyer@example.com';
+  page.input.oninput();
+  assert.equal(page.box.hidden, true);
+  assert.equal(page.input.hasAttribute('aria-invalid'), false);
 });
