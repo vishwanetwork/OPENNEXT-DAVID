@@ -30,6 +30,14 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-0}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      OPENNEXT_RFQ_NOTIFY_TO: ${OPENNEXT_RFQ_NOTIFY_TO:-}
+      OPENNEXT_ADMIN_URL: ${OPENNEXT_ADMIN_URL:-https://admin.opennextlab.ai/}
     volumes:
       - pricing-data:/app/.opennext-data
     ports:
