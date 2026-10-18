@@ -9,6 +9,7 @@ const {createPricingRouter} = require('./OpenNEXT-pricing-api.cjs');
 const {createCapacityPriceService} = require('./OpenNEXT-capacity-prices.cjs');
 const {createContactService, createContactRouter} = require('./OpenNEXT-contact-service.cjs');
 const {createAuthService} = require('./OpenNEXT-auth-service.cjs');
+const {createOAuthAdapter} = require('./OpenNEXT-oauth-adapter.cjs');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
 const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
@@ -60,7 +61,7 @@ function createAppServer(options = {}) {
   const pricingRoute = createPricingRouter(pricing, {env:options.env || process.env, capacity});
   const contacts = options.contactService || createContactService({dataDir:options.dataDir});
   const contactRoute = createContactRouter(contacts, {security:pricingRoute.security});
-  const auth = options.authService || createAuthService({dataDir:privateDataDir, adapter:options.authAdapter, publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
+  const auth = options.authService || createAuthService({dataDir:privateDataDir, adapter:options.authAdapter || createOAuthAdapter({env:options.env || process.env}), publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
   const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter});
   const marketplaceRoute = createMarketplaceRouter(marketplace, {auth, security:pricingRoute.security, env:options.env || process.env});
   const paymentRoute = createPaymentRouter({auth, checkoutAdapter:options.checkoutAdapter, allowedOrigins:options.checkoutOrigins});
@@ -133,6 +134,11 @@ function createAppServer(options = {}) {
 
     if (await pricingRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     if (await contactRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
+    // OAuth redirect URIs are registered for TERMINAL_HOST only, so sign-in starts there.
+    if (TERMINAL_HOST && !onTerminal && /^\/api\/auth\/oauth\/(?:google|github)\/start$/.test(pathname)) {
+      res.writeHead(302, {Location: 'https://' + TERMINAL_HOST + pathname});
+      res.end(); return;
+    }
     if (await auth.handle(req, res, new URL(req.url, 'http://localhost'))) return;
     if (await marketplaceRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     if (await paymentRoute(req, res, new URL(req.url, 'http://localhost'))) return;
@@ -212,6 +218,9 @@ function createAppServer(options = {}) {
 }
 
 if (require.main === module) {
+  // Local development reads secrets from .env; production injects them via docker-compose.
+  const envFile = path.join(__dirname, '.env');
+  if (fs.existsSync(envFile) && typeof process.loadEnvFile === 'function') process.loadEnvFile(envFile);
   const port = Number(process.env.PORT || 4188);
   const host = process.env.HOST || '127.0.0.1';
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
