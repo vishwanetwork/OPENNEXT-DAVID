@@ -10,37 +10,17 @@ function auth(hostname) {
   vm.runInNewContext(source, {window, CustomEvent: class {}});
   return window.OpenNEXTAuth;
 }
-test('sign-in and sign-up offer the isolated demo without creating an identity', () => {
-  for (const hostname of ['127.0.0.1', 'localhost', '[::1]', 'terminal.opennextlab.ai']) {
+test('sign-in and sign-up offer only real sign-in methods, with no demo entry', () => {
+  for (const hostname of ['127.0.0.1', 'localhost', 'opennextlab.ai', 'terminal.opennextlab.ai']) {
     const api = auth(hostname);
     for (const mode of ['signin', 'signup']) {
       const html = api.render(mode);
-      assert.match(html, /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
-      assert.match(html, /Enter Demo/);
-      assert.match(html, /test data\. No real transactions\./);
-      assert.ok(html.indexOf('data-auth-demo') < html.indexOf('data-auth-provider'));
+      assert.doesNotMatch(html, /data-auth-demo|Enter Demo|\/demo\//);
       assert.match(html, /Continue with Google/);
       assert.match(html, /Continue with GitHub/);
       assert.match(html, /Send verification code/);
       assert.equal(api.getUser(), null);
     }
-  }
-});
-test('main-site demo entry goes to the Terminal host, never to a local preview', () => {
-  for (const hostname of ['opennextlab.ai', 'www.opennextlab.ai']) {
-    const api = auth(hostname);
-    assert.match(api.render('signin'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
-    assert.match(api.render('signup'), /data-auth-demo href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer#terminal\/market"/);
-    assert.equal(api.getUser(), null);
-  }
-});
-
-test('lookalike and custom hosts only use their own isolated demo route', () => {
-  for (const hostname of ['localhost.example.com', '127.0.0.1.example.com', 'opennextlab.ai.example.com', '', undefined]) {
-    const api = auth(hostname);
-    assert.match(api.render('signin'), /data-auth-demo href="\/demo\/\?role=buyer#terminal\/market"/);
-    assert.doesNotMatch(api.render('signin'), /4199|\/preview\?|https:\/\/terminal\.opennextlab\.ai/);
-    assert.equal(api.getUser(), null);
   }
 });
 

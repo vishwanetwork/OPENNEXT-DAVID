@@ -189,7 +189,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       await prune();
       const session = sessionFor(req);
       if (endpoint === '/auth/session' && req.method === 'GET') {send(res, 200, {user: session ? userFor(session) : null, demo: true}); return true;}
-      if (!session) throw fail(401, 'Your demo session has expired. Use Enter Demo to start again.');
+      if (!session) throw fail(401, 'Your demo session has expired. Open the demo again to start a new session.');
       if (mutating && !equal(req.headers['x-csrf-token'], session.csrfToken)) throw fail(403, 'Your demo session verification failed. Refresh and try again.');
       rateSession(session, mutating && endpoint !== '/auth/logout');
       session.active++;
