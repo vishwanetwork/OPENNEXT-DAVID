@@ -90,3 +90,40 @@ test('plain demo URLs preserve the role of an existing test workspace', async ()
   assert.equal(result.user.role,'seller');
   assert.equal(calls.length,1);
 });
+
+function element(extra = {}) {
+  const attributes = {};
+  return {...extra, focused: false, focus() {this.focused = true;}, setAttribute(name, value) {attributes[name] = value;}, removeAttribute(name) {delete attributes[name];}, getAttribute(name) {return attributes[name];}, hasAttribute(name) {return name in attributes;}};
+}
+function signInForm() {
+  const fetches = [], window = {location: {hostname: 'terminal.opennextlab.ai'}, dispatchEvent() {}};
+  vm.runInNewContext(source, {window, CustomEvent: class {}, fetch: async (...args) => {fetches.push(args); return new Response('{}');}, FormData: class {constructor(form) {this.form = form;} get(name) {return this.form.inputs.find(input => input.name === name).value;}}, Response});
+  const input = element({name: 'email', value: ''}), submit = element({disabled: false}), box = element({textContent: '', hidden: true});
+  const form = element({inputs: [input], querySelector: selector => selector === '[type="submit"]' ? submit : null, querySelectorAll: selector => selector === 'input[name]' ? [input] : []});
+  const root = {matches: () => true, querySelector: selector => ({'[data-auth-back]': element(), '[data-auth-email]': form, '[data-auth-error]': box})[selector] || null,
+    querySelectorAll: selector => selector === '[aria-invalid]' ? [input].filter(item => item.hasAttribute('aria-invalid')) : []};
+  window.OpenNEXTAuth.bind(root, {});
+  return {form, input, box, fetches, submit: () => form.onsubmit({preventDefault() {}})};
+}
+test('forms opt out of browser-native validation bubbles', () => {
+  const html = auth('localhost').render('signin');
+  assert.match(html, /<form data-auth-email novalidate>/);
+  assert.doesNotMatch(source, /reportValidity/);
+  assert.match(source, /<form data-auth-verify novalidate>/);
+});
+test('email validation errors render in-page in English and never call the API', async () => {
+  const page = signInForm();
+  await page.submit();
+  assert.equal(page.box.hidden, false);
+  assert.equal(page.box.textContent, 'Enter your email address.');
+  assert.equal(page.input.getAttribute('aria-invalid'), 'true');
+  assert.equal(page.input.focused, true);
+  page.input.value = 'not-an-email';
+  await page.submit();
+  assert.equal(page.box.textContent, 'Enter a valid email address, like you@company.com.');
+  assert.equal(page.fetches.length, 0);
+  page.input.value = 'buyer@example.com';
+  page.input.oninput();
+  assert.equal(page.box.hidden, true);
+  assert.equal(page.input.hasAttribute('aria-invalid'), false);
+});
