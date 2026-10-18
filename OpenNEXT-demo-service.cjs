@@ -146,7 +146,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       const value = crypto.randomBytes(48).toString('base64url'), key = hash(value);
       const directory = path.join(await root(), crypto.randomUUID());
       await fs.mkdir(directory, {mode: 0o700});
-      const session = {key, directory, expiresAt: now() + ttl, active: 0, mutations: 0, window: {count: 0, until: now() + 60000},
+      const session = {key, directory, workspaceId: 'DEMO-' + crypto.randomUUID(), expiresAt: now() + ttl, active: 0, mutations: 0, window: {count: 0, until: now() + 60000},
         csrfToken: crypto.randomBytes(32).toString('base64url'),
         user: {id: 'demo-' + crypto.randomUUID(), email: 'guest@demo.invalid', name: 'Demo Guest', role: selectedRole,
           demo: true, onboardingCompleted: true, promotionalCredit: 100, promotionalCreditGranted: 100,
@@ -227,6 +227,74 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
     operation.finally(() => operations.delete(operation)).catch(() => {});
     return operation;
   }
+  function trackAdmin(work) {
+    const operation = work();
+    operations.add(operation);
+    operation.finally(() => operations.delete(operation)).catch(() => {});
+    return operation;
+  }
+  function requireAdminWorkspaceService() {
+    if (!enabled) throw fail(404, 'Demo access is unavailable.');
+    if (closing) throw fail(503, 'The demo is restarting. Please try again.');
+  }
+  function consoleRecord(record, session) {
+    const {sshHost, sshUser, sshPort, ...safe} = record;
+    return {...safe, ...(record.kind && Object.hasOwn(record, 'sshHost') ? {sshConfigured: !!sshHost} : {}),
+      demo: true, scope: 'demo', workspaceId: session.workspaceId,
+      workspaceExpiresAt: new Date(session.expiresAt).toISOString()};
+  }
+  // These methods are callable only by the authenticated Console router. They
+  // do not grant guest routes operations authority or expose session secrets.
+  function consoleSnapshot() {
+    return trackAdmin(async () => {
+      requireAdminWorkspaceService();
+      await prune();
+      const result = {demo: true, scope: 'demo', rfqs: [], supplies: [], kyb: [], generatedAt: new Date(now()).toISOString()};
+      for (const session of sessions.values()) {
+        if (session.removed) continue;
+        if (session.expiresAt <= now()) {await expire(session); continue;}
+        session.active++;
+        try {
+          const snapshot = await session.marketplace.admin();
+          if (session.removed || session.expiresAt <= now()) continue;
+          for (const collection of ['rfqs', 'supplies', 'kyb']) {
+            result[collection].push(...snapshot[collection].filter(record => record.ownerId === session.user.id).map(record => consoleRecord(record, session)));
+          }
+        } finally {
+          session.active--;
+          if (session.expiresAt <= now() && !session.removed) await expire(session);
+          else if (session.removed) await removeWorkspace(session);
+        }
+      }
+      await prune();
+      const activeWorkspaces = new Set([...sessions.values()].filter(session => !session.removed && session.expiresAt > now()).map(session => session.workspaceId));
+      for (const collection of ['rfqs', 'supplies', 'kyb']) result[collection] = result[collection].filter(record => activeWorkspaces.has(record.workspaceId))
+        .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+      return result;
+    });
+  }
+  function decideConsoleKyb(id, input, operator = 'Demo operations') {
+    return trackAdmin(async () => {
+      requireAdminWorkspaceService();
+      await prune();
+      if (!/^DEMO-[a-f0-9-]{36}$/.test(String(input?.workspaceId || ''))) throw fail(400, 'Select a valid Demo workspace.');
+      const session = [...sessions.values()].find(value => value.workspaceId === input.workspaceId && !value.removed && value.expiresAt > now());
+      if (!session) throw fail(404, 'This Demo workspace has expired or is unavailable. Start a new Demo to continue testing.');
+      session.active++;
+      try {
+        const snapshot = await session.marketplace.admin();
+        if (!snapshot.kyb.some(record => record.id === id && record.ownerId === session.user.id)) throw fail(404, 'The Demo KYB submission was not found in this workspace.');
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired. Start a new Demo to continue testing.');
+        const record = await session.marketplace.decideKyb(id, {status: input.status, reason: input.reason ?? input.note}, operator);
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired. Start a new Demo to continue testing.');
+        return consoleRecord(record, session);
+      } finally {
+        session.active--;
+        if (session.expiresAt <= now() && !session.removed) await expire(session);
+        else if (session.removed) await removeWorkspace(session);
+      }
+    });
+  }
   const timer = setInterval(() => {prune().catch(() => {});}, 60000);
   timer.unref?.();
   async function close() {
@@ -240,7 +308,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
     }
     starts.clear(); showcaseCache = null;
   }
-  return {handle, close, enabled: !!enabled};
+  return {handle, close, enabled: !!enabled, consoleSnapshot, decideConsoleKyb};
 }
 
 module.exports = {createDemoService};

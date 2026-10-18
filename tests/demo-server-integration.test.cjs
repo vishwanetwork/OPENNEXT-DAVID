@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
+const stableSnapshot = snapshot => {const {generatedAt, ...records} = snapshot; return JSON.stringify(records);};
 
 async function setup(t, enabled = true) {
   const modulePath = require.resolve('../OpenNEXT-preview-server.cjs');
@@ -54,7 +55,7 @@ test('public demo entry boots before application scripts and redirects to Termin
 
 test('demo session cannot authenticate with production routes or seed the real marketplace',async t=>{
   const {request,server}=await setup(t);
-  const before=JSON.stringify(await server.marketplace.admin());
+  const before=stableSnapshot(await server.marketplace.admin());
   const start=await request('/api/demo/start',{method:'POST',headers:{Origin:'http://terminal.test'},body:{role:'buyer'}});
   assert.equal(start.status,200,start.text);
   const cookie=start.headers['set-cookie'][0].split(';')[0];
@@ -62,7 +63,7 @@ test('demo session cannot authenticate with production routes or seed the real m
   assert.equal(live.json().user,null);
   const demo=await request('/api/demo/auth/session',{headers:{Cookie:cookie}});
   assert.equal(demo.json().user.role,'buyer');
-  assert.equal(JSON.stringify(await server.marketplace.admin()),before);
+  assert.equal(stableSnapshot(await server.marketplace.admin()),before);
   assert.equal((await request('/api/demo/internal/marketplace/agent',{method:'POST',body:{},headers:{Cookie:cookie,Origin:'http://terminal.test'}})).status,403);
 });
 
@@ -75,7 +76,7 @@ test('demo can be disabled without changing production authentication',async t=>
 
 test('homepage can read the showcase without receiving demo session or production fixtures',async t=>{
   const {request,server}=await setup(t);
-  const before=JSON.stringify(await server.marketplace.admin());
+  const before=stableSnapshot(await server.marketplace.admin());
   for(const host of ['site.test','terminal.test']){
     const response=await request('/api/demo/showcase',{host});
     assert.equal(response.status,200,response.text);
@@ -89,5 +90,5 @@ test('homepage can read the showcase without receiving demo session or productio
   const live=await request('/api/marketplace/public',{host:'site.test'});
   assert.deepEqual(live.json().supplies,[]);
   assert.deepEqual(live.json().rfqs,[]);
-  assert.equal(JSON.stringify(await server.marketplace.admin()),before);
+  assert.equal(stableSnapshot(await server.marketplace.admin()),before);
 });
