@@ -20,6 +20,14 @@ function setup(rows = null) {
   return context.window;
 }
 const copy={rental:'GPU rental',models:'Model capacity',physical:'Physical GPUs'};
+function panel(html,index=0){
+  const marker='<div class="public-listing-panel public-listing-panel-';
+  const start=html.indexOf(marker+index+'"');
+  assert.ok(start>=0,`market panel ${index} must exist`);
+  const next=html.indexOf(marker,start+marker.length);
+  return html.slice(start,next>=0?next:html.indexOf('<div class="on-listing-under">',start));
+}
+const cardsIn=html=>[...html.matchAll(/<article\b[\s\S]*?<\/article>/g)].map(match=>match[0]);
 const sourceRows=[
   {id:'SUP-100',kind:'rental',side:'supply',model:'H100 SXM',title:'H100 production cluster',region:'Singapore',price:1.8,count:8,hours:48,description:'InfiniBand available.',sample:true},
   {id:'RFQ-100',kind:'rental',side:'demand',model:'H100 SXM',title:'Urgent H100 capacity',region:'US East',price:3,count:16,hours:72,urgency:'Urgent',description:'Training starts tomorrow.',sample:true},
@@ -50,13 +58,19 @@ test('buyer lane displays only supply and routes the exact offer into the worksp
   assert.match(html,/data-listing-side-filter="supply" aria-pressed="true"/);
   assert.match(html,/data-exchange-id="SUP-100" data-exchange-intent="buy"/);
   assert.doesNotMatch(html,/data-listing-id="RFQ-100"/);
-  for(const card of html.matchAll(/<article\b[\s\S]*?<\/article>/g)){
-    assert.equal((card[0].match(/data-public-action="open-workspace"/g)||[]).length,1);
-    assert.match(card[0],/<span>Buy capacity<\/span>/);
-    assert.doesNotMatch(card[0],/<span>Offer capacity<\/span>/);
+  const rentalCards=cardsIn(panel(html));
+  assert.equal(rentalCards.length,1);
+  for(const card of rentalCards){
+    assert.equal((card.match(/data-public-action="open-workspace"/g)||[]).length,1);
+    assert.match(card,/<span>Buy capacity<\/span>/);
+    assert.doesNotMatch(card,/<span>Offer capacity<\/span>/);
   }
-  assert.match(html,/\$0\.51/);
-  assert.match(html,/\$3\.06/);
+  assert.equal(cardsIn(panel(html,1)).length,1,'published model offers supersede model references');
+  assert.equal(cardsIn(panel(html,2)).length,1,'published hardware offers supersede hardware references');
+  assert.match(panel(html,1),/\$0\.51/);
+  assert.match(panel(html,1),/\$3\.06/);
+  assert.doesNotMatch(panel(html,1),/data-listing-id="model-/);
+  assert.doesNotMatch(panel(html,2),/data-listing-id="hardware-/);
   assert.match(html,/Preview marketplace/);
 });
 
@@ -71,12 +85,25 @@ test('supplier lane displays buyer requirements only and retains the exact RFQ i
   assert.equal(api.get('RFQ-100').model,'H100 SXM');
 });
 
-test('an empty exchange never silently substitutes externally observed inventory',()=>{
+test('empty rental exchange stays empty while dated model and hardware catalogs remain available',()=>{
   const api=setup([]).OpenNEXTListings,html=api.render(copy);
-  assert.equal((html.match(/<article /g)||[]).length,0);
-  assert.match(html,/No published offers in this market yet/);
+  assert.equal(cardsIn(panel(html)).length,0);
+  assert.match(panel(html),/No published offers in this market yet/);
   assert.match(html,/No listings/);
-  assert.doesNotMatch(html,/data-listing-id="rental-|data-listing-id="hardware-/);
+  assert.doesNotMatch(panel(html),/data-listing-id="rental-|Buyer target price|Supplier offer/);
+  for(const index of [1,2]){
+    const catalog=panel(html,index),cards=cardsIn(catalog);
+    assert.ok(cards.length>=5,'each reference catalog has enough entries to rotate');
+    assert.match(catalog,/Reference/);
+    assert.doesNotMatch(catalog,/data-exchange-id|data-showcase-opportunity|Supplier asking price/);
+    assert.equal(cards.length,api.groups[index].length);
+    for(const item of api.groups[index]){
+      assert.match(item.observedAt,/^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(item.kind,index===1?'model':'hardware');
+      assert.notEqual(item.priceKind,'buyer_target');
+      assert.notEqual(item.priceKind,'seller_ask');
+    }
+  }
 });
 
 test('missing marketplace service does not present external rental targets as live RFQs',()=>{
@@ -103,7 +130,7 @@ test('exchange strings are escaped before public rendering',()=>{
 
 test('supplier offer cards omit the Preview badge but retain marketplace provenance',()=>{
   const api=setup([{...sourceRows[0],urgency:'High urgency',sample:true}]).OpenNEXTListings;
-  const html=api.render(copy),card=html.match(/<article\b[\s\S]*?<\/article>/)[0];
+  const html=api.render(copy),card=cardsIn(panel(html))[0];
   assert.match(card,/Supplier offer/);
   assert.doesNotMatch(card,/on-listing-sample|>Preview<|on-listing-urgency/);
   assert.match(html,/Preview marketplace · /);
@@ -114,7 +141,7 @@ test('buyer RFQs only show a normalized High Urgency badge for high-priority req
   const priorities=['High urgency','HIGH URGENCY','High','Urgent','Medium urgency','Standard','Ordinary','Low urgency','',null];
   const api=setup(priorities.map((urgency,index)=>({...sourceRows[1],id:'RFQ-LABEL-'+index,urgency}))).OpenNEXTListings;
   api.selectSide('demand');
-  const html=api.render(copy),cards=[...html.matchAll(/<article\b[\s\S]*?<\/article>/g)].map(match=>match[0]);
+  const html=api.render(copy),cards=cardsIn(panel(html));
   assert.equal(cards.length,priorities.length);
   cards.forEach((card,index)=>{
     assert.match(card,/Buyer RFQ/);
@@ -128,7 +155,7 @@ test('unavailable exchange cannot promote archived external demand into homepage
   const api=setup().OpenNEXTListings;api.selectSide('demand');
   const html=api.render(copy);
   assert.match(html,/No listings/);
-  assert.equal((html.match(/<article /g)||[]).length,0);
+  assert.equal(cardsIn(panel(html)).length,0);
   assert.doesNotMatch(html,/Buyer target price|Buyer RFQ|data-listing-id="rental-/);
   assert.doesNotMatch(html,/on-listing-urgency/);
   assert.match(api.groups[0][0].sourceUrl,/packet\.ai\/demand/);

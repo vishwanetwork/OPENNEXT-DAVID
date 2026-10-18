@@ -65,6 +65,8 @@
   let currentCopy = null;
   let showcase = null;
   let showcaseRequest = null;
+  let curatedRfqs = [];
+  let curatedRequest = null;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
   const tokenMoney = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:6});
@@ -103,21 +105,41 @@
     return showcaseRequest;
   }
 
+  async function loadCuratedRfqs() {
+    if(curatedRequest)return curatedRequest;
+    if(typeof fetch!=='function')return null;
+    curatedRequest=(async()=>{
+      try{
+        const response=await fetch('/api/homepage/rfqs',{credentials:'omit',headers:{Accept:'application/json'}});
+        if(!response.ok)return null;
+        const data=await response.json();
+        if(!Array.isArray(data?.rfqs))return null;
+        curatedRfqs=data.rfqs.filter(item=>item?.sourceKind==='customer_requirement'&&item.kind==='rental'&&item.side==='demand'&&typeof item.id==='string'&&typeof item.title==='string'&&Array.isArray(item.specifications)).map(item=>({...item,curated:true,name:item.title}));
+        refresh();
+        return curatedRfqs;
+      }catch{return null;}
+    })();
+    return curatedRequest;
+  }
+
   function rowsFor(kind, side) {
-    if (typeof window.OpenNEXTExchange?.listPublic === 'function') {
-      const key=side==='demand'?'rfqs':'supplies';
-      let items=kind==='rental'?(window.OpenNEXTExchange.featured()?.[key]||[]):window.OpenNEXTExchange.listPublic(kind,side);
-      if(kind==='rental'&&!items.length)items=showcase?.[key]||[];
-      return items.map(item => ({
-        ...item, exchange:true, side, name:item.title || item.model,
-        note:item.description || '', region:item.region || 'Flexible region',
-        input:item.input ?? item.price, output:item.output ?? item.outputPrice,
-      }));
+    const key=side==='demand'?'rfqs':'supplies';
+    const exchange=window.OpenNEXTExchange;
+    const published=typeof exchange?.listPublic==='function'?(kind==='rental'?(exchange.featured?.()?.[key]||[]):exchange.listPublic(kind,side)||[]):[];
+    const mapExchange=item=>({...item,exchange:true,side,name:item.title||item.model,note:item.description||'',region:item.region||'Flexible region',input:item.input??item.price,output:item.output??item.outputPrice});
+    if(kind==='rental'){
+      const requirements=side==='demand'?curatedRfqs:[];
+      const listings=(published.length?published:(showcase?.[key]||[])).filter(item=>!requirements.some(row=>row.id===item.id)).map(mapExchange);
+      const combined=[];
+      for(let i=0;i<Math.max(requirements.length,listings.length);i++){
+        if(requirements[i])combined.push(requirements[i]);
+        if(listings[i])combined.push(listings[i]);
+      }
+      return combined;
     }
-    // Keep source observations available when the exchange module is not loaded,
-    // without recasting buyer targets as seller inventory.
-    if(kind==='rental')return (showcase?.[side==='demand'?'rfqs':'supplies']||[]).map(item=>({...item,exchange:true,side,name:item.title||item.model,note:item.description||'',region:item.region||'Flexible region'}));
-    return groups[marketKinds.indexOf(kind)].filter(item => (item.kind==='rental'?'demand':'supply')===side);
+    if(published.length)return published.map(mapExchange);
+    // Existing dated catalog quotes are references, never fabricated exchange inventory.
+    return side==='supply'?groups[marketKinds.indexOf(kind)]:[];
   }
 
   const urgencyBadge = urgency => /^(high(?:[\s_-]+urgency)?|urgent)$/i.test(String(urgency||'').trim()) ? '<span class="on-listing-urgency">High Urgency</span>' : '';
@@ -136,6 +158,10 @@
   }
 
   function card(item,index,items) {
+    if(item.curated){
+      const specs=metric('Quantity',item.quantityLabel)+metric('Rental term',item.termLabel)+metric('Deployment',item.deliveryLabel)+metric('Payment','Flexible with supplier');
+      return `<article class="on-listing-card on-listing-curated" data-listing-id="${escape(item.id)}" data-listing-index="${index}" data-listing-side="demand" role="group" aria-roledescription="slide" aria-label="${index+1} of ${items.length}: ${escape(item.title)}"><div class="on-listing-card-top"><span class="on-listing-kind"><i></i>Buyer RFQ</span></div><h3>${escape(item.title)}</h3><div class="on-listing-location">${icon('globe')}<span>${escape(item.region)}</span></div><p class="on-listing-description">${escape(item.description)}</p><dl class="on-listing-specs">${specs}</dl><div class="on-listing-pricing"><div class="on-listing-single-price"><span>Supplier quotes invited</span><strong>Price on request</strong></div><p>Submit a proposal against the complete requirements.</p></div><div class="on-listing-actions"><button class="on-listing-details" type="button" data-curated-rfq-details="${escape(item.id)}" aria-label="View requirements: ${escape(item.title)}">View requirements</button><button class="on-listing-cta" type="button" data-curated-rfq-offer="${escape(item.id)}" aria-label="Offer capacity: ${escape(item.title)}"><span>Offer capacity</span>${icon('right')}</button></div></article>`;
+    }
     if(item.exchange)return exchangeCard(item,index,items.length);
     const isModel = item.kind==='model', isRental = item.kind==='rental';
     const tag = isModel?item.sourceLabel:isRental?'Buyer demand':item.unit==='server'?'Complete system':'Physical GPU';
@@ -150,11 +176,13 @@
 
   const emptyCards = () => `<div class="on-listing-empty"><h3>${selectedSide==='supply'?'No published offers in this market yet.':'No open requirements in this market yet.'}</h3><p>${selectedSide==='supply'?'Tell suppliers what you need and invite a quote.':'Publish your capacity so buyers can find you.'}</p><button type="button" class="on-button on-button-outline" data-public-action="open-workspace" data-target="${selectedSide==='supply'?'rfq':'supply'}">${selectedSide==='supply'?'Post an RFQ':'List capacity'}</button></div>`;
 
+  const disclosureFor=items=>items.some(item=>item.demo)?items.some(item=>item.curated)?'Includes demo listings · Availability, pricing and delivery confirmed by quote.':'Demo marketplace · Test data · No real transactions.':items.some(item=>item.curated)?'Buyer requirements · Pricing, capacity and delivery confirmed in supplier quotes.':`${items.some(item=>item.sample)?'Preview marketplace · ':''}USD · Final availability, fees and delivery confirmed by quote.`;
+
   function render(copy) {
     currentCopy=copy;
     renderedGroups=marketKinds.map(kind=>rowsFor(kind,selectedSide));
     const names = [copy.rental,copy.models,copy.physical];
-    const disclosure=renderedGroups.flat().some(item=>item.demo)?'Demo marketplace · Test data · No real transactions.':`${renderedGroups.flat().some(item=>item.sample)?'Preview marketplace · ':''}USD · Final availability, fees and delivery confirmed by quote.`;
+    const disclosure=disclosureFor(renderedGroups[0]);
     return `<div class="public-listing-preview on-listing-carousel" role="region" aria-roledescription="carousel" aria-label="Capacity market listings"><div class="on-listing-sides"><div role="group" aria-label="Choose your side of the market"><button type="button" data-listing-side-filter="supply" aria-pressed="${selectedSide==='supply'}">Buy capacity<span>Browse supplier offers</span></button><button type="button" data-listing-side-filter="demand" aria-pressed="${selectedSide==='demand'}">Offer capacity<span>Respond to buyer RFQs</span></button></div><p>One workspace.<br>Both sides of the market.</p></div>${names.map((name,i)=>`<input class="public-listing-radio" type="radio" name="public-listings" id="public-listings-${i}"${i===0?' checked':''}><label class="public-listing-tab public-listing-tab-${i}" for="public-listings-${i}">${escape(name)}</label>`).join('')}<div class="on-listing-controls"><span class="on-listing-position" aria-hidden="true">${renderedGroups[0].length?`01 — ${String(Math.min(5,renderedGroups[0].length)).padStart(2,'0')} / ${renderedGroups[0].length}`:'No listings'}</span><button type="button" data-listing-move="-1" aria-label="Previous listing">${icon('left')}</button><button type="button" data-listing-toggle aria-label="Pause listing carousel" aria-pressed="false">${icon('pause')}</button><button type="button" data-listing-move="1" aria-label="Next listing">${icon('right')}</button></div><div class="public-listing-panels">${renderedGroups.map((items,i)=>`<div class="public-listing-panel public-listing-panel-${i}" role="region" aria-label="${escape(names[i])}" data-listing-panel="${i}"><div class="on-listing-viewport"><div class="on-listing-track">${items.map(card).join('')}</div>${items.length?'':emptyCards()}</div></div>`).join('')}</div><div class="on-listing-under"><span>${disclosure}</span><span class="on-listing-motion-hint">Hover to pause</span></div><span class="on-listing-announcement" role="status" aria-live="polite"></span></div>`;
   }
 
@@ -175,6 +203,8 @@
     if (!component) return;
     const state = active(), count = visibleCount();
     if (!state) return;
+    component.querySelector('.on-listing-under>span').textContent=disclosureFor(renderedGroups[Number(state.panel.dataset.listingPanel)]||[]);
+    state.track.style.setProperty('--on-card-columns',Math.min(count,Math.max(1,state.track.children.length)));
     const cards = [...state.track.children];
     cards.forEach((item,i)=>{item.inert=i>=count;item.setAttribute('aria-hidden',String(i>=count));});
     const start = cards.length?Number(cards[0].dataset.listingIndex)+1:0;
@@ -235,6 +265,13 @@
     if(!component || !currentCopy)return;
     const tab=Number(component.querySelector('.public-listing-radio:checked')?.id.split('-').pop()||0);
     const previous=component;
+    const focused=document.activeElement;
+    const focusAttributes=['id','data-listing-side-filter','data-listing-move','data-listing-toggle','data-listing-selection','data-listing-intent','data-showcase-opportunity','data-curated-rfq-details','data-curated-rfq-offer'];
+    const restoreFocus=previous.contains(focused)?{
+      cardId:focused.closest('.on-listing-card')?.dataset.listingId,
+      tag:focused.tagName,
+      attributes:focusAttributes.filter(name=>focused.hasAttribute(name)).map(name=>[name,focused.getAttribute(name)]),
+    }:null;
     const markup=render(currentCopy);
     destroy();
     previous.outerHTML=markup;
@@ -242,6 +279,16 @@
     const selected=next?.querySelector(`#public-listings-${tab}`);
     if(selected)selected.checked=true;
     mount();
+    if(!restoreFocus||!restoreFocus.attributes.length||!next)return;
+    const state=active();
+    const card=restoreFocus.cardId&&[...(state?.track.children||[])].find(item=>item.dataset.listingId===restoreFocus.cardId);
+    if(restoreFocus.cardId&&!card)return;
+    if(card&&[...state.track.children].indexOf(card)>=visibleCount()){
+      while(state.track.firstElementChild!==card)state.track.append(state.track.firstElementChild);
+      update();
+    }
+    const target=[...(card||next).querySelectorAll('a,button,input,select,textarea,[tabindex]')].find(item=>item.tagName===restoreFocus.tag&&restoreFocus.attributes.every(([name,value])=>item.getAttribute(name)===value));
+    if(target&&!target.disabled)target.focus({preventScroll:true});
   }
   function selectSide(side) {
     if(!['supply','demand'].includes(side))return;
@@ -262,6 +309,13 @@
       update(true);
     });
     component.addEventListener('click',event=>{
+      const inquiry=event.target.closest('[data-curated-rfq-details],[data-curated-rfq-offer]');
+      if(inquiry){
+        event.preventDefault();
+        const item=curatedRfqs.find(row=>row.id===(inquiry.dataset.curatedRfqDetails||inquiry.dataset.curatedRfqOffer));
+        if(item)window.OpenNEXTCuratedInquiries?.[inquiry.hasAttribute('data-curated-rfq-details')?'showDetails':'offer'](item);
+        return;
+      }
       const side=event.target.closest('[data-listing-side-filter]');
       if(side){event.preventDefault();selectSide(side.dataset.listingSideFilter);component?.querySelector(`[data-listing-side-filter="${selectedSide}"]`)?.focus();return;}
       const move=event.target.closest('[data-listing-move]'),toggle=event.target.closest('[data-listing-toggle]');
@@ -292,9 +346,10 @@
       step(1);
     },4600);
     void loadShowcase();
+    void loadCuratedRfqs();
   }
   reducedMotion.addEventListener('change',event=>{if(event.matches){paused=true;update();}});
   new MutationObserver(mount).observe(document.getElementById('app'),{childList:true});
   window.addEventListener?.('opennext:exchange',refresh);
-  window.OpenNEXTListings={render,get:id=>renderedGroups.flat().find(item=>item.id===id)||window.OpenNEXTExchange?.get(id)||groups.flat().find(item=>item.id===id),mount,step,destroy,refresh,selectSide,loadShowcase,groups};
+  window.OpenNEXTListings={render,get:id=>renderedGroups.flat().find(item=>item.id===id)||curatedRfqs.find(item=>item.id===id)||window.OpenNEXTExchange?.get(id)||groups.flat().find(item=>item.id===id),mount,step,destroy,refresh,selectSide,loadShowcase,loadCuratedRfqs,groups};
 })();

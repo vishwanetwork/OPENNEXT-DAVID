@@ -15,6 +15,10 @@ const LOCATIONS = [
   ['United States', 'Aster Capacity'], ['Singapore', 'Stratus AI'],
   ['Germany', 'Meridian Compute'],
 ];
+const DISPLAY_REGIONS = [...new Set(LOCATIONS.map(([region]) => region))];
+// Rotate demo data-center regions by model, independently of counterparty registration.
+// B300 remains pending homepage review; the other 12 models evenly cover six regions.
+const SHOWCASE_MODELS = MODELS.map(([model]) => model).filter(model => model !== 'B300');
 const price = value => Math.round(value * 100) / 100;
 const id = (prefix, name) => prefix + '-' + crypto.createHash('sha256').update(name).digest('hex').slice(0,16).toUpperCase();
 
@@ -28,7 +32,9 @@ function createDemoData(now = Date.now()) {
     status:'Approved',createdAt:at(-72),submittedAt:at(-72),reviewedAt:at(-48),reviewedBy:'Preview operations',
   }));
   MODELS.forEach(([model, base], modelIndex) => {
-    LOCATIONS.forEach(([region, company], index) => {
+    const regionOffset = Math.max(0, SHOWCASE_MODELS.indexOf(model));
+    LOCATIONS.forEach(([, company], index) => {
+      const region = DISPLAY_REGIONS[(index + regionOffset) % DISPLAY_REGIONS.length];
       const key=model+'-'+index,term=index<6?'Spot':index<8?'On-demand':'Reserved';
       const count=[64,32,128,16,48,24,64,32,128][index],hours=[168,336,720,72,168,336,720,168,2160][index];
       const netPrice=price(base*([0.93,1.02,0.98,1.08,1.04,1.01,1.24,1.20,0.91][index]));

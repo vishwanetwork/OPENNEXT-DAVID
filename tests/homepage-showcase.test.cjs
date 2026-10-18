@@ -9,6 +9,14 @@ const copy={rental:'GPU rental',models:'Model capacity',physical:'Physical GPUs'
 const supply=Array.from({length:6},(_,i)=>({id:'SUP-DEMO-'+i,kind:'rental',model:['H100','H200','B200','A100 80GB','L40S','RTX 4090'][i],title:'GPU capacity '+i,region:'Singapore',price:2+i/10,count:8,hours:168,description:'Dedicated GPU capacity.'}));
 const rfqs=supply.map((row,i)=>({...row,id:'RFQ-DEMO-'+i,price:3+i/10,title:'GPU requirement '+i,urgency:i===0?'High urgency':'Standard'}));
 const payload={demo:true,rfqs,supplies:supply,featured:{rfqs,supplies:supply}};
+function panel(html,index=0){
+  const marker='<div class="public-listing-panel public-listing-panel-';
+  const start=html.indexOf(marker+index+'"');
+  assert.ok(start>=0,`market panel ${index} must exist`);
+  const next=html.indexOf(marker,start+marker.length);
+  return html.slice(start,next>=0?next:html.indexOf('<div class="on-listing-under">',start));
+}
+const cardsIn=html=>[...html.matchAll(/<article\b[\s\S]*?<\/article>/g)].map(match=>match[0]);
 
 function setup({host='opennextlab.ai',real={rfqs:[],supplies:[]},response=payload,ok=true,reject=false}={}){
   const requests=[];
@@ -29,18 +37,18 @@ test('homepage restores isolated supply and RFQ cards with exact demo deep links
   assert.match(api.render(copy),/No published offers/);
   await api.loadShowcase();
   let html=api.render(copy);
-  assert.equal((html.match(/<article /g)||[]).length,6);
+  assert.equal(cardsIn(panel(html)).length,6);
   assert.match(html,/01 — 05 \/ 6/);
   assert.match(html,/GPU rental<\/label>/);
   assert.match(html,/Demo marketplace · Test data · No real transactions/);
   assert.match(html,/href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer&amp;opportunity=SUP-DEMO-0&amp;intent=buy#terminal\/market"/);
-  const cards=[...html.matchAll(/<article\b[\s\S]*?<\/article>/g)].map(match=>match[0]);
+  const cards=cardsIn(panel(html));
   cards.forEach(card=>{assert.match(card,/Supplier offer/);assert.match(card,/<span>Buy capacity<\/span>/);assert.doesNotMatch(card,/data-public-action|data-exchange-id|on-listing-sample|Preview/);});
   assert.equal(api.get('SUP-DEMO-0').demo,true);
   assert.equal(api.get('SUP-DEMO-0').price,2);
   api.selectSide('demand');
   html=api.render(copy);
-  assert.equal((html.match(/<article /g)||[]).length,6);
+  assert.equal(cardsIn(panel(html)).length,6);
   assert.match(html,/role=seller&amp;opportunity=RFQ-DEMO-0&amp;intent=offer/);
   assert.match(html,/<span>Offer capacity<\/span>/);
   assert.equal((html.match(/class="on-listing-urgency"/g)||[]).length,1);
@@ -80,7 +88,14 @@ test('disabled, failed or unmarked showcase response retains honest empty state'
     await api.loadShowcase();
     const html=api.render(copy);
     assert.match(html,/No published offers/);
-    assert.equal((html.match(/<article /g)||[]).length,0);
+    assert.equal(cardsIn(panel(html)).length,0);
+    assert.doesNotMatch(panel(html),/data-listing-id="rental-|Supplier offer|data-showcase-opportunity/);
+    for(const index of [1,2]){
+      const catalog=panel(html,index);
+      assert.ok(cardsIn(catalog).length>=5,'dated reference catalogs remain available independently');
+      assert.doesNotMatch(catalog,/data-showcase-opportunity|data-exchange-id/);
+      assert.match(catalog,/Reference/);
+    }
   }
 });
 
@@ -92,5 +107,5 @@ test('local previews use the same-origin demo route and escape showcase content'
   assert.match(html,/href="\/demo\/\?role=buyer&amp;opportunity=SUP-%3Cunsafe%3E&amp;intent=buy/);
   assert.match(html,/&lt;script&gt;bad&lt;\/script&gt;/);
   assert.doesNotMatch(html,/<script>|INVALID/);
-  assert.equal((html.match(/<article /g)||[]).length,1);
+  assert.equal(cardsIn(panel(html)).length,1);
 });

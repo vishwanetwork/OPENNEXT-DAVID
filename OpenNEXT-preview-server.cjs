@@ -12,6 +12,7 @@ const {createAuthService} = require('./OpenNEXT-auth-service.cjs');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
 const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
+const {listCuratedRfqs} = require('./OpenNEXT-curated-rfqs.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
 // outside this allowlist are never exposed by the preview HTTP server.
@@ -20,6 +21,7 @@ const files = new Set([
   'OpenNEXT-preview-entry.html', 'OpenNEXT-terminal-preview.html',
   'OpenNEXT-original-homepage.js', 'OpenNEXT-original-homepage.css',
   'OpenNEXT-home-listings.js', 'OpenNEXT-home-listings.css',
+  'OpenNEXT-curated-inquiries.js', 'OpenNEXT-curated-inquiries.css',
   'OpenNEXT-model-quotes.js', 'OpenNEXT-history-chart.js', 'OpenNEXT-history-chart.css',
   'OpenNEXT-capacity-chart.js', 'OpenNEXT-capacity-chart.css',
   'OpenNEXT-gci-index-factory.html', 'OpenNEXT-market-data.js',
@@ -84,6 +86,13 @@ function createAppServer(options = {}) {
     const onTerminal = Boolean(TERMINAL_HOST) && host === TERMINAL_HOST;
     const onAdmin = Boolean(ADMIN_HOST) && host === ADMIN_HOST;
     const restrictAdmin = onTerminal || (Boolean(ADMIN_HOST) && !onAdmin);
+
+    if(pathname==='/api/homepage/rfqs'){
+      const allowedHost=!SITE_HOST||host===SITE_HOST||host==='www.'+SITE_HOST||onTerminal;
+      res.writeHead(onAdmin||!allowedHost?404:200,{'Content-Type':'application/json; charset=utf-8'});
+      res.end(req.method==='HEAD'?'':JSON.stringify(onAdmin||!allowedHost?{error:'Not found.'}:{rfqs:listCuratedRfqs()}));
+      return;
+    }
 
     // Demo workspaces have a separate cookie and API namespace. They never use
     // the production auth, billing, marketplace or operations service instances.

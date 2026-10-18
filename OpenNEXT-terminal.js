@@ -51,9 +51,9 @@
   }
   function queueListingIntent(id,intent){
     const item=window.OpenNEXTListings?.get(id);
-    if(!item||item.kind!=='rental'||!['buy','offer'].includes(intent))return false;
+    if(!item||!['rental','model','hardware'].includes(item.kind)||!['buy','offer'].includes(intent)||(item.kind!=='rental'&&intent!=='buy'))return false;
     S.pendingListing={id,intent};S.role=intent==='offer'?'Seller':'Buyer';persist();
-    go(intent==='offer'?'supply':'rfqs');return true;
+    go(intent==='offer'?'supply':item.kind==='model'?'models':'rfqs');return true;
   }
   function clearListingIntent(){
     S.pendingListing=null;
@@ -66,7 +66,38 @@
   function resumeListingIntent(){
     if(!S.auth||S.view!=='terminal'||!S.pendingListing)return;
     const {id,intent}=S.pendingListing,item=window.OpenNEXTListings?.get(id);clearListingIntent();
-    if(!item||item.kind!=='rental')return;
+    if(!item)return;
+    if(item.kind==='model'){
+      const quote=item.sku&&findModelQuote(item.sku);
+      if(quote){open('model-rfq-form',{sku:quote.sku});return;}
+      window.OpenNEXTContact?.open({message:[
+        'I would like a model capacity quote for '+item.name+'.',
+        'Catalog reference: '+item.id+'.',
+        'Reference input rate: '+tokenMoney(item.input)+' / 1M tokens.',
+        'Reference output rate: '+tokenMoney(item.output)+' / 1M tokens.',
+        'Price observed: '+(item.observedAt||'Confirm in quote')+'.',
+        item.context||'',item.note||'',
+        'Please confirm the exact model, access method, throughput, availability and current commercial terms. These reference rates are not an executable offer.'
+      ].filter(Boolean).join('\n')});return;
+    }
+    if(item.kind==='hardware'){
+      const details=[
+        'Catalog item: '+item.name+' ('+item.id+').',
+        'Reference purchase price: '+money(item.price)+' / '+item.unit+'.',
+        'Price observed: '+(item.observedAt||'Confirm in quote')+'.',
+        'Memory: '+(item.memory||'Confirm in quote')+'.',
+        'Form factor: '+(item.form||'Confirm in quote')+'.',
+        'Minimum order: '+(item.minimum||'Confirm in quote')+'.',
+        item.note||'',item.status||'',
+        'Please confirm the exact SKU, condition, availability, warranty, shipping and current payable amount.'
+      ].filter(Boolean).join('\n');
+      if(item.unit!=='GPU'){
+        window.OpenNEXTContact?.open({message:'I would like a quote for this complete system. Pricing is per '+item.unit+', not per GPU.\n'+details});return;
+      }
+      const minimum=Number(String(item.minimum||'1').match(/\d+/)?.[0])||1;
+      open('rfq-form',{prefill:{kind:'physical_gpu',model:item.name,title:item.name+' purchase inquiry',count:minimum,budget:item.price,term:'Physical GPU',hours:0,condition:item.condition||'Confirm in supplier quote',originListingId:item.id,notes:details}});return;
+    }
+    if(item.kind!=='rental')return;
     const requirement={id:'DEMAND-'+item.id,title:item.model+' cluster procurement',model:item.model,count:Number(item.count.replace(/[^0-9]/g,'')),region:item.region,term:'Reserved',hours:item.months*30*24,budget:item.price,priceKind:'buyer_target',originListingId:item.id,notes:item.note};
     if(intent==='offer'){
       if(S.review.status!=='Approved'){S.afterReview={type:'respond',requirement};open('review');}
@@ -401,7 +432,7 @@
   let lastScroll=0;function scrollMatches(now){const delta=Math.min(50,now-lastScroll||16);lastScroll=now;if(S.view==='terminal'&&S.route==='market'&&!S.modal&&!document.hidden&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('.match-viewport').forEach(v=>{if(v.matches(':hover')||v.contains(document.activeElement)){v._autoScroll=v.scrollTop;return;}v._autoScroll=(v._autoScroll??v.scrollTop)+delta*.025;v.scrollTop=v._autoScroll;const first=v.querySelector('.match-cycle');if(first&&v.scrollTop>=first.offsetHeight){v.scrollTop-=first.offsetHeight;v._autoScroll=v.scrollTop;}});requestAnimationFrame(scrollMatches);}requestAnimationFrame(scrollMatches);
   const incoming=new URLSearchParams(location.search),incomingListing=window.OpenNEXTListings?.get(incoming.get('listing'));
   if(incoming.get('opportunity')&&['buy','offer'].includes(incoming.get('intent')))S.pendingOpportunity={id:incoming.get('opportunity'),intent:incoming.get('intent')};
-  if(incomingListing?.kind==='rental'&&['buy','offer'].includes(incoming.get('intent')))S.pendingListing={id:incomingListing.id,intent:incoming.get('intent')};
+  if(incomingListing&&['rental','model','hardware'].includes(incomingListing.kind)&&['buy','offer'].includes(incoming.get('intent'))&&(incomingListing.kind==='rental'||incoming.get('intent')==='buy'))S.pendingListing={id:incomingListing.id,intent:incoming.get('intent')};
   if(onTerminalHost&&!location.hash.split('/')[1])history.replaceState({},'','#terminal/market');
   if(incoming.has('gpu')&&D.catalog.some(m=>m.name===incoming.get('gpu')))S.model=incoming.get('gpu');
   if(incoming.has('count')&&[1,2,4,8,16].includes(Number(incoming.get('count'))))S.count=Number(incoming.get('count'));

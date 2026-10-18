@@ -32,7 +32,14 @@ const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
   // Disable the server demo route when this temporary testing entry is retired.
   function demoEntry(){
     const origin=['opennextlab.ai','www.opennextlab.ai'].includes(window.location?.hostname)?'https://terminal.opennextlab.ai':'';
-    return '<div class="onx-auth-demo"><a class="onx-auth-demo-button" data-auth-demo href="'+origin+'/demo/?role=buyer#terminal/market"><span>Enter Demo</span>'+arrow+'</a><p>No sign-in required. Explore Buyer and Seller tools with test data. No real transactions.</p></div>';
+    let destination='/demo/?role=buyer#terminal/market';
+    const pending=window.ONPreview?.state?.pendingListing;
+    if(window.location?.search||pending){
+      const incoming=new URLSearchParams(window.location?.search||''),id=incoming.get('listing')||pending?.id,intent=incoming.get('intent')||pending?.intent;
+      const item=window.OpenNEXTListings?.groups?.flat().find(row=>row.id===id&&['model','hardware'].includes(row.kind));
+      if(item&&intent==='buy')destination='/demo/?'+new URLSearchParams({role:'buyer',listing:item.id,intent:'buy'})+'#terminal/'+(item.kind==='model'?'models':'rfqs');
+    }
+    return '<div class="onx-auth-demo"><a class="onx-auth-demo-button" data-auth-demo href="'+esc(origin+destination)+'"><span>Enter Demo</span>'+arrow+'</a><p>No sign-in required. Explore Buyer and Seller tools with test data. No real transactions.</p></div>';
   }
   function shell(body){return '<main class="onx-auth-root" data-onx-auth-root><aside class="onx-auth-story">'+logo()+'<div class="onx-auth-story-copy"><div class="onx-auth-kicker">AI capacity, on your terms</div><h2>A clearer market.<br>A better match.</h2><p>Discover GPU capacity, compare market signals and connect with providers in one focused workspace.</p></div><div class="onx-auth-story-foot"><i></i>Private sourcing. Transparent terms.</div><div class="onx-auth-orbits" aria-hidden="true"><i></i><i></i><i></i></div></aside><section class="onx-auth-main"><button type="button" class="onx-auth-back" data-auth-back>'+arrow+'Back to OpenNEXT</button><div class="onx-auth-card"><div class="onx-auth-mobile-brand">'+logo()+'</div>'+body+'</div></section></main>';}
   function render(nextMode='signin'){
