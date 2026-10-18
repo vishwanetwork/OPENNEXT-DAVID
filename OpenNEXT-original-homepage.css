@@ -423,6 +423,8 @@
 
 /* Procurement-first public site, with no numbered presentation chapters. */
 .public-page .public-header-actions{gap:12px}
+.public-page .public-heading-lines,.public-page .public-description-lines{max-width:none}
+.public-page .on-button-coming-soon:disabled{color:#737d68;cursor:default;opacity:1}
 .public-page .public-hero-description{max-width:450px;line-height:1.65}
 .public-page .public-market-row{grid-template-columns:1fr 1.55fr auto;gap:32px}
 .public-page .public-supplier-heading h2{font-size:clamp(30px,3.3vw,43px);line-height:1.12}
