@@ -68,7 +68,26 @@ test('demo session cannot authenticate with production routes or seed the real m
 
 test('demo can be disabled without changing production authentication',async t=>{
   const {request}=await setup(t,false);
-  for(const route of ['/demo/','/api/demo/auth/session']) assert.equal((await request(route)).status,404);
+  for(const route of ['/demo/','/api/demo/auth/session','/api/demo/showcase']) assert.equal((await request(route)).status,404);
   assert.equal((await request('/api/demo/start',{method:'POST',body:{}})).status,404);
   assert.equal((await request('/api/auth/session')).status,200);
+});
+
+test('homepage can read the showcase without receiving demo session or production fixtures',async t=>{
+  const {request,server}=await setup(t);
+  const before=JSON.stringify(await server.marketplace.admin());
+  for(const host of ['site.test','terminal.test']){
+    const response=await request('/api/demo/showcase',{host});
+    assert.equal(response.status,200,response.text);
+    assert.equal(response.json().demo,true);
+    assert(response.json().featured.supplies.length>=5);
+    assert(response.json().featured.rfqs.length>=5);
+    assert.equal(response.headers['set-cookie'],undefined);
+  }
+  for(const host of ['admin.test','unknown.test'])assert.equal((await request('/api/demo/showcase',{host})).status,404);
+  assert.equal((await request('/api/demo/showcase',{host:'site.test',method:'POST',body:{}})).status,404);
+  const live=await request('/api/marketplace/public',{host:'site.test'});
+  assert.deepEqual(live.json().supplies,[]);
+  assert.deepEqual(live.json().rfqs,[]);
+  assert.equal(JSON.stringify(await server.marketplace.admin()),before);
 });

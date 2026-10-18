@@ -28,7 +28,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
   const mutationLimit = bounded(maxMutations, 100, 1, 500);
   const startLimit = bounded(maxStartsPerWindow, 20, 1, 100);
   const sessions = new Map(), starts = new Map(), operations = new Set();
-  let rootPromise, closing = false, creation = Promise.resolve();
+  let rootPromise, closing = false, creation = Promise.resolve(), showcaseCache, showcasePromise;
   const send = (res, status, value) => {
     res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'});
     res.end(JSON.stringify(value));
@@ -110,6 +110,31 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
     if (!['buyer', 'seller'].includes(selected)) throw fail(400, 'Choose Buyer or Seller. Broker access is not available yet.');
     return selected;
   }
+  async function approveFixtureCandidates(marketplace) {
+    const snapshot = await marketplace.admin();
+    for (const candidate of snapshot.featured || []) {
+      if (!candidate.current || candidate.model === 'B300') continue;
+      await marketplace.decideFeatured(candidate.id, {status: 'Approved', fingerprint: candidate.fingerprint, reason: 'Approved for this isolated demo workspace.'}, 'Demo operations');
+    }
+  }
+  async function showcase() {
+    if (showcaseCache && showcaseCache.expiresAt > now()) return showcaseCache.value;
+    if (!showcasePromise) showcasePromise = (async () => {
+      // Build one read-only public snapshot, never a guest session or a production record.
+      // The short-lived directory uses the same bounded cleanup boundary as guest workspaces.
+      const workspace = {directory: path.join(await root(), crypto.randomUUID()), active: 0};
+      try {
+        await fs.mkdir(workspace.directory, {mode: 0o700});
+        await fs.writeFile(path.join(workspace.directory, 'marketplace.json'), JSON.stringify(createDemoData(now())), {flag: 'wx', mode: 0o600});
+        const marketplace = createMarketplaceService({dataDir: workspace.directory, now, agentAdapter: null});
+        await approveFixtureCandidates(marketplace);
+        const value = {demo: true, ...await marketplace.publicMarket()};
+        showcaseCache = {value, expiresAt: now() + 300000};
+        return value;
+      } finally {await removeWorkspace(workspace);}
+    })().finally(() => {showcasePromise = null;});
+    return showcasePromise;
+  }
   async function makeSession(req, res, selectedRole) {
     const work = creation.then(async () => {
       await prune();
@@ -129,11 +154,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       try {
         await fs.writeFile(path.join(directory, 'marketplace.json'), JSON.stringify(createDemoData(now())), {flag: 'wx', mode: 0o600});
         session.marketplace = createMarketplaceService({dataDir: directory, now, agentAdapter: null});
-        const snapshot = await session.marketplace.admin();
-        for (const candidate of snapshot.featured || []) {
-          if (!candidate.current || candidate.model === 'B300') continue;
-          await session.marketplace.decideFeatured(candidate.id, {status: 'Approved', fingerprint: candidate.fingerprint, reason: 'Approved for this isolated demo workspace.'}, 'Demo operations');
-        }
+        await approveFixtureCandidates(session.marketplace);
         const auth = {authenticate: async request => sessionFor(request) === session ? userFor(session) : null,
           checkCsrf: (request, user) => sameOrigin(request) && equal(request.headers['x-csrf-token'], user?.csrfToken)};
         session.route = createMarketplaceRouter(session.marketplace, {auth, security: null, env: {}});
@@ -154,6 +175,10 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       const endpoint = url.pathname.slice(PREFIX.length);
       const mutating = !['GET', 'HEAD'].includes(req.method);
       if (mutating && !sameOrigin(req)) throw fail(403, 'Origin not allowed.');
+      if (endpoint === '/showcase') {
+        if (req.method !== 'GET') throw fail(405, 'The demo showcase is read-only.');
+        send(res, 200, await showcase()); return true;
+      }
       if (endpoint === '/config' && req.method === 'GET') {send(res, 200, {enabled: true, demo: true}); return true;}
       if (endpoint === '/auth/config' && req.method === 'GET') {send(res, 200, {demo: true, providers: {google: false, github: false}, email: false, otherMethods: false}); return true;}
       if (endpoint === '/start' && req.method === 'POST') {
@@ -213,7 +238,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       if (path.dirname(target) !== tempRoot || !path.basename(target).startsWith('opennext-public-demo-')) throw new Error('Invalid demo root cleanup target.');
       await fs.rm(target, {recursive: true, force: true});
     }
-    starts.clear();
+    starts.clear(); showcaseCache = null;
   }
   return {handle, close, enabled: !!enabled};
 }

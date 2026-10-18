@@ -63,16 +63,51 @@
   let selectedSide = 'supply';
   let renderedGroups = groups;
   let currentCopy = null;
+  let showcase = null;
+  let showcaseRequest = null;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const money = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
   const tokenMoney = value => Number(value).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:6});
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({left:'<path d="m14 6-6 6 6 6"/>',right:'<path d="m10 6 6 6-6 6"/>',pause:'<path d="M9 6v12M15 6v12"/>',play:'<path d="m9 5 10 7-10 7V5Z"/>',globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/>'})[name]}</svg>`;
   const metric = (label,value) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`;
-  const action = (item,label,target,intent) => `<button class="on-listing-cta${intent==='buy'?' on-listing-cta-buy':''}" type="button" data-public-action="open-workspace" data-target="${target}" data-listing-selection="${escape(item.id)}" data-listing-intent="${intent}"${item.exchange?` data-exchange-id="${escape(item.id)}" data-exchange-intent="${intent}"`:''}${item.kind==='rental'?' data-mode="rental"':item.kind==='hardware'?' data-mode="hardware"':''} aria-label="${escape(label)}: ${escape(item.name)}"><span>${label}</span>${icon('right')}</button>`;
+  function action(item,label,target,intent) {
+    if(item.demo){
+      const origin=/^(?:[a-z0-9-]+\.)*opennextlab\.ai$/i.test(window.location?.hostname||'')?'https://terminal.opennextlab.ai':'';
+      const href=`${origin}/demo/?role=${intent==='buy'?'buyer':'seller'}&opportunity=${encodeURIComponent(item.id)}&intent=${intent}#terminal/market`;
+      return `<a class="on-listing-cta${intent==='buy'?' on-listing-cta-buy':''}" href="${escape(href)}" data-showcase-opportunity="${escape(item.id)}" aria-label="${escape(label)}: ${escape(item.name)}"><span>${label}</span>${icon('right')}</a>`;
+    }
+    return `<button class="on-listing-cta${intent==='buy'?' on-listing-cta-buy':''}" type="button" data-public-action="open-workspace" data-target="${target}" data-listing-selection="${escape(item.id)}" data-listing-intent="${intent}"${item.exchange?` data-exchange-id="${escape(item.id)}" data-exchange-intent="${intent}"`:''}${item.kind==='rental'?' data-mode="rental"':item.kind==='hardware'?' data-mode="hardware"':''} aria-label="${escape(label)}: ${escape(item.name)}"><span>${label}</span>${icon('right')}</button>`;
+  }
+
+  // Homepage showcase data is never inserted into the authenticated exchange.
+  // A real approved lane always takes precedence over this isolated demo feed.
+  async function loadShowcase() {
+    if(showcaseRequest)return showcaseRequest;
+    if(typeof fetch!=='function')return null;
+    const real=window.OpenNEXTExchange?.featured?.();
+    if(real?.rfqs?.length&&real?.supplies?.length)return null;
+    showcaseRequest=(async()=>{
+      try{
+        const response=await fetch('/api/demo/showcase',{credentials:'omit',headers:{Accept:'application/json'}});
+        if(!response.ok)return null;
+        const data=await response.json();
+        if(data?.demo!==true||!data.featured)return null;
+        const lane=key=>(Array.isArray(data.featured[key])?data.featured[key]:[])
+          .filter(item=>item&&typeof item.id==='string'&&typeof item.model==='string'&&['rental','gpu_rental'].includes(item.kind))
+          .map(item=>({...item,kind:'rental',demo:true}));
+        showcase={rfqs:lane('rfqs'),supplies:lane('supplies')};
+        refresh();
+        return showcase;
+      }catch{return null;}
+    })();
+    return showcaseRequest;
+  }
 
   function rowsFor(kind, side) {
     if (typeof window.OpenNEXTExchange?.listPublic === 'function') {
-      const items=kind==='rental'?(window.OpenNEXTExchange.featured()?.[side==='demand'?'rfqs':'supplies']||[]):window.OpenNEXTExchange.listPublic(kind,side);
+      const key=side==='demand'?'rfqs':'supplies';
+      let items=kind==='rental'?(window.OpenNEXTExchange.featured()?.[key]||[]):window.OpenNEXTExchange.listPublic(kind,side);
+      if(kind==='rental'&&!items.length)items=showcase?.[key]||[];
       return items.map(item => ({
         ...item, exchange:true, side, name:item.title || item.model,
         note:item.description || '', region:item.region || 'Flexible region',
@@ -81,7 +116,7 @@
     }
     // Keep source observations available when the exchange module is not loaded,
     // without recasting buyer targets as seller inventory.
-    if(kind==='rental')return [];
+    if(kind==='rental')return (showcase?.[side==='demand'?'rfqs':'supplies']||[]).map(item=>({...item,exchange:true,side,name:item.title||item.model,note:item.description||'',region:item.region||'Flexible region'}));
     return groups[marketKinds.indexOf(kind)].filter(item => (item.kind==='rental'?'demand':'supply')===side);
   }
 
@@ -119,7 +154,8 @@
     currentCopy=copy;
     renderedGroups=marketKinds.map(kind=>rowsFor(kind,selectedSide));
     const names = [copy.rental,copy.models,copy.physical];
-    return `<div class="public-listing-preview on-listing-carousel" role="region" aria-roledescription="carousel" aria-label="Capacity market listings"><div class="on-listing-sides"><div role="group" aria-label="Choose your side of the market"><button type="button" data-listing-side-filter="supply" aria-pressed="${selectedSide==='supply'}">Buy capacity<span>Browse supplier offers</span></button><button type="button" data-listing-side-filter="demand" aria-pressed="${selectedSide==='demand'}">Offer capacity<span>Respond to buyer RFQs</span></button></div><p>One workspace.<br>Both sides of the market.</p></div>${names.map((name,i)=>`<input class="public-listing-radio" type="radio" name="public-listings" id="public-listings-${i}"${i===0?' checked':''}><label class="public-listing-tab public-listing-tab-${i}" for="public-listings-${i}">${escape(name)}</label>`).join('')}<div class="on-listing-controls"><span class="on-listing-position" aria-hidden="true">${renderedGroups[0].length?`01 — ${String(Math.min(5,renderedGroups[0].length)).padStart(2,'0')} / ${renderedGroups[0].length}`:'No listings'}</span><button type="button" data-listing-move="-1" aria-label="Previous listing">${icon('left')}</button><button type="button" data-listing-toggle aria-label="Pause listing carousel" aria-pressed="false">${icon('pause')}</button><button type="button" data-listing-move="1" aria-label="Next listing">${icon('right')}</button></div><div class="public-listing-panels">${renderedGroups.map((items,i)=>`<div class="public-listing-panel public-listing-panel-${i}" role="region" aria-label="${escape(names[i])}" data-listing-panel="${i}"><div class="on-listing-viewport"><div class="on-listing-track">${items.map(card).join('')}</div>${items.length?'':emptyCards()}</div></div>`).join('')}</div><div class="on-listing-under"><span>${renderedGroups.flat().some(item=>item.sample)?'Preview marketplace · ':''}USD · Final availability, fees and delivery confirmed by quote.</span><span class="on-listing-motion-hint">Hover to pause</span></div><span class="on-listing-announcement" role="status" aria-live="polite"></span></div>`;
+    const disclosure=renderedGroups.flat().some(item=>item.demo)?'Demo marketplace · Test data · No real transactions.':`${renderedGroups.flat().some(item=>item.sample)?'Preview marketplace · ':''}USD · Final availability, fees and delivery confirmed by quote.`;
+    return `<div class="public-listing-preview on-listing-carousel" role="region" aria-roledescription="carousel" aria-label="Capacity market listings"><div class="on-listing-sides"><div role="group" aria-label="Choose your side of the market"><button type="button" data-listing-side-filter="supply" aria-pressed="${selectedSide==='supply'}">Buy capacity<span>Browse supplier offers</span></button><button type="button" data-listing-side-filter="demand" aria-pressed="${selectedSide==='demand'}">Offer capacity<span>Respond to buyer RFQs</span></button></div><p>One workspace.<br>Both sides of the market.</p></div>${names.map((name,i)=>`<input class="public-listing-radio" type="radio" name="public-listings" id="public-listings-${i}"${i===0?' checked':''}><label class="public-listing-tab public-listing-tab-${i}" for="public-listings-${i}">${escape(name)}</label>`).join('')}<div class="on-listing-controls"><span class="on-listing-position" aria-hidden="true">${renderedGroups[0].length?`01 — ${String(Math.min(5,renderedGroups[0].length)).padStart(2,'0')} / ${renderedGroups[0].length}`:'No listings'}</span><button type="button" data-listing-move="-1" aria-label="Previous listing">${icon('left')}</button><button type="button" data-listing-toggle aria-label="Pause listing carousel" aria-pressed="false">${icon('pause')}</button><button type="button" data-listing-move="1" aria-label="Next listing">${icon('right')}</button></div><div class="public-listing-panels">${renderedGroups.map((items,i)=>`<div class="public-listing-panel public-listing-panel-${i}" role="region" aria-label="${escape(names[i])}" data-listing-panel="${i}"><div class="on-listing-viewport"><div class="on-listing-track">${items.map(card).join('')}</div>${items.length?'':emptyCards()}</div></div>`).join('')}</div><div class="on-listing-under"><span>${disclosure}</span><span class="on-listing-motion-hint">Hover to pause</span></div><span class="on-listing-announcement" role="status" aria-live="polite"></span></div>`;
   }
 
   let component = null;
@@ -255,9 +291,10 @@
       if(paused||!inView||document.hidden||component.matches(':hover')||component.querySelector('.on-listing-card:focus-within'))return;
       step(1);
     },4600);
+    void loadShowcase();
   }
   reducedMotion.addEventListener('change',event=>{if(event.matches){paused=true;update();}});
   new MutationObserver(mount).observe(document.getElementById('app'),{childList:true});
   window.addEventListener?.('opennext:exchange',refresh);
-  window.OpenNEXTListings={render,get:id=>renderedGroups.flat().find(item=>item.id===id)||window.OpenNEXTExchange?.get(id)||groups.flat().find(item=>item.id===id),mount,step,destroy,refresh,selectSide,groups};
+  window.OpenNEXTListings={render,get:id=>renderedGroups.flat().find(item=>item.id===id)||window.OpenNEXTExchange?.get(id)||groups.flat().find(item=>item.id===id),mount,step,destroy,refresh,selectSide,loadShowcase,groups};
 })();

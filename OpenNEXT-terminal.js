@@ -32,7 +32,15 @@
     if(!S.user?.onboardingCompleted){S.pending=target;S.view='onboarding';render();return;}
     S.route=target;if(['market','models'].includes(target))S.marketRoute=target;
     S.view='terminal';S.pending=null;history.pushState({},'','#terminal/'+S.route);
-    render();resumeListingIntent();window.OpenNEXTProcurement?.resume(context());
+    render();resumeListingIntent();resumeMarketOpportunity();
+  }
+  function resumeMarketOpportunity(){
+    if(!S.pendingOpportunity||!S.auth||S.view!=='terminal'||!S.marketplaceAuthoritative)return;
+    const item=window.OpenNEXTExchange?.get(S.pendingOpportunity.id);
+    const url=new URL(location.href);url.searchParams.delete('opportunity');url.searchParams.delete('intent');
+    history.replaceState({},'',url.pathname+url.search+url.hash);
+    if(item&&D.catalog.some(model=>model.name===item.model)){S.model=item.model;S.region='All regions';}
+    window.OpenNEXTProcurement?.resume(context());
   }
   function queueListingIntent(id,intent){
     const item=window.OpenNEXTListings?.get(id);
@@ -250,7 +258,7 @@
     S.auth=true;S.user=user;S.identity={name:user.name||'',email:user.email||'',id:user.id,company:user.company||''};S.role=String(user.role).toLowerCase()==='seller'?'Seller':'Buyer';
     S.promotionalCredit=Number(user.promotionalCredit)||0;S.balance=(Number(user.fundedCredit)||0)+S.promotionalCredit;
   }
-  async function refreshWorkspace(){try{await window.OpenNEXTExchange?.refresh(S);window.OpenNEXTInstances?.syncModal(context());if(S.view==='terminal'&&!S.modal&&!S.menu)render();else if(S.view==='landing')window.OpenNEXTListings?.refresh();}catch(error){if(S.view==='terminal')toast(error.message||'Workspace data could not be loaded.');}}
+  async function refreshWorkspace(){try{await window.OpenNEXTExchange?.refresh(S);window.OpenNEXTInstances?.syncModal(context());if(S.view==='terminal'&&!S.modal&&!S.menu)render();else if(S.view==='landing')window.OpenNEXTListings?.refresh();resumeMarketOpportunity();}catch(error){if(S.view==='terminal')toast(error.message||'Workspace data could not be loaded.');}}
   function verifiedLogin(user){applySession(user);S.view=user.onboardingCompleted?'terminal':'onboarding';if(user.onboardingCompleted){refreshWorkspace();go(S.pending||'market');}else render();}
   function render(){
     if(S.view==='terminal'&&(!S.auth||!S.user?.onboardingCompleted))S.view=S.auth?'onboarding':'auth';

@@ -33,6 +33,58 @@ const rfq = (now = Date.now(), title = 'Private test workload') => ({kind: 'gpu_
   title, project: 'Demo validation', notes: 'Test requirement in this private guest workspace.', budget: 3,
   start: new Date(now + 72 * 3600000).toISOString(), quoteDeadline: new Date(now + 24 * 3600000).toISOString(), visibility: 'Public requirements'});
 
+test('public showcase exposes only approved ranked fixture listings without creating a session', async t => {
+  const clock = Date.parse('2026-10-18T00:00:00Z');
+  const {request, start} = await harness(t, {now: () => clock, maxSessions: 1, maxStartsPerWindow: 1});
+  const [first, concurrent] = await Promise.all([request('/api/demo/showcase'), request('/api/demo/showcase')]);
+  assert.equal(first.status, 200);
+  assert.equal(first.cookie, null);
+  assert.equal(first.data.demo, true);
+  assert.deepEqual(first.data, concurrent.data);
+  assert.equal(first.data.rfqs.length, 117);
+  assert.equal(first.data.supplies.length, 117);
+  assert.equal(first.data.featured.rfqs.length, 12);
+  assert.equal(first.data.featured.supplies.length, 12);
+  assert.equal((await request('/api/demo/auth/session')).data.user, null);
+  const fixtures = createDemoData(clock);
+  for (const row of first.data.featured.rfqs) {
+    assert.notEqual(row.model, 'B300');
+    const candidates = fixtures.rfqs.filter(candidate => candidate.model === row.model);
+    assert.equal(row.price, Math.max(...candidates.map(candidate => candidate.budget)));
+  }
+  for (const row of first.data.featured.supplies) {
+    assert.notEqual(row.model, 'B300');
+    const winner = fixtures.supplies.filter(candidate => candidate.model === row.model).sort((a, b) => a.netPrice - b.netPrice)[0];
+    assert.equal(row.id, winner.id);
+    assert.equal(row.price, winner.buyerPrice);
+  }
+  assert.doesNotMatch(JSON.stringify(first.data), /ownerEmail|ownerId|netPrice|registration|csrfToken|sshHost/);
+  const guest = await start();
+  const market = await request('/api/demo/marketplace/public', guest);
+  assert.deepEqual(first.data.featured.supplies.map(row => row.id), market.data.featured.supplies.map(row => row.id));
+  assert.deepEqual(first.data.featured.rfqs.map(row => row.id), market.data.featured.rfqs.map(row => row.id));
+  assert.equal((await request('/api/demo/showcase', {...guest, method: 'POST', data: {}})).status, 405);
+});
+
+test('public showcase caches a bounded snapshot and stays isolated from guest mutations', async t => {
+  let clock = Date.parse('2026-10-18T00:00:00Z');
+  const {request, start} = await harness(t, {now: () => clock});
+  const initial = (await request('/api/demo/showcase')).data;
+  const guest = await start();
+  const created = await request('/api/demo/marketplace/rfqs', {...guest, method: 'POST', data: rfq(clock, 'Guest-only request')});
+  assert.equal(created.status, 201);
+  clock += 60000;
+  const cached = (await request('/api/demo/showcase', guest)).data;
+  assert.deepEqual(cached, initial);
+  assert.ok(!cached.rfqs.some(row => row.id === created.data.rfq.id));
+  clock += 300001;
+  const refreshed = (await request('/api/demo/showcase')).data;
+  assert.notEqual(refreshed.updatedAt, initial.updatedAt);
+  assert.deepEqual(refreshed.featured.supplies.map(row => row.id), initial.featured.supplies.map(row => row.id));
+  assert.equal(refreshed.rfqs.length, 117);
+  assert.ok(!refreshed.rfqs.some(row => row.id === created.data.rfq.id));
+});
+
 test('public demo creates separate opaque sessions without production authentication', async t => {
   const {request, start} = await harness(t);
   const guest = await start();
@@ -154,7 +206,7 @@ test('demo session creation is rate limited independently of production auth', a
 
 test('public demo can be disabled without falling through to production routes', async t => {
   const {request} = await harness(t, {enabled: false});
-  for (const endpoint of ['/api/demo/start', '/api/demo/config', '/api/demo/marketplace/public']) {
+  for (const endpoint of ['/api/demo/start', '/api/demo/config', '/api/demo/showcase', '/api/demo/marketplace/public']) {
     const response = await request(endpoint, endpoint.endsWith('start') ? {method: 'POST', data: {}} : {});
     assert.equal(response.status, 404);
     assert.equal(response.data.demo, true);

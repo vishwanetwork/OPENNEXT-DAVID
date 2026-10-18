@@ -43,6 +43,7 @@
 .public-page .on-listing-actions{display:grid;gap:8px}
 .public-page .on-listing-cta{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px;padding:8px 11px;border:1px solid #bcc6b2;background:#f6f8f2;color:#39472d;border-radius:2px;font-size:11px;font-weight:500;line-height:1.3;white-space:nowrap;transition:background .15s,border-color .15s}
 .public-page .on-listing-cta:hover{background:#e9efdf;border-color:#879c73}
+.public-page a.on-listing-cta{text-decoration:none}
 .public-page .on-listing-cta-buy{background:#314329;border-color:#314329;color:#fff}
 .public-page .on-listing-cta-buy:hover{background:#25351e;border-color:#25351e}
 .public-page .on-listing-cta:focus-visible{outline:2px solid #657f50;outline-offset:3px}

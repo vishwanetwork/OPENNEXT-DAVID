@@ -88,7 +88,8 @@ function createAppServer(options = {}) {
     // Demo workspaces have a separate cookie and API namespace. They never use
     // the production auth, billing, marketplace or operations service instances.
     if (pathname.startsWith('/api/demo/')) {
-      if (onAdmin || (TERMINAL_HOST && !onTerminal) || !demoEnabled) {
+      const publicShowcase = pathname === '/api/demo/showcase' && req.method === 'GET' && (!SITE_HOST || host === SITE_HOST || host === 'www.' + SITE_HOST || onTerminal);
+      if (onAdmin || (TERMINAL_HOST && !onTerminal && !publicShowcase) || !demoEnabled) {
         res.writeHead(404, {'Content-Type':'application/json; charset=utf-8'});
         res.end(JSON.stringify({error:'Demo is unavailable on this host.'}));
         return;
