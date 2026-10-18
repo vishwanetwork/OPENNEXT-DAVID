@@ -15,7 +15,7 @@
   const money = value => number(value) ? '$' + value.toFixed(2) : '—';
   const timeLabel = value => value ? new Date(value).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'}) + ' UTC' : 'Not observed';
   function queryFor(S) {
-    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: S.period || '1M'});
+    const query = new URLSearchParams({gpuModel: D.modelOf(S.model).canonical, gpuCount: String(S.count), region: S.region === 'All regions' ? 'all' : D.regionCode(S.region), period: S.period || '1M', term: shown(S).name, metric: ['min','avg','max'].includes(S.priceMetric) ? S.priceMetric : 'avg'});
     if (/PCIe|SXM|NVL72/i.test(S.model)) query.set('formFactor', /PCIe|SXM|NVL72/i.exec(S.model)[0]);
     if (['A100 80GB', 'A100 PCIe'].includes(S.model)) query.set('gpuMemoryGb', '80');
     return query.toString();
@@ -28,6 +28,16 @@
     return `Reference offering: ${parts.join(' · ')} (chosen from ${meta.matchingOfferings} matching ${meta.matchingOfferings === 1 ? 'offering' : 'offerings'}: live Spot first, then most complete, then lowest On-demand).`;
   }
   function summary(S) {return cache.get(queryFor(S)) || null;}
+  function priceRange(S) {
+    const data = cache.get(queryFor(S));
+    if (!data) return null;
+    const values = Array.isArray(data.series)
+      ? data.series.flatMap(series => series.points.flatMap(point => [point.min, point.avg, point.max, point.value])).filter(number)
+      : (data.points || []).flatMap(point => {const item = point.values?.[shown(S).name] || {}; return [item.min, item.avg, item.max, item.value];}).filter(number);
+    if (!values.length) return null;
+    return values.reduce((range, value) => ({min: Math.min(range.min, value), max: Math.max(range.max, value), model: range.model}),
+      {min: Infinity, max: -Infinity, model: D.modelOf(S.model).canonical});
+  }
   function header(S, data) {
     const term = shown(S), selected = data.latest?.[term.name];
     const label = document.getElementById('marketPriceLabel');
@@ -80,7 +90,7 @@
   function bind(S) {
     if (timer) clearTimeout(timer);
     const target = document.getElementById('capacityHistory'); if (!target) {generation++; active = null; return;}
-    const snapshot = {model: S.model, region: S.region, count: S.count, period: S.period, term: S.term};
+    const snapshot = {model: S.model, region: S.region, count: S.count, period: S.period, term: S.term, priceMetric: S.priceMetric || 'avg'};
     const key = queryFor(snapshot), token = ++generation;
     active = {snapshot}; let data = cache.get(key);
     function bindPlot() {
@@ -112,6 +122,10 @@
     }
     function repaint(value) {
       data = value; if (!target.isConnected || generation !== token || target.contains(document.activeElement)) return;
+      if (Array.isArray(value.series) && window.OpenNEXTRegionalHistory) {
+        window.OpenNEXTRegionalHistory.mount(target, snapshot, value);
+        return;
+      }
       const open = target.querySelector('details')?.open;
       target.innerHTML = markup(snapshot, value); if (open) target.querySelector('details')?.setAttribute('open', '');
       header(snapshot, value); bindPlot();
@@ -123,7 +137,8 @@
       if (generation !== token || !target.isConnected) return;
       if (!document.hidden) {
         try {
-          const response = await fetch('/api/pricing/capacity-history?' + key, {signal: AbortSignal.timeout(15000), cache: 'no-store'});
+          const endpoint = window.OpenNEXTRegionalHistory ? '/api/pricing/regional-history?' : '/api/pricing/capacity-history?';
+          const response = await fetch(endpoint + key, {signal: AbortSignal.timeout(15000), cache: 'no-store'});
           if (!response.ok) throw Error('Price history unavailable');
           const value = await response.json(); cache.set(key, value); repaint(value);
         } catch {if (!data && target.isConnected) target.innerHTML = '<div class="aws-history-empty"><h3>Price service is temporarily unavailable</h3><p>The chart will retry automatically. Existing observations are retained.</p></div>';}
@@ -132,5 +147,5 @@
     }
     if (data) repaint(data); refresh();
   }
-  window.OpenNEXTHistory = {render, bind, summary, refresh: () => {if (active) bind(active.snapshot);}};
+  window.OpenNEXTHistory = {render, bind, summary, priceRange, refresh: () => {if (active) bind(active.snapshot);}};
 })();

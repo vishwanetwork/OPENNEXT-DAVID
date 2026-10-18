@@ -1,8 +1,34 @@
-/* Local procurement records. Sample marketplace records never become price-index observations. */
+/* Verified marketplace records. Browser state never authorizes transactions or supply publication. */
 (function (scope) {
   'use strict';
   const KEY = 'opennext-terminal-v3';
   let state = null;
+  let market = {rfqs:[],supplies:[],featured:{rfqs:[],supplies:[]}}, bestRows=[], recentRows=[], matchReason='', matchPrompt='', loaded=false, error='';
+  let refreshJob=null,refreshIdentity=null,cacheIdentity='';
+  const refreshKey=S=>JSON.stringify([scope.OpenNEXTAuth?.getUser?.()?.id||null,scope.OpenNEXTAuth?.getUser?.()?.role||null,S?.model||'',S?.region||'']);
+  async function api(path, method='GET', body) {
+    const user=scope.OpenNEXTAuth?.getUser?.();
+    const response=await fetch(path,{method,credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(method!=='GET'&&user?.csrfToken?{'X-CSRF-Token':user.csrfToken}:{})},body:body?JSON.stringify(body):undefined});
+    const result=await response.json().catch(()=>({error:'The marketplace response is unavailable.'}));
+    if(!response.ok){const e=Error(result.error||'The marketplace request failed.');e.status=response.status;throw e;}return result;
+  }
+  async function refresh(S=state) {
+    const userSnapshot=scope.OpenNEXTAuth?.getUser?.(),modelSnapshot=S?.model||'',regionSnapshot=S?.region||'';
+    const identity=refreshKey(S),accountKey=JSON.stringify([userSnapshot?.id||null,userSnapshot?.role||null]);
+    if(cacheIdentity!==accountKey){bestRows=[];matchReason='No matches.';matchPrompt='';cacheIdentity=accountKey;}
+    if(refreshJob){if(refreshIdentity===identity)return refreshJob;await refreshJob.catch(()=>{});return refresh(S);}
+    refreshIdentity=identity;
+    refreshJob=(async()=>{try{
+      market=await api('/api/marketplace/public');generated.clear();error='';loaded=true;
+      const user=userSnapshot;
+      if(user?.onboardingCompleted&&S){const own=await api('/api/marketplace/me');if(refreshKey(S)!==identity)return null;const result=await api('/api/marketplace/matches?'+new URLSearchParams({model:modelSnapshot,region:regionSnapshot}));if(refreshKey(S)!==identity)return null;for(const field of ['rfqs','listings','review','responses','orders','notifications','instances'])S[field]=own[field];S.marketplaceAuthoritative=true;bestRows=result.rows;matchReason=result.reason;matchPrompt=result.submissionPrompt||'';}
+      else {bestRows=[];matchReason='No matches.';matchPrompt='Sign in to receive same-model recommendations.';}
+      recentRows=(await api('/api/marketplace/settlements?days=3')).rows;
+      return market;
+    }catch(e){error=e.message;throw e;}finally{refreshJob=null;scope.dispatchEvent?.(new CustomEvent('opennext:marketplace',{detail:{error}}));}})();return refreshJob;
+  }
+  const publicKind=value=>({gpu_rental:'rental',model_capacity:'model',physical_gpu:'hardware'}[value]||value);
+  const status=()=>({loaded,error,matchReason,matchPrompt});
   const round = n => Math.round(Number(n) * 100) / 100;
   const uid = prefix => prefix + '-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
   const now = () => new Date().toISOString();
@@ -26,42 +52,28 @@
       r.visibility ||= 'Public requirements'; r.shareClosingPrice ??= true; r.created ||= now(); r.audit ||= [];
       r.quotes ||= []; r.quotes.forEach(q => { q.status ||= 'Pending'; });
       if (['RFQ-08421', 'RFQ-08418'].includes(r.id)) r.sample = true;
-      if (r.status === 'Quoted' && !r.quotes.length && r.sample) r.quotes = sampleQuotes(r);
+      // Supplier quotations arrive only through the authenticated marketplace service.
     }
     return S;
   }
+function regionCountry(value){
+  const countries=scope.OpenNEXTCountries||{list:[]};
+  const label=String(value||'').trim(),known=countries.list.find(c=>c.name===label||c.code===label);if(known)return known.name;
+  const regions={'eu-west-1':'Ireland','eu-west-2':'United Kingdom','eu-west-3':'France','eu-central-1':'Germany','eu-central-2':'Switzerland','eu-north-1':'Sweden','eu-south-1':'Italy','eu-south-2':'Spain','ap-south-1':'India','ap-south-2':'India','ap-southeast-1':'Singapore','ap-southeast-2':'Australia','ap-southeast-3':'Indonesia','ap-southeast-4':'Australia','ap-southeast-5':'Malaysia','ap-southeast-6':'New Zealand','ap-southeast-7':'Thailand','ap-east-1':'Hong Kong SAR China','ap-east-2':'Taiwan','ap-northeast-1':'Japan','ap-northeast-2':'South Korea','ap-northeast-3':'Japan','af-south-1':'South Africa','me-south-1':'Bahrain','me-central-1':'United Arab Emirates','il-central-1':'Israel','mx-central-1':'Mexico','sa-east-1':'Brazil'};
+  if(regions[label])return regions[label];if(/^us-|^US (East|West)/i.test(label))return 'United States';if(/^ca-/i.test(label))return 'Canada';if(/^cn-/i.test(label))return 'China';
+  const cities={Frankfurt:'Germany',Tokyo:'Japan',Seoul:'South Korea',Mumbai:'India',Sydney:'Australia',London:'United Kingdom',Paris:'France',Stockholm:'Sweden',Zurich:'Switzerland',Jakarta:'Indonesia',Oregon:'United States','N. Virginia':'United States',Ohio:'United States',California:'United States'};return cities[label]||label;
+}
+  const regionMatches=(a,b)=>regionCountry(regionCode(a))===regionCountry(regionCode(b));
   function regionCode(region) {
     return scope.ONMarket?.regionCode(region) || regions.find(r => r.includes(region))?.[1] || region;
   }
-  function seedListings() {
-    const out = [];
-    for (const [mi, [model, base]] of models.entries()) for (const [ri, [region, code]] of regions.entries()) for (const side of ['supply', 'demand']) {
-      const price = round(base * (side === 'supply' ? .88 + ri * .035 : 1.08 + ri * .025));
-      out.push({id:`EX-${side}-${mi}-${ri}`,kind:'rental',side,model,title:`${8 * (ri + 1)} ${model} GPUs`,region,regionCode:code,price,count:8 * (ri + 1),hours:[72,168,720,2160,48][ri],term:ri % 2 ? 'On-demand' : 'Spot',description:side==='supply'?'Dedicated GPU allocation; network, access and service window confirmed in the quote.':'Capacity required for a production workload. Submit a firm price and delivery window.',urgency:ri===0?'High urgency':'Standard',status:side==='supply'?'Published':'Open',provider:side==='supply'?suppliers[ri]:'Buyer '+(ri+1),priceLabel:side==='supply'?'Supplier asking price':'Buyer target price',delivery:[30,60,120,90,45][ri],rating:4.7+ri*.03,sample:true,created:now()});
-    }
-    return out;
-  }
-  const seeds = seedListings();
-  function listPublic(kind='rental', side='supply') {
-    const S = getState(); let rows = seeds.filter(r => r.kind===kind && r.side===side);
-    if (kind==='model') rows=(scope.OpenNEXTModelQuotes?.list()||[]).slice(0,10).map((q,i)=>({id:`EX-model-${side}-${q.sku}`,kind,side,sku:q.sku,model:q.name,title:q.name,region:'Global',price:side==='supply'?q.input:round(q.input*1.08),outputPrice:q.output,count:10,days:30,hours:720,term:'Authorized access',description:side==='supply'?'Input and output usage priced separately. Access rights, throughput and service terms require confirmation.':'Model access requested for a production application; submit input and output rates.',provider:side==='supply'?'Capacity partner':'Enterprise buyer',priceLabel:side==='supply'?'Input / 1M tokens':'Target input / 1M tokens',urgency:i===0?'High urgency':'Standard',sample:true,status:side==='supply'?'Published':'Open'}));
-    if (kind==='hardware') rows=[['H100 SXM',24500],['H200',31500],['B200',36000],['A100 80GB',14500],['L40S',7800],['RTX 5090',3200]].map(([model,price],i)=>({id:`EX-hardware-${side}-${i}`,kind,side,model,title:model+' hardware',region:regions[i%5][0],price:side==='supply'?price:round(price*1.03),count:8,term:'Physical GPU',hours:0,description:'Exact SKU, condition, warranty, shipping and export eligibility must be confirmed in the quotation.',provider:side==='supply'?suppliers[i%5]:'Hardware procurement team',priceLabel:side==='supply'?'Asking price / GPU':'Target price / GPU',urgency:'Standard',status:side==='supply'?'Published':'Open',sample:true}));
-    const user = side==='demand' ? (S.rfqs||[]).filter(r=>['Open','Quoted'].includes(r.status)&&r.visibility!=='Private RFQ'&&kind===(r.kind==='model_capacity'?'model':r.kind==='physical_gpu'?'hardware':'rental')).map(r=>({ ...r,id:r.id,kind,side,title:r.title,price:r.budget,description:r.notes,provider:'Workspace buyer',priceLabel:kind==='model'?'Total target budget':'Buyer target price',sample:!!r.sample,originRfq:r.id })) : (S.listings||[]).filter(l=>l.status==='Published'&&l.type!=='RFQ response'&&kind===(/Model|Token/i.test(l.type)?'model':/Physical|Hardware/i.test(l.type)?'hardware':'rental')).map(l=>({...l,id:l.id,kind,side,title:l.name,model:l.name,price:l.rate,provider:S.review?.company||S.identity?.company||'Workspace supplier',description:l.notes||'Supplier-published allocation. Confirm the service window before purchase.',priceLabel:'Supplier asking price',originSupply:l.id,sample:false}));
-    return [...user, ...rows];
-  }
+  function listPublic(kind='rental',side='supply'){return (side==='demand'?market.rfqs:market.supplies).filter(r=>publicKind(r.kind)===publicKind(kind));}
   function get(id) { for (const kind of ['rental','model','hardware']) for(const side of ['supply','demand']) { const row=listPublic(kind,side).find(r=>r.id===id); if(row)return row; } return null; }
   function matches(filters={},side='supply') {
-    return listPublic('rental',side).filter(r=>r.model===filters.model && (!filters.region||filters.region==='All regions'||regionCode(r.region)===regionCode(filters.region)) && (!filters.count||r.count>=Number(filters.count)) && (!filters.term||r.term===filters.term)).sort((a,b)=>side==='supply'?a.price-b.price:b.price-a.price);
-  }
-  function sampleMatches(filters={},side='supply') {
-    let rows=matches(filters,side); if(rows.filter(r=>r.sample).length>=5)return rows;
-    const model=models.find(([m])=>m===filters.model),base=model?.[1]; if(!base||Number(filters.count)<=0||filters.term==='AMM')return rows;
-    const region=filters.region==='All regions'?regions[0][0]:filters.region;
-    const extra=suppliers.map((provider,i)=>({id:`MATCH-${side}-${filters.model}-${region}-${filters.term}-${i}`,kind:'rental',side,model:filters.model,title:filters.model+' allocation',region,regionCode:regionCode(region),count:Math.max(Number(filters.count)||8,8),hours:[72,168,720,48,2160][i],term:filters.term||'Spot',price:round(base*(side==='supply'?.9+i*.04:1.1+i*.03)),delivery:[30,60,120,45,90][i],provider:side==='supply'?provider:'Buyer '+(i+1),description:'Sample marketplace record for the selected configuration.',status:side==='supply'?'Published':'Open',sample:true,priceLabel:side==='supply'?'Supplier asking price':'Buyer target price'}));
-    return [...rows.filter(r=>!r.sample),...extra];
+    return listPublic('rental',side).filter(r=>r.model===filters.model && (!filters.region||filters.region==='All regions'||regionMatches(r.region,filters.region)) && (!filters.count||r.count>=Number(filters.count)) && (!filters.term||r.term===filters.term)).sort((a,b)=>side==='supply'?a.price-b.price:b.price-a.price);
   }
   const generated = new Map();
-  function marketRows(filters,side) {const rows=sampleMatches(filters,side);rows.forEach(r=>generated.set(r.id,r));return rows;}
+  function marketRows(filters,side) {const rows=matches(filters,side);rows.forEach(r=>generated.set(r.id,r));return rows;}
   function find(id) {
     const current=generated.get(id)||get(id);if(current)return current;
     const S=getState();
@@ -113,7 +125,7 @@
     S.ledger.unshift({id:paymentId,paymentReference:paymentId,orderId:order.id,type:'Capacity purchase',amount:-order.total,date:at,createdAt:at,role:S.role,side:'buy',status:'Completed',test:true});
     notify(S,'Seller','Payment confirmed',`${order.id} is funded. Prepare delivery.`,{supplier:order.provider,orderId:order.id});return true;
   }
-  const api={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal};
-  scope.OpenNEXTExchange=api;
-  if(typeof module!=='undefined')module.exports=api;
+  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,featured:()=>market.featured,best:()=>bestRows,recent:()=>recentRows};
+  scope.OpenNEXTExchange=exposed;
+  if(typeof module!=='undefined')module.exports=exposed;
 })(typeof window!=='undefined'?window:globalThis);

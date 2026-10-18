@@ -5,6 +5,7 @@ const path = require('node:path');
 const {gunzipSync} = require('node:zlib');
 const http = require('node:http');
 const https = require('node:https');
+const {createHash} = require('node:crypto');
 const {AWS_INSTANCE_SPECS, normalizeAws} = require('./OpenNEXT-pricing-service.cjs');
 const {AWS_REGIONS} = require('./OpenNEXT-pricing-registry.cjs');
 
@@ -46,6 +47,19 @@ const positive = value => Number.isFinite(Number(value)) && Number(value) > 0;
 const knownTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const round = value => Math.round(value * 1e6) / 1e6;
 const iso = time => new Date(time).toISOString();
+
+// Use only recorded intervals within this bucket. Missing coverage is not zero.
+function intervalStatistics(segments, start, end) {
+  const rows = segments.filter(s => Number.isFinite(s.v) && s.v >= 0 && s.f < end && s.l >= start);
+  if (!rows.length) return {min: null, avg: null, max: null, observations: 0};
+  let weighted = 0, duration = 0;
+  for (const row of rows) {
+    const weight = Math.max(1, Math.min(end, row.l + 1) - Math.max(start, row.f));
+    weighted += row.v * weight; duration += weight;
+  }
+  return {min: Math.min(...rows.map(s => s.v)), avg: weighted / duration,
+    max: Math.max(...rows.map(s => s.v)), observations: rows.length};
+}
 
 // Providers spell the same GPU differently (RTX4090, RTXPRO6000, NVIDIA L4).
 function canonicalModel(value) {
@@ -500,8 +514,9 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
       openByGroup.get(segment.g).push(segment);
     }
     let reference = null, offerings = 0;
-    for (const [group, spec] of groups) {
-      if (!matches(spec, filters)) continue;
+    const candidates = filters._group ? [[filters._group, groups.get(filters._group)]] : groups;
+    for (const [group, spec] of candidates) {
+      if (!spec || !matches(spec, filters)) continue;
       const current = (openByGroup.get(group) || []).filter(s => now - s.l <= SEGMENT_GAP);
       const history = spotHistory.get(group);
       const saved = [...(archive.get(group) || []), ...(openByGroup.get(group) || [])];
@@ -537,7 +552,8 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
         const values = {};
         for (const term of TERMS) {
           const covering = reference.segments.filter(s => s.t === term && s.f < time + bucket && s.l >= time);
-          values[term] = {value: covering.length ? Math.min(...covering.map(s => s.v)) : null};
+          const statistics = intervalStatistics(covering, time, time + bucket);
+          values[term] = {value: statistics.min, ...statistics};
         }
         points.push({time: iso(time), values});
       }
@@ -560,11 +576,51 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
       },
     };
   }
+  function queryRegional(filters = {}) {
+    const metric = ['min', 'avg', 'max'].includes(filters.metric) ? filters.metric : 'avg';
+    const term = TERMS.includes(filters.term) ? filters.term : 'Spot';
+    const series = [], regions = new Map();
+    let meta = null;
+    for (const [group, spec] of groups) {
+      if (!Number.isInteger(spec.count) || spec.count < 1 || !matches(spec, filters)) continue;
+      const response = query({...filters, _group: group});
+      meta = response.meta;
+      const points = response.points.map(point => {
+        const stats = point.values[term] || {};
+        return {time: point.time, min: stats.min ?? null, avg: stats.avg ?? null, max: stats.max ?? null,
+          value: stats[metric] ?? null, observations: stats.observations || 0};
+      });
+      if (!points.some(point => Number.isFinite(point.value))) continue;
+      const region = spec.area || 'unreported';
+      const name = AWS_REGIONS.find(([code]) => code === region)?.[1] || (region === 'unreported' ? 'Unreported region' : region);
+      regions.set(region, {code: region, name, city: name});
+      series.push({id: 'live-' + createHash('sha256').update(group).digest('hex').slice(0, 18), region, name,
+        configuration: [spec.count + ' GPUs', spec.memory ? spec.memory + ' GB' : null, spec.form].filter(Boolean).join(' · '),
+        gpuModel: spec.model, gpuCount: spec.count, gpuMemoryGb: spec.memory ?? null,
+        formFactor: spec.form ?? null, term, points});
+    }
+    // Preserve one curve per actual offering: unspecified CPU/network/configuration
+    // differences must not be averaged together merely because GPU labels match.
+    const duplicateLabels = new Map();
+    for (const item of series) {
+      const key = item.region + '|' + item.configuration;
+      if (!duplicateLabels.has(key)) duplicateLabels.set(key, []);
+      duplicateLabels.get(key).push(item);
+    }
+    for (const items of duplicateLabels.values()) if (items.length > 1) {
+      items.sort((a, b) => a.id.localeCompare(b.id)).forEach((item, index) => {item.configuration += ' · Offering ' + (index + 1);});
+    }
+    return {schemaVersion: 2, term, metric, unit: 'USD / GPU-hour', series, regions: [...regions.values()],
+      meta: {...(meta || query(filters).meta), basis: 'recorded_offering_intervals', allSeriesReturned: true,
+        sourceKind: 'recorded_capacity_history', synthetic: false, excludedFractional: true,
+        aggregation: 'Per-offering bucket low, time-weighted mean and high over recorded intervals. Offerings and market terms are never pooled.',
+        missingDataPolicy: 'Unobserved buckets remain empty. No carry-forward over unverified intervals.'}};
+  }
   function start() {if (!timer && !closed) {sync().catch(() => {}); timer = setInterval(() => sync().catch(() => {}), SYNC_INTERVAL); timer.unref?.();}}
   async function close() {closed = true; if (timer) clearInterval(timer); for (const controller of controllers) controller.abort(); await Promise.allSettled([pending, ...importing.values()].filter(Boolean)); if (appends.length) persist();}
   // Resolves when the current sync and any history imports have finished.
   const settled = () => Promise.allSettled([pending, ...importing.values()].filter(Boolean));
-  return {query, sync, start, close, settled};
+  return {query, queryRegional, sync, start, close, settled};
 }
 
-module.exports = {createCapacityPriceService, normalizeBot, normalizePublic, normalizeAzure, canonicalModel, TERMS, AZURE_SPECS};
+module.exports = {createCapacityPriceService, normalizeBot, normalizePublic, normalizeAzure, canonicalModel, intervalStatistics, TERMS, AZURE_SPECS};

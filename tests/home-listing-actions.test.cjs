@@ -5,12 +5,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function listings(loadQuotes = true, side = 'supply') {
+const rentalRows = [
+  {id:'RFQ-LIVE-H100',kind:'rental',side:'demand',model:'H100',title:'H100 training requirement',region:'United States',price:3.20,count:8,hours:72,urgency:'High urgency'},
+  {id:'RFQ-LIVE-H200',kind:'rental',side:'demand',model:'H200',title:'H200 inference requirement',region:'Singapore',price:4.10,count:8,hours:24,urgency:'Standard'},
+];
+function listings(loadQuotes = true, side = 'supply', liveRows = null) {
   const context = {
     window: {},
     document: {getElementById: () => ({})},
     matchMedia: () => ({matches: false, addEventListener() {}}),
     MutationObserver: class {observe() {}},
+  };
+  if (liveRows) context.window.OpenNEXTExchange = {
+    featured: () => ({rfqs: liveRows.filter(row => row.kind === 'rental' && row.side === 'demand'), supplies: liveRows.filter(row => row.kind === 'rental' && row.side === 'supply')}),
+    listPublic: (kind, side) => liveRows.filter(row => row.kind === kind && row.side === side),
+    get: id => liveRows.find(row => row.id === id),
   };
   for (const file of [...(loadQuotes ? ['OpenNEXT-model-quotes.js'] : []), 'OpenNEXT-home-listings.js']) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
@@ -22,10 +31,11 @@ function listings(loadQuotes = true, side = 'supply') {
   return {api, html, cards, quotes:context.window.OpenNEXTModelQuotes};
 }
 
-test('every buyer rental target has only a supplier response CTA, bound to that requirement', () => {
-  const {api, html: lane, cards} = listings(true, 'demand');
+test('every featured buyer RFQ has only a supplier response CTA, bound to that requirement', () => {
+  const {html: lane, cards} = listings(true, 'demand', rentalRows);
   assert.match(lane, /data-listing-side-filter="demand" aria-pressed="true"/);
-  for (const item of api.groups.find(items => items[0].kind === 'rental')) {
+  assert.equal(cards.size, rentalRows.length);
+  for (const item of rentalRows) {
     const html = cards.get(item.id);
     const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]);
     assert.equal(buttons.length, 1, item.id);
@@ -44,14 +54,15 @@ test('every buyer rental target has only a supplier response CTA, bound to that 
   }
 });
 
-test('rental pricing remains buyer demand, not a sale or availability promise', () => {
-  const {api, cards} = listings(true, 'demand');
-  for (const item of api.groups.find(items => items[0].kind === 'rental')) {
-    assert.equal(item.priceKind, 'buyer_target');
-    assert.equal(api.get(item.id), item);
-    assert.match(cards.get(item.id), /Buyer demand/);
+test('featured RFQ pricing remains a buyer target, not a supplier sale or availability promise', () => {
+  const {api, cards} = listings(true, 'demand', rentalRows);
+  for (const item of rentalRows) {
+    assert.equal(api.get(item.id).id, item.id);
+    assert.equal(api.get(item.id).price, item.price);
+    assert.match(cards.get(item.id), /Buyer RFQ/);
     assert.match(cards.get(item.id), /Buyer target price/);
-    assert.match(cards.get(item.id), /Buyer budget · availability requires a separate quote/);
+    assert.match(cards.get(item.id), /Respond to this requirement with your offer/);
+    assert.doesNotMatch(cards.get(item.id), /Supplier asking price|Buy capacity/);
   }
 });
 
@@ -83,7 +94,8 @@ test('GPU rental is the first and default carousel tab', () => {
   assert.doesNotMatch(html, /data-listing-id="rental-/);
   const demand = listings(true, 'demand').html;
   assert.match(demand, /id="public-listings-0" checked><label[^>]*>GPU rental<\/label>/);
-  assert.match(demand, /01 — 05 \/ 14/);
+  assert.match(demand, /No listings/);
+  assert.doesNotMatch(demand, /data-listing-id="rental-|Buyer target price/);
   assert.equal((html.match(/ checked/g) || []).length, 1);
 });
 

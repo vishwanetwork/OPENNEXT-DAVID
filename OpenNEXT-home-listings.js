@@ -72,7 +72,8 @@
 
   function rowsFor(kind, side) {
     if (typeof window.OpenNEXTExchange?.listPublic === 'function') {
-      return window.OpenNEXTExchange.listPublic(kind, side).map(item => ({
+      const items=kind==='rental'?(window.OpenNEXTExchange.featured()?.[side==='demand'?'rfqs':'supplies']||[]):window.OpenNEXTExchange.listPublic(kind,side);
+      return items.map(item => ({
         ...item, exchange:true, side, name:item.title || item.model,
         note:item.description || '', region:item.region || 'Flexible region',
         input:item.input ?? item.price, output:item.output ?? item.outputPrice,
@@ -80,6 +81,7 @@
     }
     // Keep source observations available when the exchange module is not loaded,
     // without recasting buyer targets as seller inventory.
+    if(kind==='rental')return [];
     return groups[marketKinds.indexOf(kind)].filter(item => (item.kind==='rental'?'demand':'supply')===side);
   }
 

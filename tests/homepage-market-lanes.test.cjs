@@ -11,7 +11,10 @@ function setup(rows = null) {
     matchMedia:()=>({matches:false,addEventListener(){}}),
     MutationObserver:class {observe(){}},
   };
-  if(rows)context.window.OpenNEXTExchange={listPublic:(kind,side)=>rows.filter(row=>row.kind===kind&&row.side===side),get:id=>rows.find(row=>row.id===id)};
+  if(rows)context.window.OpenNEXTExchange={
+    featured:()=>({rfqs:rows.filter(row=>row.kind==='rental'&&row.side==='demand'),supplies:rows.filter(row=>row.kind==='rental'&&row.side==='supply')}),
+    listPublic:(kind,side)=>rows.filter(row=>row.kind===kind&&row.side===side),get:id=>rows.find(row=>row.id===id)
+  };
   context.window.openNEXTPreviewTicker=()=>'<section class="ticker">Market ticker</section>';
   for(const file of ['OpenNEXT-model-quotes.js','OpenNEXT-home-listings.js','OpenNEXT-original-homepage.js'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
   return context.window;
@@ -76,13 +79,14 @@ test('an empty exchange never silently substitutes externally observed inventory
   assert.doesNotMatch(html,/data-listing-id="rental-|data-listing-id="hardware-/);
 });
 
-test('fallback source targets stay demand, with no duplicate buy button',()=>{
+test('missing marketplace service does not present external rental targets as live RFQs',()=>{
   const api=setup().OpenNEXTListings;
   api.selectSide('demand');
   const html=api.render(copy);
-  assert.match(html,/Buyer target price/);
+  assert.match(html,/No open requirements in this market yet/);
   assert.doesNotMatch(html,/data-listing-intent="buy"/);
-  assert.equal((html.match(/data-listing-intent="offer"/g)||[]).length,14);
+  assert.equal((html.match(/data-listing-intent="offer"/g)||[]).length,0);
+  assert.doesNotMatch(html,/Buyer target price|data-listing-id="rental-/);
   api.selectSide('supply');
   const supply=api.render(copy);
   assert.match(supply,/Official reference/);
@@ -120,11 +124,30 @@ test('buyer RFQs only show a normalized High Urgency badge for high-priority req
   assert.match(html,/Preview marketplace · /);
 });
 
-test('fallback medium-urgency buyer targets have no urgency badge and retain reference metadata',()=>{
+test('unavailable exchange cannot promote archived external demand into homepage inventory',()=>{
   const api=setup().OpenNEXTListings;api.selectSide('demand');
   const html=api.render(copy);
-  assert.match(html,/Buyer target price/);
+  assert.match(html,/No listings/);
+  assert.equal((html.match(/<article /g)||[]).length,0);
+  assert.doesNotMatch(html,/Buyer target price|Buyer RFQ|data-listing-id="rental-/);
   assert.doesNotMatch(html,/on-listing-urgency/);
   assert.match(api.groups[0][0].sourceUrl,/packet\.ai\/demand/);
   assert.equal(api.groups[0][0].urgency,'Medium urgency');
+});
+
+test('rental homepage displays only the featured backend result, not every public listing',()=>{
+  const win=setup(sourceRows),featuredSupply={...sourceRows[0],id:'SUP-LOWEST',price:1.89,sample:false},featuredRfq={...sourceRows[1],id:'RFQ-HIGHEST',price:4.50,sample:false};
+  const rawSupply={...featuredSupply,id:'SUP-NOT-FEATURED',price:2.20};
+  const rawRfq={...featuredRfq,id:'RFQ-NOT-FEATURED',price:3.20};
+  win.OpenNEXTExchange.featured=()=>({supplies:[featuredSupply],rfqs:[featuredRfq]});
+  win.OpenNEXTExchange.listPublic=(kind,side)=>kind==='rental'?(side==='supply'?[rawSupply]:[rawRfq]):[];
+  const supply=win.OpenNEXTListings.render(copy);
+  assert.match(supply,/data-exchange-id="SUP-LOWEST"/);
+  assert.match(supply,/\$1\.89/);
+  assert.doesNotMatch(supply,/SUP-NOT-FEATURED|RFQ-HIGHEST|Preview marketplace/);
+  win.OpenNEXTListings.selectSide('demand');
+  const demand=win.OpenNEXTListings.render(copy);
+  assert.match(demand,/data-exchange-id="RFQ-HIGHEST"/);
+  assert.match(demand,/\$4\.50/);
+  assert.doesNotMatch(demand,/RFQ-NOT-FEATURED|SUP-LOWEST/);
 });

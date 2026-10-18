@@ -41,7 +41,7 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
   }
   function importedFilters(url){
     const out={};
-    for(const key of ['gpuModel','model','region','gpuCount','gpuMemoryGb','formFactor','instanceType','period','unit','q','search']){
+    for(const key of ['gpuModel','model','region','gpuCount','gpuMemoryGb','formFactor','instanceType','period','unit','q','search','term','metric']){
       if(url.searchParams.has(key)){
         const value=url.searchParams.get(key);
         if(value.length>180){const error=Error('History filter is too long');error.status=400;throw error;}
@@ -56,6 +56,24 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
     try{
       if(path.startsWith('/api/pricing/')){
         if(req.method!=='GET'){send(res,405,{error:'Read-only endpoint'},{Allow:'GET'});return true;}
+        if(path==='/api/pricing/regional-history'){
+          const query=importedFilters(url);
+          if(query.metric&&!['min','avg','max'].includes(query.metric)){send(res,400,{error:'Use metric min, avg or max'});return true;}
+          if(query.term&&!['Spot','On-demand','Reserved'].includes(query.term)){send(res,400,{error:'Invalid market term'});return true;}
+          for(const field of ['gpuCount','gpuMemoryGb'])if(query[field]!==undefined&&(!Number.isFinite(Number(query[field]))||Number(query[field])<0)){send(res,400,{error:'Invalid GPU specification'});return true;}
+          if(query.gpuCount!==undefined&&!Number.isInteger(Number(query.gpuCount))){send(res,400,{error:'Invalid GPU count'});return true;}
+          if(query.period&&!['1D','1W','1M','3M'].includes(query.period)){send(res,400,{error:'Invalid history period'});return true;}
+          query.term=query.term||'Spot';query.metric=query.metric||'avg';
+          if(query.term==='Spot'){
+            try{
+              const source=await importedHistory.query({...query,unit:'gpu'});
+              const result=importedSpotHistory.regionalStatistics(source,query.metric);
+              if(result.series.length){send(res,200,result);return true;}
+            }catch(error){if(Number(error.status)!==503)throw error;}
+          }
+          if(!capacity?.queryRegional){send(res,503,{error:'Regional history is not configured'});return true;}
+          send(res,200,capacity.queryRegional(query));return true;
+        }
         if(path==='/api/pricing/capacity-history'){
           if(!capacity){send(res,503,{error:'Capacity history is not configured'});return true;}
           const query=importedFilters(url);

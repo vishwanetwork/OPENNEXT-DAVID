@@ -8,6 +8,9 @@ const {createPricingService} = require('./OpenNEXT-pricing-service.cjs');
 const {createPricingRouter} = require('./OpenNEXT-pricing-api.cjs');
 const {createCapacityPriceService} = require('./OpenNEXT-capacity-prices.cjs');
 const {createContactService, createContactRouter} = require('./OpenNEXT-contact-service.cjs');
+const {createAuthService} = require('./OpenNEXT-auth-service.cjs');
+const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
+const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
 // outside this allowlist are never exposed by the preview HTTP server.
@@ -21,6 +24,8 @@ const files = new Set([
   'OpenNEXT-gci-index-factory.html', 'OpenNEXT-market-data.js',
   'OpenNEXT-terminal.js', 'OpenNEXT-terminal.css',
   'OpenNEXT-auth.js', 'OpenNEXT-auth.css',
+  'OpenNEXT-countries.js', 'OpenNEXT-instances.js', 'OpenNEXT-instances.css', 'OpenNEXT-payments.js',
+  'OpenNEXT-console-marketplace.js', 'OpenNEXT-console-marketplace.css',
   'OpenNEXT-admin-console.html', 'OpenNEXT-admin.js', 'OpenNEXT-admin.css',
   'OpenNEXT-provider-console.js', 'OpenNEXT-provider-console.css', 'OpenNEXT-provider-logos.js',
   'OpenNEXT-contact.js', 'OpenNEXT-contact.css', 'OpenNEXT-console-leads.js', 'OpenNEXT-console-leads.css',
@@ -39,19 +44,24 @@ const types = {
 const SITE_HOST = (process.env.SITE_HOST || '').toLowerCase();
 const TERMINAL_HOST = (process.env.TERMINAL_HOST || '').toLowerCase();
 const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
-const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads');
+const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace');
 
 function createAppServer(options = {}) {
+  const privateDataDir = options.dataDir || (options.env || process.env).OPENNEXT_DATA_DIR || (options.env || process.env).OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data');
   const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
   const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
   const pricingRoute = createPricingRouter(pricing, {env:options.env || process.env, capacity});
   const contacts = options.contactService || createContactService({dataDir:options.dataDir});
   const contactRoute = createContactRouter(contacts, {security:pricingRoute.security});
+  const auth = options.authService || createAuthService({dataDir:privateDataDir, adapter:options.authAdapter, publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
+  const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter});
+  const marketplaceRoute = createMarketplaceRouter(marketplace, {auth, security:pricingRoute.security, env:options.env || process.env});
+  const paymentRoute = createPaymentRouter({auth, checkoutAdapter:options.checkoutAdapter, allowedOrigins:options.checkoutOrigins});
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:admin\/(?:pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
+    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
       res.writeHead(405, {Allow: 'GET, HEAD'});
       res.end('Method not allowed');
       return;
@@ -64,13 +74,17 @@ function createAppServer(options = {}) {
       res.end('Invalid URL');
       return;
     }
-    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].split(':')[0].trim().toLowerCase();
+    const forwardedHost = (options.env || process.env).OPENNEXT_TRUST_PROXY === '1' ? req.headers['x-forwarded-host'] : undefined;
+    const host = String(forwardedHost || req.headers.host || '').split(',')[0].split(':')[0].trim().toLowerCase();
     const onTerminal = Boolean(TERMINAL_HOST) && host === TERMINAL_HOST;
     const onAdmin = Boolean(ADMIN_HOST) && host === ADMIN_HOST;
     const restrictAdmin = onTerminal || (Boolean(ADMIN_HOST) && !onAdmin);
 
     if (await pricingRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     if (await contactRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
+    if (await auth.handle(req, res, new URL(req.url, 'http://localhost'))) return;
+    if (await marketplaceRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
+    if (await paymentRoute(req, res, new URL(req.url, 'http://localhost'))) return;
     
     if (ADMIN_HOST && SITE_HOST) {
       if (!onAdmin && !onTerminal && (pathname === '/admin' || pathname === '/admin/')) {
@@ -140,7 +154,9 @@ function createAppServer(options = {}) {
   server.pricing = pricing;
   server.capacity = capacity;
   server.contacts = contacts;
-  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {});});
+  server.auth = auth;
+  server.marketplace = marketplace;
+  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.();});
   return server;
 }
 

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const Billing = require('../OpenNEXT-billing.js');
 
 function fixture(overrides = {}) {
-  const S = Billing.init({ role: 'Buyer', identity: { name: 'Nova', email: 'nova@vishwalab.com' }, listings: [], ...overrides });
+  const S = Billing.init({ role: 'Buyer', identity: { name: 'Verified User', email: 'verified@example.com' }, listings: [], ...overrides });
   const events = [];
   const ctx = { S, persist() { events.push('persist'); }, render() { events.push('render'); }, open(type, extra) { S.modal = { type, ...extra }; events.push(type); }, toast(text) { events.push(text); } };
   return { S, ctx, events };
@@ -30,76 +30,30 @@ test('only untouched historical seed is migrated, preserving real local user cha
   assert.equal(fixture({ balance: 9952, ledger, billingVersion: 1 }).S.balance, 9952);
 });
 
-test('top-up creates review checkout and credits only after successful confirmation, once', () => {
-  const { S, ctx } = fixture();
-  assert.equal(Billing.submit(ctx, form('pay-amount', { orderId: 'ORDER-10086' }), { preset: '500' }), true);
-  assert.equal(S.balance, 0);
-  assert.equal(S.paymentSessions.length, 1);
-  const p = S.paymentSessions[0];
-  assert.equal(S.modal.type, 'pay-checkout');
-  assert.equal(p.orderId, 'ORDER-10086');
-  assert.match(Billing.modal(ctx, 'pay-checkout', { id: p.id }).body, /Test payment · no real charge/);
-  assert.equal(Billing.completePayment(S, p.id, 'Paid'), true);
-  assert.equal(S.balance, 500);
-  assert.equal(S.ledger.length, 1);
-  assert.equal(S.ledger[0].test, true);
-  assert.equal(Billing.completePayment(S, p.id, 'Paid'), false);
-  assert.equal(S.balance, 500);
-  assert.equal(S.ledger.length, 1);
+test('legacy checkout cannot create funds or fabricate payment success', () => {
+  const {S, ctx, events} = fixture();
+  assert.equal(Billing.submit(ctx, form('pay-amount'), {preset:'500'}), true);
+  assert.equal(S.balance, 0); assert.equal(S.paymentSessions.length, 0); assert.equal(S.ledger.length, 0);
+  S.paymentSessions.push({id:'PAY-OLD',amount:500,status:'Pending'});
+  assert.equal(Billing.completePayment(S, 'PAY-OLD', 'Paid'), false);
+  Billing.action(ctx, 'pay-confirm', {dataset:{id:'PAY-OLD'}});
+  assert.equal(S.balance, 0); assert.equal(S.paymentSessions[0].status, 'Pending');
+  assert.ok(events.some(message => /payment service/.test(message)));
+  const checkout = Billing.modal(ctx, 'pay-checkout', {id:'PAY-OLD'}).body;
+  assert.doesNotMatch(checkout, /4242|pay-confirm|Test payment|Payment complete/);
+  assert.match(checkout, /not configured/);
 });
 
-test('cancelled or failed checkout cannot credit the account or later succeed', () => {
-  for (const result of ['Cancelled', 'Failed']) {
-    const { S, ctx } = fixture();
-    Billing.submit(ctx, form('pay-amount'), { preset: '100' });
-    const p = S.paymentSessions[0];
-    Billing.completePayment(S, p.id, result);
-    assert.equal(S.balance, 0);
-    assert.equal(S.ledger.length, 0);
-    assert.equal(Billing.completePayment(S, p.id, 'Paid'), false);
-  }
-});
-
-test('custom top-up rejects invalid values, precision errors and excessive amounts', () => {
-  const { S, ctx } = fixture();
-  for (const custom of ['', 'abc', '-1', '0', '0.5', '100000.01', '1.001']) Billing.submit(ctx, form('pay-amount'), { preset: 'other', custom });
-  assert.equal(S.paymentSessions.length, 0);
-  Billing.submit(ctx, form('pay-amount'), { preset: 'other', custom: '152.75' });
-  assert.equal(S.paymentSessions[0].amount, 152.75);
-});
-
-test('cashout reserves earnings only, validates amount and masks payment destination', () => {
-  const { S, ctx } = fixture({ role: 'Seller', balance: 500, earningsBalance: 320 });
-  const f = form('cashout-request');
-  const data = { amount: '150.25', bank: 'Business bank', beneficiary: 'Nova', last4: '8392' };
-  Billing.submit(ctx, f, { ...data, amount: '321' });
-  Billing.submit(ctx, f, { ...data, last4: '123456789012' });
-  assert.equal(S.payouts.length, 0);
-  Billing.submit(ctx, f, data);
-  assert.equal(S.balance, 500);
-  assert.equal(S.earningsBalance, 169.75);
-  assert.equal(S.payouts.length, 1);
-  assert.equal(S.payouts[0].destination, 'Business bank · •••• 8392');
-  Billing.submit(ctx, f, data);
-  assert.equal(S.payouts.length, 1);
-  assert.equal(S.earningsBalance, 169.75);
-  const id = S.payouts[0].id;
-  Billing.action(ctx, 'cashout-settle', { dataset: { id } });
-  Billing.action(ctx, 'cashout-settle', { dataset: { id } });
-  assert.equal(S.earningsBalance, 169.75);
-  assert.equal(S.payouts[0].status, 'Paid');
-});
-
-test('cashout cancellation returns reserved funds once and buyer cannot cashout', () => {
-  const { S, ctx } = fixture({ role: 'Broker', earningsBalance: 400 });
-  Billing.submit(ctx, form('cashout-request'), { amount: '125', bank: 'Bank', beneficiary: 'Nova', last4: '1234' });
-  const id = S.payouts[0].id;
-  Billing.action(ctx, 'cashout-cancel', { dataset: { id } });
-  Billing.action(ctx, 'cashout-cancel', { dataset: { id } });
-  assert.equal(S.earningsBalance, 400);
-  S.role = 'Buyer';
-  Billing.submit(ctx, form('cashout-request'), { amount: '125', bank: 'Bank', beneficiary: 'Nova', last4: '1234' });
-  assert.equal(S.payouts.length, 1);
+test('legacy payouts cannot reserve, release or mark funds paid on the client', () => {
+  const {S, ctx} = fixture({role:'Seller',balance:100,earningsBalance:320});
+  Billing.submit(ctx, form('cashout-request'), {amount:'150',bank:'Business bank',beneficiary:'Verified User',last4:'8392'});
+  assert.equal(S.earningsBalance, 320); assert.equal(S.payouts.length, 0);
+  S.payouts.push({id:'PAYOUT-OLD',amount:150,status:'Pending'});
+  Billing.action(ctx, 'cashout-settle', {dataset:{id:'PAYOUT-OLD'}});
+  Billing.action(ctx, 'cashout-cancel', {dataset:{id:'PAYOUT-OLD'}});
+  assert.equal(S.payouts[0].status, 'Pending'); assert.equal(S.earningsBalance, 320);
+  assert.match(Billing.modal(ctx,'cashout-start').body,/not configured/);
+  assert.doesNotMatch(Billing.modal(ctx,'cashout-detail',{id:'PAYOUT-OLD'}).body,/Simulate|cashout-settle|cashout-cancel/);
 });
 
 test('analytics excludes credit, payout and pending transactions; splits purchase/revenue/commission', () => {
@@ -150,7 +104,7 @@ test('role-specific billing, charts and dates have working controls', () => {
 });
 
 test('order details include parties, financials, delivery, audit and escape external text', () => {
-  const { ctx } = fixture({ orders: [{ id: 'ORDER-10086', title: '<img src=x onerror=alert(1)>', model: 'H100', count: 8, region: 'Singapore', term: 'Spot', hours: 24, rate: 2, subtotal: 384, fees: 4, tax: 0, total: 388, buyer: { name: 'Nova', company: 'Vishwa', email: 'nova@vishwalab.com' }, seller: { name: 'Supplier', email: 'seller@example.com' }, status: 'Awaiting payment', paymentStatus: 'Unpaid', createdAt: '2026-10-17T12:00:00Z', quoteValidUntil: '2026-10-18T12:00:00Z', audit: [{ at: '2026-10-17T12:00:00Z', event: 'Quote accepted' }] }] });
+  const { ctx } = fixture({ orders: [{ id: 'ORDER-10086', title: '<img src=x onerror=alert(1)>', model: 'H100', count: 8, region: 'Singapore', term: 'Spot', hours: 24, rate: 2, subtotal: 384, fees: 4, tax: 0, total: 388, buyer: { name: 'Verified User', company: 'Vishwa', email: 'verified@example.com' }, seller: { name: 'Supplier', email: 'seller@example.com' }, status: 'Awaiting payment', paymentStatus: 'Unpaid', createdAt: '2026-10-17T12:00:00Z', quoteValidUntil: '2026-10-18T12:00:00Z', audit: [{ at: '2026-10-17T12:00:00Z', event: 'Quote accepted' }] }] });
   const modal = Billing.modal(ctx, 'bill-order', { id: 'ORDER-10086' });
   assert.equal(modal.wide, true);
   for (const text of ['Buyer', 'Supplier', 'Platform fee', '$388.00', 'Service starts', 'Service ends', 'Quote valid until', 'Payment method', 'Quote accepted']) assert.ok(modal.body.includes(text));
@@ -174,8 +128,8 @@ test('buy and sell order details expose the appropriate next step', () => {
   assert.match(buy, /data-act="proc-payment"/);
   assert.match(buy, /Pay order/);
   assert.doesNotMatch(buy, /proc-seller-progress/);
-  assert.match(sell, /data-act="proc-seller-progress"/);
-  assert.match(sell, /Simulate buyer payment/);
+  assert.doesNotMatch(sell, /Simulate buyer payment/);
+  assert.match(sell, /Awaiting verified buyer payment/);
   assert.doesNotMatch(sell, /data-act="pay-start"/);
   S.orders[1].status = 'Active';
   assert.match(Billing.modal(ctx, 'bill-order', { id: 'SELL-1' }).body, /Complete service & settle/);
@@ -228,10 +182,58 @@ test('model allocation total is not mislabeled as unit rate, and missing token r
 });
 
 test('physical GPU order shows shipment, arrival and receipt instead of cloud rental terms', () => {
-  const { ctx } = fixture({ orders: [{ id: 'PHYSICAL-1', kind: 'physical_gpu', count: 8, days: 30, hours: 0, unitPrice: 24500, subtotal: 196000, total: 196000, status: 'Completed', deliveryMinutes: 10080, serviceStart: '2026-10-24T08:00:00Z', deliveredAt: '2026-10-23T08:00:00Z', consignee: 'Nova', shippingAddress: 'Singapore warehouse', condition: 'New', warranty: '12 months', incoterms: 'DAP' }] });
+  const { ctx } = fixture({ orders: [{ id: 'PHYSICAL-1', kind: 'physical_gpu', count: 8, days: 30, hours: 0, unitPrice: 24500, subtotal: 196000, total: 196000, status: 'Completed', deliveryMinutes: 10080, serviceStart: '2026-10-24T08:00:00Z', deliveredAt: '2026-10-23T08:00:00Z', consignee: 'Verified User', shippingAddress: 'Singapore warehouse', condition: 'New', warranty: '12 months', incoterms: 'DAP' }] });
   const body = Billing.modal(ctx, 'bill-order', { id: 'PHYSICAL-1' }).body;
   assert.match(body, /One-time purchase/);
   assert.match(body, /Within 7 days after payment and shipping confirmation/);
   for (const label of ['Required arrival', 'Received', 'Consignee', 'Shipping address', 'Condition', 'Warranty', 'Shipping terms', 'Singapore warehouse', 'DAP']) assert.ok(body.includes(label));
   assert.doesNotMatch(body, /30 days|Service starts|Service ends|10080 minutes|access setup|SSH|CUDA|GPU-hour/);
+});
+
+test('seller commission is a negative expense in analytics, activity, details and exports', () => {
+  const at = new Date().toISOString();
+  const {S,ctx} = fixture({role:'Seller',ledger:[
+    {id:'SALE',type:'Sale settlement',amount:200,createdAt:at,status:'Paid'},
+    {id:'COMMISSION',type:'Broker commission',amount:12,createdAt:at,status:'Paid'},
+  ],orders:[{id:'SELL-ORDER',side:'sell',status:'Completed',total:200,commissionAmount:12}]});
+  const sums=Billing.analytics(S).sums;
+  assert.equal(sums.revenue,200);assert.equal(sums.commission,-12);
+  const page=Billing.page(ctx);
+  assert.match(page,/Commission paid/);assert.match(page,/-\$12\.00/);
+  assert.doesNotMatch(page,/\+\$12\.00/);
+  assert.match(Billing.modal(ctx,'bill-record',{id:'COMMISSION'}).body,/-\$12\.00/);
+  assert.match(Billing.modal(ctx,'bill-order',{id:'SELL-ORDER'}).body,/Commission paid<\/small><strong>-\$12\.00/);
+  assert.equal(Billing.exportRows(S,'activity').find(row=>row.id==='COMMISSION').amount,-12);
+  assert.equal(Billing.exportRows(S,'record','COMMISSION')[0].type,'Commission paid');
+  assert.equal(Billing.exportRows(S,'order','SELL-ORDER')[0].commissionAmount,-12);
+  assert.equal(Billing.exportRows(S,'daily').find(row=>row.day===at.slice(0,10)).commission,-12);
+});
+
+test('seller bars and lines support a negative axis and do not hide net-zero activity', () => {
+  const at = new Date().toISOString();
+  const {S,ctx}=fixture({role:'Seller',ledger:[
+    {id:'SALE',type:'Sale settlement',amount:10,createdAt:at,status:'Paid'},
+    {id:'FEE',type:'Broker commission',amount:-10,createdAt:at,status:'Paid'},
+  ]});
+  const bars=Billing.page(ctx);
+  assert.match(bars,/data-bill-zero="true"/);
+  assert.match(bars,/-\$10\.00/);
+  assert.doesNotMatch(bars,/No posted activity in this period/);
+  const negativeBar=[...bars.matchAll(/<rect[^>]*data-bill-series="commission"[^>]*height="([^"]+)"/g)].map(match=>Number(match[1]));
+  assert.ok(negativeBar.every(height=>height>=0));
+  assert.ok(negativeBar.some(height=>height>0));
+  S.billingUI.chart='lines';
+  const lines=Billing.page(ctx);
+  assert.match(lines,/<polyline data-bill-series="commission"/);
+  assert.doesNotMatch(lines,/NaN|Infinity/);
+});
+
+test('broker commission remains positive and seller example metrics also use negative commission', () => {
+  const at=new Date().toISOString();
+  const {S,ctx}=fixture({role:'Broker',ledger:[{id:'BROKER-FEE',type:'Broker commission',amount:12,createdAt:at,status:'Paid'}]});
+  assert.equal(Billing.analytics(S).sums.commission,12);
+  assert.match(Billing.page(ctx),/Commission earned/);
+  assert.equal(Billing.exportRows(S,'activity')[0].amount,12);
+  S.role='Seller';S.billingUI.sample=true;
+  assert.ok(Billing.analytics(S).sums.commission<0);
 });

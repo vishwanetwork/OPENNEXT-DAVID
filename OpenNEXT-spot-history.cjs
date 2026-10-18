@@ -2,6 +2,7 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 
 const DAY = 24 * 60 * 60 * 1000;
 const PERIOD_DAYS = Object.freeze({ '1D': 1, '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 });
@@ -64,6 +65,47 @@ function dateExtent(series) {
     }
   }
   return { startDate: start, endDate: end, pointCount, nullPerGpuPointCount };
+}
+
+// Aggregate only availability zones of the exact same published configuration.
+// Daily means have equal zone weight: raw tick counts are not supplied by the workbook.
+function regionalStatistics(result, metric = 'avg') {
+  if (!['min', 'avg', 'max'].includes(metric)) throw failure('Use metric min, avg or max');
+  const finite = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const groups = new Map();
+  for (const row of result.series || []) {
+    if (!Number.isInteger(row.gpuCount) || row.gpuCount < 1 || row.term !== 'Spot') continue;
+    const key = JSON.stringify([row.region, row.provider, row.instanceType, row.gpuModel, row.gpuCount, row.gpuMemoryGb ?? null, row.formFactor ?? null, row.term]);
+    if (!groups.has(key)) groups.set(key, {row, dates: new Map()});
+    const dates = groups.get(key).dates;
+    for (const point of row.points || []) {
+      if (!isCalendarDate(point.date)) continue;
+      if (!dates.has(point.date)) dates.set(point.date, []);
+      dates.get(point.date).push(point);
+    }
+  }
+  const series = [...groups].map(([key, {row, dates}]) => {
+    const region = (result.regions || []).find(item => item.code === row.region);
+    return {
+      id: 'region-' + createHash('sha256').update(key).digest('hex').slice(0, 18),
+      region: row.region, name: region?.city || region?.name || row.region,
+      configuration: row.instanceType || [row.gpuCount + ' GPUs', row.gpuMemoryGb ? row.gpuMemoryGb + ' GB' : null, row.formFactor].filter(Boolean).join(' · '),
+      gpuModel: row.gpuModel, gpuCount: row.gpuCount, gpuMemoryGb: row.gpuMemoryGb ?? null,
+      formFactor: row.formFactor ?? null, term: row.term,
+      points: [...dates].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
+        const means = rows.map(p => p.value).filter(finite), lows = rows.map(p => p.low).filter(finite), highs = rows.map(p => p.high).filter(finite);
+        const statistics = {avg: means.length ? means.reduce((a, b) => a + b, 0) / means.length : null,
+          min: lows.length ? Math.min(...lows) : null, max: highs.length ? Math.max(...highs) : null};
+        return {time: date + 'T00:00:00Z', date, ...statistics, value: statistics[metric], observations: means.length};
+      }),
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name) || a.configuration.localeCompare(b.configuration));
+  return {schemaVersion: 2, term: 'Spot', metric, unit: 'USD / GPU-hour', regions: result.regions || [], series,
+    meta: {...result.meta, bucketMinutes: 1440, basis: 'same_configuration_regional', allSeriesReturned: true,
+      sourceKind: 'uploaded_daily_history', synthetic: false,
+      aggregation: 'Equal-weight average of recorded daily zone means; minimum of zone lows; maximum of zone highs. Different instance configurations are never pooled.',
+      windowReference: 'snapshot_as_of', missingDataPolicy: 'Unavailable metrics remain null; dates without observations remain gaps.',
+      snapshotAsOf: result.asOf || result.meta?.asOf, excludedFractional: true}};
 }
 
 function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFile } = {}) {
@@ -292,4 +334,4 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
 }
 
 const defaultStore = createSpotHistoryStore();
-module.exports = { createSpotHistoryStore, load: defaultStore.load, query: defaultStore.query, catalog: defaultStore.catalog, ticker: defaultStore.ticker, PERIOD_DAYS };
+module.exports = { createSpotHistoryStore, load: defaultStore.load, query: defaultStore.query, catalog: defaultStore.catalog, ticker: defaultStore.ticker, regionalStatistics, PERIOD_DAYS };
