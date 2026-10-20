@@ -275,6 +275,9 @@ def test_idempotency_case_sensitivity_and_atomic_initial_event(storage, offer, o
     assert storage.get_order_by_key("missing") is None
 
 
+# Moto explicitly does not support concurrent writes (docs.getmoto.org/en/latest/docs/faq.html).
+# Keep this concurrency contract on the real database engines in the required CI database job.
+@pytest.mark.parametrize("storage", ["sqlite", "mysql", "dynamodb-local"], indirect=True)
 def test_concurrent_idempotent_create_and_state_claim(storage, offer, order_request):
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(
