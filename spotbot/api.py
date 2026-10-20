@@ -31,17 +31,25 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         task = None
         history_task = None
         list_history_task = None
+        rental_task = None
         try:
             svc.acquire()
             if config.spotbot_background_enabled:
+                if config.spotbot_rentals_enabled:
+                    rental_task = asyncio.create_task(svc.rentals.run())
                 task = asyncio.create_task(svc.run())
                 if config.enabled("aws") and config.spotbot_aws_spot_history_enabled:
                     history_task = asyncio.create_task(svc.run_history())
                 if config.enabled("aws") and config.spotbot_aws_list_history_enabled:
                     list_history_task = asyncio.create_task(svc.run_list_history())
             app.state.worker_task = task
+            app.state.rental_task = rental_task
             yield
         finally:
+            if rental_task:
+                rental_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await rental_task
             if list_history_task:
                 list_history_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -65,6 +73,9 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     # Catalog pages are ~1 MB of repetitive JSON; compression keeps slow links within timeouts.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.state.service = svc
+    from spotbot.rental_api import install
+
+    install(app, svc)
     bearer = HTTPBearer(auto_error=False)
 
     def authenticate(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
@@ -98,12 +109,16 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     @app.get("/health")
     def health():
         task = getattr(app.state, "worker_task", None)
+        rental_task = getattr(app.state, "rental_task", None)
         return {
             "status": "ok",
             "background_enabled": config.spotbot_background_enabled,
             "worker_running": bool(task and not task.done()),
             "live_orders_enabled": config.spotbot_live_orders_enabled,
             "dry_run_enabled": config.spotbot_dry_run_enabled,
+            "rentals_enabled": config.spotbot_rentals_enabled,
+            "rental_worker_running": bool(rental_task and not rental_task.done()),
+            "rental_event_consumer_error": getattr(svc.rentals, "event_consumer_error", None),
         }
 
     @app.get("/v1/providers", dependencies=auth)

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -53,6 +54,20 @@ class Settings(BaseSettings):
     spotbot_tensordock_storage_gb: int = Field(100, ge=100, multiple_of=50)
     spotbot_gateway_webhook_url: str = ""
     spotbot_gateway_webhook_secret: SecretStr = SecretStr("")
+    spotbot_rentals_enabled: bool = False
+    spotbot_rental_public_url: str = ""
+    spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
+    spotbot_rental_interruption_queues: str = "{}"
+    spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)
+    spotbot_rental_boot_timeout_seconds: int = Field(1200, ge=60, le=7200)
+    # Conservative budget reservation rate; not a provider invoice or published tariff.
+    spotbot_rental_storage_reserve_usd_gib_month: Decimal = Field(Decimal("0.15"), gt=0)
+
+    @property
+    def rental_tenant_tokens(self):
+        import json
+
+        return json.loads(self.spotbot_rental_tenant_tokens.get_secret_value())
 
     @field_validator("spotbot_enabled_providers")
     @classmethod
@@ -77,6 +92,23 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def live_requires_auth(self):
+        import json
+        import re
+        from urllib.parse import urlparse
+
+        tokens = self.rental_tenant_tokens
+        if not isinstance(tokens, dict) or any(
+            not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", k) or not isinstance(v, str) or len(v) < 32
+            for k, v in tokens.items()
+        ) or len(set(tokens.values())) != len(tokens):
+            raise ValueError("Rental tenant tokens require unique tokens of at least 32 characters")
+        queues = json.loads(self.spotbot_rental_interruption_queues)
+        if not isinstance(queues, dict) or any(r not in self.aws_order_regions or not isinstance(u, str) or not u.startswith("https://sqs.") for r, u in queues.items()):
+            raise ValueError("Interruption queues must map enabled order Regions to SQS URLs")
+        if self.spotbot_rental_public_url:
+            url = urlparse(self.spotbot_rental_public_url)
+            if (url.scheme != "https" and not (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1"})) or not url.hostname or url.username or url.query or url.fragment:
+                raise ValueError("Rental callback URL requires HTTPS; HTTP is only supported on loopback")
         if (
             self.spotbot_storage_backend == "mysql"
             and not self.spotbot_mysql_url.get_secret_value()
