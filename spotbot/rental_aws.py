@@ -399,13 +399,14 @@ class AWSRecovery:
             Encrypted=True,
             TagSpecifications=[
                 {
-                    "ResourceType": "image",
+                    "ResourceType": kind,
                     "Tags": tags(
                         backup["rental_id"],
                         backup["generation"],
                         **{"spotbot-backup": backup["id"]},
                     ),
                 }
+                for kind in ["image", "snapshot"]
             ],
         )
         return response["ImageId"]

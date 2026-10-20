@@ -159,10 +159,17 @@ def queue_rules(attributes, region, account):
         rule = condition.get("ArnEquals", {}).get("aws:SourceArn", "")
         source_account = condition.get("StringEquals", {}).get("aws:SourceAccount")
         action = statement.get("Action")
+        resources = statement.get("Resource", [])
+        resources = [resources] if isinstance(resources, str) else resources
         if (
             principal != {"Service": "events.amazonaws.com"}
             or source_account != account
-            or statement.get("Resource") != arn
+            or not isinstance(resources, list)
+            or arn not in resources
+            or any(
+                not isinstance(r, str) or not r.startswith(arn.rsplit(":", 1)[0] + ":")
+                for r in resources
+            )
             or action not in ("sqs:SendMessage", ["sqs:SendMessage"])
             or not isinstance(rule, str)
             or not re.fullmatch(

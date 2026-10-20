@@ -102,6 +102,12 @@ async def test_snapshot_image_and_copy_requests_are_valid(native_backend):
     await backend.start_snapshots(backup, gen, "vol-root")
     assert await backend.register_image(backup, gen, snapshots) == "ami-restore"
     assert await backend.copy_image(backup, "us-east-1") == "ami-copy"
+    copied = next(p for _, m, p in calls if m == "copy_image")["TagSpecifications"]
+    assert {t["ResourceType"] for t in copied} == {"image", "snapshot"}
+    assert all(
+        {t["Key"]: t["Value"] for t in item["Tags"]}["spotbot-backup"] == backup["id"]
+        for item in copied
+    )
     assert (
         next(p for _, m, p in calls if m == "create_snapshots")["InstanceSpecification"][
             "ExcludeBootVolume"

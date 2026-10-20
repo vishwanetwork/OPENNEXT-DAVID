@@ -56,6 +56,10 @@ Instance-store scratch disks are not durable backup storage.
 
 ### Additional AWS permissions
 
+The reviewable [regional infrastructure template](aws-recovery-deployment.md)
+provides interruption delivery and optional additive policies for the existing
+bot role. It does not apply changes automatically or replace launch restrictions.
+
 Use a dedicated control-plane role and existing approved order Regions. Grant
 read actions for instances, instance types, volumes, images, snapshots, zonal
 Spot prices, and Service Quotas. Continue using the original scoped
