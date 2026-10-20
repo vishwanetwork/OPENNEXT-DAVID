@@ -52,7 +52,13 @@ def bootstrap(base_url, rental_id, generation, token):
             "#!/bin/bash",
             "set -eu",
             "umask 077",
-            "mkdir -p /opt/spotbot /etc/spotbot",
+            "mkdir -p /opt/spotbot /etc/spotbot /etc/cloud/cloud.cfg.d",
+            # First boot generates unique host keys before user scripts run. Preserve
+            # those keys in subsequent whole-server restores, without disabling client verification.
+            "cat > /etc/cloud/cloud.cfg.d/99-spotbot-ssh-identity.cfg <<'SPOTBOT_SSH_IDENTITY'",
+            "#cloud-config",
+            "ssh_deletekeys: false",
+            "SPOTBOT_SSH_IDENTITY",
             "base64 -d > /opt/spotbot/agent.py <<'SPOTBOT_AGENT'",
             base64.b64encode(source).decode(),
             "SPOTBOT_AGENT",

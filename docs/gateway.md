@@ -107,6 +107,14 @@ the VM validates the key. The gateway does not bypass SSH authentication or
 disable client host-key verification. When a server host key changes, verify it
 independently before updating `known_hosts`.
 
+The managed bootstrap writes a cloud-init override after first-boot host-key
+generation, so future snapshots preserve this rental's existing SSH host keys
+on restoration. It does not distribute private keys through user data or the
+gateway. Older backups and customer-modified cloud-init settings may still
+change the keys and require independent verification. Shared factory images
+must contain no saved server host private keys or tenant data; never enroll a
+customer server backup as a shared initial image.
+
 For HTTP, send `Authorization: Bearer <http-access-token>`. If the application
 needs its own Authorization header, instead send the gateway credential in
 `X-SpotBot-Access-Token`. The gateway strips its credential before forwarding;
