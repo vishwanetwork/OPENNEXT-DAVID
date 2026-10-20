@@ -51,6 +51,12 @@ changing the shared catalog or other rentals. If supplied, the map must cover
 every RFQ Region. Use the image's actual `ssh_user` and a sufficient root volume
 size. The image must be available, architecture-compatible, Linux, EBS-backed,
 and free of Marketplace product codes, and must supply the guest prerequisites.
+Custom images must be public or enrolled by an administrator with both
+`spotbot-managed=true` and `spotbot-initial-image=true`. The configured provider
+default is already an operator-approved image. Never enroll tenant backups or
+images containing customer data as shared initial images. Tenants cannot set
+these enrollment tags through the rental API. A private backup is authorized
+for its owning rental's recovery only, regardless of whether its AMI ID is known.
 This choice is immutable after creation. Recovery always selects the rental's
 owned backup image instead. The default remains the configured provider image.
 Initial encrypted snapshots may take substantially longer than VM boot; budget

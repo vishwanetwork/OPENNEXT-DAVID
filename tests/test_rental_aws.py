@@ -146,6 +146,20 @@ async def test_initial_image_constraints_reject_before_launch(native_backend, at
     assert not any(method == "run_instances" for _, method, _ in calls)
 
 
+async def test_initial_image_cannot_expose_another_rentals_private_backup(native_backend):
+    from spotbot.rental_aws import approved_initial_image
+
+    env, backend, calls, image = native_backend
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-other-private", agent_token="a" * 40)
+    with pytest.raises(ProviderError, match="initial_image_not_approved"):
+        await backend.launch({"id": "another-tenant"}, gen, env.offer, env.request.rfq)
+    assert not any(method == "run_instances" for _, method, _ in calls)
+    assert not approved_initial_image(image)
+    assert approved_initial_image({**image, "Public": True})
+    assert not approved_initial_image({**image, "Tags": [{"Key": "spotbot-initial-image", "Value": "true"}]})
+    assert approved_initial_image({**image, "Tags": [*image["Tags"], {"Key": "spotbot-initial-image", "Value": "true"}]})
+
+
 async def test_preflight_refreshes_prices_and_account_quota(rental_env):
     from spotbot.aws_provider import AWSProvider
     from tests.test_aws import FakeAWS

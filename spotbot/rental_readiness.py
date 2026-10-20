@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from spotbot.aws_provider import AWSProvider
 from spotbot.models import gpu_model, utcnow
+from spotbot.rental_aws import approved_initial_image
 
 EVENT_TYPES = {
     "EC2 Spot Instance Interruption Warning",
@@ -231,6 +232,7 @@ class Readiness:
                 offer = min(candidates, key=lambda o: o.price_hourly)
                 image_id = rules.initial_image_ids.get(region, offer.details["image_id"])
                 image = ec2.describe_images(ImageIds=[image_id])["Images"][0]
+                checks.append(check("initial_image_approved", image_id == offer.details["image_id"] or approved_initial_image(image)))
                 checks.append(
                     check(
                         "linux_ebs_image",

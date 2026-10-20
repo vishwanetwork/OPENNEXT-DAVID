@@ -206,6 +206,29 @@ async def test_read_only_preflight_and_offline_mode_never_create_storage(ready):
     assert settings.spotbot_api_key.get_secret_value() not in json.dumps(result)
 
 
+async def test_private_initial_images_require_operator_enrollment(ready):
+    settings, rfq = ready
+    session = ReadOnlySession()
+    rfq.initial_image_ids = {"us-west-2": "ami-0123456789abcdef0"}
+    result = await Readiness(settings, session=session).run(rfq, aws=True)
+    assert not result["cloud_preflight_passed"]
+    checks = {c["name"]: c for c in result["regions"][0]["checks"]}
+    assert checks["initial_image_approved"]["status"] == "failed"
+    assert not session.cloud.creates
+    original = session.cloud.describe_images
+
+    def enrolled(**kwargs):
+        value = original(**kwargs)
+        value["Images"][0]["Tags"] = [
+            {"Key": "spotbot-managed", "Value": "true"},
+            {"Key": "spotbot-initial-image", "Value": "true"},
+        ]
+        return value
+
+    session.cloud.describe_images = enrolled
+    assert (await Readiness(settings, session=session).run(rfq, aws=True))["cloud_preflight_passed"]
+
+
 async def test_quota_price_and_missing_key_are_visible_without_launch(ready):
     settings, rfq = ready
     session = ReadOnlySession()

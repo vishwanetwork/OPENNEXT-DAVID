@@ -25,6 +25,15 @@ def owns(resource, rental_id):
     return labels.get("spotbot-managed") == "true" and labels.get("spotbot-rental") == rental_id
 
 
+def approved_initial_image(image):
+    """Private backups are tenant data, not a shared image catalog."""
+    labels = {t["Key"]: t["Value"] for t in image.get("Tags", [])}
+    return image.get("Public") is True or (
+        labels.get("spotbot-managed") == "true"
+        and labels.get("spotbot-initial-image") == "true"
+    )
+
+
 def bootstrap(base_url, rental_id, generation, token):
     source = Path(__file__).with_name("guest_agent.py").read_bytes()
     config = json.dumps(
@@ -194,6 +203,8 @@ class AWSRecovery:
             raise ProviderError("image_requires_ebs_root")
         if image.get("PlatformDetails", "Linux/UNIX") != "Linux/UNIX" or image.get("ProductCodes"):
             raise ProviderError("unsupported_image_license")
+        if not backup and image_id != offer.details["image_id"] and not approved_initial_image(image):
+            raise ProviderError("initial_image_not_approved")
         if backup and not owns(image, rental["id"]):
             raise ProviderError("restore_image_ownership_mismatch")
         source = {m["DeviceName"]: m for m in image["BlockDeviceMappings"] if "Ebs" in m}
