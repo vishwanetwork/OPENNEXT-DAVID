@@ -30,6 +30,10 @@ def main():
     gateway = commands.add_parser("gateway", help="Serve stable rental SSH and HTTP entry points")
     gateway.add_argument("--host", default="127.0.0.1")
     gateway.add_argument("--port", type=int, default=18084)
+    readiness = commands.add_parser("rental-check", help="Read-only rental deployment preflight")
+    readiness.add_argument("--rfq", required=True, help="Path to a structured rental request JSON")
+    readiness.add_argument("--aws", action="store_true", help="Inspect AWS using read-only SDK calls")
+    readiness.add_argument("--gateway", action="store_true", help="Also validate .env.gateway against bot settings")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.command == "serve":
@@ -48,6 +52,23 @@ def main():
         )
     elif args.command == "collect":
         raise SystemExit(asyncio.run(collect(args.provider)))
+    elif args.command == "rental-check":
+        from pathlib import Path
+
+        from spotbot.gateway_config import GatewaySettings
+        from spotbot.rental_models import RentalRequest
+        from spotbot.rental_readiness import Readiness
+
+        try:
+            request = RentalRequest.model_validate_json(Path(args.rfq).read_text())
+            result = asyncio.run(Readiness(Settings()).run(
+                request.rfq, aws=args.aws, gateway=GatewaySettings() if args.gateway else None
+            ))
+        except Exception:
+            print(json.dumps({"error": "invalid_readiness_configuration_or_rfq"}))
+            raise SystemExit(1) from None
+        print(json.dumps(result, indent=2))
+        raise SystemExit(0 if result["configuration_ready"] and result["cloud_preflight_passed"] is not False else 1)
     else:
         settings = Settings()
         print(

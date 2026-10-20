@@ -78,6 +78,35 @@ MySQL or DynamoDB is configured.
 
 ## API contract
 
+Before enabling a deployment, generate a current request and run the read-only
+preflight. `rental-check` does not open the application database, consume queue
+messages, modify IAM, or create/delete cloud resources:
+
+```sh
+python examples/rental_request.py --ssh-key customer-key > /tmp/rental.json
+spotbot rental-check --rfq /tmp/rental.json
+spotbot rental-check --rfq /tmp/rental.json --aws --gateway
+```
+
+The first command checks bot settings and deadlines locally. `--aws` reads live
+regional catalogs, current account quota usage, prices, the RFQ SSH key, Linux/EBS
+image and VPC resource relationships. It also checks configured queue encryption,
+redrive policy, account-bound EventBridge grants and enabled rule targets.
+`--gateway` loads `.env.gateway` and verifies matching bot/signing credentials,
+HTTP domain configuration, and a separate gateway database/table.
+
+The JSON reports `configuration_ready` and `cloud_preflight_passed` separately;
+the latter is null without `--aws`. Exit 1 means a required check failed (or the
+input/configuration could not be loaded). At least one permitted Region must
+pass cloud checks; individual regional failures remain visible. Inspect all
+configured recovery Regions before approving cross-region failover. A pass
+never guarantees capacity, mutation/KMS permissions, network reachability,
+budget sufficiency over the rental lifetime, or successful guest restoration.
+`live_launch_verified` and `mutation_permissions_verified` remain false. Run
+this with the deployment role for representative results; a developer's AWS
+account or credentials may have different permissions and quotas. Reports do
+not contain configured secrets, database URLs, or raw SDK error messages.
+
 All rental endpoints require a tenant execution token, or the service token
 plus `X-SpotBot-Tenant`. The upstream must authorize the request before calling
 this API. Tokens are not end-customer browser credentials.
