@@ -17,6 +17,7 @@ from spotbot.rental_acceptance import (
     AcceptanceSettings,
     plan,
     remote_script,
+    storage_deletion_reported,
 )
 from spotbot.rental_models import RentalRequest
 
@@ -114,6 +115,8 @@ def scenario(tmp_path):
                 json={
                     "items": [
                         {
+                            "state": "STOPPED" if state["closed"] else "READY",
+                            "instance_id": "i-staging",
                             "volumes": [{"volume_id": "vol-root"}, {"volume_id": "vol-data"}],
                             "deleted_volumes": ["vol-root", "vol-data"]
                             if state["storage_deleted"]
@@ -174,6 +177,19 @@ def scenario(tmp_path):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     runner = Acceptance(settings, request, run_id, tmp_path / "report.json", client=client, ssh=ssh)
     return runner, state, client
+
+
+@pytest.mark.parametrize("backups,generations,clean", [
+    ([], [], True),
+    ([], [{"state": "REJECTED", "instance_id": None}], True),
+    ([], [{"state": "NEEDS_RECONCILIATION", "instance_id": None}], False),
+    ([], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": []}], False),
+    ([], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": [{"volume_id": "vol-root"}], "deleted_volumes": []}], False),
+    ([{"state": "AVAILABLE"}], [], False),
+    ([{"state": "DELETED"}], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": [{"volume_id": "vol-root"}], "deleted_volumes": ["vol-root"]}], True),
+])
+def test_cleanup_distinguishes_no_allocation_from_unknown_or_retained_resources(backups, generations, clean):
+    assert storage_deletion_reported(backups, generations) is clean
 
 
 async def test_success_preserves_idempotency_and_verifies_final_cleanup(scenario):

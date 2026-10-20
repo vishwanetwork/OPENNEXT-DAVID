@@ -23,6 +23,18 @@ class AcceptanceError(RuntimeError):
     pass
 
 
+def storage_deletion_reported(backups, generations):
+    # A closed request rejected for capacity has no backups or disks to delete.
+    # An allocated/uncertain generation must still have a terminal, complete inventory.
+    return all(b["state"] == "DELETED" for b in backups) and all(
+        g.get("state") in {"STOPPED", "REJECTED"}
+        and (not g.get("instance_id") or bool(g.get("volumes")))
+        and {v["volume_id"] for v in g.get("volumes", [])}
+        <= set(g.get("deleted_volumes", []))
+        for g in generations
+    )
+
+
 class AcceptanceSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SPOTBOT_ACCEPTANCE_",
@@ -431,15 +443,7 @@ class Acceptance:
                     async def storage():
                         backups = await self.api(f"/v1/rentals/{self.rental_id}/backups")
                         generations = await self.api(f"/v1/rentals/{self.rental_id}/generations")
-                        return (
-                            bool(backups["items"] and generations["items"])
-                            and all(b["state"] == "DELETED" for b in backups["items"])
-                            and all(
-                                {v["volume_id"] for v in g.get("volumes", [])}
-                                <= set(g.get("deleted_volumes", []))
-                                for g in generations["items"]
-                            )
-                        )
+                        return storage_deletion_reported(backups["items"], generations["items"])
 
                     await self.wait(storage, bool, cleanup=True)
                     self.report["cleanup"] = "storage_deletion_reported"
