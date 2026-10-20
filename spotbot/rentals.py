@@ -785,13 +785,20 @@ class RentalEngine:
         fresh = (
             gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
         )
+        # Boot and restore timeouts apply only before the first successful verification. Once a
+        # generation has served, guest silence or a failed self-check does not prove it stopped
+        # (the cloud still reports it running): keep the writer and its route, and report it.
+        verified = bool(gen.get("verified_at"))
+        booting_too_long = (
+            not verified
+            and (utcnow() - at(gen["created_at"])).total_seconds()
+            > self.settings.spotbot_rental_boot_timeout_seconds
+        )
         if not fresh:
-            if row["state"] == "ACTIVE":
-                row.update(state="VERIFYING", connection=None, error="guest_heartbeat_lost")
-                self.save(row, "unavailable")
-            if (
-                utcnow() - at(gen["created_at"])
-            ).total_seconds() > self.settings.spotbot_rental_boot_timeout_seconds:
+            self.save(gen)
+            if verified:
+                self._degrade(row, "guest_heartbeat_lost")
+            elif booting_too_long:
                 row.update(
                     state="RECOVERING",
                     recovery_started_at=timestamp(),
@@ -800,7 +807,6 @@ class RentalEngine:
                     error="guest_boot_timeout",
                 )
                 self.save(row, "recovering")
-            self.save(gen)
             return
         ready = (
             report.get("ssh_ready")
@@ -812,18 +818,14 @@ class RentalEngine:
         by_device = {v["device"]: report.get("canaries", {}).get(v["volume_id"]) for v in volumes}
         if not all(by_device.values()):
             ready = False
-        if gen.get("source_backup_id"):
+        if gen.get("source_backup_id") and not verified:
             source = self.db.get("backup", gen["source_backup_id"])
             ready = (
                 ready
                 and source["canaries"] == by_device
                 and set(source["mounts"]) <= set(report.get("mounts", []))
             )
-            if (
-                not ready
-                and (utcnow() - at(gen["created_at"])).total_seconds()
-                > self.settings.spotbot_rental_boot_timeout_seconds
-            ):
+            if not ready and booting_too_long:
                 row.update(
                     state="ENDING",
                     end_requested=True,
@@ -832,15 +834,15 @@ class RentalEngine:
                 )
                 self.save(row, "restore_failed")
                 return
-        gen.update(canaries=by_device, mounts=report.get("mounts", []))
+        # A partial report must not replace the canaries that later backups use for restore checks.
+        if all(by_device.values()) or not verified:
+            gen.update(canaries=by_device, mounts=report.get("mounts", []))
         self.save(gen)
         if not ready:
-            if row["state"] in {"ACTIVE", "DELIVERING"}:
-                row.update(state="VERIFYING", connection=None)
-                self.save(row, "unavailable")
-            if (
-                utcnow() - at(gen["created_at"])
-            ).total_seconds() > self.settings.spotbot_rental_boot_timeout_seconds:
+            if verified:
+                self._degrade(row, "guest_check_failed")
+                return
+            if booting_too_long:
                 row.update(
                     state="ENDING",
                     end_requested=True,
@@ -851,6 +853,9 @@ class RentalEngine:
                 row["error"] = "guest_validation_pending"
             self.save(row)
             return
+        if row.get("degraded"):
+            row.update(degraded=None, degraded_at=None, error=None)
+            self.save(row, "healthy")
         initial = self.request_backup(row, "initial")
         if initial["state"] != "AVAILABLE":
             if initial["state"] in {"FAILED", "NEEDS_RECONCILIATION"}:
@@ -911,6 +916,12 @@ class RentalEngine:
             self.request_backup(
                 row, str(int(utcnow().timestamp()) // rules.backup.interval_seconds)
             )
+
+    def _degrade(self, row, reason):
+        """Report a serving generation that cannot currently prove its health, once per reason."""
+        if row.get("degraded") != reason:
+            row.update(degraded=reason, degraded_at=timestamp(), error=reason)
+            self.save(row, "degraded")
 
     async def _end_or_recover(self, row, gen, rules, *, ending):
         if not gen or gen["state"] == "REJECTED":
@@ -985,10 +996,12 @@ class RentalEngine:
         try:
             await self._capture(backup, gen)
         except ProviderError as exc:
+            # Retryable failures resume the same stage; restarting capture could register a second
+            # image for snapshots that already exist.
             backup.update(
                 state="NEEDS_RECONCILIATION"
                 if exc.ambiguous
-                else "REQUESTED"
+                else backup["state"]
                 if exc.retryable
                 else "FAILED",
                 error=exc.code,
@@ -1024,7 +1037,14 @@ class RentalEngine:
                 volume = next(iter(required - set(by_volume))) if stopped else None
                 backup["capture_inflight"] = volume or "all"
                 self.save(backup)
-                await self.backend.start_snapshots(backup, gen, volume)
+                try:
+                    await self.backend.start_snapshots(backup, gen, volume)
+                except ProviderError as exc:
+                    if not exc.ambiguous:
+                        # AWS rejected the request, so nothing is in flight: retry next cycle.
+                        backup.pop("capture_inflight", None)
+                        self.save(backup)
+                    raise
                 return
         if backup["state"] == "PENDING":
             found = await self.backend.snapshots(backup)
@@ -1036,7 +1056,14 @@ class RentalEngine:
                 return
             backup["state"] = "REGISTERING"
             self.save(backup)
-            image_id = await self.backend.register_image(backup, gen, found)
+            try:
+                image_id = await self.backend.register_image(backup, gen, found)
+            except ProviderError as exc:
+                if not exc.ambiguous:
+                    # A rejected registration created no image; register again from PENDING.
+                    backup["state"] = "PENDING"
+                    self.save(backup)
+                raise
             backup.update(
                 state="IMAGE_PENDING", image_id=image_id, images={backup["region"]: image_id}
             )

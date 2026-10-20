@@ -594,3 +594,117 @@ async def test_manual_backup_idempotency_is_stable_across_generations(rental_env
     row = await deliver(env, row["id"])
     replay = env.engine.request_backup(row, "manual-request", manual=True)
     assert replay["id"] == backup["id"] and replay["generation"] == 1
+
+
+def event_types(env, rental_id):
+    return [e["payload"]["type"] for e in env.service.store.events(order_id=rental_id, limit=1000)]
+
+
+async def serve(env, rental_id, minutes):
+    for _ in range(minutes * 4):
+        env.clock.advance(15)
+        await report_ready(env, rental_id)
+    await cycle(env)
+
+
+async def test_heartbeat_gap_keeps_a_verified_server_serving(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "heartbeat")
+    row = await deliver(env, row["id"])
+    await serve(env, row["id"], 30)
+    connection = env.engine.get(row["id"], "tenant-a")["connection"]
+    # Control-plane or callback outage: ten minutes without reports from a healthy server.
+    for _ in range(40):
+        env.clock.advance(15)
+        await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    gen = env.engine.current(row)
+    assert (row["state"], row["degraded"], row["error"]) == (
+        "ACTIVE",
+        "guest_heartbeat_lost",
+        "guest_heartbeat_lost",
+    )
+    assert row["connection"] == connection and not row["end_requested"]
+    assert env.cloud.instances[gen["id"]]["State"]["Name"] == "running"
+    assert len(env.cloud.creates) == 1
+    assert event_types(env, row["id"]).count("rental.degraded") == 1
+    # Reports resume: the same generation stays active without a new handoff.
+    handoffs = event_types(env, row["id"]).count("rental.handoff")
+    await serve(env, row["id"], 1)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert (row["state"], row["degraded"], row["error"]) == ("ACTIVE", None, None)
+    assert row["connection"] == connection
+    assert event_types(env, row["id"]).count("rental.healthy") == 1
+    assert event_types(env, row["id"]).count("rental.handoff") == handoffs
+
+
+async def test_failed_self_check_does_not_end_a_verified_rental(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "self-check")
+    row = await deliver(env, row["id"])
+    await serve(env, row["id"], 30)
+    gen = env.engine.current(env.engine.get(row["id"], "tenant-a"))
+    # nvidia-smi timed out under load, so the report carries no GPU fields.
+    await env.engine.agent_report(
+        AgentReport(
+            rental_id=row["id"],
+            generation=gen["generation"],
+            instance_id=gen["instance_id"],
+            token=gen["agent_token"],
+            ssh_ready=True,
+            volume_ids=[v["volume_id"] for v in gen["volumes"]],
+            mounts=gen["mounts"],
+        )
+    )
+    await cycle(env, 3)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert (row["state"], row["error"], row["end_requested"]) == (
+        "ACTIVE",
+        "guest_check_failed",
+        False,
+    )
+    # The partial report did not erase the canaries later backups need for restore checks.
+    assert all(env.engine.current(row)["canaries"].values())
+    await serve(env, row["id"], 1)
+    assert env.engine.get(row["id"], "tenant-a")["error"] is None
+
+
+async def test_unverified_generation_still_recovers_after_boot_timeout(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "silent-boot")
+    await cycle(env, 2)
+    assert env.engine.current(env.engine.get(row["id"], "tenant-a"))["instance_id"]
+    env.clock.advance(env.service.settings.spotbot_rental_boot_timeout_seconds + 1)
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert (row["state"], row["error"]) == ("RECOVERING", "guest_boot_timeout")
+
+
+async def test_rejected_snapshot_and_image_requests_are_retried(rental_env):
+    env = rental_env
+    start, register = env.cloud.start_snapshots, env.cloud.register_image
+    calls = {"snapshots": 0, "images": 0}
+
+    async def throttled_snapshots(backup, gen, volume=None):
+        calls["snapshots"] += 1
+        if calls["snapshots"] == 1:
+            # AWS rejected the request outright: no snapshot exists.
+            raise ProviderError("aws_RequestLimitExceeded", retryable=True)
+        return await start(backup, gen, volume)
+
+    async def throttled_registration(backup, gen, snapshots):
+        calls["images"] += 1
+        if calls["images"] == 1:
+            raise ProviderError("aws_RequestLimitExceeded", retryable=True)
+        return await register(backup, gen, snapshots)
+
+    env.cloud.start_snapshots = throttled_snapshots
+    env.cloud.register_image = throttled_registration
+    row, _ = env.engine.create(env.request, "tenant-a", "throttled")
+    row = await deliver(env, row["id"])
+    assert row["state"] == "ACTIVE"
+    (backup,) = env.engine.backups(row)
+    # One rejected request each, retried automatically: no operator reconciliation.
+    assert (backup["state"], backup["error"]) == ("AVAILABLE", None)
+    assert calls == {"snapshots": 2, "images": 2}
+    assert len(env.cloud.snapshot_sets[backup["id"]]) == len(backup["volumes"])

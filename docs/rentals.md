@@ -155,7 +155,8 @@ checks reachability, registers the candidate, and calls `gateway-ack` for that
 generation. `rental.active` indicates acknowledgement. A rejection starts
 release. Receivers must verify the existing webhook HMAC, deduplicate event IDs,
 and reject older generations/state versions. On recovering/unavailable/ending
-events, revoke the prior route. Use these events in the upstream notification
+events, revoke the prior route. `rental.degraded` and `rental.healthy` do not
+change the route (see below). Use these events in the upstream notification
 service to inform the customer. Notification transport itself remains upstream.
 `resource_type` identifies the event's record. Only rental-record events advance
 the rental `state_version`; backup events have a separate `resource_version`
@@ -168,6 +169,22 @@ complete snapshot set and boot image. Same-region recovery can use another AZ;
 cross-region recovery first copies the image. Failure to obtain the final point
 preserves the source disks and requires action unless older rollback was
 explicitly accepted. The two-minute warning is not a restore-time guarantee.
+
+Boot and restore validation have a deadline (`SPOTBOT_RENTAL_BOOT_TIMEOUT_SECONDS`)
+only until a generation first passes verification. After that, a missing
+heartbeat (none for 60 seconds) or a failed self-check (for example, `nvidia-smi`
+timing out) does not prove the server stopped while the cloud still reports it
+running. The rental keeps its state, generation and connection, records
+`degraded` (`guest_heartbeat_lost` or `guest_check_failed`) and emits one
+`rental.degraded` event. A later passing report clears it and emits
+`rental.healthy`. A control-plane or callback outage therefore never replaces or
+ends running servers. Interruption warnings and cloud-reported termination still
+start recovery.
+
+Snapshot and image requests that AWS rejects (for example, throttling) create
+nothing and are retried automatically on the next cycle. Retryable read failures
+resume the same backup stage. Only an uncertain mutation result enters
+`NEEDS_RECONCILIATION`.
 
 Cloud snapshot completion means `AVAILABLE`; it does not prove a test boot.
 `restore_verified_at` is recorded only after a replacement passes validation.
