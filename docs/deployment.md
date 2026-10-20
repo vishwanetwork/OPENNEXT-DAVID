@@ -94,3 +94,23 @@ The pre-upgrade MySQL dump and configuration were saved under
 `/opt/spot-order-bot/backup-20261020T140706Z/`, restricted to root. Keep database
 backup retention separate from GPU rental snapshot retention. Do not deploy a
 second bot or gateway worker against either service's database.
+
+### Staging validation boundary
+
+Live validation on 2026-10-20 booted real T4 Spot servers and verified the managed
+SSH endpoint, HTTP token enforcement, root/data disk capture, registered recovery
+images, native EventBridge/SQS state-event delivery, and final storage cleanup.
+An encrypted, administrator-enrolled Amazon Linux 2023 GPU base was tested with
+a 30 GiB root disk and a 1 GiB data disk. It does not replace the shared Ubuntu
+provider default. Temporary test base images are not a permanent image catalog.
+
+The first cold Ubuntu capture exceeded the operator's 15-minute test deadline;
+compute was terminated and the worker subsequently completed backup and cleanup.
+Replacement T4 requests were rejected for capacity in every candidate zone.
+Low-cost L4 attempts also reported insufficient capacity. Real replacement boot,
+restored file checks, and restored gateway delivery remain unverified. An AWS
+Spot interruption was not injected. Do not declare production recovery
+acceptance complete until those cases pass with actual capacity.
+
+Runtime test journals and independent AWS resource audits are kept outside Git.
+CI continues to require Python 3.11/3.12 and real MySQL/DynamoDB Local contracts.

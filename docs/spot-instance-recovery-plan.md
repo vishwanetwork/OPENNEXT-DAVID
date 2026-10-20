@@ -1,9 +1,13 @@
 # GPU Server Procurement, Backup, and Recovery Plan
 
-Status: The protected rental API implements the first AWS lifecycle. The managed
-gateway in section 8A has an initial implementation and local acceptance tests;
-production deployment and a real GPU recovery run remain pending. See
-`rentals.md` and `gateway.md` for current capabilities and deployment prerequisites.
+Status: The AWS protected rental API and managed gateway in section 8A are
+deployed on the existing staging host. Live checks verified GPU boot, fixed SSH
+and authenticated HTTP delivery, complete disk-set snapshot/image creation,
+native state-event delivery, and resource cleanup. Replacement GPU restoration
+has not passed live acceptance: AWS rejected the low-cost replacement requests
+for insufficient capacity. Do not treat unit tests or a successful snapshot as
+proof of a restored GPU server. See `rentals.md`, `gateway.md`, and
+`deployment.md` for the current capabilities, limits, and deployment state.
 Date: 2026-10-20
 Code baseline reviewed: `70f308c`.
 
@@ -118,6 +122,7 @@ the same key is a conflict. RFQ identity does not replace caller authorization.
 |---|---|
 | Identity | Upstream order ID, RFQ ID/version, tenant, execution request ID |
 | Hardware | GPU model/count/VRAM, CPU architecture, minimum CPU/RAM, protected root/data disks |
+| Initial image | Optional per-Region initial AMIs, public or explicitly enrolled clean factory images; private tenant backups are never shared initial images |
 | Quantity | Server count, GPUs per server, and any co-location/network constraints; reject unsupported multi-server requests |
 | Placement | Allowed providers/accounts/regions, allowed markets, residency restrictions |
 | Price and spend | Currency, price unit, per-instance hourly ceiling, aggregate acquisition/spend limits, storage/backup allowance |

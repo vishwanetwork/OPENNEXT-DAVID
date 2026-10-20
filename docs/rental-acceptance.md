@@ -28,6 +28,14 @@ DNS/TLS and RFQ spending limits have been approved.
    H100 sample defaults; change them to the approved test offering and spending
    limits. Neither the helper nor the runner selects a cheaper GPU automatically.
 
+Cold encrypted root snapshots can outlast the default per-stage wait. Configure
+`SPOTBOT_ACCEPTANCE_STAGE_TIMEOUT_SECONDS` and the RFQ lifetime deliberately;
+the tool's timeout is not an AWS completion guarantee. An approved, pre-encrypted
+clean GPU base can reduce GPU idle time spent preparing the first recovery point.
+Select it through RFQ `initial_image_ids` and use its actual SSH user and disk
+requirements. Private initial images require explicit administrator enrollment;
+never enroll an image containing tenant data as a shared factory image.
+
 ```sh
 python examples/rental_request.py --ssh-key staging-key --acceptance > /tmp/rental-test.json
 ```
@@ -79,6 +87,17 @@ and enrolled generation volumes to be reported deleted after retention. A
 successful run ends with `status=passed` and
 `cleanup=storage_deletion_reported`. This is the control plane's resource record,
 not a cloud billing reconciliation or independent invoice verification.
+
+A closed request that never allocated a VM has no snapshots or disks to wait
+for. Empty resource lists are valid only alongside a closed rental and known
+terminal generations. Unknown creation outcomes and allocated instances with
+missing disk inventories still require operator investigation.
+
+If an earlier run reports cleanup timeout, the server continues its durable
+release/retention workflow. Later API inspection and an independent AWS audit can
+establish that resources were removed; preserve the original failed journal and
+record that later verification separately. A test that cannot allocate its
+replacement is still a failed restore acceptance, even after successful cleanup.
 
 If cleanup cannot be confirmed, the journal records `status=failed`,
 `cleanup=unconfirmed` and a sanitized cleanup error. Inspect the rental ID through
