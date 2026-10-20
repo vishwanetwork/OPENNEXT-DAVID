@@ -57,6 +57,28 @@ the container; use a writable local path when running outside Docker. Startup
 fails on missing secrets or invalid network/port configuration. None of these
 commands creates GPU resources until an authorized live rental is submitted.
 
+### Co-located EC2 credential isolation
+
+The gateway container uses UID/GID 10002 and `/app/gateway-data`; the bot keeps
+UID 10001. Before starting a gateway on an EC2 host with a procurement role,
+install `examples/spotbot-gateway-isolation.service` in `/etc/systemd/system/`
+and enable/start it. It rejects IPv4 and IPv6 IMDS traffic from UID 10002,
+persists across boot before Docker, and leaves other users' rules unchanged.
+Also add a Docker systemd drop-in requiring and ordering after this unit so
+Docker cannot auto-start the gateway if isolation setup fails. Inspect existing
+Docker dependencies before reloading systemd; do not restart unrelated services.
+Verify the container UID and a failed IMDSv2 token request from the gateway
+while the bot can still use its instance role. Do not enable user namespace
+remapping without adjusting the host UID rules. Do not mount cloud credentials,
+the Docker socket, or the bot configuration in the gateway. The environment
+disables SDK credential files/metadata as defense in depth; the firewall is the
+network boundary. A gateway using DynamoDB needs separately scoped credentials
+or a dedicated host/role, rather than access to the bot's instance role.
+
+Existing SQLite gateway deployments must copy their database into the new
+volume path and set ownership to 10002 before upgrading. MySQL deployments
+keep their independent database and require no SQLite data migration.
+
 ## Upstream integration
 
 The bot emits signed events to `POST /v1/gateway/events`. The receiver validates

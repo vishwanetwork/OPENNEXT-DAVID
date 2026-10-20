@@ -1,0 +1,16 @@
+[Unit]
+Description=Block the SpotOrderBot gateway user from EC2 instance metadata
+Before=docker.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+# Matches the dedicated gateway UID in compose.gateway.yaml. Do not enable
+# Docker user namespace remapping without adapting these host UID rules.
+ExecStart=/bin/sh -ec 'iptables -C OUTPUT -m owner --uid-owner 10002 -d 169.254.169.254/32 -j REJECT 2>/dev/null || iptables -I OUTPUT 1 -m owner --uid-owner 10002 -d 169.254.169.254/32 -j REJECT'
+ExecStart=/bin/sh -ec 'ip6tables -C OUTPUT -m owner --uid-owner 10002 -d fd00:ec2::254/128 -j REJECT 2>/dev/null || ip6tables -I OUTPUT 1 -m owner --uid-owner 10002 -d fd00:ec2::254/128 -j REJECT'
+RemainAfterExit=yes
+# Keep the deny rules on stop; stopping the unit must not expose credentials.
+
+[Install]
+WantedBy=multi-user.target
