@@ -49,6 +49,8 @@ class RFQ(RulesModel):
     min_vcpus: int = Field(1, ge=1)
     min_memory_gib: int = Field(1, ge=1)
     architecture: Literal["x86_64", "arm64"] = "x86_64"
+    # Explicit per-rental initial images; replacements always use owned backups.
+    initial_image_ids: dict[str, str] = Field(default_factory=dict, max_length=32)
     root_volume_gib: int = Field(50, ge=8, le=16384)
     data_disks: list[DiskRule] = Field(default_factory=list, max_length=16)
     currency: Literal["USD"] = "USD"
@@ -87,6 +89,13 @@ class RFQ(RulesModel):
 
     @model_validator(mode="after")
     def compatible_times_and_disks(self):
+        import re
+
+        if self.initial_image_ids and (
+            set(self.initial_image_ids) != set(self.regions)
+            or any(not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", v) for v in self.initial_image_ids.values())
+        ):
+            raise ValueError("initial_images_must_cover_rfq_regions_with_valid_ami_ids")
         if self.acquisition_deadline >= self.expires_at:
             raise ValueError("acquisition_deadline_must_precede_expiry")
         if self.not_before and self.not_before >= self.acquisition_deadline:

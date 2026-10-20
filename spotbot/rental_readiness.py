@@ -229,7 +229,8 @@ class Readiness:
             checks.append(check("affordable_quota_eligible_offers", bool(candidates)))
             if candidates:
                 offer = min(candidates, key=lambda o: o.price_hourly)
-                image = ec2.describe_images(ImageIds=[offer.details["image_id"]])["Images"][0]
+                image_id = rules.initial_image_ids.get(region, offer.details["image_id"])
+                image = ec2.describe_images(ImageIds=[image_id])["Images"][0]
                 checks.append(
                     check(
                         "linux_ebs_image",

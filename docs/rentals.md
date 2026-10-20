@@ -45,6 +45,16 @@ The guest agent has no procurement IAM role. It needs Python 3, systemd,
 cloud-init, `lsblk`, `blkid`, mount tools, ext4 utilities for new data disks, and
 `nvidia-smi`. The default Ubuntu GPU profile supplies the GPU environment.
 Maintain the managed agent and cloud-init services when customizing the server.
+An RFQ may set `initial_image_ids`, for example
+`{"us-west-2":"ami-0123456789abcdef0"}`, to use a different initial image without
+changing the shared catalog or other rentals. If supplied, the map must cover
+every RFQ Region. Use the image's actual `ssh_user` and a sufficient root volume
+size. The image must be available, architecture-compatible, Linux, EBS-backed,
+and free of Marketplace product codes, and must supply the guest prerequisites.
+This choice is immutable after creation. Recovery always selects the rental's
+owned backup image instead. The default remains the configured provider image.
+Initial encrypted snapshots may take substantially longer than VM boot; budget
+acceptance time for the full disk capture rather than assuming a fixed duration.
 Guests need outbound HTTPS to the callback and access to IMDSv2. Network rules
 must allow the gateway to reach SSH and any requested HTTP port.
 

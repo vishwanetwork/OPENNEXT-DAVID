@@ -73,7 +73,11 @@ class RentalEngine:
 
     def create(self, request, tenant_id, key):
         rules = request.rfq
-        fingerprint = hashlib.sha256(dump(request.model_dump(mode="json")).encode()).hexdigest()
+        payload = request.model_dump(mode="json")
+        # Preserve idempotency fingerprints accepted before this optional field existed.
+        if not payload["rfq"]["initial_image_ids"]:
+            payload["rfq"].pop("initial_image_ids")
+        fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()
         rental_id = identity("rental", tenant_id, key)
         existing = self.db.get("rental", rental_id)
         if existing:
@@ -125,6 +129,7 @@ class RentalEngine:
                 "min_vcpus",
                 "min_memory_gib",
                 "architecture",
+                "initial_image_ids",
                 "root_volume_gib",
                 "data_disks",
                 "ssh_key_name",
@@ -693,7 +698,7 @@ class RentalEngine:
             row.update(state="ENDING", end_requested=True, error="insufficient_budget_reserve")
             self.save(row, "ending")
             return
-        image_id = offer.details["image_id"]
+        image_id = rules.initial_image_ids.get(offer.region, offer.details["image_id"])
         if source:
             image_id = source["images"].get(offer.region)
             if not image_id:

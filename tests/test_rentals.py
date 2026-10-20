@@ -323,6 +323,45 @@ async def test_full_server_backup_replacement_and_expiry(rental_env):
     assert env.cloud.deleted_snapshots
 
 
+async def test_rfq_initial_image_is_scoped_and_recovery_uses_backup(rental_env):
+    env = rental_env
+    request = env.request.model_copy(deep=True)
+    region = request.rfq.regions[0]
+    request.rfq.initial_image_ids = {region: "ami-0123456789abcdef0"}
+    row, _ = env.engine.create(request, "tenant-a", "custom-image")
+    row = await deliver(env, row["id"])
+    assert env.engine.current(row)["image_id"] == "ami-0123456789abcdef0"
+    assert env.offer.details["image_id"] == "ami-base"
+    changed = request.model_copy(deep=True)
+    changed.rfq.initial_image_ids = {region: "ami-abcdef01234567890"}
+    with pytest.raises(ValueError, match="idempotency_key_conflict"):
+        env.engine.create(changed, "tenant-a", "custom-image")
+    await env.engine.recover(row["id"], "tenant-a", None)
+    env.clock.advance(11)
+    await cycle(env, 8)
+    env.clock.advance(31)
+    row = await deliver(env, row["id"])
+    assert row["generation"] == 2
+    assert env.engine.current(row)["image_id"] != "ami-0123456789abcdef0"
+    assert env.engine.current(row)["source_backup_id"]
+
+
+def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
+    env = rental_env
+    old = env.request.model_dump(mode="json")
+    old["rfq"].pop("initial_image_ids")
+    from spotbot.storage.common import dump
+
+    row, _ = env.engine.create(env.request, "tenant-a", "old-client")
+    assert row["fingerprint"] == hashlib.sha256(dump(old).encode()).hexdigest()
+    assert env.engine.create(RentalRequest.model_validate(old), "tenant-a", "old-client")[1] is False
+    for images in ({"us-east-1": "ami-0123456789abcdef0"}, {env.request.rfq.regions[0]: "ami-invalid"}):
+        invalid = env.request.model_dump(mode="json")
+        invalid["rfq"]["initial_image_ids"] = images
+        with pytest.raises(ValidationError, match="initial_images_must_cover"):
+            RentalRequest.model_validate(invalid)
+
+
 async def test_unknown_create_is_reconciled_without_repurchase(rental_env):
     env = rental_env
     env.cloud.launch_error = ProviderError("aws_transport_error", ambiguous=True)

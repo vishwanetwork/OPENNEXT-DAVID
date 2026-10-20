@@ -190,6 +190,8 @@ class AWSRecovery:
         image = await self.image(region, image_id)
         if image["State"] != "available" or image["Architecture"] != rules.architecture:
             raise ProviderError("image_not_compatible")
+        if image.get("RootDeviceType", "ebs") != "ebs":
+            raise ProviderError("image_requires_ebs_root")
         if image.get("PlatformDetails", "Linux/UNIX") != "Linux/UNIX" or image.get("ProductCodes"):
             raise ProviderError("unsupported_image_license")
         if backup and not owns(image, rental["id"]):

@@ -132,6 +132,20 @@ async def test_restore_rejects_foreign_image_and_incomplete_disk_set(native_back
     assert not any(method == "run_instances" for _, method, _ in calls)
 
 
+@pytest.mark.parametrize("attribute,value,error", [
+    ("RootDeviceType", "instance-store", "image_requires_ebs_root"),
+    ("ProductCodes", [{"ProductCodeId": "paid-product"}], "unsupported_image_license"),
+    ("Architecture", "arm64", "image_not_compatible"),
+])
+async def test_initial_image_constraints_reject_before_launch(native_backend, attribute, value, error):
+    env, backend, calls, image = native_backend
+    image[attribute] = value
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
+    with pytest.raises(ProviderError, match=error):
+        await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    assert not any(method == "run_instances" for _, method, _ in calls)
+
+
 async def test_preflight_refreshes_prices_and_account_quota(rental_env):
     from spotbot.aws_provider import AWSProvider
     from tests.test_aws import FakeAWS
