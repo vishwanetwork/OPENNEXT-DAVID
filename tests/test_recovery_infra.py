@@ -74,6 +74,19 @@ def test_eventbridge_and_dead_letter_delivery_are_account_bound():
     assert target["DeadLetterConfig"]["Arn"] == {"Fn::GetAtt": ["DeadLetterQueue", "Arn"]}
 
 
+def test_sqs_statements_target_only_the_queue_receiving_the_policy():
+    # SQS rejects multi-resource statements even though IAM syntax accepts them.
+    # CloudFormation validate-template cannot catch this service-side constraint.
+    for name, queue in (("QueuePolicy", "InterruptionQueue"), ("DeadLetterQueuePolicy", "DeadLetterQueue")):
+        properties = TEMPLATE["Resources"][name]["Properties"]
+        assert properties["Queues"] == [{"Ref": queue}]
+        for statement in properties["PolicyDocument"]["Statement"]:
+            assert statement["Resource"] == {"Fn::GetAtt": [queue, "Arn"]}
+        delivery = properties["PolicyDocument"]["Statement"][0]
+        assert delivery["Condition"]["StringEquals"]["aws:SourceAccount"] == {"Ref": "AWS::AccountId"}
+        assert delivery["Condition"]["ArnEquals"]["aws:SourceArn"] == {"Fn::GetAtt": ["InterruptionRule", "Arn"]}
+
+
 def test_cleanup_and_creation_have_distinct_ownership_conditions():
     statements = TEMPLATE["Resources"]["RecoveryPolicy"]["Properties"]["PolicyDocument"][
         "Statement"

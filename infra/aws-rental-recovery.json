@@ -178,9 +178,6 @@
         "Queues": [
           {
             "Ref": "InterruptionQueue"
-          },
-          {
-            "Ref": "DeadLetterQueue"
           }
         ],
         "PolicyDocument": {
@@ -193,20 +190,12 @@
                 "Service": "events.amazonaws.com"
               },
               "Action": "sqs:SendMessage",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "InterruptionQueue",
-                    "Arn"
-                  ]
-                },
-                {
-                  "Fn::GetAtt": [
-                    "DeadLetterQueue",
-                    "Arn"
-                  ]
-                }
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionQueue",
+                  "Arn"
+                ]
+              },
               "Condition": {
                 "ArnEquals": {
                   "aws:SourceArn": {
@@ -228,20 +217,12 @@
               "Effect": "Deny",
               "Principal": "*",
               "Action": "sqs:*",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "InterruptionQueue",
-                    "Arn"
-                  ]
-                },
-                {
-                  "Fn::GetAtt": [
-                    "DeadLetterQueue",
-                    "Arn"
-                  ]
-                }
-              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionQueue",
+                  "Arn"
+                ]
+              },
               "Condition": {
                 "Bool": {
                   "aws:SecureTransport": "false"
@@ -694,6 +675,67 @@
                   "kms:CallerAccount": {
                     "Ref": "AWS::AccountId"
                   }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeadLetterQueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "DeadLetterQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "EventBridgeDelivery",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::GetAtt": [
+                      "InterruptionRule",
+                      "Arn"
+                    ]
+                  }
+                },
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "RequireTls",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "sqs:*",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
                 }
               }
             }
