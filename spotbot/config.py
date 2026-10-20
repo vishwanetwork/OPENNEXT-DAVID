@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     spotbot_gateway_webhook_url: str = ""
     spotbot_gateway_webhook_secret: SecretStr = SecretStr("")
     spotbot_rentals_enabled: bool = False
+    # Empty retains the legacy order-region default; deployments should enroll
+    # only Regions with validated recovery IAM, networking, and interruption queues.
+    spotbot_rental_regions: str = ""
     spotbot_rental_public_url: str = ""
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
@@ -85,6 +88,11 @@ class Settings(BaseSettings):
         return list(
             dict.fromkeys(r.strip() for r in self.spotbot_aws_regions.split(",") if r.strip())
         )
+
+    @property
+    def rental_regions(self) -> list[str]:
+        value = self.spotbot_rental_regions or self.spotbot_aws_regions
+        return list(dict.fromkeys(r.strip() for r in value.split(",") if r.strip()))
 
     @property
     def aws_price_regions(self) -> list[str]:
@@ -125,13 +133,15 @@ class Settings(BaseSettings):
         ):
             raise ValueError("Rental gateway token must be distinct and at least 32 characters")
         queues = json.loads(self.spotbot_rental_interruption_queues)
+        if (self.spotbot_rentals_enabled and not self.rental_regions) or set(self.rental_regions) - set(self.aws_order_regions):
+            raise ValueError("Rental Regions must be a nonempty subset of AWS order Regions")
         if not isinstance(queues, dict) or any(
-            r not in self.aws_order_regions
+            r not in self.rental_regions
             or not isinstance(u, str)
             or not u.startswith("https://sqs.")
             for r, u in queues.items()
         ):
-            raise ValueError("Interruption queues must map enabled order Regions to SQS URLs")
+            raise ValueError("Interruption queues must map enabled rental Regions to SQS URLs")
         if self.spotbot_rental_public_url:
             url = urlparse(self.spotbot_rental_public_url)
             if (

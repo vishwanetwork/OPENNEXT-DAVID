@@ -112,6 +112,7 @@ def main():
                     "live_orders_enabled": settings.spotbot_live_orders_enabled,
                     "dry_run_enabled": settings.spotbot_dry_run_enabled,
                     "aws_regions": settings.spotbot_aws_regions.split(","),
+                    "rental_regions": settings.rental_regions,
                     "aws_authentication": "standard_sdk_credential_chain",
                     "storage_backend": settings.spotbot_storage_backend,
                     "api_auth_configured": bool(settings.spotbot_api_key.get_secret_value()),

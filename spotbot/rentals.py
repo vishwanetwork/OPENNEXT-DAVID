@@ -64,6 +64,8 @@ class RentalEngine:
             raise ValueError("live_orders_disabled")
         if set(rules.regions) - set(self.settings.aws_order_regions):
             raise ValueError("region_not_enabled_for_orders")
+        if set(rules.regions) - set(self.settings.rental_regions):
+            raise ValueError("region_not_enabled_for_rentals")
         if not self.settings.enabled("aws") or not self.service.providers["aws"].configured:
             raise ValueError("missing_aws_credentials")
         if not self.settings.spotbot_rental_public_url:
@@ -654,6 +656,10 @@ class RentalEngine:
 
     async def _acquire(self, row, rules):
         now = utcnow()
+        if set(rules.regions) - set(self.settings.rental_regions):
+            row.update(state="ACTION_REQUIRED", error="region_not_enabled_for_rentals")
+            self.save(row, "action_required")
+            return
         if not self.settings.spotbot_live_orders_enabled or not self.settings.enabled("aws"):
             row.update(state="ACTION_REQUIRED", error="live_orders_disabled")
             self.save(row, "action_required")

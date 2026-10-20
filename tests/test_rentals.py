@@ -346,6 +346,24 @@ async def test_rfq_initial_image_is_scoped_and_recovery_uses_backup(rental_env):
     assert env.engine.current(row)["source_backup_id"]
 
 
+async def test_recovery_region_enrollment_does_not_expand_legacy_regions(rental_env):
+    env = rental_env
+    assert env.service.settings.aws_order_regions == ["us-west-2", "us-east-1"]
+    env.service.settings.spotbot_rental_regions = "us-west-2"
+    denied = env.request.model_copy(deep=True)
+    denied.rfq.regions = ["us-east-1"]
+    with pytest.raises(ValueError, match="region_not_enabled_for_rentals"):
+        env.engine.create(denied, "tenant-a", "unprepared-region")
+    assert not env.cloud.creates
+    assert env.service.settings.aws_order_regions == ["us-west-2", "us-east-1"]
+    row, _ = env.engine.create(env.request, "tenant-a", "queued-before-region-removal")
+    env.service.settings.spotbot_rental_regions = "us-east-1"
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "ACTION_REQUIRED" and row["error"] == "region_not_enabled_for_rentals"
+    assert not env.cloud.creates
+
+
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
     env = rental_env
     old = env.request.model_dump(mode="json")

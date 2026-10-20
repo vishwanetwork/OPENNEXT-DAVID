@@ -160,6 +160,20 @@ async def test_initial_image_cannot_expose_another_rentals_private_backup(native
     assert approved_initial_image({**image, "Tags": [*image["Tags"], {"Key": "spotbot-initial-image", "Value": "true"}]})
 
 
+@pytest.mark.parametrize("extra_disk", [True, False])
+async def test_custom_image_cannot_add_unrequested_or_oversized_disks(native_backend, extra_disk):
+    env, backend, calls, image = native_backend
+    image["Public"] = True
+    if extra_disk:
+        image["BlockDeviceMappings"].append({"DeviceName": "/dev/sdg", "Ebs": {"VolumeSize": 1000}})
+    else:
+        image["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] = 1000
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-custom", agent_token="a" * 40)
+    with pytest.raises(ProviderError, match="initial_image_disk_layout_exceeds_rfq"):
+        await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    assert not any(method == "run_instances" for _, method, _ in calls)
+
+
 async def test_preflight_refreshes_prices_and_account_quota(rental_env):
     from spotbot.aws_provider import AWSProvider
     from tests.test_aws import FakeAWS

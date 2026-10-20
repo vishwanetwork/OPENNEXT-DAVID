@@ -34,6 +34,14 @@ def approved_initial_image(image):
     )
 
 
+def initial_disk_layout_allowed(image, rules, *, strict_sizes=False):
+    required = {image["RootDeviceName"]: rules.root_volume_gib, **{d.device: d.size_gib for d in rules.data_disks}}
+    source = {m["DeviceName"]: m["Ebs"] for m in image["BlockDeviceMappings"] if "Ebs" in m}
+    return not (set(source) - set(required)) and (
+        not strict_sizes or all(v.get("VolumeSize", 0) <= required[k] for k, v in source.items())
+    )
+
+
 def bootstrap(base_url, rental_id, generation, token):
     source = Path(__file__).with_name("guest_agent.py").read_bytes()
     config = json.dumps(
@@ -205,6 +213,8 @@ class AWSRecovery:
             raise ProviderError("unsupported_image_license")
         if not backup and image_id != offer.details["image_id"] and not approved_initial_image(image):
             raise ProviderError("initial_image_not_approved")
+        if not backup and not initial_disk_layout_allowed(image, rules, strict_sizes=image_id != offer.details["image_id"]):
+            raise ProviderError("initial_image_disk_layout_exceeds_rfq")
         if backup and not owns(image, rental["id"]):
             raise ProviderError("restore_image_ownership_mismatch")
         source = {m["DeviceName"]: m for m in image["BlockDeviceMappings"] if "Ebs" in m}

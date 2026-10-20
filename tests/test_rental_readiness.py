@@ -210,6 +210,7 @@ async def test_private_initial_images_require_operator_enrollment(ready):
     settings, rfq = ready
     session = ReadOnlySession()
     rfq.initial_image_ids = {"us-west-2": "ami-0123456789abcdef0"}
+    rfq.root_volume_gib = 100
     result = await Readiness(settings, session=session).run(rfq, aws=True)
     assert not result["cloud_preflight_passed"]
     checks = {c["name"]: c for c in result["regions"][0]["checks"]}
@@ -227,6 +228,16 @@ async def test_private_initial_images_require_operator_enrollment(ready):
 
     session.cloud.describe_images = enrolled
     assert (await Readiness(settings, session=session).run(rfq, aws=True))["cloud_preflight_passed"]
+
+
+async def test_readiness_rejects_order_region_without_recovery_enrollment(ready):
+    settings, rfq = ready
+    settings.spotbot_aws_regions = "us-west-2,us-east-1"
+    settings.spotbot_rental_regions = "us-west-2"
+    rfq.regions = ["us-east-1"]
+    result = await Readiness(settings, session=ReadOnlySession()).run(rfq, aws=True)
+    assert not result["configuration_ready"] and not result["cloud_preflight_passed"]
+    assert result["regions"][0]["candidate_count"] == 0
 
 
 async def test_quota_price_and_missing_key_are_visible_without_launch(ready):

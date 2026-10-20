@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from spotbot.aws_provider import AWSProvider
 from spotbot.models import gpu_model, utcnow
-from spotbot.rental_aws import approved_initial_image
+from spotbot.rental_aws import approved_initial_image, initial_disk_layout_allowed
 
 EVENT_TYPES = {
     "EC2 Spot Instance Interruption Warning",
@@ -72,7 +72,7 @@ def configuration_checks(settings, rules, gateway=None):
         check("aws_provider_enabled", settings.enabled("aws")),
         check("service_authentication", bool(settings.spotbot_api_key.get_secret_value())),
         check("guest_callback_url", safe_url(settings.spotbot_rental_public_url)),
-        check("rfq_regions_enabled", not (set(rules.regions) - set(settings.aws_order_regions))),
+        check("rfq_regions_enabled", not (set(rules.regions) - set(settings.rental_regions))),
         check("acquisition_deadline", rules.acquisition_deadline > utcnow()),
         check("rental_expiry", rules.expires_at > utcnow()),
     ]
@@ -233,6 +233,7 @@ class Readiness:
                 image_id = rules.initial_image_ids.get(region, offer.details["image_id"])
                 image = ec2.describe_images(ImageIds=[image_id])["Images"][0]
                 checks.append(check("initial_image_approved", image_id == offer.details["image_id"] or approved_initial_image(image)))
+                checks.append(check("initial_image_disk_layout", initial_disk_layout_allowed(image, rules, strict_sizes=image_id != offer.details["image_id"])))
                 checks.append(
                     check(
                         "linux_ebs_image",
@@ -324,7 +325,7 @@ class Readiness:
             result["aws_account"] = account
             # Bound SDK calls run off the event loop; no Service/database is opened.
             for region in rules.regions:
-                if region not in self.settings.aws_order_regions:
+                if region not in self.settings.rental_regions:
                     result["regions"].append(
                         dict(
                             region=region,

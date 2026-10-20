@@ -26,6 +26,13 @@ does not require model checkpoints or a separate S3 model store.
 3. Set `SPOTBOT_RENTALS_ENABLED=true`, `SPOTBOT_LIVE_ORDERS_ENABLED=true`, the
    existing service authentication key, and `SPOTBOT_RENTAL_PUBLIC_URL` to the
    externally reachable HTTPS service base URL.
+   Set `SPOTBOT_RENTAL_REGIONS` to the recovery-ready subset of AWS order Regions.
+   Empty preserves the existing order-region default for compatibility. Enroll
+   a Region only after its recovery IAM, network, images, and queue checks pass.
+   Requests outside this list fail before procurement. Removing an enrolled
+   Region also halts new acquisitions for already queued RFQs without preventing
+   existing instances from being monitored and safely released. Legacy orders
+   and price collection keep their own Region settings.
 4. Configure `SPOTBOT_RENTAL_TENANT_TOKENS` as a JSON object mapping tenant IDs
    to unique random tokens of at least 32 characters. Keep them in the upstream
    service. A service administrator may instead use `SPOTBOT_API_KEY` with the
@@ -59,6 +66,10 @@ these enrollment tags through the rental API. A private backup is authorized
 for its owning rental's recovery only, regardless of whether its AMI ID is known.
 This choice is immutable after creation. Recovery always selects the rental's
 owned backup image instead. The default remains the configured provider image.
+Initial images cannot add EBS devices absent from the RFQ. Custom images must
+also fit the requested root/data sizes; a large source image cannot silently
+expand the customer's disk allocation. The configured provider default retains
+its existing minimum-root-size expansion behavior.
 Initial encrypted snapshots may take substantially longer than VM boot; budget
 acceptance time for the full disk capture rather than assuming a fixed duration.
 Guests need outbound HTTPS to the callback and access to IMDSv2. Network rules

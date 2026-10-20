@@ -79,8 +79,9 @@ signing secret. No provider credentials or operator SSH private keys are mounted
 Protected rentals are enabled. The `spotbot-rental-recovery` CloudFormation
 stack in `us-west-2` owns the encrypted interruption queue, dead-letter queue,
 EventBridge rule, queue policies, DLQ alarm, and additive recovery IAM policy.
-Cross-region image copies are disabled. Only `us-west-2` interruption delivery
-is configured and checked; use that Region for protected staging RFQs. Existing
+Cross-region image copies are disabled. `SPOTBOT_RENTAL_REGIONS=us-west-2`
+enforces the recovery-ready Region boundary before paid rental procurement.
+Only `us-west-2` interruption delivery is configured and checked. Existing
 legacy ordering Regions and pricing collection remain independent.
 
 The DLQ alarm has no SNS destination yet; monitor it in CloudWatch and configure
