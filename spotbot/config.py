@@ -7,7 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", case_sensitive=False, hide_input_in_errors=True
+    )
 
     lambda_api_key: SecretStr = SecretStr("")
     tensordock_api_key: SecretStr = SecretStr("")
@@ -57,6 +59,7 @@ class Settings(BaseSettings):
     spotbot_rentals_enabled: bool = False
     spotbot_rental_public_url: str = ""
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
+    spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)
     spotbot_rental_boot_timeout_seconds: int = Field(1200, ge=60, le=7200)
@@ -79,7 +82,9 @@ class Settings(BaseSettings):
 
     @property
     def aws_order_regions(self) -> list[str]:
-        return list(dict.fromkeys(r.strip() for r in self.spotbot_aws_regions.split(",") if r.strip()))
+        return list(
+            dict.fromkeys(r.strip() for r in self.spotbot_aws_regions.split(",") if r.strip())
+        )
 
     @property
     def aws_price_regions(self) -> list[str]:
@@ -97,18 +102,51 @@ class Settings(BaseSettings):
         from urllib.parse import urlparse
 
         tokens = self.rental_tenant_tokens
-        if not isinstance(tokens, dict) or any(
-            not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", k) or not isinstance(v, str) or len(v) < 32
-            for k, v in tokens.items()
-        ) or len(set(tokens.values())) != len(tokens):
+        if (
+            not isinstance(tokens, dict)
+            or any(
+                not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", k)
+                or not isinstance(v, str)
+                or len(v) < 32
+                for k, v in tokens.items()
+            )
+            or len(set(tokens.values())) != len(tokens)
+        ):
             raise ValueError("Rental tenant tokens require unique tokens of at least 32 characters")
+        gateway = self.spotbot_rental_gateway_token.get_secret_value()
+        if gateway and (
+            len(gateway) < 32
+            or gateway
+            in {
+                self.spotbot_api_key.get_secret_value(),
+                self.spotbot_gateway_webhook_secret.get_secret_value(),
+                *tokens.values(),
+            }
+        ):
+            raise ValueError("Rental gateway token must be distinct and at least 32 characters")
         queues = json.loads(self.spotbot_rental_interruption_queues)
-        if not isinstance(queues, dict) or any(r not in self.aws_order_regions or not isinstance(u, str) or not u.startswith("https://sqs.") for r, u in queues.items()):
+        if not isinstance(queues, dict) or any(
+            r not in self.aws_order_regions
+            or not isinstance(u, str)
+            or not u.startswith("https://sqs.")
+            for r, u in queues.items()
+        ):
             raise ValueError("Interruption queues must map enabled order Regions to SQS URLs")
         if self.spotbot_rental_public_url:
             url = urlparse(self.spotbot_rental_public_url)
-            if (url.scheme != "https" and not (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1"})) or not url.hostname or url.username or url.query or url.fragment:
-                raise ValueError("Rental callback URL requires HTTPS; HTTP is only supported on loopback")
+            if (
+                (
+                    url.scheme != "https"
+                    and not (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1"})
+                )
+                or not url.hostname
+                or url.username
+                or url.query
+                or url.fragment
+            ):
+                raise ValueError(
+                    "Rental callback URL requires HTTPS; HTTP is only supported on loopback"
+                )
         if (
             self.spotbot_storage_backend == "mysql"
             and not self.spotbot_mysql_url.get_secret_value()

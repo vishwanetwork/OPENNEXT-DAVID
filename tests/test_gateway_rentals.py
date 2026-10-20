@@ -15,7 +15,8 @@ async def test_bot_to_gateway_handoff_recovery_and_release(rental_env, environme
     env, gwenv = rental_env, environment
     gateway = gwenv["gateway"]
     monkeypatch.setattr("spotbot.gateway.utcnow", env.clock.now)
-    env.service.settings.spotbot_api_key = SecretStr("b" * 40)
+    env.service.settings.spotbot_api_key = SecretStr("administrator" * 4)
+    env.service.settings.spotbot_rental_gateway_token = SecretStr("b" * 40)
     env.service.settings.spotbot_gateway_webhook_secret = SecretStr("w" * 40)
     env.service.settings.spotbot_gateway_webhook_url = (
         "https://gateway.example.com/v1/gateway/events"

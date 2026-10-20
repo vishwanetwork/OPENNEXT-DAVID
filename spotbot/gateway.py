@@ -170,7 +170,10 @@ class Gateway:
             timeout=10,
         )
         response.raise_for_status()
-        return response.json()
+        value = response.json()
+        if value.get("authorization_scope") != "gateway_delivery":
+            raise ValueError("restricted_gateway_credential_required")
+        return value
 
     def target(self, rental):
         connection, rules = rental["connection"], rental["rfq"]
@@ -383,6 +386,7 @@ class Gateway:
                     "ssh_banner_missing",
                     "http_health_check_failed",
                     "rental_expired",
+                    "restricted_gateway_credential_required",
                 }
                 row.update(
                     ready=False,

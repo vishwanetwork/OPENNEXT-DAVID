@@ -255,10 +255,11 @@ def test_gateway_must_match_keys_and_use_a_separate_database(ready):
     settings, rfq = ready
     settings.spotbot_gateway_webhook_url = "https://gateway.example.com/v1/gateway/events"
     settings.spotbot_gateway_webhook_secret = SecretStr("w" * 40)
+    settings.spotbot_rental_gateway_token = SecretStr("delivery" * 8)
     gateway = GatewaySettings(
         _env_file=None,
         bot_url=settings.spotbot_rental_public_url,
-        bot_token="b" * 40,
+        bot_token="delivery" * 8,
         webhook_secret="w" * 40,
         api_key="a" * 40,
         public_ssh_host="ssh.example.com",

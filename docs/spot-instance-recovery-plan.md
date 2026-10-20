@@ -463,7 +463,12 @@ customer streams cannot starve authorization checks and gateway acknowledgements
 
 Use separate secrets for bot API access, gateway operator API access, webhook
 verification, and customer HTTP access. The configured bot URL is trusted
-operator configuration. A request header cannot change the bot origin. Disable
+operator configuration. Bot access from the gateway uses a dedicated credential
+limited to a known rental's delivery view, connection and gateway acknowledgement;
+it cannot list tenants/rentals or invoke procurement, recovery, backup, renewal
+or release. The delivery view excludes commercial RFQ and accounting fields.
+A shared bot administrator/execution token must not be deployed in the gateway.
+A request header cannot change the bot origin. Disable
 environment HTTP proxies for internal state lookups and backend proxy traffic.
 Redact secrets and request payloads from logs and validation errors. Access logs
 must not expose credentials. Keep private APIs protected even when the public

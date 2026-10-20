@@ -13,7 +13,7 @@ The design and acceptance requirements are in section 8A of
    gateway access to IMDS and credentials explicitly; host networking alone is
    not a credential boundary. Do not deploy the gateway on a customer Spot VM.
 2. Copy `.env.gateway.example` to `.env.gateway` (ignored by Git). Set the bot URL,
-   its existing administrator API key, a separate gateway API key, and the
+   its dedicated `SPOTBOT_RENTAL_GATEWAY_TOKEN`, a separate gateway API key, and the
    webhook signing secret. Gateway secrets require at least 32 characters.
 3. Configure public SSH DNS and optionally `*.gpu.example.com` wildcard DNS to
    the gateway host. Choose the reserved SSH port range. Open only the approved
@@ -38,6 +38,15 @@ The design and acceptance requirements are in section 8A of
 8. In the **bot** environment set `SPOTBOT_GATEWAY_WEBHOOK_URL` to
    `https://gateway.example.com/v1/gateway/events` and use the same
    `SPOTBOT_GATEWAY_WEBHOOK_SECRET`. Restart the bot through its normal deployment.
+   Set `SPOTBOT_RENTAL_GATEWAY_TOKEN` to the gateway's `SPOTBOT_GATEWAY_BOT_TOKEN`;
+   use a new secret distinct from bot administrator/tenant execution credentials
+   and webhook signing. Do not deploy an administrator or tenant execution token
+   in the gateway. The dedicated token can read a known rental's limited delivery
+   view/connection and acknowledge that generation, with `X-SpotBot-Tenant`.
+   Other rental commands, collection APIs and inventory lists reject this token.
+   The gateway also requires the bot's `authorization_scope=gateway_delivery`
+   response marker and refuses to route with an administrator/full execution
+   response. Upgrade the bot and gateway together for this contract.
 9. Submit rental RFQs with `require_gateway_ack=true`. If an HTTP service is
    requested, configure the public HTTP domain and install that service on the
    VM so its RFQ health endpoint returns 200. No inference service is installed

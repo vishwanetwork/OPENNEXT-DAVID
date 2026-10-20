@@ -1,6 +1,7 @@
 """Tenant-scoped execution API. Payment and RFQ authoring remain upstream."""
 
 import secrets
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -24,6 +25,35 @@ class Reconciliation(RulesModel):
     confirm_absent: bool = False
 
 
+@dataclass(frozen=True)
+class DeliveryPrincipal:
+    tenant: str
+    gateway: bool = False
+
+
+def delivery_view(row, principal):
+    if not principal.gateway:
+        return row
+    return {
+        "authorization_scope": "gateway_delivery",
+        **{
+            k: row[k]
+            for k in (
+                "id",
+                "tenant_id",
+                "version",
+                "generation",
+                "state",
+                "end_requested",
+                "connection",
+            )
+        },
+        "rfq": {
+            k: row["rfq"][k] for k in ("expires_at", "ssh_user", "http_port", "http_health_path")
+        },
+    }
+
+
 def install(app, service):
     engine, config = service.rentals, service.settings
     router = APIRouter(prefix="/v1/rentals", tags=["Protected server rentals"])
@@ -44,22 +74,37 @@ def install(app, service):
             )
         return await request_validation_exception_handler(request, exc)
 
-    def tenant(
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-        x_spotbot_tenant: Annotated[str | None, Header(pattern=r"^[A-Za-z0-9_.-]{1,100}$")] = None,
-    ):
+    def authenticate(credentials, x_spotbot_tenant, *, allow_gateway=False):
         if not config.spotbot_rentals_enabled:
             raise HTTPException(409, "rentals_disabled")
         token = credentials.credentials if credentials else ""
+        gateway = config.spotbot_rental_gateway_token.get_secret_value()
+        if gateway and secrets.compare_digest(token.encode(), gateway.encode()):
+            if allow_gateway and x_spotbot_tenant:
+                return DeliveryPrincipal(x_spotbot_tenant, gateway=True)
+            raise HTTPException(401, "gateway_token_scope_denied")
         for owner, key in config.rental_tenant_tokens.items():
-            if secrets.compare_digest(token, key):
+            if secrets.compare_digest(token.encode(), key.encode()):
                 if x_spotbot_tenant and owner != x_spotbot_tenant:
                     raise HTTPException(403, "tenant_mismatch")
                 return owner
         admin = config.spotbot_api_key.get_secret_value()
-        if admin and secrets.compare_digest(token, admin) and x_spotbot_tenant:
+        if admin and secrets.compare_digest(token.encode(), admin.encode()) and x_spotbot_tenant:
             return x_spotbot_tenant
         raise HTTPException(401, "invalid_rental_token")
+
+    def tenant(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+        x_spotbot_tenant: Annotated[str | None, Header(pattern=r"^[A-Za-z0-9_.-]{1,100}$")] = None,
+    ):
+        return authenticate(credentials, x_spotbot_tenant)
+
+    def delivery_tenant(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+        x_spotbot_tenant: Annotated[str | None, Header(pattern=r"^[A-Za-z0-9_.-]{1,100}$")] = None,
+    ):
+        owner = authenticate(credentials, x_spotbot_tenant, allow_gateway=True)
+        return owner if isinstance(owner, DeliveryPrincipal) else DeliveryPrincipal(owner)
 
     def guard(fn):
         try:
@@ -98,12 +143,12 @@ def install(app, service):
         return {"total": len(values), "items": values[offset : offset + limit]}
 
     @router.get("/{rental_id}")
-    def get(rental_id: str, owner: Annotated[str, Depends(tenant)]):
-        return guard(lambda: engine.get(rental_id, owner))
+    def get(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):
+        return delivery_view(guard(lambda: engine.get(rental_id, owner.tenant)), owner)
 
     @router.get("/{rental_id}/connection")
-    def connection(rental_id: str, owner: Annotated[str, Depends(tenant)]):
-        row = guard(lambda: engine.get(rental_id, owner))
+    def connection(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):
+        row = guard(lambda: engine.get(rental_id, owner.tenant))
         return {
             "state": row["state"],
             "generation": row["generation"],
@@ -143,8 +188,14 @@ def install(app, service):
         return await async_guard(lambda: engine.recover(rental_id, owner, request.backup_id))
 
     @router.post("/{rental_id}/gateway-ack")
-    async def ack(rental_id: str, request: GatewayAck, owner: Annotated[str, Depends(tenant)]):
-        return await async_guard(lambda: engine.gateway_ack(rental_id, owner, request))
+    async def ack(
+        rental_id: str,
+        request: GatewayAck,
+        owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)],
+    ):
+        return delivery_view(
+            await async_guard(lambda: engine.gateway_ack(rental_id, owner.tenant, request)), owner
+        )
 
     @router.post("/{rental_id}/policy-revisions")
     async def revise(

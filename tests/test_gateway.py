@@ -52,6 +52,7 @@ async def environment(tmp_path):
     )
     rental_id = str(uuid4())
     rental = dict(
+        authorization_scope="gateway_delivery",
         id=rental_id,
         tenant_id="tenant-a",
         version=10,
@@ -407,6 +408,16 @@ async def test_gateway_handoff_cannot_cross_tenants(environment):
     env["rental"]["tenant_id"] = "tenant-b"
     await gw.tick()
     assert not gw.authorized(env["id"])
+
+
+async def test_gateway_refuses_an_administrator_delivery_response(environment):
+    env, gw = environment, environment["gateway"]
+    env["rental"].pop("authorization_scope")
+    await gw.ingest(event(env))
+    await gw.tick()
+    assert not gw.authorized(env["id"])
+    assert gw.db.get("gateway", env["id"])["error"] == "restricted_gateway_credential_required"
+    assert not any(r.url.path.endswith("gateway-ack") for r in env["requests"])
 
 
 async def test_real_http_stream_and_customer_paths_do_not_hit_control_api(environment):

@@ -96,7 +96,7 @@ The first command checks bot settings and deadlines locally. `--aws` reads live
 regional catalogs, current account quota usage, prices, the RFQ SSH key, Linux/EBS
 image and VPC resource relationships. It also checks configured queue encryption,
 redrive policy, account-bound EventBridge grants and enabled rule targets.
-`--gateway` loads `.env.gateway` and verifies matching bot/signing credentials,
+`--gateway` loads `.env.gateway` and verifies matching restricted gateway/signing credentials,
 HTTP domain configuration, and a separate gateway database/table.
 
 The JSON reports `configuration_ready` and `cloud_preflight_passed` separately;
@@ -111,9 +111,14 @@ this with the deployment role for representative results; a developer's AWS
 account or credentials may have different permissions and quotas. Reports do
 not contain configured secrets, database URLs, or raw SDK error messages.
 
-All rental endpoints require a tenant execution token, or the service token
+Rental execution endpoints require a tenant execution token, or the service token
 plus `X-SpotBot-Tenant`. The upstream must authorize the request before calling
 this API. Tokens are not end-customer browser credentials.
+The independent gateway instead uses `SPOTBOT_RENTAL_GATEWAY_TOKEN`, scoped to
+delivery reads and acknowledgement of a known rental. Its delivery response omits
+RFQ commercial terms/accounting. It cannot execute procurement, recovery, backup,
+policy, renewal or release commands, or list inventory. Keep this token distinct
+from all execution and signing secrets.
 
 Generate a sample with fresh UTC deadlines:
 

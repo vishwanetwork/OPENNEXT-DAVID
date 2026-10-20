@@ -85,6 +85,10 @@ def configuration_checks(settings, rules, gateway=None):
                     "gateway_signing_secret",
                     len(settings.spotbot_gateway_webhook_secret.get_secret_value()) >= 32,
                 ),
+                check(
+                    "gateway_restricted_token",
+                    len(settings.spotbot_rental_gateway_token.get_secret_value()) >= 32,
+                ),
             ]
         )
     if gateway:
@@ -97,7 +101,7 @@ def configuration_checks(settings, rules, gateway=None):
                 check(
                     "gateway_bot_token_matches",
                     gateway.bot_token.get_secret_value()
-                    == settings.spotbot_api_key.get_secret_value(),
+                    == settings.spotbot_rental_gateway_token.get_secret_value(),
                 ),
                 check(
                     "gateway_signing_secret_matches",
