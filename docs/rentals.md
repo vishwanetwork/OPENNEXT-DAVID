@@ -247,3 +247,5 @@ mutations, cross-region copying, tenant isolation, and transactional outbox
 rollback. AWS requests are additionally validated against botocore schemas.
 Real boot, network reachability, IAM policies, and performance require a
 controlled AWS integration run with an agreed spending limit.
+The [staging acceptance tool](rental-acceptance.md) provides an opt-in end-to-end
+run with file validation, generation switching, release and cleanup reporting.

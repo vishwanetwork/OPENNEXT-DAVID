@@ -657,6 +657,17 @@ Measure recovery time as detection + capture/image preparation + capacity wait
 component. Test several representative disk sizes; report observed percentiles
 and backup-age distributions before setting an SLA.
 
+The staging acceptance tool defaults to a read-only execution plan. An explicit
+execution flag uses a supplied bounded RFQ and the normal bot/gateway APIs;
+it never invokes EC2 purchases directly. Persist a unique run journal before
+submission, use a stable business idempotency key, verify root/data file hashes
+and permissions over SSH before/after recovery, and request release in a finally
+block even when creation outcome is uncertain. Report unresolved cleanup and
+retained storage explicitly. SSH uses a dedicated known-hosts file; first-use
+trust is an explicit staging option and never accepts a changed key. Enforce
+short final retention for test runs. Actual execution requires approved cloud
+permissions, networking, gateway DNS/TLS, and a spending limit in the RFQ.
+
 ## 12. Required deployment inputs
 
 - Upstream execution API owner, authentication arrangement, and the RFQ field

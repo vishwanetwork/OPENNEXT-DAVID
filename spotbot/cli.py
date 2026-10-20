@@ -34,6 +34,11 @@ def main():
     readiness.add_argument("--rfq", required=True, help="Path to a structured rental request JSON")
     readiness.add_argument("--aws", action="store_true", help="Inspect AWS using read-only SDK calls")
     readiness.add_argument("--gateway", action="store_true", help="Also validate .env.gateway against bot settings")
+    acceptance = commands.add_parser("rental-acceptance", help="Plan or explicitly execute a bounded staging recovery test")
+    acceptance.add_argument("--rfq", required=True)
+    acceptance.add_argument("--run-id", required=True, help="Unique UUID for this acceptance run")
+    acceptance.add_argument("--report", help="New journal path; defaults to logs/acceptance/<run-id>.json")
+    acceptance.add_argument("--execute", action="store_true", help="Create, recover and release a real rental using .env.acceptance")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.command == "serve":
@@ -69,6 +74,31 @@ def main():
             raise SystemExit(1) from None
         print(json.dumps(result, indent=2))
         raise SystemExit(0 if result["configuration_ready"] and result["cloud_preflight_passed"] is not False else 1)
+    elif args.command == "rental-acceptance":
+        from pathlib import Path
+
+        from spotbot.rental_acceptance import Acceptance, AcceptanceError, AcceptanceSettings, plan
+        from spotbot.rental_models import RentalRequest
+
+        async def execute():
+            runner = Acceptance(AcceptanceSettings(), request, args.run_id,
+                args.report or Path("logs/acceptance") / (planned["run_id"] + ".json"))
+            try:
+                return await runner.execute()
+            finally:
+                await runner.close()
+
+        try:
+            request = RentalRequest.model_validate_json(Path(args.rfq).read_text())
+            planned = plan(request, args.run_id)
+            result = asyncio.run(execute()) if args.execute else planned
+        except AcceptanceError as exc:
+            print(json.dumps({"error": str(exc)}))
+            raise SystemExit(1) from None
+        except Exception:
+            print(json.dumps({"error": "acceptance_failed_check_configuration_and_run_journal"}))
+            raise SystemExit(1) from None
+        print(json.dumps(result, indent=2))
     else:
         settings = Settings()
         print(

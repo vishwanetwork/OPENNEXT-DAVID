@@ -125,6 +125,8 @@ def install(app, service):
             "ended_at",
             "verified_at",
             "error",
+            "deleted_volumes",
+            "deleted_volume_times",
         }
         return {
             "items": [{k: v for k, v in g.items() if k in allowed} for g in engine.generations(row)]

@@ -10,6 +10,7 @@ def main():
     parser.add_argument("--region", default="us-west-2")
     parser.add_argument("--ssh-key", required=True)
     parser.add_argument("--hours", type=int, default=2)
+    parser.add_argument("--acceptance", action="store_true", help="Use short backup retention for an opt-in staging test")
     args = parser.parse_args()
     if args.hours < 1:
         parser.error("--hours must be positive")
@@ -34,6 +35,8 @@ def main():
             "require_gateway_ack": True,
         }
     }
+    if args.acceptance:
+        value["rfq"]["backup"] = {"interval_seconds": 900, "final_retention_seconds": 60}
     print(json.dumps(value, indent=2))
 
 
