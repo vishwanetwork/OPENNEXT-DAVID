@@ -1,7 +1,9 @@
 # GPU Server Procurement, Backup, and Recovery Plan
 
-Status: Design implemented by the protected rental API. See `rentals.md` for
-current execution capabilities, deployment prerequisites, and integration limits.
+Status: The protected rental API implements the first AWS lifecycle. The managed
+gateway in section 8A has an initial implementation and local acceptance tests;
+production deployment and a real GPU recovery run remain pending. See
+`rentals.md` and `gateway.md` for current capabilities and deployment prerequisites.
 Date: 2026-10-20
 Code baseline reviewed: `70f308c`.
 
@@ -336,6 +338,187 @@ fingerprint if it changes. An SSH gateway can keep a stable hostname or port,
 but existing SSH sessions still disconnect. HTTP gateway routes can preserve a
 stable URL; in-flight requests still require appropriate retry behavior.
 
+## 8A. Managed SSH and HTTP gateway
+
+### Scope and ownership
+
+The project will implement the gateway, rather than require an existing external
+gateway product. It is an independent process deployed outside customer Spot
+instances, using the same repository and image as the bot. It has no cloud
+procurement credentials and never purchases, terminates, snapshots, or restores
+instances. The bot remains the sole owner of the rental lifecycle.
+
+The gateway provides a stable SSH hostname and assigned TCP port for each rental,
+and an optional stable HTTPS hostname for the customer HTTP service. Replacing a
+GPU VM changes the backend route, not those public connection coordinates.
+Existing SSH connections, HTTP requests, and streams can disconnect during
+recovery. Clients must reconnect; memory and TCP sessions cannot migrate.
+
+The initial release supports ordinary SSH TCP forwarding, HTTP request/response
+traffic and streaming responses. HTTP WebSocket upgrades, SSH user management,
+browser terminals, and a replicated gateway cluster are outside this release.
+It does not install an inference server or add application authentication inside
+the GPU VM. RFQ authoring, payments, and customer notification UI remain upstream.
+
+### Public and private interfaces
+
+| Interface | Authentication and purpose |
+|---|---|
+| `POST /v1/gateway/events` | Existing bot webhook HMAC, timestamp, and event ID; durable lifecycle event ingestion |
+| `GET /v1/gateway/rentals/{id}/connection` | Gateway service token plus trusted tenant identity; stable endpoints, readiness, and HTTP access token |
+| `GET /health` | Redacted worker health; no credentials, routes, or backend IP inventory |
+| Assigned SSH TCP port | Forward encrypted SSH bytes to the currently authorized VM; the VM validates the customer's SSH key |
+| `https://r-<rental-id>.<gateway-domain>/...` | Per-rental HTTP access token; reverse proxy to the RFQ-approved HTTP service |
+
+Connection lookup is a trusted upstream service interface, not an end-customer
+browser API. Tenant A cannot read tenant B's endpoints or access tokens. The
+upstream presents the resulting connection details to its authenticated user.
+HTTP access uses a bearer token or a dedicated access-token header when the
+customer application also needs its own Authorization header. Gateway access
+credentials are stripped before forwarding. Do not put access tokens in URLs.
+
+The gateway forwards SSH without decrypting it, storing private SSH keys, or
+changing `authorized_keys`. The customer continues to use the public key
+registered for the RFQ. Server host-key verification remains the SSH client's
+responsibility. Restore normally retains host keys from the protected root disk;
+a changed key must be independently verified, never silently trusted.
+
+### Durable routing and fencing
+
+Use SQLite, MySQL, or DynamoDB through the existing storage adapters, with a
+separate gateway database/table and worker ownership lock. Never point bot and
+gateway at the same database/table: their independent ownership locks and
+credentials must not conflict. Store the tenant, rental ID, assigned SSH port,
+generation, highest observed rental state version, backend, expiry, pending
+reconciliation, and last successful authorization time. Do not persist raw
+event histories indefinitely or store cloud keys.
+
+The route is keyed by tenant and stable rental ID. Assign a TCP port once and
+persist it before opening the listener. Do not reuse a retired rental's port in
+the initial release; stale client configurations must not reach another tenant.
+Port exhaustion is an explicit delivery error. A gateway restart restores port
+assignments, then rechecks current bot state before enabling traffic.
+
+Only rental-record events advance the routing watermark. Backup-record events
+carry a separate resource version and must not change the rental watermark.
+Verify the HMAC over the original request bytes, reject expired signatures and
+mismatched event IDs, and commit accepted routing intent before acknowledging
+event delivery. Repeated or out-of-order events cannot regress the current
+generation or state version. A tenant mismatch is rejected.
+
+Events trigger reconciliation; they are not sufficient authority to install an
+arbitrary supplied IP. Fetch current rental state from the configured bot over
+an authenticated connection. The fetched state must be at least as recent as
+the accepted event watermark. No caller-supplied callback or backend URL is
+fetched. Validate backend IP literals and ports against operator network policy;
+metadata, loopback, link-local, and private addresses are blocked unless an
+operator deliberately enrolls the required target CIDRs.
+
+### Initial handoff and recovery switching
+
+1. The bot validates the guest and initial backup, enters `DELIVERING`, and emits
+   `rental.handoff`. Production gateway rentals use `require_gateway_ack=true`.
+2. The gateway durably records the event and assigned port, obtains current bot
+   state, validates the target, checks the SSH banner, and checks the optional
+   HTTP health endpoint specified by the accepted RFQ.
+3. Prepare the new route and acknowledge the exact generation through the bot's
+   existing `gateway-ack` endpoint. Enable public forwarding only after this
+   acknowledgement succeeds and the generation/expiry are still current. A
+   successful probe alone must not override a failed or stale acknowledgement.
+4. Return stable connection metadata to the upstream through the gateway API.
+   Optional public gateway metadata can also accompany the bot acknowledgement;
+   per-rental HTTP access tokens must not enter ordinary lifecycle events.
+5. On recovering, unavailable, ending, closed, or other non-deliverable state,
+   revoke the old route and close its active tunnels/streams. A recovery never
+   falls back to a previous generation while a new route is being prepared.
+6. When the replacement passes bot restore validation, repeat the same protocol
+   for its generation using the original public hostname and TCP port.
+
+`rental.degraded` and `rental.healthy` keep the current route while the bot still
+authorizes that running generation. The guest heartbeat is not a gateway routing
+lease. The gateway independently polls the bot, so a lost webhook is recoverable.
+An accepted signed revoke event disables traffic even if the bot lookup is
+temporarily unavailable. Expiry is also enforced locally on every new connection
+and during the worker cycle.
+
+Use a bounded authorization lease, initially 60 seconds since the last successful
+bot state check. After that interval without successful reconciliation, stop
+forwarding and close active connections rather than retain a possibly revoked
+route indefinitely. This deliberately trades availability during a prolonged bot
+outage for bounded stale access. Make the lease configurable and expose this
+failure separately from VM health. A healthy bot worker does not prove that an
+instance's application is available.
+
+### Proxy and credential boundaries
+
+Every new SSH or HTTP connection checks route readiness, generation, lease and
+absolute rental expiry. A generation change, revoke, expiry, or lost storage
+ownership cancels existing forwarding sessions. Implement bounded connect/read
+timeouts and backpressure; do not buffer model downloads into memory. Preserve
+HTTP methods, paths, query strings, streaming bytes, and relevant headers. Strip
+hop-by-hop and untrusted forwarding headers. Never follow backend redirects on
+the gateway's behalf. Reject unsupported upgrade requests explicitly.
+Keep HTTP proxy and bot control requests in separate connection pools so long
+customer streams cannot starve authorization checks and gateway acknowledgements.
+
+Use separate secrets for bot API access, gateway operator API access, webhook
+verification, and customer HTTP access. The configured bot URL is trusted
+operator configuration. A request header cannot change the bot origin. Disable
+environment HTTP proxies for internal state lookups and backend proxy traffic.
+Redact secrets and request payloads from logs and validation errors. Access logs
+must not expose credentials. Keep private APIs protected even when the public
+HTTP proxy is reachable.
+
+### Deployment and operations
+
+Deploy one gateway worker per gateway database initially. The HTTP application
+runs behind an operator-managed TLS reverse proxy; publish wildcard DNS and a
+wildcard certificate for `*.gpu.<domain>` (or equivalent chosen domain). Publish
+a stable DNS record for the SSH gateway. Configure the reserved TCP port range
+and firewall it explicitly. A container must publish that entire range, or use
+the existing Linux host-network deployment pattern.
+
+The GPU security group permits SSH and the requested HTTP port from the gateway
+egress IP or private network. It need not expose those VM ports to the internet.
+The bot may also need health-probe access. DNS records, TLS certificates, public
+firewall rules, and AWS permission changes are deployment steps; adding code
+must not silently modify them. Local integration can run with loopback targets
+explicitly enabled. A production domain and allowed network ranges are required
+before public rollout.
+
+The gateway has an independent health check, persistent data volume or remote
+database, restart policy, and redacted error counters/state. Its first release
+is a single availability boundary: stable endpoints do not imply gateway high
+availability. A later replicated deployment requires distributed port allocation,
+leases, shared network listeners, and load-balancer design.
+
+### Required gateway acceptance cases
+
+- A signed handoff yields stable SSH and optional HTTP endpoints only after the
+  bot accepts the current generation acknowledgement.
+- Real TCP forwarding preserves SSH bytes; the VM's key authentication remains
+  effective. Unauthorized HTTP requests cannot contact the backend.
+- HTTP bodies and streaming responses work, access credentials are stripped,
+  query strings are preserved, and backend redirects are not followed.
+- Duplicate events, old generations, stale state versions, and backup events
+  cannot replace or revoke a newer authorized route.
+- Recovery closes old sessions; replacement reuses the public endpoint and
+  reaches only the newly verified generation.
+- Expiry, release, lease timeout, and storage ownership loss stop forwarding.
+- A restart keeps the port assignment but does not serve stale backend state
+  before reconciliation. Bind failures leave the handoff unacknowledged.
+- Missing events are repaired by polling. A transient bot outage within the
+  lease does not immediately change a valid route.
+- Tenant isolation, tampered/expired HMACs, secret redaction, prohibited targets,
+  and port exhaustion are covered by deterministic tests.
+- A staging run validates actual DNS/TLS, SSH authentication, HTTP access,
+  whole-server restore, route replacement, expiry, and storage retention.
+
+Implementation order: gateway configuration and persistence; signed event
+receiver and fenced reconciliation; SSH forwarding; authenticated HTTP proxy;
+deployment examples and acceptance tooling; controlled AWS staging validation.
+Automated local tests do not replace the final live acceptance run.
+
 ## 9. State, APIs, and durable coordination
 
 Use a stable rental/server ID across replacements. Each cloud VM is a separate
@@ -480,7 +663,9 @@ and backup-age distributions before setting an SLA.
   mapping/version contract. A structured test RFQ can be used before the live
   upstream integration is available.
 - Gateway SSH/HTTP registration, revoke/update, acknowledgement, and customer
-  notification contracts.
+  notification contracts. The managed gateway is now owned by this project;
+  supply its public domain, TLS/DNS arrangement, approved target networks, and
+  deployment host. Customer-facing notification presentation remains upstream.
 - Approved AWS recovery regions, Linux image profiles, GPU compatibility rules,
   and a budget for compute, retained disks, snapshots, and cross-region copies.
 - A dedicated control-plane role with scoped snapshot/image/volume inventory,

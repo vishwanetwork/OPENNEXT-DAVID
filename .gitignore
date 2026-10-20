@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.gateway.example
 .venv/
 data/
 __pycache__/

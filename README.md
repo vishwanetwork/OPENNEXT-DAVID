@@ -169,6 +169,13 @@ See [rental configuration and API](docs/rentals.md) and the
 default and require additional AWS recovery permissions and a guest-reachable
 HTTPS callback URL. Upstream RFQ authoring and payment processing are external.
 
+The optional managed gateway runs independently with `spotbot gateway` and its
+own database. It provides stable SSH ports and authenticated HTTP hostnames,
+acknowledges verified generations, and revokes old routes during recovery or
+expiry. See [gateway deployment and integration](docs/gateway.md),
+`.env.gateway.example`, and `compose.gateway.yaml`. DNS, TLS, firewall changes,
+and a controlled live GPU acceptance run are required before public deployment.
+
 ## SF Compute and SkyPilot
 
 SkyPilot is not installed or integrated. A future workload executor can use it while preserving independent procurement and workload states.

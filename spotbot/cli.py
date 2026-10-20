@@ -27,6 +27,9 @@ def main():
     collector = commands.add_parser("collect")
     collector.add_argument("--provider", choices=["lambda", "tensordock", "vultr", "shadeform", "aws"])
     commands.add_parser("check-config")
+    gateway = commands.add_parser("gateway", help="Serve stable rental SSH and HTTP entry points")
+    gateway.add_argument("--host", default="127.0.0.1")
+    gateway.add_argument("--port", type=int, default=18084)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if args.command == "serve":
@@ -34,6 +37,14 @@ def main():
 
         uvicorn.run(
             "spotbot.api:create_app", factory=True, host=args.host, port=args.port, workers=1
+        )
+    elif args.command == "gateway":
+        import uvicorn
+
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        uvicorn.run(
+            "spotbot.gateway:create_gateway_app", factory=True,
+            host=args.host, port=args.port, workers=1, access_log=False,
         )
     elif args.command == "collect":
         raise SystemExit(asyncio.run(collect(args.provider)))

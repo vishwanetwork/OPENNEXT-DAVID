@@ -158,6 +158,9 @@ and reject older generations/state versions. On recovering/unavailable/ending
 events, revoke the prior route. `rental.degraded` and `rental.healthy` do not
 change the route (see below). Use these events in the upstream notification
 service to inform the customer. Notification transport itself remains upstream.
+The project includes an independent [managed gateway](gateway.md) for stable
+SSH/HTTP entry points. Configure its signed event receiver before submitting
+rentals that require acknowledgement; the bot does not start the gateway process.
 `resource_type` identifies the event's record. Only rental-record events advance
 the rental `state_version`; backup events have a separate `resource_version`
 and a null `state_version` and must not advance the gateway's routing watermark.

@@ -31,6 +31,13 @@ flowchart LR
 | `rentals.py`, `rental_models.py` | RFQ validation, durable server generations, backup and recovery lifecycle |
 | `rental_aws.py`, `guest_agent.py` | Protected EBS disks, native snapshots/restore images, guest readiness and interruption reports |
 | `storage/workflows.py`, `rental_api.py` | Versioned tenant-scoped workflow records, atomic events, and rental endpoints |
+| `gateway.py`, `gateway_config.py` | Independent stable SSH/HTTP entry points, signed events, tenant isolation and generation-fenced routing |
+
+The managed gateway runs as a separate process with its own database/table and
+worker lock. It consumes the bot outbox and reconciles current rental state over
+the authenticated API before routing. It has no cloud procurement role. See
+[Gateway](gateway.md) for deployment and [Recovery plan](spot-instance-recovery-plan.md)
+section 8A for the handoff and route-revocation contract.
 
 A storage interface persists collections, price snapshots, orders, and events in SQLite, MySQL, or DynamoDB. See [Storage Backends](storage.md) for configuration and backend-specific guarantees. There is no independent message broker. One asynchronous background loop collects catalogs, processes active orders, and delivers pending events. Backend-specific locks enforce one service per store; asynchronous locks serialize collection and order processing.
 
