@@ -339,7 +339,16 @@ class Readiness:
                     result["regions"].append(
                         await asyncio.to_thread(self.region, rules, region, account)
                     )
-            result["cloud_preflight_passed"] = any(r["preflight_passed"] for r in result["regions"])
+            # The bot may buy in any RFQ Region, so every Region must be recovery-ready.
+            # Only the current lack of an affordable offer is tolerated per Region.
+            result["cloud_preflight_passed"] = any(
+                r["preflight_passed"] for r in result["regions"]
+            ) and all(
+                c["status"] == "passed"
+                for r in result["regions"]
+                for c in r["checks"]
+                if c["required"] and c["name"] != "affordable_quota_eligible_offers"
+            )
         except Exception as exc:
             result["cloud_preflight_passed"] = False
             result["checks"].append(check("aws_identity", False, error=error_code(exc)))

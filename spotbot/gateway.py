@@ -94,7 +94,7 @@ class Gateway:
 
     def access_token(self, rental_id):
         return hmac.new(
-            self.settings.api_key.get_secret_value().encode(),
+            self.settings.http_token_secret.get_secret_value().encode(),
             ("rental-http:" + rental_id).encode(),
             hashlib.sha256,
         ).hexdigest()

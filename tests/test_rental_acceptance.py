@@ -192,12 +192,58 @@ def test_cleanup_distinguishes_no_allocation_from_unknown_or_retained_resources(
     assert storage_deletion_reported(backups, generations) is clean
 
 
+def test_retained_storage_names_every_billable_resource():
+    from spotbot.rental_acceptance import retained_storage
+
+    backups = [
+        {"id": "gone", "state": "DELETED", "snapshots": {"/dev/sda1": "snap-old"}},
+        {
+            "id": "final",
+            "state": "AVAILABLE",
+            "region": "us-west-2",
+            "snapshots": {"/dev/sda1": "snap-root", "/dev/sdf": "snap-data"},
+            "images": {"us-west-2": "ami-final"},
+        },
+    ]
+    generations = [
+        {"generation": 1, "state": "STOPPED", "instance_id": "i-1", "volumes": [{"volume_id": "vol-a"}], "deleted_volumes": ["vol-a"]},
+        {"generation": 2, "state": "STOPPED", "instance_id": "i-2", "volumes": [], "region": "us-west-2"},
+        {"generation": 3, "state": "REJECTED", "instance_id": None},
+    ]
+    assert retained_storage(backups, generations) == [
+        dict(kind="backup", id="final", state="AVAILABLE", region="us-west-2",
+             snapshot_ids=["snap-data", "snap-root"], image_ids=["ami-final"]),
+        dict(kind="generation", generation=2, region="us-west-2", state="STOPPED",
+             instance_id="i-2", volume_ids=[], inventory_complete=False),
+    ]
+
+
+async def test_unreachable_bot_during_cleanup_is_reported_as_unknown_inventory(scenario):
+    runner, state, client = scenario
+    original = runner.storage
+
+    async def unreachable():
+        raise httpx.ConnectError("bot unavailable")
+
+    runner.storage = unreachable
+    try:
+        with pytest.raises(AcceptanceError, match="cleanup_requires_operator"):
+            await runner.execute()
+        result = json.loads(runner.report_path.read_text())
+        assert result["retained_storage"] == "unknown_query_bot_for_rental"
+        assert result["rental_id"] == runner.rental_id
+    finally:
+        runner.storage = original
+        await client.aclose()
+
+
 async def test_success_preserves_idempotency_and_verifies_final_cleanup(scenario):
     runner, state, client = scenario
     try:
         state["timeout_once"] = True
         result = await runner.execute()
         assert result["status"] == "passed" and result["cleanup"] == "storage_deletion_reported"
+        assert result["retained_storage"] == []
         assert result["generation"] == 2 and result["http_verified"]
         assert len(state["create_keys"]) == 2 and len(set(state["create_keys"])) == 1
         assert state["release"] == 1
@@ -234,6 +280,17 @@ async def test_incomplete_storage_cleanup_is_not_reported_as_success(scenario):
             await runner.execute()
         result = json.loads(runner.report_path.read_text())
         assert result["status"] == "failed" and result["cleanup"] == "unconfirmed"
+        assert result["retained_storage"] == [
+            dict(
+                kind="generation",
+                generation=None,
+                region=None,
+                state="STOPPED",
+                instance_id="i-staging",
+                volume_ids=["vol-data", "vol-root"],
+                inventory_complete=True,
+            )
+        ]
         assert state["closed"]
     finally:
         await client.aclose()

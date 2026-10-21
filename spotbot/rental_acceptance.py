@@ -35,6 +35,39 @@ def storage_deletion_reported(backups, generations):
     )
 
 
+def retained_storage(backups, generations):
+    """Name every backup, disk, or uncertain allocation that may still be billed."""
+    retained = [
+        dict(
+            kind="backup",
+            id=b.get("id"),
+            state=b.get("state"),
+            region=b.get("region"),
+            snapshot_ids=sorted(set((b.get("snapshots") or {}).values())),
+            image_ids=sorted(set((b.get("images") or {}).values())),
+        )
+        for b in backups
+        if b.get("state") != "DELETED"
+    ]
+    for g in generations:
+        volumes = {v["volume_id"] for v in g.get("volumes", [])}
+        remaining = sorted(volumes - set(g.get("deleted_volumes", [])))
+        inventory_complete = not g.get("instance_id") or bool(volumes)
+        if remaining or not inventory_complete or g.get("state") not in {"STOPPED", "REJECTED"}:
+            retained.append(
+                dict(
+                    kind="generation",
+                    generation=g.get("generation"),
+                    region=g.get("region"),
+                    state=g.get("state"),
+                    instance_id=g.get("instance_id"),
+                    volume_ids=remaining,
+                    inventory_complete=inventory_complete,
+                )
+            )
+    return retained
+
+
 class AcceptanceSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SPOTBOT_ACCEPTANCE_",
@@ -138,6 +171,7 @@ class Acceptance:
         self.own_client = client is None
         self.ssh = ssh or self.run_ssh
         self.http_endpoint = None
+        self.last_storage = None
         self.report = dict(
             run_id=self.run_id,
             rental_id=self.rental_id,
@@ -440,23 +474,37 @@ class Acceptance:
                     )
                     self.checkpoint("closed")
 
-                    async def storage():
-                        backups = await self.api(f"/v1/rentals/{self.rental_id}/backups")
-                        generations = await self.api(f"/v1/rentals/{self.rental_id}/generations")
-                        return storage_deletion_reported(backups["items"], generations["items"])
-
-                    await self.wait(storage, bool, cleanup=True)
+                    await self.wait(self.storage, bool, cleanup=True)
                     self.report["cleanup"] = "storage_deletion_reported"
+                    self.report["retained_storage"] = []
                     self.checkpoint("storage_cleanup_verified")
                 except BaseException as exc:
                     self.report.update(cleanup="unconfirmed", status="failed")
                     self.report["cleanup_error"] = (
                         str(exc) if isinstance(exc, AcceptanceError) else type(exc).__name__
                     )
+                    await self.record_retained_storage()
             self.checkpoint()
         if self.report["cleanup"] != "storage_deletion_reported":
             raise AcceptanceError("cleanup_requires_operator_attention")
         return self.report
+
+    async def storage(self):
+        backups = await self.api(f"/v1/rentals/{self.rental_id}/backups")
+        generations = await self.api(f"/v1/rentals/{self.rental_id}/generations")
+        self.last_storage = (backups["items"], generations["items"])
+        return storage_deletion_reported(*self.last_storage)
+
+    async def record_retained_storage(self):
+        """Give the operator the exact cleanup inventory instead of only an error code."""
+        try:
+            await self.storage()
+        except Exception:
+            pass  # Fall back to the last inventory the bot reported.
+        if self.last_storage is None:
+            self.report["retained_storage"] = "unknown_query_bot_for_rental"
+        else:
+            self.report["retained_storage"] = retained_storage(*self.last_storage)
 
     async def close(self):
         if self.own_client:

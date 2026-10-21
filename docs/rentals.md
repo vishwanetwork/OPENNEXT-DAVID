@@ -45,8 +45,13 @@ does not require model checkpoints or a separate S3 model store.
 7. Provision an SQS queue and DLQ for each recovery Region. Route EC2 Spot
    interruption warnings and EC2 termination/state notifications to it with
    EventBridge. Restrict the queue policy to those rules/account. Configure the
-   Region-to-queue JSON in `SPOTBOT_RENTAL_INTERRUPTION_QUEUES`. Guest IMDS
-   polling and cloud inspection also detect interruption/loss.
+   Region-to-queue JSON in `SPOTBOT_RENTAL_INTERRUPTION_QUEUES`. Every rental
+   Region requires a queue: startup fails otherwise, and a request or queued RFQ
+   naming a Region without one stops before procurement with
+   `interruption_queue_not_configured`. Guest IMDS polling and cloud inspection
+   are fallbacks that also detect interruption/loss. `rental-check --aws` fails
+   when any RFQ Region's interruption delivery or other deployment check fails;
+   only a Region with no currently affordable offer is tolerated.
 
 The guest agent has no procurement IAM role. It needs Python 3, systemd,
 cloud-init, `lsblk`, `blkid`, mount tools, ext4 utilities for new data disks, and
@@ -142,7 +147,9 @@ Rental execution endpoints require a tenant execution token, or the service toke
 plus `X-SpotBot-Tenant`. The upstream must authorize the request before calling
 this API. Tokens are not end-customer browser credentials.
 The independent gateway instead uses `SPOTBOT_RENTAL_GATEWAY_TOKEN`, scoped to
-delivery reads and acknowledgement of a known rental. Its delivery response omits
+delivery reads and positive acknowledgement of a known rental. A rejection
+(`accepted=false`) ends the rental, so this token receives HTTP 403 for it; only
+tenant or administrator credentials can reject a handoff. Its delivery response omits
 RFQ commercial terms/accounting. It cannot execute procurement, recovery, backup,
 policy, renewal or release commands, or list inventory. Keep this token distinct
 from all execution and signing secrets.
@@ -217,8 +224,8 @@ point. A recovery also verifies canary hashes and the original mount layout.
 
 `rental.handoff` contains the candidate connection and generation. The gateway
 checks reachability, registers the candidate, and calls `gateway-ack` for that
-generation. `rental.active` indicates acknowledgement. A rejection starts
-release. Receivers must verify the existing webhook HMAC, deduplicate event IDs,
+generation. `rental.active` indicates acknowledgement. A rejection by a tenant or
+administrator credential starts release. Receivers must verify the existing webhook HMAC, deduplicate event IDs,
 and reject older generations/state versions. On recovering/unavailable/ending
 events, revoke the prior route. `rental.degraded` and `rental.healthy` do not
 change the route (see below). Use these events in the upstream notification

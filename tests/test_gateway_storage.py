@@ -17,6 +17,7 @@ async def test_gateway_routing_intent_is_durable_and_tenant_scoped(storage):
         bot_token="b" * 40,
         api_key="a" * 40,
         webhook_secret="w" * 40,
+        http_token_secret="h" * 40,
         public_ssh_host="ssh.example.com",
     )
     storage.acquire()

@@ -100,8 +100,14 @@ record that later verification separately. A test that cannot allocate its
 replacement is still a failed restore acceptance, even after successful cleanup.
 
 If cleanup cannot be confirmed, the journal records `status=failed`,
-`cleanup=unconfirmed` and a sanitized cleanup error. Inspect the rental ID through
-the bot and cloud console immediately; retained storage may still incur charges.
+`cleanup=unconfirmed`, a sanitized cleanup error, and `retained_storage`: every
+backup not yet deleted (with its snapshot and image IDs), every generation volume
+not yet deleted, and any allocated instance whose disk inventory is unknown. If
+the bot cannot be reached at that point, the last reported inventory is used, or
+`unknown_query_bot_for_rental` when none was obtained. The command's error output
+repeats the journal path, rental ID and this inventory. Inspect the rental ID
+through the bot and cloud console immediately; retained storage may still incur
+charges.
 A hard process kill, machine failure, or network partition can prevent the final
 release request. The RFQ's absolute expiry remains the bot's fallback. Never
 discard an unresolved journal or run another purchase blindly.

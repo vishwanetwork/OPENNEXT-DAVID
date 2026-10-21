@@ -20,6 +20,8 @@ class GatewaySettings(BaseSettings):
     bot_token: SecretStr = Field(min_length=32)
     api_key: SecretStr = Field(min_length=32)
     webhook_secret: SecretStr = Field(min_length=32)
+    # Customer HTTP tokens are derived from this key, never from operator credentials.
+    http_token_secret: SecretStr = Field(min_length=32)
     public_ssh_host: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$")
     public_http_domain: str = Field("", pattern=r"^$|^[a-z0-9][a-z0-9.-]{0,200}$")
     ssh_bind: str = "0.0.0.0"
@@ -78,11 +80,12 @@ class GatewaySettings(BaseSettings):
                     self.api_key.get_secret_value(),
                     self.bot_token.get_secret_value(),
                     self.webhook_secret.get_secret_value(),
+                    self.http_token_secret.get_secret_value(),
                 }
             )
-            != 3
+            != 4
         ):
-            raise ValueError("Gateway API, bot, and webhook credentials must be distinct")
+            raise ValueError("Gateway API, bot, webhook, and HTTP token secrets must be distinct")
         return self
 
     def target_allowed(self, host):

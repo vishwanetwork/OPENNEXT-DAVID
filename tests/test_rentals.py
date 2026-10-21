@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -178,6 +179,9 @@ def rental_env(service_factory, monkeypatch):
         spotbot_enabled_providers="aws",
         spotbot_aws_regions="us-west-2,us-east-1",
         spotbot_rental_public_url="https://bot.example.com",
+        spotbot_rental_interruption_queues=json.dumps(
+            {r: f"https://sqs.{r}.amazonaws.com/123456789012/interruptions" for r in ("us-west-2", "us-east-1")}
+        ),
         spotbot_rental_tenant_tokens=SecretStr(
             '{"tenant-a":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","tenant-b":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'
         ),
@@ -185,6 +189,12 @@ def rental_env(service_factory, monkeypatch):
     cloud = Cloud()
     service.providers["aws"] = SimpleNamespace(configured=True)
     service.rentals = RentalEngine(service, cloud)
+
+    async def no_queue_messages():
+        return None
+
+    # Tests deliver interruption events directly; the fake cloud has no SQS client.
+    monkeypatch.setattr(service.rentals, "poll_interruptions", no_queue_messages)
     rfq = dict(
         rfq_id="rfq-1",
         rfq_version=1,
@@ -362,6 +372,38 @@ async def test_recovery_region_enrollment_does_not_expand_legacy_regions(rental_
     row = env.engine.get(row["id"], "tenant-a")
     assert row["state"] == "ACTION_REQUIRED" and row["error"] == "region_not_enabled_for_rentals"
     assert not env.cloud.creates
+
+
+async def test_rentals_never_buy_where_interruption_warnings_cannot_arrive(rental_env):
+    env = rental_env
+    queues = json.loads(env.service.settings.spotbot_rental_interruption_queues)
+    queued, _ = env.engine.create(env.request, "tenant-a", "queue-removed-later")
+    env.service.settings.spotbot_rental_interruption_queues = json.dumps(
+        {"us-east-1": queues["us-east-1"]}
+    )
+    with pytest.raises(ValueError, match="interruption_queue_not_configured"):
+        env.engine.create(env.request, "tenant-a", "unmonitored-region")
+    await cycle(env)
+    row = env.engine.get(queued["id"], "tenant-a")
+    assert row["state"] == "ACTION_REQUIRED" and row["error"] == "interruption_queue_not_configured"
+    assert not env.cloud.creates
+
+
+def test_every_rental_region_requires_an_interruption_queue():
+    from spotbot.config import Settings
+
+    values = dict(
+        _env_file=None,
+        spotbot_rentals_enabled=True,
+        spotbot_aws_regions="us-west-2,us-east-1",
+        spotbot_rental_regions="us-west-2,us-east-1",
+        spotbot_rental_interruption_queues=json.dumps(
+            {"us-west-2": "https://sqs.us-west-2.amazonaws.com/123456789012/interruptions"}
+        ),
+    )
+    with pytest.raises(ValidationError, match="requires an interruption queue"):
+        Settings(**values)
+    assert Settings(**dict(values, spotbot_rental_regions="us-west-2")).rental_regions == ["us-west-2"]
 
 
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):

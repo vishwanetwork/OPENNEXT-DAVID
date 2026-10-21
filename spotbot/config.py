@@ -142,6 +142,8 @@ class Settings(BaseSettings):
             for r, u in queues.items()
         ):
             raise ValueError("Interruption queues must map enabled rental Regions to SQS URLs")
+        if self.spotbot_rentals_enabled and set(self.rental_regions) - set(queues):
+            raise ValueError("Every rental Region requires an interruption queue")
         if self.spotbot_rental_public_url:
             url = urlparse(self.spotbot_rental_public_url)
             if (

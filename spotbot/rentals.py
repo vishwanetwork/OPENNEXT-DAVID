@@ -57,6 +57,11 @@ class RentalEngine:
             raise LookupError("rental_not_found")
         return value
 
+    def unmonitored_regions(self, rules):
+        # Polling is only a fallback; never buy where interruption warnings cannot arrive.
+        queues = json.loads(self.settings.spotbot_rental_interruption_queues)
+        return sorted(set(rules.regions) - set(queues))
+
     def validate_rules(self, rules):
         if not self.settings.spotbot_rentals_enabled:
             raise ValueError("rentals_disabled")
@@ -66,6 +71,8 @@ class RentalEngine:
             raise ValueError("region_not_enabled_for_orders")
         if set(rules.regions) - set(self.settings.rental_regions):
             raise ValueError("region_not_enabled_for_rentals")
+        if self.unmonitored_regions(rules):
+            raise ValueError("interruption_queue_not_configured")
         if not self.settings.enabled("aws") or not self.service.providers["aws"].configured:
             raise ValueError("missing_aws_credentials")
         if not self.settings.spotbot_rental_public_url:
@@ -658,6 +665,10 @@ class RentalEngine:
         now = utcnow()
         if set(rules.regions) - set(self.settings.rental_regions):
             row.update(state="ACTION_REQUIRED", error="region_not_enabled_for_rentals")
+            self.save(row, "action_required")
+            return
+        if self.unmonitored_regions(rules):
+            row.update(state="ACTION_REQUIRED", error="interruption_queue_not_configured")
             self.save(row, "action_required")
             return
         if not self.settings.spotbot_live_orders_enabled or not self.settings.enabled("aws"):

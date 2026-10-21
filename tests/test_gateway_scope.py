@@ -8,6 +8,7 @@ from pydantic import SecretStr, ValidationError
 
 from spotbot.api import create_app
 from spotbot.config import Settings
+from tests.test_rentals import cycle, report_ready
 from tests.test_rentals import rental_env as rental_env  # noqa: F401
 
 
@@ -73,6 +74,41 @@ async def test_gateway_token_has_a_limited_delivery_view_and_no_execution_rights
                 "X-SpotBot-Tenant": "tenant-a",
             }
             assert "budget_usd" in (await client.get(base, headers=admin)).json()["rfq"]
+    finally:
+        await env.service.close()
+
+
+async def test_gateway_token_cannot_end_a_rental_by_rejecting_its_handoff(rental_env):
+    env = rental_env
+    token = "gateway-delivery-only-" * 3
+    env.service.settings.spotbot_rental_gateway_token = SecretStr(token)
+    row, _ = env.engine.create(env.request, "tenant-a", "gateway-reject")
+    for _ in range(20):
+        gen = env.engine.current(env.engine.get(row["id"], "tenant-a"))
+        if gen and gen.get("instance_id") and gen["state"] not in {"STOPPED", "REJECTED"}:
+            await report_ready(env, row["id"])
+        await cycle(env)
+        row = env.engine.get(row["id"], "tenant-a")
+        if row["state"] == "DELIVERING":
+            break
+    assert row["state"] == "DELIVERING"
+    url = f"/v1/rentals/{row['id']}/gateway-ack"
+    headers = {"Authorization": "Bearer " + token, "X-SpotBot-Tenant": "tenant-a"}
+    app = create_app(env.service.settings, env.service)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="https://bot.example.com"
+        ) as client:
+            body = {"generation": row["generation"], "accepted": False}
+            rejected = await client.post(url, json=body, headers=headers)
+            assert rejected.status_code == 403
+            current = env.engine.get(row["id"], "tenant-a")
+            assert current["state"] == "DELIVERING" and not current.get("end_requested")
+            body["accepted"] = True
+            accepted = await client.post(url, json=body, headers=headers)
+            assert accepted.status_code == 200
+            assert accepted.json()["authorization_scope"] == "gateway_delivery"
+            assert env.engine.get(row["id"], "tenant-a")["state"] == "ACTIVE"
     finally:
         await env.service.close()
 

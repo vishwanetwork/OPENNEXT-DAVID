@@ -88,12 +88,22 @@ def main():
             finally:
                 await runner.close()
 
+        planned = None
         try:
             request = RentalRequest.model_validate_json(Path(args.rfq).read_text())
             planned = plan(request, args.run_id)
             result = asyncio.run(execute()) if args.execute else planned
         except AcceptanceError as exc:
-            print(json.dumps({"error": str(exc)}))
+            failure = {"error": str(exc)}
+            journal = Path(args.report or Path("logs/acceptance") / ((planned or {}).get("run_id", "") + ".json"))
+            if planned and journal.is_file():
+                # Surface what may still be billed; the journal holds no credentials.
+                recorded = json.loads(journal.read_text())
+                failure.update(
+                    journal=str(journal),
+                    **{k: recorded.get(k) for k in ("run_id", "rental_id", "cleanup", "cleanup_error", "retained_storage")},
+                )
+            print(json.dumps(failure, indent=2))
             raise SystemExit(1) from None
         except Exception:
             print(json.dumps({"error": "acceptance_failed_check_configuration_and_run_journal"}))

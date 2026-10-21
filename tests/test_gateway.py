@@ -42,6 +42,7 @@ async def environment(tmp_path):
         bot_token="b" * 40,
         api_key="a" * 40,
         webhook_secret="w" * 40,
+        http_token_secret="h" * 40,
         public_ssh_host="ssh.example.com",
         public_http_domain="gpu.example.com",
         ssh_bind="127.0.0.1",
@@ -180,6 +181,8 @@ async def test_signed_events_tenant_lookup_and_http_proxy(environment):
         host = f"r-{env['id']}.gpu.example.com"
         assert (await client.get("/predict", headers={"Host": host})).status_code == 401
         token = result["http_access_token"]
+        # Customer tokens come from their own secret, not the operator API key.
+        assert token == hmac.new(b"h" * 40, b"rental-http:" + env["id"].encode(), hashlib.sha256).hexdigest()
         response = await client.post(
             "/predict?a=1",
             content=b"model-request",
@@ -339,6 +342,7 @@ def test_gateway_config_uses_independent_storage_and_credentials(tmp_path, monke
         bot_token="b" * 40,
         api_key="a" * 40,
         webhook_secret="w" * 40,
+        http_token_secret="h" * 40,
         public_ssh_host="ssh.example.com",
     )
     monkeypatch.setenv("SPOTBOT_STORAGE_BACKEND", "mysql")
@@ -350,6 +354,12 @@ def test_gateway_config_uses_independent_storage_and_credentials(tmp_path, monke
         GatewaySettings(**dict(values, bot_url="http://metadata.internal"))
     with pytest.raises(ValidationError):
         GatewaySettings(**dict(values, api_key=values["bot_token"]))
+    with pytest.raises(ValidationError):
+        GatewaySettings(**dict(values, http_token_secret=values["api_key"]))
+    without_http_secret = dict(values)
+    without_http_secret.pop("http_token_secret")
+    with pytest.raises(ValidationError):
+        GatewaySettings(**without_http_secret)
 
 
 async def test_expiry_timer_enforces_revocation_without_worker_tick(environment):

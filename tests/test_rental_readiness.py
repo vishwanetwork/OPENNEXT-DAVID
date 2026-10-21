@@ -15,6 +15,7 @@ from spotbot.models import utcnow
 from spotbot.rental_models import RFQ
 from spotbot.rental_readiness import (
     Readiness,
+    check,
     configuration_checks,
     error_code,
     passed,
@@ -240,6 +241,35 @@ async def test_readiness_rejects_order_region_without_recovery_enrollment(ready)
     assert result["regions"][0]["candidate_count"] == 0
 
 
+async def test_every_rfq_region_needs_working_interruption_delivery(ready, monkeypatch):
+    settings, rfq = ready
+    settings.spotbot_aws_regions = "us-west-2,us-east-1"
+    settings.spotbot_rental_interruption_queues = json.dumps(
+        {r: f"https://sqs.{r}.amazonaws.com/123456789012/interruptions" for r in ("us-west-2", "us-east-1")}
+    )
+    rfq.regions = ["us-west-2", "us-east-1"]
+    # The fake queue policy is bound to us-west-2, so us-east-1 delivery is broken.
+    result = await Readiness(settings, session=ReadOnlySession()).run(rfq, aws=True)
+    regions = {r["region"]: r for r in result["regions"]}
+    assert regions["us-west-2"]["preflight_passed"]
+    assert not regions["us-east-1"]["preflight_passed"]
+    assert not result["cloud_preflight_passed"]
+
+    def region(self, rules, name, account):
+        offers = name == "us-west-2"
+        checks = [
+            check("affordable_quota_eligible_offers", offers),
+            check("interruption_event_delivery", True),
+        ]
+        return dict(region=name, checks=checks, preflight_passed=offers, candidate_count=int(offers))
+
+    # A Region that is ready but currently has no affordable offer is not a deployment fault.
+    monkeypatch.setattr(Readiness, "region", region)
+    assert (await Readiness(settings, session=ReadOnlySession()).run(rfq, aws=True))[
+        "cloud_preflight_passed"
+    ]
+
+
 async def test_quota_price_and_missing_key_are_visible_without_launch(ready):
     settings, rfq = ready
     session = ReadOnlySession()
@@ -296,6 +326,7 @@ def test_gateway_must_match_keys_and_use_a_separate_database(ready):
         bot_token="delivery" * 8,
         webhook_secret="w" * 40,
         api_key="a" * 40,
+        http_token_secret="h" * 40,
         public_ssh_host="ssh.example.com",
         database_path=settings.spotbot_database_path,
     )

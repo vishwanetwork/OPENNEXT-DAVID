@@ -193,6 +193,9 @@ def install(app, service):
         request: GatewayAck,
         owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)],
     ):
+        if owner.gateway and not request.accepted:
+            # A rejection ends the rental; the gateway credential cannot release servers.
+            raise HTTPException(403, "gateway_token_scope_denied")
         return delivery_view(
             await async_guard(lambda: engine.gateway_ack(rental_id, owner.tenant, request)), owner
         )

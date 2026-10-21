@@ -13,8 +13,9 @@ The design and acceptance requirements are in section 8A of
    gateway access to IMDS and credentials explicitly; host networking alone is
    not a credential boundary. Do not deploy the gateway on a customer Spot VM.
 2. Copy `.env.gateway.example` to `.env.gateway` (ignored by Git). Set the bot URL,
-   its dedicated `SPOTBOT_RENTAL_GATEWAY_TOKEN`, a separate gateway API key, and the
-   webhook signing secret. Gateway secrets require at least 32 characters.
+   its dedicated `SPOTBOT_RENTAL_GATEWAY_TOKEN`, a separate gateway API key, the
+   webhook signing secret, and a separate `SPOTBOT_GATEWAY_HTTP_TOKEN_SECRET`.
+   Gateway secrets must be distinct and at least 32 characters.
 3. Configure public SSH DNS and optionally `*.gpu.example.com` wildcard DNS to
    the gateway host. Choose the reserved SSH port range. Open only the approved
    ports in the gateway firewall. The default is TCP 22000–22999 plus HTTPS.
@@ -42,7 +43,8 @@ The design and acceptance requirements are in section 8A of
    use a new secret distinct from bot administrator/tenant execution credentials
    and webhook signing. Do not deploy an administrator or tenant execution token
    in the gateway. The dedicated token can read a known rental's limited delivery
-   view/connection and acknowledge that generation, with `X-SpotBot-Tenant`.
+   view/connection and positively acknowledge that generation, with
+   `X-SpotBot-Tenant`. It cannot reject a handoff, because a rejection ends the rental.
    Other rental commands, collection APIs and inventory lists reject this token.
    The gateway also requires the bot's `authorization_scope=gateway_delivery`
    response marker and refuses to route with an administrator/full execution
@@ -120,7 +122,9 @@ needs its own Authorization header, instead send the gateway credential in
 `X-SpotBot-Access-Token`. The gateway strips its credential before forwarding;
 an application Authorization header is preserved with the dedicated-header mode.
 Do not put access tokens in URLs. Tokens are specific to the rental and derived
-from the gateway API secret; rotating that secret rotates HTTP access tokens.
+from `SPOTBOT_GATEWAY_HTTP_TOKEN_SECRET`, which must differ from the operator API,
+bot, and webhook secrets. Rotating it rotates every rental's HTTP access token
+without changing the upstream operator credential.
 
 ## Routing, failures, and limits
 
