@@ -599,7 +599,7 @@ async def test_one_attempt_sweeps_every_pool_until_capacity_is_found(rental_env)
     await cycle(env)
     row = env.engine.get(row["id"], "tenant-a")
     assert zones == ["us-west-2a", "us-west-2b", "us-west-2c", "us-west-2d"]
-    assert row["state"] == "PROVISIONING" and row["attempts"] == 4
+    assert row["state"] == "PROVISIONING" and row["attempts"] == 1  # One sweep, four pools.
     assert env.engine.current(row)["offer"]["availability_zone"] == "us-west-2d"
     events = event_types(env, row["id"])
     assert events.count("rental.provisioning") == 1 and "rental.acquisition_failed" not in events
@@ -613,7 +613,7 @@ async def test_failed_sweep_waits_and_the_next_one_rotates_its_start(rental_env)
     row, _ = env.engine.create(env.request, "tenant-a", "sweep-wait")
     await cycle(env)
     row = env.engine.get(row["id"], "tenant-a")
-    assert zones == ["us-west-2a", "us-west-2b", "us-west-2c"] and row["attempts"] == 3
+    assert zones == ["us-west-2a", "us-west-2b", "us-west-2c"] and row["attempts"] == 1
     assert row["state"] == "WAITING_CAPACITY"
     assert event_types(env, row["id"]).count("rental.acquisition_failed") == 1
     await cycle(env)
@@ -634,15 +634,20 @@ async def test_ambiguous_create_stops_the_sweep(rental_env):
     assert row["state"] == "NEEDS_RECONCILIATION"
 
 
-async def test_sweep_respects_the_attempt_limit(rental_env):
+async def test_max_attempts_counts_sweeps_not_pools(rental_env):
     env = rental_env
     four_pools(env)
     request = env.request.model_copy(deep=True)
     request.rfq.max_attempts = 2
     zones = fail_first(env, 99, ProviderError("aws_InsufficientInstanceCapacity", retryable=True))
     row, _ = env.engine.create(request, "tenant-a", "sweep-limit")
-    await cycle(env)
-    assert len(zones) == 2 and env.engine.get(row["id"], "tenant-a")["attempts"] == 2
+    for _ in range(3):
+        await cycle(env)
+        env.clock.advance(30)
+    row = env.engine.get(row["id"], "tenant-a")
+    # max_attempts counts sweeps, so a default RFQ is not exhausted by pool count.
+    assert len(zones) == 8 and row["attempts"] == 2
+    assert row["state"] == "ENDING" and row["error"] == "acquisition_limit_reached"
 
 
 async def test_expiry_during_create_never_delivers(rental_env):

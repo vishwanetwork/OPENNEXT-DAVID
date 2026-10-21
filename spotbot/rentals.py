@@ -734,18 +734,20 @@ class RentalEngine:
             return
         # Sweep every eligible pool (instance type x zone) in one attempt, starting where the
         # last sweep stopped; capacity rejections return quickly and pools fail independently.
-        start = row["attempts"] % len(options)
+        # One sweep is one attempt toward max_attempts; the cursor rotates the starting pool.
+        start = row.get("pool_cursor", row["attempts"]) % len(options)
+        row["attempts"] += 1
         sweep = {}  # Account quota and instance specs cannot change across rejected requests.
         tried = 0
         for offer in (options[start:] + options[:start])[: self.settings.spotbot_rental_pools_per_attempt]:
-            if row["attempts"] >= rules.max_attempts or utcnow() >= deadline:
+            if utcnow() >= deadline:
                 break
+            row["pool_cursor"] = row.get("pool_cursor", start) + 1
             outcome = await self._launch_offer(row, rules, offer, source, sweep, first=not tried)
             tried += 1
             if outcome != "retry":
                 return
-        if tried:
-            self.save(row, "acquisition_failed")
+        self.save(row, "acquisition_failed" if tried else None)
 
     async def _launch_offer(self, row, rules, offer, source, sweep, *, first):
         """Try one pool. Returns "launched", "retry" (try the next pool), or "stop"."""
@@ -790,7 +792,6 @@ class RentalEngine:
         row.update(
             current_generation_id=gen["id"],
             generation=gen["generation"],
-            attempts=row["attempts"] + 1,
             state="PROVISIONING",
             connection=None,
             next_attempt_at=(now + timedelta(seconds=rules.retry_seconds)).isoformat(),
