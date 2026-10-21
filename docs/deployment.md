@@ -102,6 +102,18 @@ Release `a6003b6` was deployed on 2026-10-21; the gateway environment gained
 `SPOTBOT_GATEWAY_HTTP_TOKEN_SECRET` (previous environment files are kept as
 `.env*.before-a6003b6b4131`).
 
+Release `15a197a` adds the enrolled encrypted base
+`ami-0f6ea1802493b4f74` (built on `t3.medium` from the 75 GiB Ubuntu Deep
+Learning AMI) as `SPOTBOT_RENTAL_INITIAL_IMAGES` for `us-west-2`, guest flushes
+before routine backups, pinned snapshot keys, and per-attempt pool sweeps. A
+second L4 recovery acceptance passed with it: boot to guest-ready took 2m17s,
+the first backup completed in 1m42s instead of about 70 minutes, and every
+routine backup recorded `guest_flushed`. Recovery took 6m43s for the old Spot
+server to terminate, 59s for the final backup, about 14 minutes of capacity
+sweeps (eight pools per attempt), 2m17s to boot and 1m59s for the restored
+baseline before delivery. The base image and its snapshot are the only retained
+resources; the rental estimate was about USD 0.47.
+
 On 2026-10-21 the controlled acceptance passed a full requested recovery on L4
 (`g6.2xlarge`, us-west-2c) using the default 75 GiB Ubuntu Deep Learning AMI and
 a 1 GiB data disk. The replacement needed 94 capacity attempts in total; it
