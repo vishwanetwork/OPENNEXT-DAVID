@@ -71,6 +71,7 @@ def scenario(tmp_path):
         ssh_failure=False,
         storage_deleted=True,
         cancel=False,
+        busy_backups=0,
         api_calls=[],
     )
     run_id = str(uuid4())
@@ -100,6 +101,9 @@ def scenario(tmp_path):
             return httpx.Response(200, json={"state": "RECOVERING"})
         if path.endswith("/backups"):
             if http.method == "POST":
+                if state["busy_backups"]:
+                    state["busy_backups"] -= 1
+                    return httpx.Response(409, json={"detail": "backup_already_running"})
                 return httpx.Response(200, json={"id": "backup"})
             return httpx.Response(
                 200,
@@ -234,6 +238,36 @@ async def test_unreachable_bot_during_cleanup_is_reported_as_unknown_inventory(s
         assert result["rental_id"] == runner.rental_id
     finally:
         runner.storage = original
+        await client.aclose()
+
+
+async def test_manual_backup_waits_for_a_scheduled_backup_already_running(scenario):
+    runner, state, client = scenario
+    state["busy_backups"] = 2
+    try:
+        result = await runner.execute()
+        assert result["status"] == "passed"
+        posts = [p for m, p in state["api_calls"] if m == "POST" and p.endswith("/backups")]
+        assert len(posts) == 3 and state["release"] == 1
+    finally:
+        await client.aclose()
+
+
+async def test_other_backup_conflicts_still_fail_and_release(scenario):
+    runner, state, client = scenario
+    original = client._transport.handler
+
+    async def handler(http):
+        if http.method == "POST" and http.url.path.endswith("/backups"):
+            return httpx.Response(409, json={"detail": "disk_inventory_not_ready"})
+        return await original(http)
+
+    client._transport.handler = handler
+    try:
+        with pytest.raises(AcceptanceError, match="bot_http_409:disk_inventory_not_ready"):
+            await runner.execute()
+        assert state["release"] == 1
+    finally:
         await client.aclose()
 
 

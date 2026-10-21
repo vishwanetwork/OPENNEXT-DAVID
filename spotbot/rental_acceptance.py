@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from uuid import UUID
 
@@ -216,11 +217,14 @@ class Acceptance:
             headers["Idempotency-Key"] = key
         response = await self.client.request(method, base + path, headers=headers, json=payload)
         if response.status_code >= 400:
-            raise AcceptanceError(
-                "gateway_http_" + str(response.status_code)
-                if gateway
-                else "bot_http_" + str(response.status_code)
-            )
+            code = ("gateway_http_" if gateway else "bot_http_") + str(response.status_code)
+            if response.status_code == 409:
+                # Conflicts carry a state code (never input or secrets); keep it for decisions.
+                with suppress(ValueError, AttributeError):
+                    detail = response.json().get("detail")
+                    if isinstance(detail, str) and re.fullmatch(r"[a-z_]{1,64}", detail):
+                        code += ":" + detail
+            raise AcceptanceError(code)
         return response.json()
 
     async def wait(self, operation, predicate, *, cleanup=False):
@@ -427,9 +431,21 @@ class Acceptance:
             self.verify_files(original)
             self.report["original_files"] = original["files"]
             self.checkpoint("files_written")
-            backup = await self.api(
-                f"/v1/rentals/{self.rental_id}/backups", method="POST", key=self.key + ":backup"
-            )
+
+            async def request_backup():
+                try:
+                    return await self.api(
+                        f"/v1/rentals/{self.rental_id}/backups",
+                        method="POST",
+                        key=self.key + ":backup",
+                    )
+                except AcceptanceError as exc:
+                    # A scheduled backup may start as the rental becomes active; wait for it.
+                    if str(exc) == "bot_http_409:backup_already_running":
+                        return None
+                    raise
+
+            backup = await self.wait(request_backup, bool)
 
             def backup_ready(value):
                 found = next((b for b in value["items"] if b["id"] == backup["id"]), None)
