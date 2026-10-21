@@ -12,10 +12,14 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from spotbot.models import gpu_model, timestamp, utcnow
 from spotbot.providers import ProviderError
-from spotbot.rental_aws import AWSRecovery
+from spotbot.rental_aws import AWSRecovery, initial_image
 from spotbot.rental_models import RFQ
 from spotbot.storage.common import dump
 from spotbot.storage.workflows import ConflictError, WorkflowStore
+
+# The guest reports every 15s and flushes on its next report; allow two cycles before
+# capturing without a confirmed flush. Routine captures are not on the recovery path.
+BACKUP_FLUSH_WAIT_SECONDS = 30
 
 logger = logging.getLogger(__name__)
 
@@ -343,8 +347,22 @@ class RentalEngine:
                     flush_requested_at=timestamp(),
                 )
                 self.save(row, "recovering")
+            pending = next(
+                (
+                    b["flush_command"]
+                    for b in self.backups(row)
+                    if b["state"] == "REQUESTED"
+                    and b["generation_id"] == gen["id"]
+                    and b.get("flush_command")
+                ),
+                None,
+            )
+            command = row.get("flush_command")
+            if not command or command == report.flushed_command:
+                # A stop/recovery flush comes first; once acknowledged, serve the backup flush.
+                command = pending or command
             return dict(
-                flush_command=row.get("flush_command"),
+                flush_command=command,
                 create_canaries=not gen.get("source_backup_id") and not gen.get("verified_at"),
                 initialize_disks=[
                     v
@@ -715,7 +733,7 @@ class RentalEngine:
             row.update(state="ENDING", end_requested=True, error="insufficient_budget_reserve")
             self.save(row, "ending")
             return
-        image_id = rules.initial_image_ids.get(offer.region, offer.details["image_id"])
+        image_id = initial_image(rules, self.settings, offer.region, offer.details["image_id"])
         if source:
             image_id = source["images"].get(offer.region)
             if not image_id:
@@ -1030,8 +1048,25 @@ class RentalEngine:
             )
             self.save(backup, "backup_failed")
 
+    def _guest_flushed(self, backup, gen):
+        """Ask a running guest to run its pre-backup hook and sync before a routine capture."""
+        if gen["state"] == "STOPPED":
+            return True  # Retained disks of a stopped writer cannot change.
+        if not backup.get("flush_command"):
+            backup.update(flush_command=str(uuid4()), flush_requested_at=timestamp())
+            self.save(backup)
+            return False
+        if gen.get("report", {}).get("flushed_command") == backup["flush_command"]:
+            backup["consistency"] = "guest_flushed"
+            return True
+        # An unresponsive guest must not block recovery points; record crash consistency.
+        elapsed = (utcnow() - at(backup["flush_requested_at"])).total_seconds()
+        return elapsed >= BACKUP_FLUSH_WAIT_SECONDS
+
     async def _capture(self, backup, gen):
         if backup["state"] == "REQUESTED":
+            if not self._guest_flushed(backup, gen):
+                return
             backup.update(state="CAPTURING", capture_at=timestamp())
             self.save(backup)
         if backup["state"] == "CAPTURING":

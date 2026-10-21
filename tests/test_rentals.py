@@ -258,8 +258,9 @@ async def report_ready(env, rental_id):
     row = env.engine.get(rental_id, "tenant-a")
     gen = env.engine.current(row)
     volumes = await env.cloud.inventory(gen, None)
-    await env.engine.agent_report(
-        AgentReport(
+
+    def report(flushed):
+        return AgentReport(
             rental_id=rental_id,
             generation=gen["generation"],
             instance_id=gen["instance_id"],
@@ -271,9 +272,14 @@ async def report_ready(env, rental_id):
             volume_ids=[v["volume_id"] for v in volumes],
             mounts=["/", "/data/sdf"],
             canaries={v["volume_id"]: env.cloud.files[v["volume_id"]]["canary"] for v in volumes},
-            flushed_command=row.get("flush_command"),
+            flushed_command=flushed,
         )
-    )
+
+    flushed = row.get("flush_command")
+    instructions = await env.engine.agent_report(report(flushed))
+    # Like the real agent: run a requested flush, then report it immediately.
+    if instructions["flush_command"] and instructions["flush_command"] != flushed:
+        await env.engine.agent_report(report(instructions["flush_command"]))
 
 
 async def deliver(env, rental_id):
@@ -354,6 +360,36 @@ async def test_rfq_initial_image_is_scoped_and_recovery_uses_backup(rental_env):
     assert row["generation"] == 2
     assert env.engine.current(row)["image_id"] != "ami-0123456789abcdef0"
     assert env.engine.current(row)["source_backup_id"]
+
+
+async def test_operator_base_image_is_the_default_and_rfq_images_override_it(rental_env):
+    env = rental_env
+    env.service.settings.spotbot_rental_initial_images = json.dumps(
+        {"us-west-2": "ami-0aaaaaaaaaaaaaaaa"}
+    )
+    row, _ = env.engine.create(env.request, "tenant-a", "operator-base")
+    row = await deliver(env, row["id"])
+    assert env.engine.current(row)["image_id"] == "ami-0aaaaaaaaaaaaaaaa"
+    request = env.request.model_copy(deep=True)
+    request.rfq.initial_image_ids = {"us-west-2": "ami-0123456789abcdef0"}
+    custom, _ = env.engine.create(request, "tenant-a", "rfq-image")
+    custom = await deliver(env, custom["id"])
+    assert env.engine.current(custom)["image_id"] == "ami-0123456789abcdef0"
+
+
+def test_operator_base_images_must_name_rental_regions_and_amis():
+    from spotbot.config import Settings
+
+    values = dict(
+        _env_file=None,
+        spotbot_aws_regions="us-west-2,us-east-1",
+        spotbot_rental_regions="us-west-2",
+    )
+    for images in ({"us-east-1": "ami-0aaaaaaaaaaaaaaaa"}, {"us-west-2": "not-an-ami"}):
+        with pytest.raises(ValidationError, match="initial images"):
+            Settings(**values, spotbot_rental_initial_images=json.dumps(images))
+    ok = Settings(**values, spotbot_rental_initial_images='{"us-west-2": "ami-0aaaaaaaaaaaaaaaa"}')
+    assert ok.rental_initial_images == {"us-west-2": "ami-0aaaaaaaaaaaaaaaa"}
 
 
 async def test_recovery_region_enrollment_does_not_expand_legacy_regions(rental_env):
@@ -458,6 +494,8 @@ async def test_snapshot_timeout_adopts_tagged_result(rental_env):
     await cycle(env)
     await report_ready(env, row["id"])
     await cycle(env)
+    await cycle(env)
+    await report_ready(env, row["id"])  # The guest flushes before the initial capture.
     env.cloud.snapshot_error = ProviderError("aws_transport_error", ambiguous=True)
     await cycle(env)
     backup = env.engine.backups(env.engine.get(row["id"], "tenant-a"))[0]
@@ -467,6 +505,48 @@ async def test_snapshot_timeout_adopts_tagged_result(rental_env):
     row = await deliver(env, row["id"])
     assert row["state"] == "ACTIVE"
     assert len(env.cloud.snapshot_sets[backup["id"]]) == 2
+
+
+async def test_routine_backup_waits_for_guest_flush_and_records_it(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "flush-before-backup")
+    row = await deliver(env, row["id"])
+    env.clock.advance(901)
+    await report_ready(env, row["id"])  # Fresh heartbeat; no routine flush requested yet.
+    await cycle(env, 2)
+    backup = next(b for b in env.engine.backups(row) if b["state"] == "REQUESTED")
+    command = backup["flush_command"]
+    snapshots = len(env.cloud.snapshot_sets)
+    await cycle(env)
+    assert env.engine.db.get("backup", backup["id"])["state"] == "REQUESTED"
+    assert len(env.cloud.snapshot_sets) == snapshots  # No capture before the guest syncs.
+    gen = env.engine.current(env.engine.get(row["id"], "tenant-a"))
+    instructions = await env.engine.agent_report(
+        AgentReport(
+            rental_id=row["id"], generation=gen["generation"], instance_id=gen["instance_id"],
+            token=gen["agent_token"], ssh_ready=True,
+            flushed_command=env.engine.get(row["id"], "tenant-a").get("flush_command"),
+        )
+    )
+    assert instructions["flush_command"] == command
+    await report_ready(env, row["id"])
+    await cycle(env)
+    backup = env.engine.db.get("backup", backup["id"])
+    assert backup["state"] != "REQUESTED" and backup["consistency"] == "guest_flushed"
+
+
+async def test_unresponsive_guest_does_not_block_routine_backups(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "silent-guest")
+    row = await deliver(env, row["id"])
+    env.clock.advance(901)
+    await report_ready(env, row["id"])  # Fresh heartbeat; no routine flush requested yet.
+    await cycle(env, 2)
+    backup = next(b for b in env.engine.backups(row) if b["state"] == "REQUESTED")
+    env.clock.advance(31)
+    await cycle(env)
+    backup = env.engine.db.get("backup", backup["id"])
+    assert backup["state"] != "REQUESTED" and backup["consistency"] == "crash_consistent"
 
 
 async def test_recovery_keeps_original_rfq_limits(rental_env):

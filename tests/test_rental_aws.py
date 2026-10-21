@@ -32,6 +32,7 @@ def native_backend(rental_env):
             "describe_instances": "DescribeInstances",
             "describe_volumes": "DescribeVolumes",
             "modify_instance_attribute": "ModifyInstanceAttribute",
+            "describe_snapshots": "DescribeSnapshots",
         }[method]
         validate_parameters(kwargs, sdk.operation_model(operation).input_shape)
         calls.append((region, method, kwargs))
@@ -44,6 +45,12 @@ def native_backend(rental_env):
             "create_snapshot": {"SnapshotId": "snap-1234", "VolumeId": "vol-root"},
             "register_image": {"ImageId": "ami-restore"},
             "copy_image": {"ImageId": "ami-copy"},
+            "describe_snapshots": {
+                "Snapshots": [
+                    {"SnapshotId": i, "KmsKeyId": "arn:aws:kms:us-west-2:111111111111:key/base"}
+                    for i in kwargs.get("SnapshotIds", [])
+                ]
+            },
         }.get(method, {})
 
     backend.call = call
@@ -116,6 +123,46 @@ async def test_snapshot_image_and_copy_requests_are_valid(native_backend):
     )
 
 
+def disk_keys(calls):
+    payload = next(p for _, m, p in calls if m == "run_instances")
+    return {v["DeviceName"]: v["Ebs"].get("KmsKeyId") for v in payload["BlockDeviceMappings"]}
+
+
+async def test_encrypted_initial_image_keeps_its_key_for_incremental_captures(native_backend):
+    env, backend, calls, image = native_backend
+    image["BlockDeviceMappings"][0]["Ebs"]["Encrypted"] = True
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    lookup = next(p for _, m, p in calls if m == "describe_snapshots")
+    assert lookup == {"SnapshotIds": ["snap-base"]}
+    # The root reuses the source key; a new empty data disk has no lineage to keep.
+    assert disk_keys(calls) == {
+        "/dev/sda1": "arn:aws:kms:us-west-2:111111111111:key/base",
+        "/dev/sdf": None,
+    }
+
+
+async def test_unencrypted_initial_image_needs_no_key_lookup(native_backend):
+    env, backend, calls, image = native_backend
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    assert not any(m == "describe_snapshots" for _, m, _ in calls)
+    assert set(disk_keys(calls).values()) == {None}
+
+
+async def test_restore_reuses_each_backed_up_disk_key(native_backend):
+    env, backend, calls, image = native_backend
+    image["BlockDeviceMappings"].append({"DeviceName": "/dev/sdf", "Ebs": {"SnapshotId": "snap-data", "VolumeSize": 100}})
+    backup = {"volumes": [
+        {"device": "/dev/sda1", "volume_id": "vol-root", "kms_key_id": "key-root"},
+        {"device": "/dev/sdf", "volume_id": "vol-data", "kms_key_id": "key-data"},
+    ]}
+    gen = dict(id="generation", generation=2, region="us-west-2", image_id="ami-restore", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq, backup)
+    assert disk_keys(calls) == {"/dev/sda1": "key-root", "/dev/sdf": "key-data"}
+    assert not any(m == "describe_snapshots" for _, m, _ in calls)
+
+
 async def test_restore_rejects_foreign_image_and_incomplete_disk_set(native_backend):
     env, backend, calls, image = native_backend
     gen = dict(
@@ -158,6 +205,19 @@ async def test_initial_image_cannot_expose_another_rentals_private_backup(native
     assert approved_initial_image({**image, "Public": True})
     assert not approved_initial_image({**image, "Tags": [{"Key": "spotbot-initial-image", "Value": "true"}]})
     assert approved_initial_image({**image, "Tags": [*image["Tags"], {"Key": "spotbot-initial-image", "Value": "true"}]})
+
+
+async def test_enrolled_operator_base_may_have_a_larger_root_than_the_rfq(native_backend):
+    import json
+
+    env, backend, calls, image = native_backend
+    env.service.settings.spotbot_rental_initial_images = json.dumps({"us-west-2": "ami-operator"})
+    image["Tags"] = [*image["Tags"], {"Key": "spotbot-initial-image", "Value": "true"}]
+    image["BlockDeviceMappings"][0]["Ebs"]["VolumeSize"] = 75
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-operator", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    root = next(m for _, m2, p in calls if m2 == "run_instances" for m in p["BlockDeviceMappings"] if m["DeviceName"] == "/dev/sda1")
+    assert root["Ebs"]["VolumeSize"] == 75
 
 
 @pytest.mark.parametrize("extra_disk", [True, False])

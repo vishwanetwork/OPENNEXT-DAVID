@@ -64,6 +64,14 @@ class Cloud(FakeAWS):
         value["Images"][0]["RootDeviceType"] = "ebs"
         return value
 
+    owned_snapshots = {}
+
+    def describe_snapshots(self, **kwargs):
+        found = [self.owned_snapshots[i] for i in kwargs["SnapshotIds"] if i in self.owned_snapshots]
+        if not found:
+            raise ClientError({"Error": {"Code": "InvalidSnapshot.NotFound"}}, "DescribeSnapshots")
+        return {"Snapshots": found}
+
     def describe_key_pairs(self, **kwargs):
         return {"KeyPairs": [{"KeyName": kwargs["KeyNames"][0]}]}
 
@@ -120,6 +128,7 @@ class ReadOnlySession:
         "DescribeInstances",
         "DescribeSpotInstanceRequests",
         "DescribeSpotPriceHistory",
+        "DescribeSnapshots",
     }
 
     def __init__(self):
@@ -229,6 +238,53 @@ async def test_private_initial_images_require_operator_enrollment(ready):
 
     session.cloud.describe_images = enrolled
     assert (await Readiness(settings, session=session).run(rfq, aws=True))["cloud_preflight_passed"]
+
+
+async def test_public_default_image_warns_that_first_backup_is_full(ready):
+    settings, rfq = ready
+    result = await Readiness(settings, session=ReadOnlySession()).run(rfq, aws=True)
+    checks = {c["name"]: c for c in result["regions"][0]["checks"]}
+    assert checks["initial_image_incremental_first_backup"]["status"] == "warning"
+    assert result["cloud_preflight_passed"]  # Advisory only; the default stays usable.
+
+
+async def test_operator_base_image_is_used_and_keeps_snapshot_lineage(ready):
+    settings, rfq = ready
+    settings.spotbot_rental_initial_images = json.dumps({"us-west-2": "ami-0123456789abcdef0"})
+    session = ReadOnlySession()
+    original = session.cloud.describe_images
+    seen = []
+
+    def base(**kwargs):
+        seen.extend(kwargs["ImageIds"])
+        value = original(**kwargs)
+        image = value["Images"][0]
+        image["Tags"] = [
+            {"Key": "spotbot-managed", "Value": "true"},
+            {"Key": "spotbot-initial-image", "Value": "true"},
+        ]
+        # Larger than the RFQ root (50 GiB): operator bases size disks like the provider default.
+        image["BlockDeviceMappings"] = [
+            {"DeviceName": "/dev/sda1", "Ebs": {"VolumeSize": 75, "SnapshotId": "snap-base", "Encrypted": True}}
+        ]
+        return value
+
+    session.cloud.describe_images = base
+    session.cloud.owned_snapshots = {
+        "snap-base": {"SnapshotId": "snap-base", "OwnerId": "123456789012", "Encrypted": True}
+    }
+    result = await Readiness(settings, session=session).run(rfq, aws=True)
+    checks = {c["name"]: c for c in result["regions"][0]["checks"]}
+    assert seen[-1] == "ami-0123456789abcdef0"  # Earlier lookups resolve the provider default.
+    assert checks["initial_image_incremental_first_backup"]["status"] == "passed"
+    assert checks["initial_image_incremental_first_backup"]["image_id"] == "ami-0123456789abcdef0"
+    assert checks["initial_image_disk_layout"]["status"] == "passed"
+    assert result["cloud_preflight_passed"]
+    # Another account's snapshot cannot carry this account's lineage.
+    session.cloud.owned_snapshots["snap-base"]["OwnerId"] = "999999999999"
+    result = await Readiness(settings, session=session).run(rfq, aws=True)
+    checks = {c["name"]: c for c in result["regions"][0]["checks"]}
+    assert checks["initial_image_incremental_first_backup"]["status"] == "warning"
 
 
 async def test_readiness_rejects_order_region_without_recovery_enrollment(ready):

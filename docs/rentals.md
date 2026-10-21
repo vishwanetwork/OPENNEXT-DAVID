@@ -14,8 +14,23 @@ and `/v1/orders` API remain available independently.
 Recovery restores files and bootable server software from a complete disk set.
 RAM, GPU memory, running process state, and open connections are not preserved.
 Consistency is explicitly `crash_consistent`; customers can install a bounded
-`/etc/spotbot/pre-backup` hook to flush their applications. Whole-disk backup
-does not require model checkpoints or a separate S3 model store.
+`/etc/spotbot/pre-backup` hook to flush their applications. The guest runs that
+hook and `sync` before every initial, scheduled and manual capture, not only on
+stop or recovery. The bot waits up to 30 seconds for the acknowledgement; each
+backup records `consistency` as `guest_flushed`, or `crash_consistent` when the
+guest did not confirm in time. Whole-disk backup does not require model
+checkpoints or a separate S3 model store.
+
+Snapshots are incremental only within one EBS lineage. Launch and restore keep
+each source snapshot's KMS key, so restored disks continue the lineage. A public
+AMI (such as the default Deep Learning AMI) is re-encrypted at launch, so the
+first backup copies the whole root disk before delivery (about 70 minutes for
+75 GiB in staging). Set `SPOTBOT_RENTAL_INITIAL_IMAGES` to an enrolled,
+account-owned encrypted base per Region (see
+[recovery infrastructure](aws-recovery-deployment.md#encrypted-initial-base-image));
+RFQ `initial_image_ids` still override it. `rental-check --aws` warns with
+`initial_image_incremental_first_backup` when the selected image cannot keep the
+lineage.
 
 ## Deployment
 

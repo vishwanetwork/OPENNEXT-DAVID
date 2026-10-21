@@ -34,6 +34,20 @@ def approved_initial_image(image):
     )
 
 
+def initial_image(rules, settings, region, offer_image):
+    """RFQ image, else the operator's enrolled base for the Region, else the provider default."""
+    return (
+        rules.initial_image_ids.get(region)
+        or settings.rental_initial_images.get(region)
+        or offer_image
+    )
+
+
+def operator_image(image_id, settings, region, offer_image):
+    # Operator defaults size disks like the provider default; RFQ images may not grow them.
+    return image_id in {offer_image, settings.rental_initial_images.get(region)}
+
+
 def initial_disk_layout_allowed(image, rules, *, strict_sizes=False):
     required = {image["RootDeviceName"]: rules.root_volume_gib, **{d.device: d.size_gib for d in rules.data_disks}}
     source = {m["DeviceName"]: m["Ebs"] for m in image["BlockDeviceMappings"] if "Ebs" in m}
@@ -160,6 +174,24 @@ class AWSRecovery:
             )
         return result
 
+    async def source_keys(self, region, source, backup):
+        """KMS key of each encrypted source snapshot, by device."""
+        if backup:
+            return {v["device"]: v["kms_key_id"] for v in backup["volumes"] if v.get("kms_key_id")}
+        encrypted = {
+            m["Ebs"]["SnapshotId"]: device
+            for device, m in source.items()
+            if m["Ebs"].get("Encrypted") and m["Ebs"].get("SnapshotId")
+        }
+        if not encrypted:
+            return {}  # Unencrypted sources are re-encrypted; their first capture is full.
+        response = await self.call(region, "describe_snapshots", SnapshotIds=sorted(encrypted))
+        return {
+            encrypted[s["SnapshotId"]]: s["KmsKeyId"]
+            for s in response["Snapshots"]
+            if s.get("KmsKeyId") and s["SnapshotId"] in encrypted
+        }
+
     async def image(self, region, image_id):
         response = await self.call(region, "describe_images", ImageIds=[image_id])
         if len(response["Images"]) != 1:
@@ -219,7 +251,13 @@ class AWSRecovery:
             raise ProviderError("unsupported_image_license")
         if not backup and image_id != offer.details["image_id"] and not approved_initial_image(image):
             raise ProviderError("initial_image_not_approved")
-        if not backup and not initial_disk_layout_allowed(image, rules, strict_sizes=image_id != offer.details["image_id"]):
+        if not backup and not initial_disk_layout_allowed(
+            image,
+            rules,
+            strict_sizes=not operator_image(
+                image_id, self.settings, region, offer.details["image_id"]
+            ),
+        ):
             raise ProviderError("initial_image_disk_layout_exceeds_rfq")
         if backup and not owns(image, rental["id"]):
             raise ProviderError("restore_image_ownership_mismatch")
@@ -228,6 +266,7 @@ class AWSRecovery:
         required = {root: rules.root_volume_gib, **{d.device: d.size_gib for d in rules.data_disks}}
         if backup and set(source) != {v["device"] for v in backup["volumes"]}:
             raise ProviderError("restore_disk_set_mismatch")
+        keys = await self.source_keys(region, source, backup)
         mappings = []
         for device in sorted(set(source) | set(required)):
             old = source.get(device, {}).get("Ebs", {})
@@ -243,6 +282,10 @@ class AWSRecovery:
             }
             if old.get("SnapshotId"):
                 mapping["Ebs"]["SnapshotId"] = old["SnapshotId"]
+            if keys.get(device):
+                # Same key as the source snapshot keeps the EBS lineage, so the next capture is
+                # incremental instead of a full copy of a re-encrypted disk.
+                mapping["Ebs"]["KmsKeyId"] = keys[device]
             mappings.append(mapping)
         await self.preflight(offer, rules)
         if rules.expires_at <= utcnow() or (

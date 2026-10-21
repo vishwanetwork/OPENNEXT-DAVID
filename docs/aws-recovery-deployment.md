@@ -101,3 +101,31 @@ not delete GPU backup disks, AMIs, snapshots, or database records.
 References: [EC2 action/resource authorization](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html),
 [EventBridge queue policies](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-use-resource-based.html),
 [CopyImage tagging](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CopyImage.html).
+
+## Encrypted initial base image
+
+A rental's first backup is incremental only when its root disk comes from an
+account-owned snapshot encrypted with the key used at launch. Public AMIs cannot
+provide that: they are re-encrypted at launch and AWS refuses `CopyImage` for the
+Deep Learning AMIs. Build one clean base per rental Region instead. This needs no
+GPU: the image boots on a general-purpose instance, and the full snapshot is paid
+once rather than on every rental.
+
+1. Launch the source AMI on a small general-purpose instance (staging used
+   `t3.medium`) in an approved subnet, with the root mapping
+   `Encrypted=true` (the account's default `aws/ebs` key) and
+   `InstanceInitiatedShutdownBehavior=stop`.
+2. Wait for cloud-init, then remove per-instance identity: `cloud-init clean
+   --logs`, `/etc/ssh/ssh_host_*`, every `authorized_keys`, shell histories, and
+   `/etc/machine-id` (truncate). Do not install customer software or data.
+3. Shut down from inside the guest, then `CreateImage` from the stopped instance
+   with image and snapshot tags `spotbot-managed=true`,
+   `spotbot-initial-image=true`. Terminate the build instance once the image is
+   `available`.
+4. Set `SPOTBOT_RENTAL_INITIAL_IMAGES={"us-west-2":"ami-..."}` and run
+   `rental-check --aws`; `initial_image_incremental_first_backup` must pass.
+
+Never enroll a tenant backup as a base: it carries customer data and SSH host
+keys. Rebuild the base when the source AMI is updated; snapshot storage for the
+base is the only standing cost.
+

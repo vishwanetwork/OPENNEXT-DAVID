@@ -6,7 +6,12 @@ from urllib.parse import urlsplit
 
 from spotbot.aws_provider import AWSProvider
 from spotbot.models import gpu_model, utcnow
-from spotbot.rental_aws import approved_initial_image, initial_disk_layout_allowed
+from spotbot.rental_aws import (
+    approved_initial_image,
+    initial_disk_layout_allowed,
+    initial_image,
+    operator_image,
+)
 
 EVENT_TYPES = {
     "EC2 Spot Instance Interruption Warning",
@@ -31,6 +36,31 @@ def check(name, passed, *, required=True, **details):
         required=required,
         **details,
     )
+
+
+def incremental_first_capture(ec2, image, account, image_id):
+    """A rental's first backup is incremental only from an account-owned encrypted snapshot.
+
+    Public images are re-encrypted at launch, so their first capture copies the whole root
+    disk (about 70 minutes for a 75 GiB Deep Learning AMI) before delivery.
+    """
+    root = next(
+        (
+            m["Ebs"]
+            for m in image.get("BlockDeviceMappings", [])
+            if m.get("DeviceName") == image.get("RootDeviceName") and "Ebs" in m
+        ),
+        {},
+    )
+    owned = False
+    if root.get("Encrypted") and root.get("SnapshotId"):
+        try:
+            found = ec2.describe_snapshots(SnapshotIds=[root["SnapshotId"]])["Snapshots"]
+            owned = any(s.get("OwnerId") == account and s.get("Encrypted") for s in found)
+        except Exception:
+            owned = False
+    # Advisory: the provider's public default remains usable, only slower to deliver.
+    return check("initial_image_incremental_first_backup", owned, required=False, image_id=image_id)
 
 
 def passed(checks):
@@ -230,10 +260,21 @@ class Readiness:
             checks.append(check("affordable_quota_eligible_offers", bool(candidates)))
             if candidates:
                 offer = min(candidates, key=lambda o: o.price_hourly)
-                image_id = rules.initial_image_ids.get(region, offer.details["image_id"])
+                default = offer.details["image_id"]
+                image_id = initial_image(rules, self.settings, region, default)
                 image = ec2.describe_images(ImageIds=[image_id])["Images"][0]
-                checks.append(check("initial_image_approved", image_id == offer.details["image_id"] or approved_initial_image(image)))
-                checks.append(check("initial_image_disk_layout", initial_disk_layout_allowed(image, rules, strict_sizes=image_id != offer.details["image_id"])))
+                checks.append(check("initial_image_approved", image_id == default or approved_initial_image(image)))
+                checks.append(
+                    check(
+                        "initial_image_disk_layout",
+                        initial_disk_layout_allowed(
+                            image,
+                            rules,
+                            strict_sizes=not operator_image(image_id, self.settings, region, default),
+                        ),
+                    )
+                )
+                checks.append(incremental_first_capture(ec2, image, account, image_id))
                 checks.append(
                     check(
                         "linux_ebs_image",
