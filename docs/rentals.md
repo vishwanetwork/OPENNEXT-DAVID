@@ -192,13 +192,23 @@ Important RFQ fields:
 | `not_before` | Optional earliest acquisition time |
 | `root_volume_gib`, `data_disks` | Root minimum and protected data disks; root may grow to the AMI minimum |
 | `selection` | `lowest_price` or `region_order` within hard constraints |
-| `max_attempts`, `retry_seconds` | Lifetime attempt cap and retry delay |
+| `max_attempts`, `retry_seconds` | Lifetime cap on launch requests, and the wait after a sweep in which every pool was rejected |
 | `max_recovery_seconds`, `allow_cross_region` | Recovery deadline and permitted regional image copies |
 | `allow_older_backup` | Explicit permission for a potentially older recovery point |
 | `backup` | Interval, completed-point count, final retention, and consistency |
 | `ssh_key_name`, `ssh_user` | Already registered regional key name and image login user |
 | `http_port`, `http_health_path` | Optional HTTP readiness probe; no model service is installed automatically |
 | `require_gateway_ack` | Default true: gateway must acknowledge a candidate handoff |
+
+Each acquisition attempt sweeps the eligible pools (instance type x zone), up to
+`SPOTBOT_RENTAL_POOLS_PER_ATTEMPT` (default 8), starting after the pool where the
+previous sweep stopped, and launches in the first that has capacity. Every
+request counts toward `max_attempts`. An ambiguous create stops the sweep for
+reconciliation, so a second server is never bought while one may exist. Within
+a sweep, account quota usage and instance specifications are read once per
+Region; each pool's Spot price is always refreshed. A sweep emits one
+`rental.provisioning` and, if every pool is rejected, one
+`rental.acquisition_failed` event.
 
 Both initial and replacement acquisition use the same accepted rules. No
 automatic on-demand conversion or cross-provider AMI restore is implemented.

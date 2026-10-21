@@ -723,7 +723,6 @@ class RentalEngine:
             )
             self.save(row, "waiting_capacity")
             return
-        offer = options[row["attempts"] % len(options)]
         reserve = rules.max_price_hourly / 60 + Decimal(
             rules.root_volume_gib + sum(d.size_gib for d in rules.data_disks)
         ) * self.settings.spotbot_rental_storage_reserve_usd_gib_month * Decimal(
@@ -733,6 +732,24 @@ class RentalEngine:
             row.update(state="ENDING", end_requested=True, error="insufficient_budget_reserve")
             self.save(row, "ending")
             return
+        # Sweep every eligible pool (instance type x zone) in one attempt, starting where the
+        # last sweep stopped; capacity rejections return quickly and pools fail independently.
+        start = row["attempts"] % len(options)
+        sweep = {}  # Account quota and instance specs cannot change across rejected requests.
+        tried = 0
+        for offer in (options[start:] + options[:start])[: self.settings.spotbot_rental_pools_per_attempt]:
+            if row["attempts"] >= rules.max_attempts or utcnow() >= deadline:
+                break
+            outcome = await self._launch_offer(row, rules, offer, source, sweep, first=not tried)
+            tried += 1
+            if outcome != "retry":
+                return
+        if tried:
+            self.save(row, "acquisition_failed")
+
+    async def _launch_offer(self, row, rules, offer, source, sweep, *, first):
+        """Try one pool. Returns "launched", "retry" (try the next pool), or "stop"."""
+        now = utcnow()
         image_id = initial_image(rules, self.settings, offer.region, offer.details["image_id"])
         if source:
             image_id = source["images"].get(offer.region)
@@ -744,7 +761,7 @@ class RentalEngine:
             if image["State"] != "available":
                 row["error"] = "recovery_image_pending"
                 self.save(row)
-                return
+                return "stop"
         image = await self.backend.image(offer.region, image_id)
         metadata = {
             k: image[k]
@@ -778,9 +795,12 @@ class RentalEngine:
             connection=None,
             next_attempt_at=(now + timedelta(seconds=rules.retry_seconds)).isoformat(),
         )
-        self.save(row, "provisioning")
+        # One provisioning event per sweep; intermediate pools would only flood the outbox.
+        self.save(row, "provisioning" if first else None)
         try:
-            gen["instance_id"] = await self.backend.launch(row, gen, offer, rules, source)
+            gen["instance_id"] = await self.backend.launch(
+                row, gen, offer, rules, source, sweep=sweep
+            )
         except ProviderError as exc:
             gen.update(
                 state="NEEDS_RECONCILIATION" if exc.ambiguous else "REJECTED", error=exc.code
@@ -794,14 +814,18 @@ class RentalEngine:
                 else "ACTION_REQUIRED",
                 error=exc.code,
             )
+            if exc.retryable and not exc.ambiguous:
+                self.save(row)
+                return "retry"
             self.save(row, "acquisition_failed")
-            return
+            return "stop"
         gen.update(state="BOOTING", started_at=timestamp())
         self.save(gen)
         # A clock deadline can pass while RunInstances is in flight.
         if rules.expires_at <= utcnow():
             row.update(state="ENDING", end_requested=True)
             self.save(row, "ending")
+        return "launched"
 
     async def _monitor(self, row, gen, rules):
         if not gen or not gen.get("instance_id"):

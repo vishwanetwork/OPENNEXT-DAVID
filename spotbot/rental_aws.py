@@ -198,20 +198,30 @@ class AWSRecovery:
             raise ProviderError("restore_image_missing")
         return response["Images"][0]
 
-    async def preflight(self, offer, rules):
-        """Refresh account usage and the selected zonal quote before a billable create."""
+    async def preflight(self, offer, rules, cache=None):
+        """Refresh account usage and the selected zonal quote before a billable create.
+
+        `cache` spans one acquisition sweep: rejected requests create nothing, so account
+        usage, quotas and instance specs are reused; each pool's price is always re-read.
+        """
 
         def check():
             ec2 = self.provider._client(offer.region)
-            specs, _ = self.provider._instance_types(ec2)
+            regional = (cache if cache is not None else {}).setdefault(offer.region, {})
+            if "specs" not in regional:
+                regional["specs"], _ = self.provider._instance_types(ec2)
+                regional["usage"] = self.provider._quota_usage(ec2, regional["specs"])
+            specs = regional["specs"]
             family = self.provider._quota_family(offer.sku)
             if not family or offer.sku not in specs:
                 raise ProviderError("unsupported_instance_quota_family")
-            used, known = self.provider._quota_usage(ec2, specs)
+            used, known = regional["usage"]
             code = "L-3819A6DF" if family == "g" else "L-7212CCBC"
-            quota = self.provider._client(offer.region, "service-quotas").get_service_quota(
-                ServiceCode="ec2", QuotaCode=code
-            )["Quota"]["Value"]
+            if code not in regional:
+                regional[code] = self.provider._client(
+                    offer.region, "service-quotas"
+                ).get_service_quota(ServiceCode="ec2", QuotaCode=code)["Quota"]["Value"]
+            quota = regional[code]
             if (
                 not known[family]
                 or used[family] + specs[offer.sku]["VCpuInfo"]["DefaultVCpus"] > quota
@@ -239,7 +249,7 @@ class AWSRecovery:
 
         await self.provider._execute(check)
 
-    async def launch(self, rental, generation, offer, rules, backup=None):
+    async def launch(self, rental, generation, offer, rules, backup=None, *, sweep=None):
         region = generation["region"]
         image_id = generation["image_id"]
         image = await self.image(region, image_id)
@@ -287,7 +297,7 @@ class AWSRecovery:
                 # incremental instead of a full copy of a re-encrypted disk.
                 mapping["Ebs"]["KmsKeyId"] = keys[device]
             mappings.append(mapping)
-        await self.preflight(offer, rules)
+        await self.preflight(offer, rules, sweep)
         if rules.expires_at <= utcnow() or (
             not rental.get("recovery_started_at") and rules.acquisition_deadline <= utcnow()
         ):

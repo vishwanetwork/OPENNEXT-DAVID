@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)
+    # Pools (instance type x zone) tried per acquisition attempt before waiting retry_seconds.
+    spotbot_rental_pools_per_attempt: int = Field(8, ge=1, le=32)
     spotbot_rental_boot_timeout_seconds: int = Field(1200, ge=60, le=7200)
     # Conservative budget reservation rate; not a provider invoice or published tariff.
     spotbot_rental_storage_reserve_usd_gib_month: Decimal = Field(Decimal("0.15"), gt=0)

@@ -254,3 +254,38 @@ async def test_preflight_refreshes_prices_and_account_quota(rental_env):
     with pytest.raises(ProviderError, match="quota_insufficient"):
         await backend.preflight(offer, env.request.rfq)
     assert not sdk.creates
+
+
+async def test_sweep_cache_reuses_account_usage_but_rereads_each_price(rental_env, monkeypatch):
+    from spotbot.aws_provider import AWSProvider
+    from tests.test_aws import FakeAWS
+
+    env = rental_env
+    sdk = FakeAWS()
+    backend = AWSRecovery(SimpleNamespace(), env.service.settings)
+    backend.provider = AWSProvider(env.service.settings, env.service.client, session=sdk)
+    counts = {"specs": 0, "usage": 0}
+    specs, usage = backend.provider._instance_types, backend.provider._quota_usage
+
+    def counted_specs(ec2):
+        counts["specs"] += 1
+        return specs(ec2)
+
+    def counted_usage(ec2, value):
+        counts["usage"] += 1
+        return usage(ec2, value)
+
+    monkeypatch.setattr(backend.provider, "_instance_types", counted_specs)
+    monkeypatch.setattr(backend.provider, "_quota_usage", counted_usage)
+    offer = env.offer.model_copy(update={"sku": "p5.4xlarge"})
+    sweep = {}
+    await backend.preflight(offer, env.request.rfq, sweep)
+    await backend.preflight(offer, env.request.rfq, sweep)
+    assert counts == {"specs": 1, "usage": 1}
+    env.request.rfq.max_price_hourly = Decimal("2.55")
+    with pytest.raises(ProviderError, match="price_limit_exceeded"):
+        await backend.preflight(offer, env.request.rfq, sweep)  # Price is never cached.
+    env.request.rfq.max_price_hourly = Decimal("3")
+    await backend.preflight(offer, env.request.rfq)  # No sweep: always fresh.
+    assert counts == {"specs": 2, "usage": 2}
+

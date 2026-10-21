@@ -50,7 +50,7 @@ class Cloud:
     async def image(self, region, image_id):
         return copy.deepcopy(self.images.get((region, image_id), self.base))
 
-    async def launch(self, row, gen, offer, rules, backup):
+    async def launch(self, row, gen, offer, rules, backup, **options):
         self.creates.append(copy.deepcopy(gen))
         if self.launch_error and not self.launch_error.ambiguous:
             raise self.launch_error
@@ -569,12 +569,88 @@ async def test_recovery_keeps_original_rfq_limits(rental_env):
     assert row["state"] == "WAITING_CAPACITY" and len(env.cloud.creates) == 1
 
 
+def four_pools(env):
+    offers = []
+    for zone, price in (("a", "2.0"), ("b", "2.1"), ("c", "2.2"), ("d", "2.3")):
+        offer = copy.deepcopy(env.offer)
+        offer.availability_zone, offer.price_hourly = "us-west-2" + zone, Decimal(price)
+        offers.append(offer)
+    env.service.store.record_collection("aws", offers)
+
+
+def fail_first(env, count, error):
+    original, zones = env.cloud.launch, []
+
+    async def launch(row, gen, offer, rules, backup, **options):
+        zones.append(offer.availability_zone)
+        if len(zones) <= count:
+            raise error
+        return await original(row, gen, offer, rules, backup, **options)
+
+    env.cloud.launch = launch
+    return zones
+
+
+async def test_one_attempt_sweeps_every_pool_until_capacity_is_found(rental_env):
+    env = rental_env
+    four_pools(env)
+    zones = fail_first(env, 3, ProviderError("aws_InsufficientInstanceCapacity", retryable=True))
+    row, _ = env.engine.create(env.request, "tenant-a", "sweep")
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert zones == ["us-west-2a", "us-west-2b", "us-west-2c", "us-west-2d"]
+    assert row["state"] == "PROVISIONING" and row["attempts"] == 4
+    assert env.engine.current(row)["offer"]["availability_zone"] == "us-west-2d"
+    events = event_types(env, row["id"])
+    assert events.count("rental.provisioning") == 1 and "rental.acquisition_failed" not in events
+
+
+async def test_failed_sweep_waits_and_the_next_one_rotates_its_start(rental_env):
+    env = rental_env
+    four_pools(env)
+    env.service.settings.spotbot_rental_pools_per_attempt = 3
+    zones = fail_first(env, 99, ProviderError("aws_InsufficientInstanceCapacity", retryable=True))
+    row, _ = env.engine.create(env.request, "tenant-a", "sweep-wait")
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert zones == ["us-west-2a", "us-west-2b", "us-west-2c"] and row["attempts"] == 3
+    assert row["state"] == "WAITING_CAPACITY"
+    assert event_types(env, row["id"]).count("rental.acquisition_failed") == 1
+    await cycle(env)
+    assert len(zones) == 3  # Waits retry_seconds before the next sweep.
+    env.clock.advance(30)
+    await cycle(env)
+    assert zones[3:] == ["us-west-2d", "us-west-2a", "us-west-2b"]
+
+
+async def test_ambiguous_create_stops_the_sweep(rental_env):
+    env = rental_env
+    four_pools(env)
+    zones = fail_first(env, 99, ProviderError("aws_transport_error", ambiguous=True))
+    row, _ = env.engine.create(env.request, "tenant-a", "sweep-ambiguous")
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert zones == ["us-west-2a"]  # Never buy elsewhere while a create may have succeeded.
+    assert row["state"] == "NEEDS_RECONCILIATION"
+
+
+async def test_sweep_respects_the_attempt_limit(rental_env):
+    env = rental_env
+    four_pools(env)
+    request = env.request.model_copy(deep=True)
+    request.rfq.max_attempts = 2
+    zones = fail_first(env, 99, ProviderError("aws_InsufficientInstanceCapacity", retryable=True))
+    row, _ = env.engine.create(request, "tenant-a", "sweep-limit")
+    await cycle(env)
+    assert len(zones) == 2 and env.engine.get(row["id"], "tenant-a")["attempts"] == 2
+
+
 async def test_expiry_during_create_never_delivers(rental_env):
     env = rental_env
     original = env.cloud.launch
 
-    async def slow(*args):
-        result = await original(*args)
+    async def slow(*args, **options):
+        result = await original(*args, **options)
         env.clock.advance(7201)
         return result
 
