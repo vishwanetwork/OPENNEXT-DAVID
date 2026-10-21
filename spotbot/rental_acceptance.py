@@ -84,8 +84,9 @@ class AcceptanceSettings(BaseSettings):
     ssh_key_path: Path
     known_hosts_path: Path
     trust_new_host_keys: bool = False
-    stage_timeout_seconds: int = Field(1200, ge=10, le=3600)
-    cleanup_timeout_seconds: int = Field(1200, ge=10, le=3600)
+    # A cold first snapshot of a large root disk can exceed an hour; RFQs live at most 3h.
+    stage_timeout_seconds: int = Field(1200, ge=10, le=10800)
+    cleanup_timeout_seconds: int = Field(1200, ge=10, le=10800)
     poll_seconds: int = Field(5, ge=1, le=30)
 
     @field_validator("bot_url", "gateway_url")

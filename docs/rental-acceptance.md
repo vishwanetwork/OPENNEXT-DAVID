@@ -29,8 +29,10 @@ DNS/TLS and RFQ spending limits have been approved.
    limits. Neither the helper nor the runner selects a cheaper GPU automatically.
 
 Cold encrypted root snapshots can outlast the default per-stage wait. Configure
-`SPOTBOT_ACCEPTANCE_STAGE_TIMEOUT_SECONDS` and the RFQ lifetime deliberately;
-the tool's timeout is not an AWS completion guarantee. An approved, pre-encrypted
+`SPOTBOT_ACCEPTANCE_STAGE_TIMEOUT_SECONDS` (up to 10800) and the RFQ lifetime
+deliberately; the tool's timeout is not an AWS completion guarantee. A 75 GiB
+public Deep Learning AMI root re-encrypted at launch took about 70 minutes for
+its first full snapshot in staging; that AMI cannot be copied into the account. An approved, pre-encrypted
 clean GPU base can reduce GPU idle time spent preparing the first recovery point.
 Select it through RFQ `initial_image_ids` and use its actual SSH user and disk
 requirements. Private initial images require explicit administrator enrollment;
