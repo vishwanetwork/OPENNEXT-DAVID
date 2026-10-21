@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     spotbot_live_orders_enabled: bool = False
     spotbot_dry_run_enabled: bool = True
     spotbot_aws_regions: str = "us-west-2"
+    # Extra Regions collected for price references only (no orders): current Spot, list prices
+    # and history. Comma-separated; the order Regions above are always included.
+    spotbot_aws_price_regions: str = ""
+    spotbot_aws_price_region_interval_seconds: int = Field(3600, ge=600)
     spotbot_aws_vpc_id: str = ""
     spotbot_aws_security_group_ids: str = ""
     spotbot_aws_key_name: str = ""
@@ -25,6 +29,13 @@ class Settings(BaseSettings):
     spotbot_aws_public_ip: bool = True
     spotbot_aws_ssh_user: str = "ubuntu"
     spotbot_aws_capacity_backoff_seconds: int = Field(60, ge=15, le=3600)
+    # AWS Price List (On-demand and Reserved). Requires pricing:GetProducts.
+    spotbot_aws_list_prices_enabled: bool = True
+    spotbot_aws_list_price_interval_seconds: int = Field(21600, ge=900)
+    spotbot_aws_spot_history_enabled: bool = True
+    spotbot_aws_spot_history_interval_seconds: int = Field(86400, ge=3600)
+    spotbot_aws_list_history_enabled: bool = True
+    spotbot_aws_list_history_interval_seconds: int = Field(86400, ge=3600)
     spotbot_database_path: Path = Path("data/spotbot.sqlite3")
     spotbot_storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"
     spotbot_mysql_url: SecretStr = SecretStr("")
@@ -50,6 +61,16 @@ class Settings(BaseSettings):
         if set(names) - {"lambda", "tensordock", "vultr", "shadeform", "aws"}:
             raise ValueError("Unknown provider in SPOTBOT_ENABLED_PROVIDERS")
         return ",".join(dict.fromkeys(names))
+
+    @property
+    def aws_order_regions(self) -> list[str]:
+        return list(dict.fromkeys(r.strip() for r in self.spotbot_aws_regions.split(",") if r.strip()))
+
+    @property
+    def aws_price_regions(self) -> list[str]:
+        """Every Region with price data: order Regions first, then price-only Regions."""
+        extra = (r.strip() for r in self.spotbot_aws_price_regions.split(",") if r.strip())
+        return list(dict.fromkeys([*self.aws_order_regions, *extra]))
 
     def enabled(self, provider: str) -> bool:
         return provider in self.spotbot_enabled_providers.split(",")

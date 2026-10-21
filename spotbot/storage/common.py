@@ -64,6 +64,10 @@ def new_event(order_id: str, state: str, now: str, handoff=None) -> dict:
 ORDER_FIELDS = {"instance_id", "error", "handoff", "attempts", "release_sent", "offer"}
 ACTIVE_STATES = {"queued", "provisioning", "ready", "releasing"}
 PROVIDERS = ("lambda", "tensordock", "vultr", "shadeform", "aws")
+# Catalog batches are recorded per catalog. AWS list prices refresh on their own schedule, so
+# they are a separate catalog whose offers still belong to the "aws" provider.
+CATALOGS = (*PROVIDERS, "aws_list", "aws_regions")
+CATALOG_PROVIDER = {"aws_list": "aws", "aws_regions": "aws"}
 
 
 class Storage(Protocol):

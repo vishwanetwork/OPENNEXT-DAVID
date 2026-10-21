@@ -72,6 +72,8 @@ Lambda's `/api/v1/instances` lists existing account instances; prices come from 
 | POST | `/v1/collections?provider=shadeform` | Collect one provider; omit the filter for all enabled providers |
 | GET | `/v1/prices/latest` | Latest offers grouped by provider |
 | GET | `/v1/prices/history?provider=lambda&sku=gpu_1x_h100` | Historical snapshots for a provider and SKU |
+| GET | `/v1/prices/aws-spot-history?region=us-west-2&sku=g5.xlarge` | Durable AWS Spot change events and coverage, up to a 90-day query window |
+| GET | `/v1/prices/aws-list-history?region=us-west-2&sku=g5.xlarge` | Published historical On-demand and one-year No Upfront Reserved intervals |
 | GET | `/v1/gpus?model=H100&market=spot` | GPU models, providers, regions, and offers |
 | GET | `/v1/offers/{offer_id}` | Current details for one offer |
 

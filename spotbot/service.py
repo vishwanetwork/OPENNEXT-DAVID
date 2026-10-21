@@ -12,6 +12,8 @@ from spotbot.models import OrderRequest, timestamp, utcnow
 from spotbot.providers import ProviderError, providers
 from spotbot.storage import create_store
 from spotbot.storage.common import dump, fingerprint
+from spotbot.storage.list_history import ListHistory
+from spotbot.storage.spot_history import create_history_store
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +57,17 @@ class Service:
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None):
         self.settings = settings
         self.store = create_store(settings)
+        self.spot_history = create_history_store(self.store)
+        self.list_history = ListHistory(self.store)
         self.client = client or httpx.AsyncClient(
             timeout=settings.spotbot_http_timeout_seconds, follow_redirects=False
         )
         self._own_client = client is None
         self.providers = providers(settings, self.client)
         self.collect_lock = asyncio.Lock()
+        self.list_prices_due = 0.0
+        self.price_regions_due = 0.0
+        self.background_sweeps = {}
         self.worker_lock = asyncio.Lock()
 
     def acquire(self):
@@ -68,11 +75,13 @@ class Service:
         self.store.recover()
 
     async def close(self):
+        for task in self.background_sweeps.values():
+            task.cancel()
         if self._own_client:
             await self.client.aclose()
         self.store.close()
 
-    async def collect(self, only: str | None = None):
+    async def collect(self, only: str | None = None, *, background_sweeps: bool = False):
         async with self.collect_lock:
 
             async def one(provider):
@@ -105,7 +114,60 @@ class Service:
                 for name, p in self.providers.items()
                 if (only is None and self.settings.enabled(name)) or only == name
             ]
-            return await asyncio.gather(*(one(p) for p in selected))
+            results = await asyncio.gather(*(one(p) for p in selected))
+            aws = self.providers.get("aws")
+            sweeps = []
+            if aws in selected and aws.configured and self.settings.spotbot_aws_list_prices_enabled:
+                sweeps.append(("aws_list", self._collect_list_prices))
+            if aws in selected and aws.configured and len(self.settings.aws_price_regions) > len(
+                aws.regions
+            ):
+                sweeps.append(("aws_regions", self._collect_price_regions))
+            for name, sweep in sweeps:
+                if background_sweeps:
+                    # Multi-Region sweeps can take minutes; the worker keeps processing orders.
+                    running = self.background_sweeps.get(name)
+                    if not running or running.done():
+                        self.background_sweeps[name] = asyncio.create_task(sweep(aws))
+                    continue
+                result = await sweep(aws)
+                if result:
+                    results.append(result)
+            return results
+
+    async def _collect_price_regions(self, aws):
+        # Price-only Regions refresh hourly; their change history comes from the Spot backfill.
+        if time.monotonic() < self.price_regions_due:
+            return None
+        interval = self.settings.spotbot_aws_price_region_interval_seconds
+        try:
+            offers = await aws.collect_price_regions()
+            self.store.record_collection("aws_regions", offers)
+            self.price_regions_due = time.monotonic() + interval
+            return {"provider": "aws_regions", "status": "ok", "count": len(offers)}
+        except Exception as exc:
+            code = exc.code if isinstance(exc, ProviderError) else "invalid_catalog_schema"
+            self.store.record_collection("aws_regions", [], code)
+            self.price_regions_due = time.monotonic() + min(interval, 900)
+            logger.warning("Collection failed for aws_regions: %s", code)
+            return {"provider": "aws_regions", "status": "error", "count": 0, "error": code}
+
+    async def _collect_list_prices(self, aws):
+        # Published rates change rarely; storing them every Spot cycle would multiply history.
+        if time.monotonic() < self.list_prices_due:
+            return None
+        interval = self.settings.spotbot_aws_list_price_interval_seconds
+        try:
+            offers = await aws.collect_list_prices()
+            self.store.record_collection("aws_list", offers)
+            self.list_prices_due = time.monotonic() + interval
+            return {"provider": "aws_list", "status": "ok", "count": len(offers)}
+        except Exception as exc:
+            code = exc.code if isinstance(exc, ProviderError) else "invalid_catalog_schema"
+            self.store.record_collection("aws_list", [], code)
+            self.list_prices_due = time.monotonic() + min(interval, 1800)
+            logger.warning("Collection failed for aws_list: %s", code)
+            return {"provider": "aws_list", "status": "error", "count": 0, "error": code}
 
     def create_order(self, request: OrderRequest, key: str):
         if request.dry_run and not self.settings.spotbot_dry_run_enabled:
@@ -395,6 +457,36 @@ class Service:
                 delivered = False
             self.store.webhook_result(event["id"], delivered, event["attempts"] + 1)
 
+    async def run_list_history(self):
+        from spotbot.list_history import backfill
+
+        while True:
+            try:
+                result = await backfill(self.settings, self.list_history)
+                logger.info("AWS list history cycle completed: %s", result)
+                delay = 600 if result["failed"] else self.settings.spotbot_aws_list_history_interval_seconds
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("AWS list history cycle failed: error_type=%s", type(exc).__name__)
+                delay = 600
+            await asyncio.sleep(delay)
+
+    async def run_history(self):
+        from spotbot.spot_history import backfill
+
+        while True:
+            try:
+                result = await backfill(self.settings, self.spot_history)
+                logger.info("AWS Spot history cycle completed: %s", result)
+                delay = 600 if result["failed"] else self.settings.spotbot_aws_spot_history_interval_seconds
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("AWS Spot history cycle failed: error_type=%s", type(exc).__name__)
+                delay = 600
+            await asyncio.sleep(delay)
+
     async def run(self):
         last_collect = 0.0
         while True:
@@ -403,7 +495,7 @@ class Service:
                     time.monotonic() - last_collect
                     >= self.settings.spotbot_collect_interval_seconds
                 ):
-                    await self.collect()
+                    await self.collect(background_sweeps=True)
                     last_collect = time.monotonic()
                 await self.tick()
             except asyncio.CancelledError:

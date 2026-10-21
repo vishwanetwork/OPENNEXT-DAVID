@@ -19,9 +19,47 @@ from spotbot.config import Settings
 from spotbot.models import LaunchOptions, Offer, OrderRequest, utcnow
 from spotbot.service import Service
 from spotbot.storage.dynamodb import DynamoDBStore
+from spotbot.storage.list_history import ListHistory
 from spotbot.storage.mysql import MySQLStore
+from spotbot.storage.spot_history import create_history_store
 from spotbot.storage.sqlite import Store
 from tests.test_orders import FakeShade
+
+
+def test_list_archives_are_atomic_idempotent_and_isolated(storage):
+    history = ListHistory(storage)
+    version = "20260925174521"
+    begin, end = "2026-09-01T00:00:00.000000+00:00", "2026-10-01T00:00:00.000000+00:00"
+    status = {"spec_hash": "hash", "since": begin, "checked_at": end, "versions": [{"version": version, "begin": begin, "end": end}]}
+    history.save("us-west-2", "STATUS", status)
+    assert history.query("us-west-2", "g5.xlarge", begin, end)["pending"]
+    doc = {"spec_hash": "hash", "prices": {"g5.xlarge": {"on_demand": {"price_hourly": "1.006", "effective_at": begin}}}}
+    for _ in range(2):
+        history.save("us-west-2", version, doc)
+    assert history.get("us-west-2", version) == doc
+    result = history.query("us-west-2", "g5.xlarge", begin, end)
+    assert not result["pending"] and len(result["items"]) == 1
+    assert result["items"][0]["valid_until"] == end
+    assert storage.latest(provider="aws") == []
+
+
+def test_spot_change_history_is_idempotent_and_keeps_boundary_price(storage):
+    history = create_history_store(storage)
+    def event(zone, at, price):
+        return {"availability_zone": zone, "effective_at": at, "price_hourly": price}
+    events = [event("zone-a", "2026-07-01T00:00:00.000000+00:00", "1"),
+              event("zone-a", "2026-08-01T00:00:00.000000+00:00", "2"),
+              event("zone-b", "2026-07-15T00:00:00.000000+00:00", "3"),
+              event("zone-a", "2026-10-01T00:00:00.000000+00:00", "4")]
+    coverage = {"since": "2026-07-20T00:00:00.000000+00:00", "until": "2026-10-10T00:00:00.000000+00:00"}
+    for _ in range(2):
+        history.save("us-west-2", "g5.xlarge", events, coverage)
+    assert history.coverage("us-west-2", "g5.xlarge") == coverage
+    rows = history.read("us-west-2", "g5.xlarge", "2026-09-01T00:00:00.000000+00:00", "2026-09-30T00:00:00.000000+00:00")
+    assert len(rows) == 2
+    assert {r["price_hourly"] for r in rows} == {"2", "3"}
+    assert storage.latest(provider="aws") == []
+    assert storage.history(provider="aws")[0] == 0
 
 
 @pytest.fixture(params=["sqlite", "mysql", "dynamodb", "dynamodb-local"])
@@ -116,8 +154,14 @@ def order_request(offer):
 
 
 def test_aws_zonal_catalog_round_trip_across_backends(storage, offer):
-    west = offer.model_copy(update={"provider": "aws", "cloud": "aws", "region": "us-west-2",
-                                    "availability_zone": "us-west-2a"})
+    west = offer.model_copy(
+        update={
+            "provider": "aws",
+            "cloud": "aws",
+            "region": "us-west-2",
+            "availability_zone": "us-west-2a",
+        }
+    )
     east = west.model_copy(update={"availability_zone": "us-west-2b"})
     assert west.offer_id != east.offer_id
     storage.record_collection("aws", [west, east])
@@ -145,6 +189,68 @@ def test_catalog_history_latest_failure_and_empty_batch(storage, offer):
     assert storage.get_offer(offer.offer_id) is None
     assert storage.historical_offer(offer.offer_id) is not None
     assert storage.history()[0] == 2
+
+
+def test_mysql_latest_resolves_batches_before_reading_prices(offer):
+    # Exercise the adapter's relational reads without requiring a live MySQL server.
+    # The deployed MySQL EXPLAIN check separately verifies price_batch range access.
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    collections = sa.Table(
+        "collections",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("provider", sa.String),
+        sa.Column("status", sa.String),
+    )
+    prices = sa.Table(
+        "prices",
+        metadata,
+        sa.Column("collection_id", sa.Integer),
+        sa.Column("payload", sa.Text),
+        *(
+            sa.Column(name, sa.String)
+            for name in ["provider", "cloud", "sku", "region", "market", "offer_id"]
+        ),
+    )
+    metadata.create_all(engine)
+    adapter = MySQLStore.__new__(MySQLStore)
+    adapter.engine, adapter.collections, adapter.prices = engine, collections, prices
+    try:
+        assert adapter.latest() == []
+        old = offer.model_copy(update={"price_hourly": Decimal("3")})
+        current = offer.model_copy(update={"price_hourly": Decimal("2")})
+        with engine.begin() as connection:
+            connection.execute(
+                collections.insert(),
+                [
+                    {"id": 1, "provider": offer.provider, "status": "ok"},
+                    {"id": 2, "provider": offer.provider, "status": "ok"},
+                    {"id": 3, "provider": offer.provider, "status": "error"},
+                ],
+            )
+            for batch, value in [(1, old), (2, current)]:
+                connection.execute(
+                    prices.insert().values(
+                        collection_id=batch,
+                        payload=value.model_dump_json(),
+                        offer_id=value.offer_id,
+                        **{
+                            key: getattr(value, key)
+                            for key in ["provider", "cloud", "sku", "region", "market"]
+                        },
+                    )
+                )
+        assert adapter.latest()[0].price_hourly == Decimal("2")
+        assert adapter.latest(provider="lambda") == []
+        assert adapter.get_offer(current.offer_id).price_hourly == Decimal("2")
+        with engine.begin() as connection:
+            connection.execute(
+                collections.insert().values(id=4, provider=offer.provider, status="ok")
+            )
+        assert adapter.latest() == []
+    finally:
+        engine.dispose()
 
 
 def test_history_time_bounds(storage, offer):

@@ -108,6 +108,25 @@ def test_gpu_normalization_and_stale_quote(service_factory):
     assert gpu_model("NVIDIA RTX A6000 48GB") == "RTX A6000"
     assert gpu_model("AMD_MI355X") == "MI355X"
     assert gpu_model("NVIDIA H100 SXM5 80GB") == "H100"
+    cases = {
+        "NVIDIA A10G": "A10G",
+        "A10 (24 GB PCIe)": "A10",
+        "NVIDIA L4": "L4",
+        "L40S": "L40S",
+        "NVIDIA RTX PRO SERVER 6000": "RTX PRO 6000",
+        "RTXPRO6000": "RTX PRO 6000",
+        "NVIDIA RTX PRO 4500": "RTX PRO 4500",
+        "RTX4090": "RTX 4090",
+        "RTX 6000": "RTX 6000",
+        "RTX6000ADA": "RTX 6000 ADA",
+        "A6000 (48 GB)": "RTX A6000",
+        "GH200": "GH200",
+        "GB200": "GB200",
+        "T4G": "T4G",
+        "B200_sxm6x8_NVLINK": "B200",
+        "GAUDI2": "GAUDI2",
+    }
+    assert {text: gpu_model(text) for text in cases} == cases
 
 
 async def test_stale_available_quote_flag(service_factory):

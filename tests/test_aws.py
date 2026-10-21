@@ -1,4 +1,5 @@
 import copy
+import json
 import time
 from datetime import UTC, datetime
 
@@ -26,6 +27,49 @@ class Pages:
         yield from self.values
 
 
+class PriceListPages:
+    def __init__(self, fake):
+        self.fake = fake
+
+    def paginate(self, **kwargs):
+        self.fake.price_list_calls.append(kwargs)
+        if self.fake.price_list_error:
+            raise self.fake.price_list_error
+        yield {"PriceList": [json.dumps(p) for p in self.fake.price_list]}
+
+
+def price_product(sku, on_demand, reserved=(), effective="2026-10-01T00:00:00Z"):
+    def dims(**values):
+        return {
+            unit: {"unit": unit, "pricePerUnit": {"USD": str(value)}}
+            for unit, value in values.items()
+        }
+
+    terms = {
+        "OnDemand": {
+            "od": {
+                "effectiveDate": effective,
+                "offerTermCode": "JRTCKXETXF",
+                "priceDimensions": dims(Hrs=on_demand),
+            }
+        },
+        "Reserved": {
+            f"ri{i}": {
+                "effectiveDate": "2026-10-15T19:36:30Z",
+                "offerTermCode": f"RI{i}",
+                "termAttributes": {
+                    "LeaseContractLength": lease,
+                    "PurchaseOption": option,
+                    "OfferingClass": offering,
+                },
+                "priceDimensions": dims(**values),
+            }
+            for i, (lease, option, offering, values) in enumerate(reserved)
+        },
+    }
+    return {"product": {"attributes": {"instanceType": sku}}, "terms": terms}
+
+
 class FakeAWS:
     def __init__(self):
         self.creates = []
@@ -36,6 +80,9 @@ class FakeAWS:
         self.client_configs = []
         self.spot_instances = []
         self.spot_requests = []
+        self.price_list = []
+        self.price_list_calls = []
+        self.price_list_error = None
 
     def get_credentials(self):
         return object()
@@ -45,6 +92,8 @@ class FakeAWS:
         return self
 
     def get_paginator(self, method):
+        if method == "get_products":
+            return PriceListPages(self)
         gpu = {"Manufacturer": "NVIDIA", "Name": "H100", "Count": 1}
         p5 = {
             "InstanceType": "p5.4xlarge",
@@ -471,3 +520,138 @@ async def test_quota_consumed_after_order_creation_blocks_billable_call(aws_serv
     assert not fake.creates
     current = service.store.get_order(order["id"])
     assert current["state"] == "queued" and current["error"] == "quota_insufficient"
+
+
+async def test_list_prices_add_on_demand_and_reserved_on_their_own_schedule(aws_service):
+    service, fake = aws_service
+    fake.price_list = [
+        price_product(
+            "p5.4xlarge",
+            "6.88",
+            [
+                ("1yr", "No Upfront", "standard", {"Hrs": "4.5"}),
+                ("1yr", "No Upfront", "convertible", {"Hrs": "5.2"}),
+                ("3yr", "All Upfront", "convertible", {"Hrs": "0", "Quantity": "26280"}),
+                ("1yr", "No Upfront", "other", {"Hrs": "1"}),
+            ],
+        ),
+        price_product("m7i.large", "0.1"),
+    ]
+    results = await service.collect("aws")
+    assert {r["provider"]: r["count"] for r in results} == {"aws": 3, "aws_list": 4}
+    call = fake.price_list_calls[0]
+    assert call["ServiceCode"] == "AmazonEC2"
+    assert {f["Field"]: f["Value"] for f in call["Filters"]}["regionCode"] == "us-west-2"
+    offers = service.store.latest(provider="aws")
+    spot = [o for o in offers if o.market == "spot"]
+    listed = {
+        (o.market, o.details.get("offering_class"), o.details.get("lease_contract_length")): o
+        for o in offers
+        if o.price_kind == "list"
+    }
+    assert len(spot) == 3 and len(listed) == 4
+    on_demand = listed[("on_demand", None, None)]
+    assert str(on_demand.price_hourly) == "6.88"
+    assert on_demand.effective_at == "2026-10-01T00:00:00Z"
+    assert str(listed[("reserved", "standard", "1yr")].price_hourly) == "4.500000"
+    # An upfront payment is spread across the term: 26,280 USD over three years is 1 USD/hour.
+    assert str(listed[("reserved", "convertible", "3yr")].price_hourly) == "1.000000"
+    assert len({o.offer_id for o in listed.values()}) == 4
+    assert all(not o.orderable and o.availability_zone is None for o in listed.values())
+
+    # Spot refreshes every cycle; list prices wait for their own interval.
+    await service.collect("aws")
+    assert len(fake.price_list_calls) == 1
+    assert len([o for o in service.store.latest(provider="aws") if o.price_kind == "list"]) == 4
+    with pytest.raises(ValueError, match="aws_list_price_only"):
+        service.create_order(
+            OrderRequest(offer_id=on_demand.offer_id, max_price_hourly="100"), "list-order"
+        )
+    app = create_app(service.settings, service)
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer test-token"}
+        reserved = client.get("/v1/prices/latest", params={"market": "reserved"}, headers=headers)
+        assert reserved.json()["total"] == 3
+        status = client.get("/v1/providers", headers=headers).json()["providers"]
+        assert (
+            next(p for p in status if p["provider"] == "aws")["last_list_price_collection"]["count"]
+            == 4
+        )
+
+
+async def test_denied_price_list_keeps_spot_and_retries_later(aws_service):
+    service, fake = aws_service
+    fake.price_list_error = ClientError(
+        {"Error": {"Code": "AccessDeniedException"}, "ResponseMetadata": {"HTTPStatusCode": 400}},
+        "GetProducts",
+    )
+    results = await service.collect("aws")
+    assert {r["provider"]: r["status"] for r in results} == {"aws": "ok", "aws_list": "error"}
+    assert results[1]["error"] == "aws_AccessDeniedException"
+    assert len(service.store.latest(provider="aws")) == 3
+    assert service.list_prices_due - time.monotonic() <= 1800
+
+
+async def test_price_only_regions_add_region_level_spot_and_no_upfront_list_prices(tmp_path):
+    config = Settings(
+        _env_file=None,
+        spotbot_enabled_providers="aws",
+        spotbot_api_key="test-token",
+        spotbot_aws_key_name="test",
+        spotbot_background_enabled=False,
+        spotbot_aws_price_regions="eu-north-1,us-west-2",
+        spotbot_database_path=tmp_path / "regions.sqlite3",
+    )
+    assert config.aws_price_regions == ["us-west-2", "eu-north-1"]
+    client = httpx.AsyncClient()
+    service = Service(config, client)
+    fake = FakeAWS()
+    fake.price_list = [
+        price_product(
+            "p5.4xlarge",
+            "6.88",
+            [
+                ("1yr", "No Upfront", "standard", {"Hrs": "4.5"}),
+                ("1yr", "All Upfront", "standard", {"Hrs": "0", "Quantity": "30000"}),
+            ],
+        )
+    ]
+    service.providers["aws"] = AWSProvider(config, client, session=fake)
+    try:
+        results = {r["provider"]: r for r in await service.collect("aws")}
+        assert results["aws_regions"]["status"] == "ok"
+        regional = [o for o in service.store.latest(provider="aws") if o.region == "eu-north-1"]
+        spot = {o.sku: o for o in regional if o.market == "spot"}
+        # One reference per GPU type: the lowest zone, with no zone in the identity.
+        assert str(spot["p5.4xlarge"].price_hourly) == "2.6"
+        assert spot["p5.4xlarge"].availability_zone is None
+        assert spot["p5.4xlarge"].details["lowest_zone"] == "us-west-2a"
+        assert spot["p5.4xlarge"].details["zone_count"] == 2
+        assert not any(o.orderable for o in regional)
+        assert {o.details["eligibility_status"] for o in spot.values()} == {"price_only_region"}
+        regions = [
+            {f["Field"]: f["Value"] for f in call["Filters"]}["regionCode"]
+            for call in fake.price_list_calls
+        ]
+        assert regions == ["us-west-2", "eu-north-1"]
+        listed = [o for o in regional if o.price_kind == "list"]
+        # Price-only Regions keep only No Upfront Reserved terms; order Regions keep all of them.
+        assert {o.details.get("purchase_option") for o in listed} == {None, "No Upfront"}
+        west = [o for o in service.store.latest(provider="aws") if o.region == "us-west-2"]
+        assert "All Upfront" in {o.details.get("purchase_option") for o in west}
+        # The hourly price-only sweep waits for its interval.
+        before = len(fake.price_list_calls)
+        results = {r["provider"] for r in await service.collect("aws")}
+        assert "aws_regions" not in results and len(fake.price_list_calls) == before
+    finally:
+        service.store.close()
+
+
+async def test_worker_runs_list_price_sweep_in_background(aws_service):
+    service, fake = aws_service
+    fake.price_list = [price_product("p5.4xlarge", "6.88")]
+    results = await service.collect("aws", background_sweeps=True)
+    # The Spot cycle returns immediately; the list-price sweep finishes on its own task.
+    assert [r["provider"] for r in results] == ["aws"]
+    await service.background_sweeps["aws_list"]
+    assert any(o.price_kind == "list" for o in service.store.latest(provider="aws"))

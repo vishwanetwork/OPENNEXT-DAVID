@@ -2,10 +2,11 @@ import asyncio
 import secrets
 import shlex
 from contextlib import asynccontextmanager, suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from spotbot.config import Settings
@@ -28,13 +29,27 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     @asynccontextmanager
     async def lifespan(app):
         task = None
+        history_task = None
+        list_history_task = None
         try:
             svc.acquire()
             if config.spotbot_background_enabled:
                 task = asyncio.create_task(svc.run())
+                if config.enabled("aws") and config.spotbot_aws_spot_history_enabled:
+                    history_task = asyncio.create_task(svc.run_history())
+                if config.enabled("aws") and config.spotbot_aws_list_history_enabled:
+                    list_history_task = asyncio.create_task(svc.run_list_history())
             app.state.worker_task = task
             yield
         finally:
+            if list_history_task:
+                list_history_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await list_history_task
+            if history_task:
+                history_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await history_task
             if task:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -47,6 +62,8 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         lifespan=lifespan,
         description="GPU price history, capacity orders and SSH/HTTP gateway handoff",
     )
+    # Catalog pages are ~1 MB of repetitive JSON; compression keeps slow links within timeouts.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.state.service = svc
     bearer = HTTPBearer(auto_error=False)
 
@@ -97,6 +114,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                 "spot_orders": True,
                 "on_demand_orders": False,
                 "native_spot_price_limit": True,
+                "list_prices": "On-demand and Reserved from the AWS Price List (reference only)",
                 "limitation": "Capacity is confirmed only by a launch attempt; regional quotas apply",
             },
             "lambda": {"spot_catalog": False, "spot_orders": False, "on_demand_orders": True},
@@ -124,6 +142,15 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                     "public_catalog": name == "vultr",
                     "capabilities": capabilities[name],
                     "last_collection": collections.get(name),
+                    **(
+                        {
+                            "last_list_price_collection": collections.get("aws_list"),
+                            "last_price_region_collection": collections.get("aws_regions"),
+                            "price_regions": config.aws_price_regions,
+                        }
+                        if name == "aws"
+                        else {}
+                    ),
                 }
                 for name, p in svc.providers.items()
             ]
@@ -177,6 +204,59 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             if any(o["provider"] == name for o in selected)
         ]
         return {"total": len(rows), "limit": limit, "offset": offset, "groups": groups}
+
+    @app.get("/v1/prices/aws-list-history", dependencies=auth)
+    def aws_list_history(
+        region: str = Query(..., min_length=1, max_length=64),
+        sku: str = Query(..., min_length=1, max_length=128),
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = Query(1000, ge=1, le=5000),
+        offset: int = Query(0, ge=0),
+    ):
+        from spotbot.spot_history import iso
+
+        if any(value and value.tzinfo is None for value in (since, until)):
+            raise HTTPException(400, "timestamps_require_timezone")
+        end = (until or datetime.now(UTC)).astimezone(UTC)
+        start = (since or end - timedelta(days=90)).astimezone(UTC)
+        if start >= end or end - start > timedelta(days=90):
+            raise HTTPException(400, "history_window_must_be_between_zero_and_90_days")
+        data = svc.list_history.query(region, sku, iso(start), iso(end))
+        rows = data.pop("items")
+        return {
+            "provider": "aws", "region": region, "sku": sku,
+            "kind": "published_price_intervals", "unit": "USD / instance-hour",
+            "commitment": {"months": 12, "payment": "no_upfront"},
+            **data, "total": len(rows), "limit": limit, "offset": offset,
+            "items": rows[offset:offset + limit],
+        }
+
+    @app.get("/v1/prices/aws-spot-history", dependencies=auth)
+    def aws_spot_history(
+        region: str = Query(..., min_length=1, max_length=64),
+        sku: str = Query(..., min_length=1, max_length=128),
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = Query(1000, ge=1, le=5000),
+        offset: int = Query(0, ge=0),
+    ):
+        from spotbot.spot_history import iso
+
+        if any(value and value.tzinfo is None for value in (since, until)):
+            raise HTTPException(400, "timestamps_require_timezone")
+        end = (until or datetime.now(UTC)).astimezone(UTC)
+        start = (since or end - timedelta(days=90)).astimezone(UTC)
+        if start >= end or end - start > timedelta(days=90):
+            raise HTTPException(400, "history_window_must_be_between_zero_and_90_days")
+        coverage = svc.spot_history.coverage(region, sku)
+        rows = svc.spot_history.read(region, sku, iso(start), iso(end)) if coverage else []
+        return {
+            "provider": "aws", "market": "spot", "region": region, "sku": sku,
+            "kind": "price_change_events", "unit": "USD / instance-hour",
+            "coverage": coverage, "total": len(rows), "limit": limit, "offset": offset,
+            "items": rows[offset:offset + limit],
+        }
 
     @app.get("/v1/prices/history", dependencies=auth)
     def history(
