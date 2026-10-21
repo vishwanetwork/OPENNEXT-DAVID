@@ -98,6 +98,22 @@ second bot or gateway worker against either service's database.
 
 ### Staging validation boundary
 
+Release `a6003b6` was deployed on 2026-10-21; the gateway environment gained
+`SPOTBOT_GATEWAY_HTTP_TOKEN_SECRET` (previous environment files are kept as
+`.env*.before-a6003b6b4131`).
+
+On 2026-10-21 the controlled acceptance passed a full requested recovery on L4
+(`g6.2xlarge`, us-west-2c) using the default 75 GiB Ubuntu Deep Learning AMI and
+a 1 GiB data disk. The replacement needed 94 capacity attempts in total; it
+restored the root and data test files with identical SHA-256, mode and owner,
+kept the gateway SSH port and HTTP endpoint, and presented the original SSH host
+key. Release closed the rental and deleted every managed instance, volume,
+snapshot and image; no Spot request remained open. Application cost estimates
+for the day's runs total about USD 2.86. The re-encrypted public AMI root took
+about 70 minutes for its first full snapshot; staging used a stand-in HTTP
+service on port 8000 because the AMI runs none. An AWS Spot interruption was not
+injected; the recovery was requested through the bot API.
+
 Live validation on 2026-10-20 booted real T4 Spot servers and verified the managed
 SSH endpoint, HTTP token enforcement, root/data disk capture, registered recovery
 images, native EventBridge/SQS state-event delivery, and final storage cleanup.
