@@ -102,6 +102,20 @@ Release `a6003b6` was deployed on 2026-10-21; the gateway environment gained
 `SPOTBOT_GATEWAY_HTTP_TOKEN_SECRET` (previous environment files are kept as
 `.env*.before-a6003b6b4131`).
 
+On 2026-10-22 `us-east-1` and `us-east-2` were enrolled as rental Regions.
+Each has a `spotbot-rental-recovery-use1`/`-use2` stack (managed IAM policies),
+a `spotbot-gpu` security group admitting only the gateway host, the `test` key
+pair, and a copied base (`ami-04c76bc9122c872ef`, `ami-0099e22a9f3c26549`). The
+launch policy gained the `us-east-2` resources. `rental-check --aws` passed in
+both Regions, including incremental first backups and interruption delivery.
+Recovery acceptance passed in `us-east-1` and `us-east-2`. An unannounced loss
+in `us-east-1` (instance terminated through EC2 without telling the bot) was
+detected in 2 seconds; the restored server held a file written after the last
+routine backup, and delivery resumed 13m37s after the loss (6m32s of that was
+the old instance shutting down). Rental estimates totalled about USD 1.23; only
+the three base images remain. GPU Spot quota is 32 vCPU in `us-west-2` and 8 in
+both `us-east` Regions while increases to 32 are pending.
+
 Release `15a197a` adds the enrolled encrypted base
 `ami-0f6ea1802493b4f74` (built on `t3.medium` from the 75 GiB Ubuntu Deep
 Learning AMI) as `SPOTBOT_RENTAL_INITIAL_IMAGES` for `us-west-2`, guest flushes

@@ -15,7 +15,16 @@ enable protected rentals or submit orders. Review a change set before execution.
 2. Deploy one stack per approved rental Region, using the intended AWS profile.
    Inspect parameters and resulting policies before executing the change set.
    With `ExistingBotRoleName` empty, no IAM policies are attached. Providing the
-   role name adds the regional recovery, queue-consumer, and read permissions.
+   role name attaches the regional recovery, queue-consumer, and read
+   permissions as customer-managed policies named after the stack, so use a
+   distinct stack name per Region (for example `spotbot-rental-recovery-use1`)
+   and deploy with `CAPABILITY_NAMED_IAM`. Managed policies keep the role's
+   10,240-byte inline policy budget free; three Regions of inline recovery
+   policies do not fit. The original `us-west-2` stack still uses an inline
+   policy; changing a deployed resource's type cannot be done in place.
+   Extending the separate launch policy to a new Region needs that Region's
+   instance, volume, image, network interface, Spot request, security group,
+   key pair and subnet resources, including the tag-at-launch statement.
 3. Keep `AllowCrossRegionCopies=false` for same-region recovery. For explicitly
    approved cross-region recovery, set it true and set `SourceRecoveryRegion`
    to the one allowed source Region. Deploy the corresponding policy in the

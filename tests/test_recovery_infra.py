@@ -40,13 +40,13 @@ def test_no_instances_network_changes_or_role_creation():
         "AWS::SQS::Queue",
         "AWS::SQS::QueuePolicy",
         "AWS::Events::Rule",
-        "AWS::IAM::Policy",
+        "AWS::IAM::ManagedPolicy",
         "AWS::CloudWatch::Alarm",
     }
     assert TEMPLATE["Parameters"]["ExistingBotRoleName"]["Default"] == ""
     assert TEMPLATE["Parameters"]["AllowCrossRegionCopies"]["Default"] == "false"
     for resource in TEMPLATE["Resources"].values():
-        if resource["Type"] == "AWS::IAM::Policy":
+        if resource["Type"] == "AWS::IAM::ManagedPolicy":
             assert resource.get("Condition")
             for statement in resource["Properties"]["PolicyDocument"]["Statement"]:
                 assert not any(
@@ -101,3 +101,16 @@ def test_cleanup_and_creation_have_distinct_ownership_conditions():
     assert (
         "ec2:CreateAction" in by_id["TagRecoveryResourcesAtCreation"]["Condition"]["StringEquals"]
     )
+
+
+def test_permissions_are_managed_policies_within_size_limits():
+    import json
+
+    # Inline policies share one 10,240-byte budget per role; three Regions would not fit.
+    for name in ("RecoveryPolicy", "CopyPolicy", "KmsPolicy"):
+        resource = TEMPLATE["Resources"][name]
+        assert resource["Type"] == "AWS::IAM::ManagedPolicy"
+        assert resource["Properties"]["ManagedPolicyName"]["Fn::Sub"].startswith("${AWS::StackName}-")
+        document = json.dumps(resource["Properties"]["PolicyDocument"], separators=(",", ":"))
+        assert len(document) < 6144
+

@@ -115,8 +115,19 @@ release request. The RFQ's absolute expiry remains the bot's fallback. Never
 discard an unresolved journal or run another purchase blindly.
 
 The current harness explicitly requests recovery through the bot API; it does
-not inject a real AWS reclamation warning. Separately verify EventBridge/SQS
-delivery and an unannounced instance loss in an approved staging test. It does
+not inject a real AWS reclamation warning. `examples/acceptance_machine_loss.py`
+runs the same harness for an unannounced loss: after the manual backup it writes
+a 4 MiB late file to the data disk, terminates the instance directly through EC2
+with the operator's AWS credentials, and requires the restored server to hold
+that file, proving the final retained disk state was restored. Run it only in
+staging, with the same `.env.acceptance` and a fresh run ID:
+
+```sh
+python examples/acceptance_machine_loss.py RUN_ID /tmp/rental-test.json \
+  logs/acceptance/RUN_ID.json
+```
+
+A real Spot interruption warning still requires an approved AWS FIS experiment. It does
 not validate large-disk restore throughput, arbitrary customer application
 consistency, billing settlement, load capacity, or a gateway failover cluster.
 

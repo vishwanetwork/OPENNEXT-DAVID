@@ -272,12 +272,13 @@
       }
     },
     "RecoveryPolicy": {
-      "Type": "AWS::IAM::Policy",
+      "Type": "AWS::IAM::ManagedPolicy",
       "Condition": "HasBotRole",
       "Properties": {
-        "PolicyName": {
+        "ManagedPolicyName": {
           "Fn::Sub": "${AWS::StackName}-recovery"
         },
+        "Description": "SpotOrderBot regional snapshot, image, volume and interruption-queue recovery",
         "Roles": [
           {
             "Ref": "ExistingBotRoleName"
@@ -555,12 +556,13 @@
       }
     },
     "CopyPolicy": {
-      "Type": "AWS::IAM::Policy",
+      "Type": "AWS::IAM::ManagedPolicy",
       "Condition": "EnableCopyPolicy",
       "Properties": {
-        "PolicyName": {
+        "ManagedPolicyName": {
           "Fn::Sub": "${AWS::StackName}-copy"
         },
+        "Description": "SpotOrderBot approved cross-region recovery image copies",
         "Roles": [
           {
             "Ref": "ExistingBotRoleName"
@@ -617,12 +619,13 @@
       }
     },
     "KmsPolicy": {
-      "Type": "AWS::IAM::Policy",
+      "Type": "AWS::IAM::ManagedPolicy",
       "Condition": "EnableKmsPolicy",
       "Properties": {
-        "PolicyName": {
+        "ManagedPolicyName": {
           "Fn::Sub": "${AWS::StackName}-kms"
         },
+        "Description": "SpotOrderBot use of the configured KMS key through EC2",
         "Roles": [
           {
             "Ref": "ExistingBotRoleName"
