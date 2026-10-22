@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import time
@@ -74,7 +75,59 @@ def initialize_disk(instruction):
             command("mount", target, timeout=20)
 
 
-def collect(config):
+# Filesystems the kernel can freeze; others (e.g. vfat /boot/efi) are left as they are.
+FREEZABLE = {"ext4", "xfs", "btrfs"}
+# Thaw on our own only if the bot never terminates this server; the bot gives up on a
+# frozen snapshot long before this, so a thaw can never follow a capture it relies on.
+FREEZE_WATCHDOG_SECONDS = 900
+
+
+def protected_mounts():
+    """Mounted filesystems on the rental's EBS volumes, root last."""
+    found = set()
+    for entry in disks():
+        device = entry["device"]
+        for mount in device.get("mountpoints") or []:
+            if mount and mount.startswith("/") and device.get("fstype") in FREEZABLE:
+                found.add(mount)
+    return sorted(found, key=lambda m: (m == "/", m))
+
+
+def freeze(mounts):
+    """Freeze every mount or none: a partial freeze is undone before failing."""
+    frozen = []
+    try:
+        for mount in mounts:
+            command("fsfreeze", "--freeze", mount, timeout=30)
+            frozen.append(mount)
+    except Exception:
+        thaw(frozen)
+        raise
+    return frozen
+
+
+def thaw(mounts):
+    for mount in reversed(mounts):
+        try:
+            command("fsfreeze", "--unfreeze", mount, timeout=30)
+        except Exception:
+            pass
+
+
+def pre_backup():
+    hook = Path("/etc/spotbot/pre-backup")
+    if hook.is_file() and os.access(hook, os.X_OK):
+        subprocess.run(
+            [str(hook)],
+            timeout=8,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    os.sync()
+
+
+def collect(config, frozen=False):
     entries = disks()
     mounts, canaries = [], {}
     for entry in entries:
@@ -98,6 +151,9 @@ def collect(config):
         canaries=canaries,
     )
     try:
+        if frozen:
+            # Tools that may write logs would block on a frozen filesystem.
+            raise OSError("frozen")
         output = command(
             "nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"
         )
@@ -130,11 +186,20 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def run():
     config_path = Path("/etc/spotbot/agent.json")
     flushed = None
+    # (command, mounts, watchdog deadline). While frozen nothing below may write to disk.
+    frozen = None
+    thawed = None
     last_report = 0.0
     opener = urllib.request.build_opener(NoRedirect)
     while True:
         try:
             config = json.loads(config_path.read_text())
+            if frozen and time.monotonic() >= frozen[2]:
+                thaw(frozen[1])
+                thawed, frozen = frozen[0], None
+                last_report = 0.0
+            if frozen:
+                config = dict(config, create_canaries=False)
             # Check warnings every five seconds, even between ordinary heartbeats.
             notice = False
             try:
@@ -142,8 +207,11 @@ def run():
             except (OSError, ValueError):
                 pass
             if notice or time.monotonic() - last_report >= 15:
-                report = collect(config)
+                report = collect(config, frozen=bool(frozen))
                 report["flushed_command"] = flushed
+                report["freeze_supported"] = shutil.which("fsfreeze") is not None
+                report["frozen_command"] = frozen[0] if frozen else None
+                report["thawed_command"] = thawed
                 request = urllib.request.Request(
                     config["url"] + "/v1/agents/report",
                     data=json.dumps(report).encode(),
@@ -152,24 +220,29 @@ def run():
                 with opener.open(request, timeout=8) as response:
                     instructions = json.load(response)
                 last_report = time.monotonic()
-                for disk in instructions.get("initialize_disks", []):
-                    initialize_disk(disk)
-                if bool(instructions.get("create_canaries")) != bool(config.get("create_canaries")):
-                    config["create_canaries"] = bool(instructions.get("create_canaries"))
-                    config_path.write_text(json.dumps(config))
+                if not frozen:
+                    for disk in instructions.get("initialize_disks", []):
+                        initialize_disk(disk)
+                    if bool(instructions.get("create_canaries")) != bool(
+                        config.get("create_canaries")
+                    ):
+                        config["create_canaries"] = bool(instructions.get("create_canaries"))
+                        config_path.write_text(json.dumps(config))
                 identity = instructions.get("flush_command")
                 if identity and identity != flushed:
-                    hook = Path("/etc/spotbot/pre-backup")
-                    if hook.is_file() and os.access(hook, os.X_OK):
-                        subprocess.run(
-                            [str(hook)],
-                            timeout=8,
-                            check=True,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
-                    os.sync()
+                    if not frozen:  # A frozen filesystem is already synced; sync would block.
+                        pre_backup()
                     flushed = identity
+                    last_report = 0.0
+                identity = instructions.get("freeze_command")
+                if identity and not frozen and identity != thawed:
+                    pre_backup()
+                    # Stay frozen until the bot terminates this server (or the watchdog).
+                    frozen = (
+                        identity,
+                        freeze(protected_mounts()),
+                        time.monotonic() + FREEZE_WATCHDOG_SECONDS,
+                    )
                     last_report = 0.0
         except Exception:
             # Never log bearer material or arbitrary server response bodies.

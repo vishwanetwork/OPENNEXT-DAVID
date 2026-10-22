@@ -20,6 +20,12 @@ from spotbot.storage.workflows import ConflictError, WorkflowStore
 # The guest reports every 15s and flushes on its next report; allow two cycles before
 # capturing without a confirmed flush. Routine captures are not on the recovery path.
 BACKUP_FLUSH_WAIT_SECONDS = 30
+# Lossless fast recovery: wait this long for the guest to confirm every protected filesystem
+# is frozen, and terminate within the trust window (well inside the guest's 900 s watchdog),
+# so no write can follow the snapshot. Otherwise fall back to capturing retained disks.
+FREEZE_ACK_SECONDS = 45
+FREEZE_TRUST_SECONDS = 300
+ACTIVE_BACKUP_STATES = {"REQUESTED", "CAPTURING", "PENDING", "REGISTERING", "IMAGE_PENDING"}
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +367,13 @@ class RentalEngine:
             if not command or command == report.flushed_command:
                 # A stop/recovery flush comes first; once acknowledged, serve the backup flush.
                 command = pending or command
+            freeze = (
+                row.get("freeze_command")
+                if row["state"] == "RECOVERING" and row.get("freeze_generation_id") == gen["id"]
+                else None
+            )
             return dict(
+                freeze_command=freeze,
                 flush_command=command,
                 create_canaries=not gen.get("source_backup_id") and not gen.get("verified_at"),
                 initialize_disks=[
@@ -953,6 +965,8 @@ class RentalEngine:
                 error=None,
                 flush_command=None,
                 flush_requested_at=None,
+                freeze_abandoned=None,
+                frozen_confirmed_at=None,
                 connection=dict(
                     rental_id=row["id"],
                     generation=gen["generation"],
@@ -1002,6 +1016,8 @@ class RentalEngine:
         if not gen.get("instance_id"):
             return
         instance = await self.backend.instance(gen)
+        if not ending and await self._frozen_switch(row, gen, instance):
+            return
         stopped = not instance or instance["State"]["Name"] == "terminated"
         if not stopped:
             if instance["State"]["Name"] != "shutting-down":
@@ -1056,6 +1072,95 @@ class RentalEngine:
             )
             self.save(row, "backup_ready")
 
+    def _abandon_freeze(self, row, reason, backup=None):
+        """Use the ordinary path: terminate, then capture the retained disks."""
+        if backup and backup["state"] in ACTIVE_BACKUP_STATES | {"AVAILABLE"}:
+            # Still a valid recovery point, but no longer the final disk state.
+            backup["final"] = False
+            self.save(backup)
+        row.update(freeze_abandoned=reason)
+        self.save(row)
+        return False
+
+    async def _frozen_switch(self, row, gen, instance):
+        """Capture a recovering server while the guest holds its filesystems frozen.
+
+        Returns True while this path owns the step. The snapshot is taken only after the
+        guest confirms the freeze, and the server is terminated as soon as the snapshots
+        exist, without thawing, so nothing can be written after the recovery point. The
+        replacement then need not wait for AWS to finish shutting the old server down.
+        """
+        state = instance["State"]["Name"] if instance else "terminated"
+        command = row.get("freeze_command")
+        backup = (
+            self.db.get("backup", identity("backup", row["id"], gen["id"], "frozen-" + command))
+            if command
+            else None
+        )
+        if backup and gen.get("terminate_requested_at"):
+            if backup["state"] in {"FAILED", "NEEDS_RECONCILIATION"}:
+                return self._abandon_freeze(row, "frozen_backup_failed", backup)
+            if backup["state"] != "AVAILABLE":
+                return True
+            row.update(
+                state="ACTION_REQUIRED" if row.get("recovery_halted") else "WAITING_CAPACITY",
+                current_backup_id=backup["id"],
+                error="recovery_wait_limit_reached" if row.get("recovery_halted") else None,
+                freeze_command=None,
+                freeze_generation_id=None,
+            )
+            self.save(row, "backup_ready")
+            return True
+        if row.get("freeze_abandoned"):
+            return False
+        if state != "running":
+            # Lost before this path terminated it: capture the retained disks instead.
+            return self._abandon_freeze(row, "server_stopped", backup) if command else False
+        report = gen.get("report", {})
+        fresh = gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
+        if not command:
+            if row.get("current_backup_id"):
+                return self._abandon_freeze(row, "explicit_backup_requested")
+            if not (gen.get("verified_at") and fresh and report.get("freeze_supported")):
+                return self._abandon_freeze(row, "freeze_unsupported")
+            gen["volumes"] = await self.backend.inventory(gen, instance)
+            self.save(gen)
+            row.update(
+                freeze_command=str(uuid4()),
+                freeze_requested_at=timestamp(),
+                freeze_generation_id=gen["id"],
+                frozen_confirmed_at=None,
+            )
+            self.save(row)
+            return True
+        if report.get("thawed_command") == command:
+            return self._abandon_freeze(row, "guest_thawed", backup)
+        if report.get("frozen_command") != command:
+            if (utcnow() - at(row["freeze_requested_at"])).total_seconds() < FREEZE_ACK_SECONDS:
+                return True
+            return self._abandon_freeze(row, "freeze_unconfirmed", backup)
+        if not row.get("frozen_confirmed_at"):
+            row["frozen_confirmed_at"] = timestamp()
+            self.save(row)
+        if (utcnow() - at(row["frozen_confirmed_at"])).total_seconds() >= FREEZE_TRUST_SECONDS:
+            return self._abandon_freeze(row, "freeze_trust_expired", backup)
+        if not backup:
+            if any(b["state"] in ACTIVE_BACKUP_STATES for b in self.backups(row)):
+                return True  # A routine capture finishes first; the trust window still applies.
+            backup = self.request_backup(row, "frozen-" + command, final=True)
+            backup.update(frozen_command=command, consistency="guest_frozen")
+            self.save(backup)
+            return True
+        if backup["state"] in {"FAILED", "NEEDS_RECONCILIATION"}:
+            return self._abandon_freeze(row, "frozen_backup_failed", backup)
+        if backup["state"] in {"REQUESTED", "CAPTURING"}:
+            return True
+        # Every snapshot exists, so the recovery point lies inside the freeze. Never thaw.
+        await self.backend.terminate(gen)
+        gen["terminate_requested_at"] = timestamp()
+        self.save(gen)
+        return True
+
     async def _backup_step(self, backup):
         gen = self.db.get("generation", backup["generation_id"])
         try:
@@ -1077,6 +1182,8 @@ class RentalEngine:
         """Ask a running guest to run its pre-backup hook and sync before a routine capture."""
         if gen["state"] == "STOPPED":
             return True  # Retained disks of a stopped writer cannot change.
+        if backup.get("frozen_command"):
+            return True  # The guest flushed and froze every filesystem before confirming.
         if not backup.get("flush_command"):
             backup.update(flush_command=str(uuid4()), flush_requested_at=timestamp())
             self.save(backup)
@@ -1208,6 +1315,14 @@ class RentalEngine:
                         await self.backend.delete_snapshot(region, snapshot_id)
                 backup.update(state="DELETED", deleted_at=timestamp())
                 self.save(backup, "backup_deleted")
+        # A server terminated by the fast path may still be shutting down after the rental moved
+        # on; record when it actually stopped so billing ends and its disks can be released.
+        for gen in self.generations(row):
+            if gen.get("terminate_requested_at") and gen["state"] != "STOPPED":
+                instance = await self.backend.instance(gen)
+                if not instance or instance["State"]["Name"] == "terminated":
+                    gen.update(state="STOPPED", ended_at=timestamp())
+                    self.save(gen)
         # Source volumes are retained until a verified replacement or final retention expiry.
         current = self.current(row)
         safe_old = current and current.get("verified_at") and row["state"] == "ACTIVE"

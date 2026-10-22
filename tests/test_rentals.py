@@ -37,6 +37,8 @@ class Cloud:
         self.launch_error = None
         self.snapshot_error = None
         self.pending_snapshots = False
+        self.slow_termination = False  # GPU instances stay shutting-down for minutes.
+        self.terminations = []
         self.base = dict(
             ImageId="ami-base",
             State="available",
@@ -95,7 +97,15 @@ class Cloud:
         ]
 
     async def terminate(self, gen):
-        self.instances[gen["id"]]["State"]["Name"] = "terminated"
+        self.terminations.append(gen["id"])
+        self.instances[gen["id"]]["State"]["Name"] = (
+            "shutting-down" if self.slow_termination else "terminated"
+        )
+
+    def finish_shutdown(self):
+        for instance in self.instances.values():
+            if instance["State"]["Name"] == "shutting-down":
+                instance["State"]["Name"] = "terminated"
 
     async def volumes_available(self, gen):
         return self.instances[gen["id"]]["State"]["Name"] == "terminated"
@@ -245,6 +255,7 @@ def rental_env(service_factory, monkeypatch):
         clock=clock,
         request=RentalRequest(rfq=rfq),
         offer=offer,
+        frozen={},
     )
 
 
@@ -254,13 +265,16 @@ async def cycle(env, n=1):
         env.clock.advance()
 
 
-async def report_ready(env, rental_id):
+async def report_ready(env, rental_id, *, freeze=False, ack_freeze=True, thawed=None):
     row = env.engine.get(rental_id, "tenant-a")
     gen = env.engine.current(row)
     volumes = await env.cloud.inventory(gen, None)
 
-    def report(flushed):
+    def report(flushed, frozen=None):
         return AgentReport(
+            freeze_supported=freeze,
+            frozen_command=frozen or env.frozen.get(gen["id"]),
+            thawed_command=thawed,
             rental_id=rental_id,
             generation=gen["generation"],
             instance_id=gen["instance_id"],
@@ -279,7 +293,12 @@ async def report_ready(env, rental_id):
     instructions = await env.engine.agent_report(report(flushed))
     # Like the real agent: run a requested flush, then report it immediately.
     if instructions["flush_command"] and instructions["flush_command"] != flushed:
-        await env.engine.agent_report(report(instructions["flush_command"]))
+        flushed = instructions["flush_command"]
+        instructions = await env.engine.agent_report(report(flushed))
+    command = instructions.get("freeze_command")
+    if freeze and ack_freeze and command and not env.frozen.get(gen["id"]):
+        env.frozen[gen["id"]] = command  # The fake guest never writes once frozen.
+        await env.engine.agent_report(report(flushed, command))
 
 
 async def deliver(env, rental_id):
@@ -547,6 +566,131 @@ async def test_unresponsive_guest_does_not_block_routine_backups(rental_env):
     await cycle(env)
     backup = env.engine.db.get("backup", backup["id"])
     assert backup["state"] != "REQUESTED" and backup["consistency"] == "crash_consistent"
+
+
+async def freeze_capable_recovery(env, key):
+    row, _ = env.engine.create(env.request, "tenant-a", key)
+    row = await deliver(env, row["id"])
+    old = env.engine.current(row)
+    for volume in old["volumes"]:
+        env.cloud.files[volume["volume_id"]]["late"] = "written-before-freeze"
+    await report_ready(env, row["id"], freeze=True, ack_freeze=False)
+    await env.engine.recover(row["id"], "tenant-a")
+    await cycle(env)
+    return env.engine.get(row["id"], "tenant-a"), old
+
+
+def frozen_backups(env, row):
+    return [b for b in env.engine.backups(row) if b.get("frozen_command")]
+
+
+async def test_frozen_switch_captures_before_terminating_and_skips_shutdown(rental_env):
+    env = rental_env
+    env.cloud.slow_termination = True
+    row, old = await freeze_capable_recovery(env, "frozen-switch")
+    command = row["freeze_command"]
+    assert command and row["freeze_generation_id"] == old["id"]
+    await cycle(env, 3)
+    assert not frozen_backups(env, row) and not env.cloud.terminations  # No capture unconfirmed.
+    await report_ready(env, row["id"], freeze=True)  # The guest freezes and confirms.
+    for _ in range(8):
+        await cycle(env)
+        row = env.engine.get(row["id"], "tenant-a")
+        if row["state"] != "RECOVERING":
+            break
+    backup = frozen_backups(env, row)[0]
+    assert backup["final"] and backup["consistency"] == "guest_frozen"
+    assert row["current_backup_id"] == backup["id"]
+    # Terminated only after the snapshots existed, and the old server is still shutting down.
+    assert env.cloud.terminations == [old["id"]]
+    assert env.cloud.instances[old["id"]]["State"]["Name"] == "shutting-down"
+    env.clock.advance(31)  # The ordinary retry delay since the last launch request.
+    row = await deliver(env, row["id"])
+    assert row["generation"] > old["generation"]
+    for volume in env.engine.current(row)["volumes"]:
+        assert env.cloud.files[volume["volume_id"]]["late"] == "written-before-freeze"
+    # The replacement's guest is never asked to freeze.
+    gen = env.engine.current(row)
+    instructions = await env.engine.agent_report(
+        AgentReport(rental_id=row["id"], generation=gen["generation"], instance_id=gen["instance_id"],
+                    token=gen["agent_token"], freeze_supported=True)
+    )
+    assert instructions["freeze_command"] is None
+    # Once AWS finishes, cleanup stops the old generation and releases its disks.
+    env.cloud.finish_shutdown()
+    await cycle(env, 2)
+    stopped = env.engine.db.get("generation", old["id"])
+    assert stopped["state"] == "STOPPED" and stopped["ended_at"]
+    assert {v["volume_id"] for v in old["volumes"]} <= set(env.cloud.deleted_volumes)
+
+
+async def test_unconfirmed_freeze_falls_back_to_capturing_retained_disks(rental_env):
+    env = rental_env
+    row, old = await freeze_capable_recovery(env, "freeze-unconfirmed")
+    env.clock.advance(46)
+    await cycle(env, 8)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["freeze_abandoned"] == "freeze_unconfirmed" and not frozen_backups(env, row)
+    final = env.engine.db.get("backup", row["current_backup_id"])
+    assert final["final"] and final["consistency"] == "crash_consistent"
+    assert env.engine.db.get("generation", old["id"])["state"] == "STOPPED"  # Captured after stop.
+
+
+async def test_freeze_trust_expiry_before_termination_falls_back(rental_env):
+    env = rental_env
+    row, old = await freeze_capable_recovery(env, "freeze-trust")
+    original = env.cloud.start_snapshots
+
+    async def throttled(*args, **kwargs):
+        raise ProviderError("aws_RequestLimitExceeded", retryable=True)  # Nothing created.
+
+    env.cloud.start_snapshots = throttled
+    await report_ready(env, row["id"], freeze=True)
+    await cycle(env, 3)
+    assert frozen_backups(env, row) and not env.cloud.terminations
+    env.clock.advance(301)
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["freeze_abandoned"] == "freeze_trust_expired"
+    assert not frozen_backups(env, row)[0]["final"]  # Not the final disk state any more.
+    env.cloud.start_snapshots = original
+    await cycle(env, 12)
+    row = env.engine.get(row["id"], "tenant-a")
+    final = env.engine.db.get("backup", row["current_backup_id"])
+    assert final["final"] and not final.get("frozen_command")
+
+
+async def test_guest_watchdog_thaw_abandons_the_frozen_snapshot(rental_env):
+    env = rental_env
+    row, old = await freeze_capable_recovery(env, "freeze-thawed")
+    await report_ready(env, row["id"], freeze=True, ack_freeze=False, thawed=row["freeze_command"])
+    await cycle(env)
+    assert env.engine.get(row["id"], "tenant-a")["freeze_abandoned"] == "guest_thawed"
+
+
+async def test_old_agents_and_explicit_backups_keep_the_ordinary_path(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "old-agent")
+    row = await deliver(env, row["id"])
+    await env.engine.recover(row["id"], "tenant-a")
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["freeze_abandoned"] == "freeze_unsupported" and not row.get("freeze_command")
+
+
+async def test_recovery_to_a_named_backup_never_uses_the_frozen_snapshot(rental_env):
+    env = rental_env
+    request = env.request.model_copy(deep=True)
+    request.rfq.allow_older_backup = True
+    row, _ = env.engine.create(request, "tenant-a", "named-backup")
+    row = await deliver(env, row["id"])
+    backup = next(b for b in env.engine.backups(row) if b["state"] == "AVAILABLE")
+    await report_ready(env, row["id"], freeze=True)
+    await env.engine.recover(row["id"], "tenant-a", backup["id"])
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["freeze_abandoned"] == "explicit_backup_requested"
+    assert row["current_backup_id"] == backup["id"] and not frozen_backups(env, row)
 
 
 async def test_recovery_keeps_original_rfq_limits(rental_env):

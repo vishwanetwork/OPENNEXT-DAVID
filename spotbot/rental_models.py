@@ -141,4 +141,7 @@ class AgentReport(RulesModel):
     interruption: bool = False
     interruption_at: datetime | None = None
     flushed_command: str | None = Field(None, max_length=36)
+    freeze_supported: bool = False
+    frozen_command: str | None = Field(None, max_length=36)
+    thawed_command: str | None = Field(None, max_length=36)
     canaries: dict[str, str] = Field(default_factory=dict, max_length=128)
