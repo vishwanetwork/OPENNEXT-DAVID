@@ -174,6 +174,25 @@ class AWSRecovery:
             )
         return result
 
+    async def interruption_confirmed(self, generation):
+        """Whether AWS itself reports this Spot instance as being reclaimed or gone.
+
+        A guest's report alone is not trusted: the customer has root and could forge it to
+        force paid replacements.
+        """
+        response = await self.call(
+            generation["region"],
+            "describe_spot_instance_requests",
+            Filters=[{"Name": "instance-id", "Values": [generation["instance_id"]]}],
+        )
+        codes = {r.get("Status", {}).get("Code", "") for r in response.get("SpotInstanceRequests", [])}
+        if codes & {"marked-for-termination", "marked-for-stop", "marked-for-hibernation"} or any(
+            code.startswith("instance-terminated") for code in codes
+        ):
+            return True
+        instance = await self.instance(generation)
+        return not instance or instance["State"]["Name"] != "running"
+
     async def source_keys(self, region, source, backup):
         """KMS key of each encrypted source snapshot, by device."""
         if backup:

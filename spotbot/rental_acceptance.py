@@ -16,6 +16,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from spotbot.models import gpu_model, timestamp, utcnow
+from spotbot.rental_models import gpu_memory_sufficient
 from spotbot.rental_readiness import safe_url
 from spotbot.rentals import identity
 
@@ -359,7 +360,7 @@ class Acceptance:
         rules = self.request.rfq
         if len(gpu) != rules.gpu_count or any(
             gpu_model(g[0]) != rules.gpu_model
-            or int(g[1].strip()) < rules.min_gpu_memory_gib * 1024 * 0.98
+            or not gpu_memory_sufficient(int(g[1].strip()), rules.min_gpu_memory_gib)
             for g in gpu
         ):
             raise AcceptanceError("restored_gpu_validation_failed")

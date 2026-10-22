@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import secrets
+import socket
 import time
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
@@ -49,6 +50,18 @@ def proxy_headers(headers, *, request=False, bearer_access=False):
     ]
 
 
+def keepalive(stream):
+    """Detect a dead peer through TCP keepalive instead of closing idle SSH sessions."""
+    sock = stream.get_extra_info("socket")
+    if sock is None:
+        return
+    with suppress(OSError):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for option, value in (("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 15), ("TCP_KEEPCNT", 4)):
+            if hasattr(socket, option):
+                sock.setsockopt(socket.IPPROTO_TCP, getattr(socket, option), value)
+
+
 class GatewayHosts:
     """Customer paths such as /health must never resolve to control-plane routes."""
 
@@ -84,6 +97,9 @@ class Gateway:
         self.ports_lock = asyncio.Lock()
         self.last_cycle_at = None
         self.worker_error = None
+        self.bot_checked_at = None  # Last successful bot health check (monotonic).
+        self.bot_error = None
+        self.error_counts = {}
 
     def lock(self, rental_id):
         return self.locks.setdefault(rental_id, asyncio.Lock())
@@ -392,6 +408,7 @@ class Gateway:
                     rental_id,
                 )
             except (httpx.HTTPError, OSError, TimeoutError):
+                self.count("gateway_reconciliation_unavailable")
                 # Existing authorization remains valid only until its bounded lease expires.
                 row.update(
                     error="gateway_reconciliation_unavailable", ready=self.authorized(rental_id)
@@ -414,9 +431,34 @@ class Gateway:
                     ready=False,
                     error=str(exc) if str(exc) in safe_codes else "gateway_handoff_invalid",
                 )
+                self.count(row["error"])
                 self.save(row)
 
+    def count(self, code):
+        self.error_counts[code] = self.error_counts.get(code, 0) + 1
+
+    def bot_reachable(self):
+        return bool(
+            self.bot_checked_at
+            and time.monotonic() - self.bot_checked_at < self.settings.route_lease_seconds
+        )
+
+    async def check_bot(self):
+        """Probe the bot independently of routes, so an outage shows even with no rentals."""
+        try:
+            response = await self.client.get(self.settings.bot_url + "/health", timeout=5)
+            response.raise_for_status()
+            self.bot_checked_at, self.bot_error = time.monotonic(), None
+        except (httpx.HTTPError, OSError, TimeoutError) as exc:
+            self.bot_error = (
+                "bot_http_" + str(exc.response.status_code)
+                if isinstance(exc, httpx.HTTPStatusError)
+                else "bot_unreachable"
+            )
+            self.count(self.bot_error)
+
     async def tick(self):
+        await self.check_bot()
         try:
             self.store.ensure_ownership()
         except Exception:
@@ -464,10 +506,14 @@ class Gateway:
             remote, upstream = await asyncio.wait_for(
                 asyncio.open_connection(target["host"], target["port"]), 5
             )
+            # Interactive or silent long-running sessions may idle indefinitely; revocation,
+            # lease expiry and rental expiry cancel this task, and keepalive finds dead peers.
+            keepalive(writer)
+            keepalive(upstream)
 
             async def pump(source, destination):
                 while True:
-                    data = await asyncio.wait_for(source.read(65536), 300)
+                    data = await source.read(65536)
                     if not data:
                         if destination.can_write_eof():
                             destination.write_eof()
@@ -541,12 +587,18 @@ def create_gateway_app(settings=None, gateway=None):
     def health():
         task = getattr(app.state, "worker", None)
         healthy = bool(task and not task.done() and not svc.worker_error and svc.last_cycle_at)
+        bot = svc.bot_reachable()
+        # Bot reachability is reported separately from VM health; without it every route
+        # expires within the lease, so the gateway cannot serve and reports unavailable.
         return JSONResponse(
-            status_code=200 if healthy else 503,
+            status_code=200 if healthy and bot else 503,
             content={
                 "worker_running": healthy,
                 "last_cycle_at": svc.last_cycle_at,
                 "error": svc.worker_error,
+                "bot_reachable": bot,
+                "bot_error": None if bot else svc.bot_error or "bot_not_checked",
+                "error_counts": dict(svc.error_counts),
             },
         )
 

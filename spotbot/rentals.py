@@ -13,7 +13,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from spotbot.models import gpu_model, timestamp, utcnow
 from spotbot.providers import ProviderError
 from spotbot.rental_aws import AWSRecovery, initial_image
-from spotbot.rental_models import RFQ
+from spotbot.rental_models import RFQ, gpu_memory_sufficient
 from spotbot.storage.common import dump
 from spotbot.storage.workflows import ConflictError, WorkflowStore
 
@@ -25,6 +25,8 @@ BACKUP_FLUSH_WAIT_SECONDS = 30
 # so no write can follow the snapshot. Otherwise fall back to capturing retained disks.
 FREEZE_ACK_SECONDS = 45
 FREEZE_TRUST_SECONDS = 300
+# Minimum spacing of AWS checks for a guest-reported interruption, per generation.
+INTERRUPTION_CHECK_SECONDS = 15
 ACTIVE_BACKUP_STATES = {"REQUESTED", "CAPTURING", "PENDING", "REGISTERING", "IMAGE_PENDING"}
 
 logger = logging.getLogger(__name__)
@@ -343,16 +345,7 @@ class RentalEngine:
             )
             self.save(gen)
             if report.interruption and row["state"] in {"ACTIVE", "VERIFYING", "DELIVERING"}:
-                row.update(
-                    state="RECOVERING",
-                    connection=None,
-                    recovery_started_at=timestamp(),
-                    current_backup_id=None,
-                    error="spot_interruption",
-                    flush_command=str(uuid4()),
-                    flush_requested_at=timestamp(),
-                )
-                self.save(row, "recovering")
+                await self._guest_interruption(row, gen)
             pending = next(
                 (
                     b["flush_command"]
@@ -384,6 +377,32 @@ class RentalEngine:
                 if not gen.get("source_backup_id") and not gen.get("verified_at")
                 else [],
             )
+
+    async def _guest_interruption(self, row, gen):
+        """Recover on a guest-reported Spot warning only when AWS confirms it."""
+        checked = gen.get("interruption_checked_at")
+        if checked and (utcnow() - at(checked)).total_seconds() < INTERRUPTION_CHECK_SECONDS:
+            return  # The guest repeats the report every 5 s; EventBridge remains the main path.
+        gen["interruption_checked_at"] = timestamp()
+        try:
+            confirmed = await self.backend.interruption_confirmed(gen)
+        except ProviderError:
+            confirmed = False
+        if not confirmed:
+            gen["unconfirmed_interruption_at"] = timestamp()
+            self.save(gen)
+            return
+        self.save(gen)
+        row.update(
+            state="RECOVERING",
+            connection=None,
+            recovery_started_at=timestamp(),
+            current_backup_id=None,
+            error="spot_interruption",
+            flush_command=str(uuid4()),
+            flush_requested_at=timestamp(),
+        )
+        self.save(row, "recovering")
 
     async def reconcile(self, rental_id, tenant_id, *, confirm_absent=False):
         async with self.row_lock(rental_id):
@@ -469,7 +488,7 @@ class RentalEngine:
                 and offer.memory_gb >= rules.min_memory_gib
                 and d.get("architecture") == rules.architecture
                 and memory
-                and min(memory) >= rules.min_gpu_memory_gib * 1024
+                and gpu_memory_sufficient(min(memory), rules.min_gpu_memory_gib)
                 and offer.price_hourly <= rules.max_price_hourly
                 and (not rules.instance_types or offer.sku in rules.instance_types)
                 and (now - at(offer.observed_at)).total_seconds()
@@ -899,7 +918,7 @@ class RentalEngine:
             report.get("ssh_ready")
             and report.get("gpu_count") == rules.gpu_count
             and gpu_model(report.get("gpu_model", "")) == rules.gpu_model
-            and report.get("gpu_memory_mib", 0) >= rules.min_gpu_memory_gib * 1024 * 0.98
+            and gpu_memory_sufficient(report.get("gpu_memory_mib", 0), rules.min_gpu_memory_gib)
             and {v["volume_id"] for v in volumes} <= set(report.get("volume_ids", []))
         )
         by_device = {v["device"]: report.get("canaries", {}).get(v["volume_id"]) for v in volumes}

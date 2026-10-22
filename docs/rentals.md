@@ -64,7 +64,10 @@ lineage.
    Region requires a queue: startup fails otherwise, and a request or queued RFQ
    naming a Region without one stops before procurement with
    `interruption_queue_not_configured`. Guest IMDS polling and cloud inspection
-   are fallbacks that also detect interruption/loss. `rental-check --aws` fails
+   are fallbacks that also detect interruption/loss. A guest-reported warning
+   starts recovery only when AWS confirms it (the Spot request is marked for
+   termination, or the instance is no longer running), checked at most every
+   15 seconds per generation, because the customer controls the guest. `rental-check --aws` fails
    when any RFQ Region's interruption delivery or other deployment check fails;
    only a Region with no currently affordable offer is tolerated.
 
@@ -184,7 +187,7 @@ Important RFQ fields:
 | Field | Meaning |
 |---|---|
 | `rfq_id`, `rfq_version`, `upstream_order_id` | Stable upstream identity and accepted rule version |
-| `gpu_model`, `gpu_count`, `min_gpu_memory_gib` | Exact GPU class/count and catalog VRAM requirement |
+| `gpu_model`, `gpu_count`, `min_gpu_memory_gib` | Exact GPU class/count and per-GPU memory as marketed in decimal GB (24 for L4/A10G, 80 for H100); offers and the guest's `nvidia-smi` must report at least 98% of that many bytes |
 | `regions`, `instance_types`, `architecture` | Hard placement and machine constraints |
 | `price_unit` | Must be explicitly `instance_hour` |
 | `max_price_hourly`, `budget_usd` | USD per-instance compute ceiling and conservative operating budget |
