@@ -116,6 +116,16 @@ the old instance shutting down). Rental estimates totalled about USD 1.23; only
 the three base images remain. GPU Spot quota is 32 vCPU in `us-west-2` and 8 in
 both `us-east` Regions while increases to 32 are pending.
 
+A real Spot interruption was injected with AWS FIS in `us-east-1` on
+2026-10-22. The bot entered recovery 18 seconds after the warning (the
+EventBridge/SQS queue received it), flushed and terminated the server itself
+within the two-minute window, and delivered the restored replacement 12m18s
+after the warning; the file written after the last routine backup survived. The
+FIS role `SpotBotFisSpotInterruption` may only send interruptions to
+`spotbot-managed=true` instances; each experiment template is deleted after use.
+The remaining fixed cost in every recovery is about 6.5 minutes for AWS to
+finish shutting down the old GPU instance before its disks can be captured.
+
 Release `15a197a` adds the enrolled encrypted base
 `ami-0f6ea1802493b4f74` (built on `t3.medium` from the 75 GiB Ubuntu Deep
 Learning AMI) as `SPOTBOT_RENTAL_INITIAL_IMAGES` for `us-west-2`, guest flushes

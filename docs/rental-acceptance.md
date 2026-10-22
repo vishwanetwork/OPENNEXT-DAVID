@@ -127,7 +127,18 @@ python examples/acceptance_machine_loss.py RUN_ID /tmp/rental-test.json \
   logs/acceptance/RUN_ID.json
 ```
 
-A real Spot interruption warning still requires an approved AWS FIS experiment. It does
+`examples/acceptance_spot_interruption.py` injects a real Spot interruption
+warning instead: after the late write it creates a single-target AWS FIS
+experiment template for the live instance, starts it, and deletes the template
+afterwards. It needs an FIS role limited to `ec2:SendSpotInstanceInterruptions`
+on `spotbot-managed=true` instances plus `ec2:DescribeInstances` (staging uses
+`SpotBotFisSpotInterruption`), and
+operator permissions for FIS and `iam:PassRole` on that role:
+
+```sh
+python examples/acceptance_spot_interruption.py RUN_ID /tmp/rental-test.json \
+  logs/acceptance/RUN_ID.json --fis-role-arn arn:aws:iam::ACCOUNT:role/ROLE
+``` It does
 not validate large-disk restore throughput, arbitrary customer application
 consistency, billing settlement, load capacity, or a gateway failover cluster.
 

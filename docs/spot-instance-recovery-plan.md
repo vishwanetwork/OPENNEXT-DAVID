@@ -6,8 +6,9 @@ and authenticated HTTP delivery, complete disk-set snapshot/image creation,
 native state-event delivery, and resource cleanup. On 2026-10-21 a requested
 whole-server recovery passed live acceptance on L4 Spot capacity: the replacement
 restored root and data files with identical hashes, modes and owners behind the
-same gateway SSH/HTTP endpoints and SSH host key. An actual AWS Spot interruption
-has not been injected. Do not treat unit tests or a successful snapshot as
+same gateway SSH/HTTP endpoints and SSH host key. On 2026-10-22 an unannounced
+instance loss and a real Spot interruption injected with AWS FIS also passed in
+`us-east-1`, each restoring a file written after the last routine backup. Do not treat unit tests or a successful snapshot as
 proof of a restored GPU server. See `rentals.md`, `gateway.md`, and
 `deployment.md` for the current capabilities, limits, and deployment state.
 Date: 2026-10-20
