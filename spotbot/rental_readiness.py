@@ -12,6 +12,7 @@ from spotbot.rental_aws import (
     initial_image,
     operator_image,
 )
+from spotbot.rental_models import gpu_memory_sufficient
 
 EVENT_TYPES = {
     "EC2 Spot Instance Interruption Warning",
@@ -248,8 +249,10 @@ class Readiness:
                     and offer.memory_gb >= rules.min_memory_gib
                     and d.get("architecture") == rules.architecture
                     and gpus
-                    and min(g.get("MemoryInfo", {}).get("SizeInMiB", 0) for g in gpus)
-                    >= rules.min_gpu_memory_gib * 1024
+                    and gpu_memory_sufficient(
+                        min(g.get("MemoryInfo", {}).get("SizeInMiB", 0) for g in gpus),
+                        rules.min_gpu_memory_gib,
+                    )
                     and offer.price_hourly <= rules.max_price_hourly
                     and (not rules.instance_types or offer.sku in rules.instance_types)
                     and d.get("quota_sufficient")

@@ -375,6 +375,55 @@ async def test_live_and_recently_closed_rentals_keep_their_ports(environment):
     assert gw.reusable(row)
 
 
+async def test_health_reports_bot_outage_separately(environment):
+    env, gw = environment, environment["gateway"]
+    app = create_gateway_app(env["config"], gw)
+    app.state.worker = asyncio.get_running_loop().create_future()  # A live worker.
+    await gw.tick()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://gw") as client:
+        healthy = await client.get("/health")
+        assert healthy.status_code == 200 and healthy.json()["bot_reachable"]
+        env["outage"] = True
+        original = gw.client.get
+
+        async def down(url, **kwargs):
+            if url.endswith("/health"):
+                raise httpx.ConnectError("bot down")
+            return await original(url, **kwargs)
+
+        gw.client.get = down
+        gw.bot_checked_at -= env["config"].route_lease_seconds + 1  # The lease has passed.
+        await gw.tick()
+        outage = await client.get("/health")
+        body = outage.json()
+        assert outage.status_code == 503 and not body["bot_reachable"]
+        assert body["bot_error"] == "bot_unreachable"
+        assert body["error_counts"]["bot_unreachable"] == 1
+        assert env["id"] not in json.dumps(body)  # Still redacted: no routes or targets.
+    app.state.worker.cancel()
+
+
+def test_forwarded_sockets_use_tcp_keepalive():
+    import socket
+
+    from spotbot.gateway import keepalive
+
+    server = socket.create_server(("127.0.0.1", 0))
+    left = socket.create_connection(server.getsockname())
+    right, _ = server.accept()
+    server.close()
+    try:
+        class Stream:
+            def get_extra_info(self, name):
+                return left if name == "socket" else None
+
+        keepalive(Stream())
+        assert left.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE)
+    finally:
+        left.close()
+        right.close()
+
+
 def test_gateway_config_uses_independent_storage_and_credentials(tmp_path, monkeypatch):
     values = dict(
         _env_file=None,

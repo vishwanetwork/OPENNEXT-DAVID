@@ -20,6 +20,8 @@ def native_backend(rental_env):
     calls = []
     sdk = get_session().get_service_model("ec2")
     image = dict(copy.deepcopy(env.cloud.base), Tags=tags("rental", 1))
+    spot_status = {"code": "fulfilled"}
+    backend.spot_status = spot_status
 
     async def call(region, method, *, mutation=False, **kwargs):
         operation = {
@@ -33,6 +35,7 @@ def native_backend(rental_env):
             "describe_volumes": "DescribeVolumes",
             "modify_instance_attribute": "ModifyInstanceAttribute",
             "describe_snapshots": "DescribeSnapshots",
+            "describe_spot_instance_requests": "DescribeSpotInstanceRequests",
         }[method]
         validate_parameters(kwargs, sdk.operation_model(operation).input_shape)
         calls.append((region, method, kwargs))
@@ -45,6 +48,9 @@ def native_backend(rental_env):
             "create_snapshot": {"SnapshotId": "snap-1234", "VolumeId": "vol-root"},
             "register_image": {"ImageId": "ami-restore"},
             "copy_image": {"ImageId": "ami-copy"},
+            "describe_spot_instance_requests": {
+                "SpotInstanceRequests": [{"Status": {"Code": spot_status["code"]}}]
+            },
             "describe_snapshots": {
                 "Snapshots": [
                     {"SnapshotId": i, "KmsKeyId": "arn:aws:kms:us-west-2:111111111111:key/base"}
@@ -288,4 +294,20 @@ async def test_sweep_cache_reuses_account_usage_but_rereads_each_price(rental_en
     env.request.rfq.max_price_hourly = Decimal("3")
     await backend.preflight(offer, env.request.rfq)  # No sweep: always fresh.
     assert counts == {"specs": 2, "usage": 2}
+
+
+async def test_interruption_is_confirmed_from_spot_request_status(native_backend):
+    env, backend, calls, image = native_backend
+    gen = dict(region="us-west-2", instance_id="i-12345678")
+
+    async def running(generation):
+        return {"State": {"Name": "running"}}
+
+    backend.instance = running
+    assert not await backend.interruption_confirmed(gen)
+    for code in ("marked-for-termination", "instance-terminated-no-capacity"):
+        backend.spot_status["code"] = code
+        assert await backend.interruption_confirmed(gen)
+    query = next(p for _, m, p in calls if m == "describe_spot_instance_requests")
+    assert query["Filters"] == [{"Name": "instance-id", "Values": ["i-12345678"]}]
 

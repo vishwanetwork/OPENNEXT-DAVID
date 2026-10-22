@@ -268,7 +268,7 @@ may stop services or reboot when the customer allows it.
 
 1. Receive an authenticated cloud event or a guest interruption report. Check
    account, instance ownership, current generation, event time, and rental
-   state. Duplicate reports converge on one recovery operation.
+   state. A guest report is confirmed with the cloud before it starts recovery. Duplicate reports converge on one recovery operation.
 2. Move the rental to `RECOVERING`, revoke the old gateway route, and notify the
    customer that service is interrupted or draining.
 3. In parallel, investigate eligible replacement locations and prepare the

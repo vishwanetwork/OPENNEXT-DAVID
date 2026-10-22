@@ -26,6 +26,16 @@ class DiskRule(RulesModel):
     size_gib: int = Field(ge=1, le=16384)
 
 
+def gpu_memory_sufficient(mib, minimum):
+    """Compare reported GPU memory (MiB, as clouds and drivers report it) with an RFQ minimum.
+
+    The RFQ states the GPU's nominal size as marketed, in decimal gigabytes: a "24 GB" L4 is
+    reported as 22888 MiB by AWS, an "80 GB" H100 as 81559 MiB by nvidia-smi. Comparing
+    against GiB would never match such a GPU, so allow 2% below the decimal size.
+    """
+    return mib >= minimum * 1e9 / 2**20 * 0.98
+
+
 class BackupRule(RulesModel):
     interval_seconds: int = Field(900, ge=60, le=86400)
     keep: int = Field(3, ge=1, le=50)
@@ -45,6 +55,7 @@ class RFQ(RulesModel):
     market: Literal["spot"] = "spot"
     gpu_model: str = Field(min_length=1, max_length=50)
     gpu_count: int = Field(ge=1, le=64)
+    # Nominal per-GPU memory in GB as marketed (see gpu_memory_sufficient); name kept for API.
     min_gpu_memory_gib: int = Field(ge=1, le=1024)
     min_vcpus: int = Field(1, ge=1)
     min_memory_gib: int = Field(1, ge=1)

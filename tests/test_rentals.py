@@ -39,6 +39,8 @@ class Cloud:
         self.pending_snapshots = False
         self.slow_termination = False  # GPU instances stay shutting-down for minutes.
         self.terminations = []
+        self.reclaiming = set()  # Generations AWS has marked for Spot reclamation.
+        self.interruption_checks = 0
         self.base = dict(
             ImageId="ami-base",
             State="available",
@@ -101,6 +103,10 @@ class Cloud:
         self.instances[gen["id"]]["State"]["Name"] = (
             "shutting-down" if self.slow_termination else "terminated"
         )
+
+    async def interruption_confirmed(self, gen):
+        self.interruption_checks += 1
+        return gen["id"] in self.reclaiming
 
     def finish_shutdown(self):
         for instance in self.instances.values():
@@ -265,7 +271,7 @@ async def cycle(env, n=1):
         env.clock.advance()
 
 
-async def report_ready(env, rental_id, *, freeze=False, ack_freeze=True, thawed=None):
+async def report_ready(env, rental_id, *, freeze=False, ack_freeze=True, thawed=None, interruption=False):
     row = env.engine.get(rental_id, "tenant-a")
     gen = env.engine.current(row)
     volumes = await env.cloud.inventory(gen, None)
@@ -275,6 +281,7 @@ async def report_ready(env, rental_id, *, freeze=False, ack_freeze=True, thawed=
             freeze_supported=freeze,
             frozen_command=frozen or env.frozen.get(gen["id"]),
             thawed_command=thawed,
+            interruption=interruption,
             rental_id=rental_id,
             generation=gen["generation"],
             instance_id=gen["instance_id"],
@@ -721,6 +728,56 @@ async def test_unacknowledged_handoff_needs_an_operator_after_the_timeout(rental
     assert env.cloud.instances[env.engine.current(row)["id"]]["State"]["Name"] == "running"
     await env.engine.release(row["id"], "tenant-a")
     assert env.engine.get(row["id"], "tenant-a")["end_requested"]
+
+
+async def test_forged_guest_interruption_does_not_replace_the_server(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "forged-interruption")
+    row = await deliver(env, row["id"])
+    await report_ready(env, row["id"], interruption=True)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "ACTIVE" and env.cloud.interruption_checks == 1
+    assert env.engine.current(row)["unconfirmed_interruption_at"]
+    await report_ready(env, row["id"], interruption=True)
+    assert env.cloud.interruption_checks == 1  # Rate-limited: one AWS check per 15 s.
+    env.clock.advance(16)
+    await report_ready(env, row["id"], interruption=True)
+    assert env.cloud.interruption_checks == 2
+    assert env.engine.get(row["id"], "tenant-a")["state"] == "ACTIVE"
+    assert not env.cloud.terminations
+
+
+async def test_guest_interruption_confirmed_by_aws_starts_recovery(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "confirmed-interruption")
+    row = await deliver(env, row["id"])
+    env.cloud.reclaiming.add(env.engine.current(row)["id"])
+    await report_ready(env, row["id"], interruption=True)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "RECOVERING" and row["error"] == "spot_interruption"
+
+
+def test_rfq_for_a_24_gb_gpu_selects_an_aws_l4_offer(rental_env):
+    env = rental_env
+    offer = copy.deepcopy(env.offer)
+    offer.gpu_model, offer.sku = "L4", "g6.xlarge"
+    offer.details["gpu_specifications"] = [{"MemoryInfo": {"SizeInMiB": 22888}}]
+    env.service.store.record_collection("aws", [offer])
+    rules = env.request.rfq.model_copy(update={"gpu_model": "L4", "min_gpu_memory_gib": 24})
+    assert [o.sku for o in env.engine.candidates(rules)] == ["g6.xlarge"]
+    assert not env.engine.candidates(rules.model_copy(update={"min_gpu_memory_gib": 32}))
+
+
+def test_gpu_memory_uses_nominal_capacity_as_marketed():
+    from spotbot.rental_models import gpu_memory_sufficient
+
+    assert gpu_memory_sufficient(22888, 24)  # AWS L4 / A10G "24 GB"
+    assert gpu_memory_sufficient(23034, 24)  # nvidia-smi L4
+    assert gpu_memory_sufficient(15360, 16)  # T4 "16 GB"
+    assert gpu_memory_sufficient(45776, 48)  # L40S "48 GB"
+    assert gpu_memory_sufficient(81559, 80)  # H100 "80 GB"
+    assert not gpu_memory_sufficient(16384, 24)
+    assert not gpu_memory_sufficient(40960, 48)
 
 
 async def test_recovery_keeps_original_rfq_limits(rental_env):

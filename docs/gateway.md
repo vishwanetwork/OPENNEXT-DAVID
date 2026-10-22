@@ -154,9 +154,14 @@ without changing the upstream operator credential.
   Host and forwarding metadata are regenerated from the validated public route;
   configure the customer application to trust the gateway when generating URLs.
   The TLS proxy controls request-size limits. Backend HTTP read timeout is 60
-  seconds and SSH idle read timeout is 300 seconds. SSE should send heartbeats.
-- `/health` reports the worker and last completed cycle without private routes
-  or credentials. Route lookup returns sanitized delivery errors. Logs are English.
+  seconds. SSH sessions have no idle timeout: revocation, lease and rental expiry
+  end them, and TCP keepalive (60 s idle, 15 s interval, 4 probes) closes sessions
+  whose peer has gone. SSE should send heartbeats.
+- `/health` reports the worker, last completed cycle, whether the bot answered its
+  own `/health` within the route lease (`bot_reachable`, `bot_error`), and
+  per-code error counters, without private routes or credentials. It returns
+  503 when the worker is down or the bot is unreachable; routes cannot be renewed
+  then. A healthy bot does not prove any VM application is available. Route lookup returns sanitized delivery errors. Logs are English.
 - Direct VM IPs remain visible through the bot API for operator diagnosis. The
   upstream must present the gateway API's endpoints when fixed entry is desired.
 
