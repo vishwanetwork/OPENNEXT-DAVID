@@ -116,6 +116,15 @@ the old instance shutting down). Rental estimates totalled about USD 1.23; only
 the three base images remain. GPU Spot quota is 32 vCPU in `us-west-2` and 8 in
 both `us-east` Regions while increases to 32 are pending.
 
+Release `56169cb` adds the frozen fast switch. In a second FIS run in
+`us-west-2` (`g6.2xlarge`), the bot entered recovery 18 seconds after the
+warning, the guest confirmed all filesystems frozen 17 seconds later, the
+snapshot started 6 seconds after that and the server was terminated 9 seconds
+later. The `guest_frozen` final backup was ready 2 minutes after the warning
+while the old server was still shutting down, versus 7m45s on the ordinary path.
+The replacement then waited about 4 minutes for capacity and was delivered 9m40s
+after the warning, with the late file intact.
+
 A real Spot interruption was injected with AWS FIS in `us-east-1` on
 2026-10-22. The bot entered recovery 18 seconds after the warning (the
 EventBridge/SQS queue received it), flushed and terminated the server itself

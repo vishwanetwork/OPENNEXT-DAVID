@@ -262,9 +262,23 @@ rentals that require acknowledgement; the bot does not start the gateway process
 the rental `state_version`; backup events have a separate `resource_version`
 and a null `state_version` and must not advance the gateway's routing watermark.
 
-During interruption, the old writer is terminated after a short flush window;
-its EBS disks have already been configured to survive. The final recovery point
-is captured from those retained, unchanged disks. A replacement waits for the
+During recovery of a verified server whose guest reports `freeze_supported`,
+the bot first asks the guest to run its pre-backup hook, sync, and `fsfreeze`
+every protected filesystem (root last). Only after the guest confirms does it
+snapshot the still-running server (`consistency=guest_frozen`); it terminates
+the server as soon as the snapshots exist and never thaws it, so no write can
+follow the recovery point. The replacement then starts without waiting the
+roughly six minutes AWS needs to finish shutting a GPU server down; cleanup
+marks the old generation stopped and releases its disks later. The guest thaws
+itself only after 900 seconds, and the bot abandons the frozen snapshot unless
+it terminates within 300 seconds of the confirmation, so a thaw can never follow
+a snapshot that is used. Without a confirmation within 45 seconds, for older
+agents, unresponsive guests, recoveries to a named older backup, a failed
+capture, or a reported thaw, the bot uses the ordinary path: the old writer is
+terminated after a short flush window; its EBS disks have already been
+configured to survive. The final recovery point is captured from those
+retained, unchanged disks. Releases always use the ordinary path. The
+replacement still needs Spot quota while the old server shuts down. A replacement waits for the
 complete snapshot set and boot image. Same-region recovery can use another AZ;
 cross-region recovery first copies the image. Failure to obtain the final point
 preserves the source disks and requires action unless older rollback was

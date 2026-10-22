@@ -279,7 +279,9 @@ may stop services or reboot when the customer allows it.
    requests; do not depend on consuming the entire warning window.
 5. Quiesce or shut down the old writer after the intended final capture. If
    writes continue, that capture cannot be called the final disk state.
-   Track capture and write-stop boundaries explicitly.
+   Track capture and write-stop boundaries explicitly. The implementation
+   freezes every protected filesystem, captures only after the guest confirms,
+   and terminates without thawing; it otherwise captures after termination.
 6. If the VM disappears before capture, confirm termination and snapshot its
    retained disks. Once the old writer is gone, individual captures of the
    retained, unchanged disks can form a recovery set. Their application
