@@ -28,6 +28,16 @@ flowchart LR
 | `api.py` | Scheduler and gateway endpoints, authentication, and CLI workflow planning |
 | `config.py` | Credentials, enabled providers, intervals, resource profile, and webhooks |
 | `cli.py` | Service startup, standalone collection, and redacted configuration checks |
+| `rentals.py`, `rental_models.py` | RFQ validation, durable server generations, backup and recovery lifecycle |
+| `rental_aws.py`, `guest_agent.py` | Protected EBS disks, native snapshots/restore images, guest readiness and interruption reports |
+| `storage/workflows.py`, `rental_api.py` | Versioned tenant-scoped workflow records, atomic events, and rental endpoints |
+| `gateway.py`, `gateway_config.py` | Independent stable SSH/HTTP entry points, signed events, tenant isolation and generation-fenced routing |
+
+The managed gateway runs as a separate process with its own database/table and
+worker lock. It consumes the bot outbox and reconciles current rental state over
+the authenticated API before routing. It has no cloud procurement role. See
+[Gateway](gateway.md) for deployment and [Recovery plan](spot-instance-recovery-plan.md)
+section 8A for the handoff and route-revocation contract.
 
 A storage interface persists collections, price snapshots, orders, and events in SQLite, MySQL, or DynamoDB. See [Storage Backends](storage.md) for configuration and backend-specific guarantees. There is no independent message broker. One asynchronous background loop collects catalogs, processes active orders, and delivers pending events. Backend-specific locks enforce one service per store; asynchronous locks serialize collection and order processing.
 
@@ -40,6 +50,10 @@ Offer identity includes the resource profile and market but excludes price and o
 Each successful complete collection appends snapshots. Latest queries use the most recent successful batch per provider; historical queries preserve earlier batches. Empty successful batches remove current offers. Failed collections preserve older data and expose errors. Available-only queries exclude offers older than the default 600-second freshness limit. Disabled providers are hidden from grouped latest prices and GPU discovery while history remains accessible.
 
 ## Procurement lifecycle
+
+This section describes the original `/v1/orders` lifecycle. For an authorized
+RFQ that requires automatic backup, replacement, and expiry, use the additive
+[`/v1/rentals` workflow](rentals.md). Its current backend supports AWS Linux/EBS.
 
 The scheduler selects an offer and submits a per-instance hourly price ceiling, a stable business idempotency key, a waiting deadline, launch settings, and optional inference connection metadata. Each order creates one VM. Matching replays return the original order; changed parameters with the same business key return a conflict.
 
@@ -86,6 +100,11 @@ State transitions and handoff changes create events in the same database transac
 ## Preemption and release
 
 Preemption or disappearance revokes the available handoff and emits an event. The scheduler decides whether to purchase a replacement and resume a checkpointed workload. The bot does not automatically repurchase capacity.
+
+That explicit scheduler boundary applies to `/v1/orders`. Protected rentals
+automatically preserve their EBS disks, capture whole-server recovery points,
+and create replacements within their accepted RFQ rules. They also enforce
+expiry and retained-storage cleanup. Customer payment handling remains upstream.
 
 Cancellation applies to queued or planned orders. Created instances require release: the worker requests deletion and polls until a terminal state or not-found response confirms destruction. Permanent deletion errors produce `release_failed`. Providers disabled for new acquisition can still have existing instances monitored and released.
 

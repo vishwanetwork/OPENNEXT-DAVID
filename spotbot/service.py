@@ -69,6 +69,9 @@ class Service:
         self.price_regions_due = 0.0
         self.background_sweeps = {}
         self.worker_lock = asyncio.Lock()
+        from spotbot.rentals import RentalEngine
+
+        self.rentals = RentalEngine(self)
 
     def acquire(self):
         self.store.acquire()
@@ -204,6 +207,7 @@ class Service:
         return order_public(order), created
 
     async def tick(self):
+        await self.rentals.tick()
         async with self.worker_lock:
             self.store.ensure_ownership()
             # One order per provider mutation at a time. Provider itself enforces rate spacing.

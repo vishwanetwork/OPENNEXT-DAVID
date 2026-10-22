@@ -1,5 +1,10 @@
 # AWS EC2 Spot
 
+Protected server rentals use a separate lifecycle described in
+[rentals.md](rentals.md). The legacy `/v1/orders` disk-deletion and explicit-release
+behavior below remains unchanged. Rentals preserve all enrolled root/data EBS
+volumes and require additional snapshot, image, volume, and queue permissions.
+
 Install `.[aws]` and add `aws` to `SPOTBOT_ENABLED_PROVIDERS`. The Docker image already includes Boto3. AWS uses the SDK credential chain: an EC2 instance role in the deployment, or standard process environment credentials for development. No AWS access keys are stored by the application. Credentials inside a dotenv file must be exported to the SDK process, such as through Compose `env_file`.
 
 `SPOTBOT_AWS_REGIONS` defaults to `us-west-2` and accepts a comma-separated list. Configure a key-pair name and the dedicated GPU security group once. An empty VPC selects each Region's default VPC; the collector selects an existing subnet for each quoted Availability Zone. The deployed network is public and has an internet-gateway route. Custom networks must provide the configured public/private connectivity.

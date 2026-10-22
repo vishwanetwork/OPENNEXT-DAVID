@@ -150,7 +150,31 @@ SPOTBOT_GATEWAY_WEBHOOK_SECRET=replace-with-a-shared-signing-secret
 
 The persistent outbox retries failed delivery with exponential backoff. Delivery is at least once: receivers must deduplicate `event_id` and check current order state before applying delayed events. Verify `X-SpotBot-Signature` as `HMAC-SHA256(secret, timestamp + "." + raw_body)`. See [verification example](examples/verify_webhook.py).
 
-Preemption or disappearance revokes the available handoff. The scheduler decides whether to buy replacement capacity and restore a checkpointed workload; automatic repurchasing is not implemented.
+For `/v1/orders`, preemption or disappearance revokes the available handoff and
+the scheduler decides whether to buy replacement capacity. Use `/v1/rentals`
+below for RFQ-driven automatic server backup and replacement.
+
+## RFQ-driven protected GPU servers
+
+The additive `/v1/rentals` API accepts structured RFQ execution rules and owns the
+server lifecycle through acquisition, SSH/optional HTTP delivery, whole-disk
+backup, interruption recovery, gateway updates, expiry, and retention cleanup.
+The initial backend supports AWS Linux GPU Spot servers with encrypted EBS root
+and data disks. It preserves all enrolled disks after VM termination and uses
+native multi-volume snapshots and private restore AMIs. Existing `/v1/orders`
+retains its original explicit-release behavior.
+
+See [rental configuration and API](docs/rentals.md) and the
+[recovery design](docs/spot-instance-recovery-plan.md). Rentals are disabled by
+default and require additional AWS recovery permissions and a guest-reachable
+HTTPS callback URL. Upstream RFQ authoring and payment processing are external.
+
+The optional managed gateway runs independently with `spotbot gateway` and its
+own database. It provides stable SSH ports and authenticated HTTP hostnames,
+acknowledges verified generations, and revokes old routes during recovery or
+expiry. See [gateway deployment and integration](docs/gateway.md),
+`.env.gateway.example`, and `compose.gateway.yaml`. DNS, TLS, firewall changes,
+and a controlled live GPU acceptance run are required before public deployment.
 
 ## SF Compute and SkyPilot
 
