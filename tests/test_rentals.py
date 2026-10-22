@@ -693,6 +693,36 @@ async def test_recovery_to_a_named_backup_never_uses_the_frozen_snapshot(rental_
     assert row["current_backup_id"] == backup["id"] and not frozen_backups(env, row)
 
 
+async def test_unacknowledged_handoff_needs_an_operator_after_the_timeout(rental_env):
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "no-gateway-ack")
+    for _ in range(20):
+        gen = env.engine.current(env.engine.get(row["id"], "tenant-a"))
+        if gen and gen.get("instance_id"):
+            await report_ready(env, row["id"])
+        await cycle(env)
+        row = env.engine.get(row["id"], "tenant-a")
+        if row["state"] == "DELIVERING":
+            break
+    assert row["state"] == "DELIVERING" and row["delivering_at"]
+    env.clock.advance(590)
+    await report_ready(env, row["id"])
+    await cycle(env)
+    assert env.engine.get(row["id"], "tenant-a")["state"] == "DELIVERING"
+    env.clock.advance(15)
+    await report_ready(env, row["id"])
+    await cycle(env)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "ACTION_REQUIRED" and row["error"] == "gateway_ack_timeout"
+    assert "rental.action_required" in event_types(env, row["id"])
+    # A late acknowledgement cannot activate it; the operator recovers or releases.
+    with pytest.raises(ValueError):
+        await env.engine.gateway_ack(row["id"], "tenant-a", GatewayAck(generation=row["generation"], accepted=True))
+    assert env.cloud.instances[env.engine.current(row)["id"]]["State"]["Name"] == "running"
+    await env.engine.release(row["id"], "tenant-a")
+    assert env.engine.get(row["id"], "tenant-a")["end_requested"]
+
+
 async def test_recovery_keeps_original_rfq_limits(rental_env):
     env = rental_env
     row, _ = env.engine.create(env.request, "tenant-a", "constraints")

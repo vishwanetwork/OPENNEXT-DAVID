@@ -66,9 +66,9 @@ signing secret. No provider credentials or operator SSH private keys are mounted
 - Stable customer SSH host: `gpu-ssh.test.vishwalab.com`; assigned ports are
   TCP 22100–22199 (widened from 22100–22109 on 2026-10-22, in both
   `.env.gateway` and the gateway security group). Port 22001 belongs to an
-  unrelated existing service. Ports are never reused, so the range bounds the
-  lifetime number of gateway rentals; when it is exhausted the gateway records
-  `ssh_port_range_exhausted` while the bot waits in `DELIVERING`.
+  unrelated existing service. A closed rental's port is reusable after a
+  seven-day quarantine, and a handoff left unacknowledged for 10 minutes moves
+  to `ACTION_REQUIRED` instead of waiting in `DELIVERING`.
 - Customer HTTPS host: `r-<rental-id>.test.vishwalab.com`, using the existing
   wildcard DNS/TLS certificate. Customer requests require the rental HTTP token.
 - Container: `spot-order-gateway`; Compose project `spotgateway`; HTTP binds

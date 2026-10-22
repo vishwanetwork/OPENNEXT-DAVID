@@ -138,9 +138,15 @@ without changing the upstream operator credential.
   An independent timer enforces lease/expiry even while a bot request is pending.
 - Restart preserves assignments but requires fresh bot authorization before
   enabling traffic. Old-generation and stale-version events cannot regress it.
-- SSH ports remain reserved after closure. Expand the configured range when
-  exhausted. Deleting old rows or reassigning ports requires an operator policy;
-  the gateway never silently assigns an old rental's port to another tenant.
+- A closed rental keeps its SSH port for `SPOTBOT_GATEWAY_SSH_PORT_REUSE_AFTER_SECONDS`
+  (default seven days, minimum one hour) after the gateway observes `CLOSED`.
+  Afterwards the port may be assigned to a new rental, possibly another
+  tenant's; the old route row keeps its history with `port_released_at`. A
+  stale client then reaches a server with a different SSH host key, which SSH
+  rejects. Size the range for the rentals opened within one quarantine period;
+  when it is exhausted the gateway records `ssh_port_range_exhausted` and the
+  bot moves the unacknowledged handoff to `ACTION_REQUIRED`
+  (`gateway_ack_timeout`) after `SPOTBOT_RENTAL_DELIVERY_TIMEOUT_SECONDS`.
 - SQLite, MySQL, and DynamoDB use the existing workflow CAS storage. One gateway
   worker owns a database/table. The first release is not a replicated gateway.
 - HTTP bodies/responses stream with backpressure. Redirects are returned to the

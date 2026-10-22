@@ -856,6 +856,16 @@ class RentalEngine:
             return
         if instance["State"]["Name"] != "running":
             return
+        if (
+            row["state"] == "DELIVERING"
+            and row.get("delivering_at")
+            and (utcnow() - at(row["delivering_at"])).total_seconds()
+            > self.settings.spotbot_rental_delivery_timeout_seconds
+        ):
+            # The server keeps running; an operator fixes the gateway, then recovers or releases.
+            row.update(state="ACTION_REQUIRED", connection=None, error="gateway_ack_timeout")
+            self.save(row, "action_required")
+            return
         volumes = await self.backend.inventory(gen, instance)
         gen["volumes"] = volumes
         report = gen.get("report", {})
@@ -981,7 +991,9 @@ class RentalEngine:
                     http=f"http://{ip}:{rules.http_port}" if rules.http_port else None,
                 ),
             )
-            if not rules.require_gateway_ack:
+            if rules.require_gateway_ack:
+                row["delivering_at"] = timestamp()
+            else:
                 row["recovery_started_at"] = None
             self.save(row, "handoff" if rules.require_gateway_ack else "active")
         last = max(

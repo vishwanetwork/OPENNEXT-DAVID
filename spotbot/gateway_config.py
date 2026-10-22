@@ -27,6 +27,9 @@ class GatewaySettings(BaseSettings):
     ssh_bind: str = "0.0.0.0"
     ssh_port_start: int = Field(22000, ge=1024, le=65535)
     ssh_port_end: int = Field(22999, ge=1024, le=65535)
+    # A closed rental's port is reused only after this quarantine, so stale client settings
+    # meet a retired listener rather than another tenant's server for a long while.
+    ssh_port_reuse_after_seconds: int = Field(604800, ge=3600)
     poll_seconds: int = Field(5, ge=1, le=60)
     route_lease_seconds: int = Field(60, ge=10, le=600)
     # Public EC2 addresses by default. Private targets must be explicitly enrolled.

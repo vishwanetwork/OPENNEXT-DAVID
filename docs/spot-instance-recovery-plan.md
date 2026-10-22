@@ -404,9 +404,12 @@ reconciliation, and last successful authorization time. Do not persist raw
 event histories indefinitely or store cloud keys.
 
 The route is keyed by tenant and stable rental ID. Assign a TCP port once and
-persist it before opening the listener. Do not reuse a retired rental's port in
-the initial release; stale client configurations must not reach another tenant.
-Port exhaustion is an explicit delivery error. A gateway restart restores port
+persist it before opening the listener. A closed rental's port is reused only
+after a quarantine (default seven days, `SPOTBOT_GATEWAY_SSH_PORT_REUSE_AFTER_SECONDS`);
+until then stale client configurations reach a retired listener, and afterwards
+another tenant's server presents a different SSH host key and requires that
+tenant's key. Port exhaustion is an explicit delivery error; the bot moves a
+handoff that stays unacknowledged past its delivery timeout to `ACTION_REQUIRED`. A gateway restart restores port
 assignments, then rechecks current bot state before enabling traffic.
 
 Only rental-record events advance the routing watermark. Backup-record events

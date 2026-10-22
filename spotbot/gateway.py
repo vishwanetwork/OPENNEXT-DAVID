@@ -229,7 +229,8 @@ class Gateway:
             return
         async with self.ports_lock:
             if row["port"] is None:
-                assigned = {r["port"] for r in self.db.list("gateway") if r["port"] is not None}
+                rows = [r for r in self.db.list("gateway") if r["port"] is not None]
+                assigned = {r["port"] for r in rows if not self.reusable(r)}
                 row["port"] = next(
                     (
                         p
@@ -240,6 +241,15 @@ class Gateway:
                 )
                 if row["port"] is None:
                     raise ValueError("ssh_port_range_exhausted")
+                # Release the port from the closed rental that held it, before reassigning.
+                for old in rows:
+                    if old["port"] == row["port"] and old["id"] != row["id"]:
+                        server = self.listeners.pop(old["id"], None)
+                        if server:
+                            server.close()
+                            await server.wait_closed()
+                        old.update(port=None, port_released_at=timestamp())
+                        self.save(old)
                 self.save(row)
             # Bind failure is an error, not permission to pick a different stable port.
             server = await asyncio.start_server(
@@ -248,6 +258,16 @@ class Gateway:
                 row["port"],
             )
             self.listeners[row["id"]] = server
+
+    def reusable(self, row):
+        """A closed rental's port, after the reuse quarantine."""
+        if not row.get("terminal"):
+            return False
+        # Rows retired before this field existed use their last update as the retirement time.
+        retired = row.get("retired_at") or row.get("updated_at")
+        return bool(retired) and (
+            utcnow() - datetime.fromisoformat(retired)
+        ).total_seconds() >= self.settings.ssh_port_reuse_after_seconds
 
     def public(self, row, *, include_token=False):
         ready = self.authorized(row["id"])
@@ -299,6 +319,8 @@ class Gateway:
                         generation=rental["generation"],
                         terminal=rental["state"] == "CLOSED",
                     )
+                    if row["terminal"] and not row.get("retired_at"):
+                        row["retired_at"] = timestamp()
                     self.save(row)
                     if row["terminal"]:
                         server = self.listeners.pop(rental_id, None)

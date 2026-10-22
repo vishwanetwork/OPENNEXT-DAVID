@@ -249,7 +249,12 @@ point. A recovery also verifies canary hashes and the original mount layout.
 
 `rental.handoff` contains the candidate connection and generation. The gateway
 checks reachability, registers the candidate, and calls `gateway-ack` for that
-generation. `rental.active` indicates acknowledgement. A rejection by a tenant or
+generation. `rental.active` indicates acknowledgement. Without an acknowledgement
+within `SPOTBOT_RENTAL_DELIVERY_TIMEOUT_SECONDS` (default 600) the rental moves
+to `ACTION_REQUIRED` with `gateway_ack_timeout` (for example, the gateway has no
+free SSH port). The server keeps running and billing until an operator fixes the
+gateway and recovers, or releases it; RFQ expiry and budget still end it. A
+rejection by a tenant or
 administrator credential starts release. Receivers must verify the existing webhook HMAC, deduplicate event IDs,
 and reject older generations/state versions. On recovering/unavailable/ending
 events, revoke the prior route. `rental.degraded` and `rental.healthy` do not

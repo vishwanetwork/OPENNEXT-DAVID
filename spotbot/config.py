@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # Pools (instance type x zone) tried per acquisition attempt before waiting retry_seconds.
     spotbot_rental_pools_per_attempt: int = Field(8, ge=1, le=32)
     spotbot_rental_boot_timeout_seconds: int = Field(1200, ge=60, le=7200)
+    # A handoff the gateway has not acknowledged by then needs an operator (e.g. no free port).
+    spotbot_rental_delivery_timeout_seconds: int = Field(600, ge=60, le=86400)
     # Conservative budget reservation rate; not a provider invoice or published tariff.
     spotbot_rental_storage_reserve_usd_gib_month: Decimal = Field(Decimal("0.15"), gt=0)
 

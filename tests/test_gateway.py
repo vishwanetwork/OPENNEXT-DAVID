@@ -335,6 +335,46 @@ async def test_port_exhaustion_and_target_policy(environment):
         gw.target(bad)
 
 
+async def test_closed_rental_frees_its_port_only_after_the_quarantine(environment):
+    env, gw = environment, environment["gateway"]
+    await activate(env)  # The fixture's single port now belongs to the first rental.
+    first = env["id"]
+    port = gw.db.get("gateway", first)["port"]
+    env["rental"].update(state="CLOSED", version=env["rental"]["version"] + 1)
+    await gw.reconcile(first)
+    retired = gw.db.get("gateway", first)
+    assert retired["terminal"] and retired["retired_at"] and retired["port"] == port
+    assert first not in gw.listeners
+    second = str(uuid4())
+    env["id"] = second
+    env["rental"] = dict(
+        copy.deepcopy(env["rental"]), id=second, version=10, generation=1, state="DELIVERING"
+    )
+    env["rental"]["connection"].update(rental_id=second)
+    await gw.ingest(event(env))
+    await gw.reconcile(second)
+    assert gw.db.get("gateway", second)["error"] == "ssh_port_range_exhausted"
+    # A week later the closed rental's port may serve a new rental; the old row lets it go.
+    retired = gw.db.get("gateway", first)
+    retired["retired_at"] = (utcnow() - timedelta(days=7, seconds=1)).isoformat()
+    gw.save(retired)
+    await gw.reconcile(second)
+    assert gw.authorized(second) and gw.db.get("gateway", second)["port"] == port
+    released = gw.db.get("gateway", first)
+    assert released["port"] is None and released["port_released_at"]
+
+
+async def test_live_and_recently_closed_rentals_keep_their_ports(environment):
+    env, gw = environment, environment["gateway"]
+    await activate(env)
+    row = gw.db.get("gateway", env["id"])
+    assert not gw.reusable(row)  # Never while the rental can still be served.
+    row.update(terminal=True, retired_at=(utcnow() - timedelta(days=6)).isoformat())
+    assert not gw.reusable(row)
+    row["retired_at"] = (utcnow() - timedelta(days=8)).isoformat()
+    assert gw.reusable(row)
+
+
 def test_gateway_config_uses_independent_storage_and_credentials(tmp_path, monkeypatch):
     values = dict(
         _env_file=None,
