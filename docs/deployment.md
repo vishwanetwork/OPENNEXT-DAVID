@@ -64,7 +64,11 @@ signing secret. No provider credentials or operator SSH private keys are mounted
 
 - Gateway API: `https://gpu-gateway.test.vishwalab.com`; `/health` is public.
 - Stable customer SSH host: `gpu-ssh.test.vishwalab.com`; assigned ports are
-  TCP 22100–22109. Port 22001 belongs to an unrelated existing service.
+  TCP 22100–22199 (widened from 22100–22109 on 2026-10-22, in both
+  `.env.gateway` and the gateway security group). Port 22001 belongs to an
+  unrelated existing service. Ports are never reused, so the range bounds the
+  lifetime number of gateway rentals; when it is exhausted the gateway records
+  `ssh_port_range_exhausted` while the bot waits in `DELIVERING`.
 - Customer HTTPS host: `r-<rental-id>.test.vishwalab.com`, using the existing
   wildcard DNS/TLS certificate. Customer requests require the rental HTTP token.
 - Container: `spot-order-gateway`; Compose project `spotgateway`; HTTP binds
@@ -115,6 +119,22 @@ routine backup, and delivery resumed 13m37s after the loss (6m32s of that was
 the old instance shutting down). Rental estimates totalled about USD 1.23; only
 the three base images remain. GPU Spot quota is 32 vCPU in `us-west-2` and 8 in
 both `us-east` Regions while increases to 32 are pending.
+
+Further live checks on 2026-10-22 (release `56169cb`): stopping the bot for
+84 seconds made the gateway stop forwarding SSH once its 60-second lease
+lapsed, and forwarding resumed 8 seconds after the bot restarted; the
+API-requested recovery that followed took the frozen fast switch
+(`guest_frozen` final backup) and restored the test files. A FIS interruption
+in `us-east-2` reached the bot through that Region's EventBridge/SQS queue; its
+first replacement was then reclaimed by AWS itself
+(`instance-terminated-no-capacity`) about 90 seconds after launch, the bot
+recovered again from the retained disks, and no further capacity appeared
+within the 60-minute recovery window, so the rental moved to `ACTION_REQUIRED`
+and was released and cleaned up. A rental left to reach its RFQ expiry entered
+`ENDING` within 15 seconds of expiry without a release request, took a final
+backup and closed with its storage deleted. Before these runs all ten original
+gateway ports were consumed by closed test rentals; one run waited in
+`DELIVERING` until it was released.
 
 Release `56169cb` adds the frozen fast switch. In a second FIS run in
 `us-west-2` (`g6.2xlarge`), the bot entered recovery 18 seconds after the
