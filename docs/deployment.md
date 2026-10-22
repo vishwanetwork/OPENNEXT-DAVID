@@ -69,6 +69,10 @@ signing secret. No provider credentials or operator SSH private keys are mounted
   unrelated existing service. A closed rental's port is reusable after a
   seven-day quarantine, and a handoff left unacknowledged for 10 minutes moves
   to `ACTION_REQUIRED` instead of waiting in `DELIVERING`.
+- Upstream integration tenant: `integration-partner` (since 2026-10-23), with its
+  own token in `SPOTBOT_RENTAL_TENANT_TOKENS`; staging acceptance keeps using the
+  administrator key with the `staging` tenant. Integration guide (Chinese):
+  [integration-guide.zh.md](integration-guide.zh.md).
 - Customer HTTPS host: `r-<rental-id>.test.vishwalab.com`, using the existing
   wildcard DNS/TLS certificate. Customer requests require the rental HTTP token.
 - Container: `spot-order-gateway`; Compose project `spotgateway`; HTTP binds
