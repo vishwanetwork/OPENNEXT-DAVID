@@ -23,7 +23,7 @@ function routing(item,{authenticated=true,onSite=false}={}){
   win.OpenNEXTListings.get=id=>id===item.id?item:undefined;
   win.OpenNEXTContact={open:options=>contacts.push(options)};
   context.go=route=>navigated.push(route);
-  if(onSite)vm.runInNewContext(named('go','resumeMarketOpportunity'),context);
+  if(onSite)vm.runInNewContext(terminal.match(/  const routeTarget=[^\n]+/)[0]+'\n'+named('go','resumeMarketOpportunity'),context);
   vm.runInNewContext(named('queueListingIntent','clearListingIntent')+named('resumeListingIntent','currentOffers')+'\nthis.queue=queueListingIntent;this.resume=resumeListingIntent;',context);
   return {context,state,opened,contacts,navigated};
 }

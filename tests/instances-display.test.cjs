@@ -6,8 +6,9 @@ test('an empty workspace displays a visible, clearly separate instance example',
   for (const role of ['Buyer', 'Seller']) {
     const S = {role, instances: []};
     const page = Instances.page({S});
-    for (const text of ['No instances yet', 'Example only · not an active resource', 'Training workspace', 'ins-1024', 'US East', 'Northstar Compute', '8 × H100 SXM', '$2.30/GPU-hr', 'GPU utilization 71% · healthy']) assert.ok(page.includes(text), text);
-    assert.match(page, /class="instance-example-chart"/);
+    for (const text of ['No instances yet', 'Example only · not an active resource', 'Training workspace', 'US East', '8 × H100 SXM', '$2.30/GPU-hr', 'GPU utilization 71% · healthy']) assert.ok(page.includes(text), text);
+    assert.doesNotMatch(page, /ins-1024|Northstar Compute|PROVIDER/);
+    assert.match(page, /class="instance-example-chart[^"]*"/);
     assert.match(page, /data-act="instance-example-connect"/);
     assert.match(page, /data-act="instance-example-manage"/);
     assert.doesNotMatch(page, /<details|instance-example-grid|data-act="instance-resell"/);

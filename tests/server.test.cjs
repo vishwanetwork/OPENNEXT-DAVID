@@ -74,10 +74,11 @@ test('preview server routes price and history requests to the pricing API', asyn
   assert.equal((await fetch(base + '/api/admin/pricing/providers', {headers: {'X-Forwarded-For': '203.0.113.1'}})).status, 401);
 });
 test('private files and unsupported operations are not served', async () => {
-  for (const route of ['/.git/config', '/.env', '/OpenNEXT-market-feed.cjs', '/package.json', '/missing']) {
+  for (const route of ['/.git/config', '/.env', '/OpenNEXT-market-feed.cjs', '/package.json', '/missing', '/preview-console/', '/preview-console.html', '/preview-console.js', '/preview-console.css', '/preview-app-server.cjs', '/OpenNEXT-preview-requests-service.cjs']) {
     assert.equal((await fetch(base + route)).status, 404, route);
   }
   assert.equal((await fetch(base, {method: 'POST'})).status, 405);
+  assert.equal((await fetch(base + '/api/demo/preview/admin/requests')).status, 401);
   assert.equal((await fetch(base + '/%ZZ')).status, 400);
 });
 test('HEAD and canonical console routing work', async () => {
