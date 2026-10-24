@@ -16,11 +16,11 @@ function fixture({points=Array.from({length:8},(_,i)=>({date:'2026-10-'+String(1
  };
  return {request,calls};
 }
-test('every public history surface defaults to 3D and accepts normalized periods through 3M',async()=>{
+test('public history defaults to 3D except the seven-calendar-day ticker, with normalized periods through 3M',async()=>{
  const {request,calls}=fixture();
  for(const path of paths){
   assert.equal((await request(path)).status,200,path);
-  assert.equal(calls.at(-1).filters.period,'3D',path);
+  assert.equal(calls.at(-1).filters.period,path==='ticker'?'1W':'3D',path);
   for(const period of ['1D','3D','1W','1M','3M','%203m%20']){
    assert.equal((await request(path,'?period='+period)).status,200,path);
    assert.equal(calls.at(-1).filters.period,decodeURIComponent(period).trim().toUpperCase(),path);
@@ -64,13 +64,13 @@ test('malformed and duplicate period filters cannot bypass the public cap',async
  }
  assert.equal(calls.length,0);
 });
-test('uploaded, regional and ticker responses contain only inclusive 3-day points while catalog contains no prices',async()=>{
+test('uploaded and regional histories retain 3D while the homepage ticker defaults to seven calendar dates',async()=>{
  const {request}=fixture();
  for(const path of ['imported-history','regional-history','ticker']){
   const response=await request(path),rows=response.body.series||response.body.records;
   assert.equal(rows.length,1);
-  assert.equal(rows[0].points.length,4);
-  assert.deepEqual(rows[0].points.map(p=>p.date),['2026-10-15','2026-10-16','2026-10-17','2026-10-18']);
+  assert.equal(rows[0].points.length,path==='ticker'?7:4);
+  assert.deepEqual(rows[0].points.map(p=>p.date),path==='ticker'?['2026-10-12','2026-10-13','2026-10-14','2026-10-15','2026-10-16','2026-10-17','2026-10-18']:['2026-10-15','2026-10-16','2026-10-17','2026-10-18']);
  }
  const catalog=(await request('history-catalog')).body;
  assert.ok(catalog.regions.length);assert.equal(catalog.series,undefined);

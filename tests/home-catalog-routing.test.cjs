@@ -15,17 +15,19 @@ function catalog(rows=[]){
   return context.window;
 }
 function named(name,next){return terminal.slice(terminal.indexOf('  function '+name+'('),terminal.indexOf('  function '+next+'('));}
-function routing(item,{authenticated=true,onSite=false}={}){
+function routing(item,{authenticated=true,onSite=false,role='Buyer',onboardingCompleted=authenticated}={}){
   const win=catalog();
-  const opened=[],contacts=[],navigated=[];
-  const state={auth:authenticated,view:authenticated?'terminal':'auth',role:'Buyer',pendingListing:null,review:{status:'Approved'}};
-  const context={window:win,S:state,URL,URLSearchParams,onSite,TERMINAL_ORIGIN:'https://terminal.opennextlab.ai',routes:['market','models','rfqs','supply'],location:{href:'https://opennextlab.ai/'},persist(){},open:(type,extra)=>opened.push({type,...extra}),money:value=>'$'+Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),tokenMoney:value=>'$'+Number(value).toFixed(6),clearListingIntent(){state.pendingListing=null;},findModelQuote:sku=>win.OpenNEXTModelQuotes.get(sku)};
+  const opened=[],contacts=[],navigated=[],toasts=[],roleHints=[];
+  const state={auth:authenticated,user:authenticated?{id:'verified-'+role.toLowerCase(),email:role.toLowerCase()+'@example.test',role:onboardingCompleted?role.toLowerCase():null,onboardingCompleted}:null,view:authenticated?(onboardingCompleted?'terminal':'onboarding'):'auth',role,pendingListing:null,review:{status:'Approved'}};
+  let preferredRole='';
+  win.OpenNEXTAuth={getUser:()=>state.user,getPreferredRole:()=>preferredRole,setPreferredRole:value=>{if(state.user?.onboardingCompleted||!['buyer','seller'].includes(value))return false;roleHints.push(value);preferredRole=value;return true;},switchRole(){throw Error('Homepage routing must not switch an authenticated account role.');}};
+  const context={window:win,S:state,URL,URLSearchParams,onSite,TERMINAL_ORIGIN:'https://terminal.opennextlab.ai',routes:['market','models','rfqs','supply'],location:{href:'https://opennextlab.ai/'},persist(){},toast:message=>toasts.push(message),open:(type,extra)=>opened.push({type,...extra}),money:value=>'$'+Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),tokenMoney:value=>'$'+Number(value).toFixed(6),clearListingIntent(){state.pendingListing=null;},findModelQuote:sku=>win.OpenNEXTModelQuotes.get(sku)};
   win.OpenNEXTListings.get=id=>id===item.id?item:undefined;
   win.OpenNEXTContact={open:options=>contacts.push(options)};
   context.go=route=>navigated.push(route);
-  if(onSite)vm.runInNewContext(terminal.match(/  const routeTarget=[^\n]+/)[0]+'\n'+named('go','resumeMarketOpportunity'),context);
-  vm.runInNewContext(named('queueListingIntent','clearListingIntent')+named('resumeListingIntent','currentOffers')+'\nthis.queue=queueListingIntent;this.resume=resumeListingIntent;',context);
-  return {context,state,opened,contacts,navigated};
+  if(onSite)vm.runInNewContext(terminal.match(/  const routeTarget=[^\n]+/)[0]+'\n'+named('go','preferPublicRole'),context);
+  vm.runInNewContext(named('preferPublicRole','openPublicWorkspace')+named('queueListingIntent','clearListingIntent')+named('resumeListingIntent','currentOffers')+'\nthis.queue=queueListingIntent;this.resume=resumeListingIntent;',context);
+  return {context,state,opened,contacts,navigated,toasts,roleHints};
 }
 
 test('empty live model and hardware lanes retain existing catalog prices without fabricating RFQs',()=>{
@@ -61,6 +63,7 @@ test('catalog selection crosses the site-to-terminal URL before authentication',
   assert.equal(target.origin,'https://terminal.opennextlab.ai');
   assert.equal(target.searchParams.get('listing'),item.id);
   assert.equal(target.searchParams.get('intent'),'buy');
+  assert.equal(target.searchParams.get('role'),'buyer');
   assert.equal(target.hash,'#terminal/models');
   assert.equal(h.opened.length,0);
   h.context.resume();
@@ -117,15 +120,41 @@ test('complete system catalog inquiries never reinterpret a server price as a GP
   assert.doesNotMatch(h.contacts[0].message,/\$39,990/);
 });
 
-test('legacy rental requirements retain their supplier response flow',()=>{
+test('legacy rental requirements retain their verified Seller response flow without switching roles',()=>{
   const item={id:'rental-existing',kind:'rental',model:'H200',count:'160+',region:'Singapore',months:12,price:1.4,note:'Annual cluster.'};
-  const h=routing(item);h.context.queue(item.id,'offer');h.context.resume();
+  const h=routing(item,{role:'Seller'});h.context.queue(item.id,'offer');h.context.resume();
   assert.equal(h.navigated[0],'supply');
   assert.equal(h.state.role,'Seller');
   assert.equal(h.opened[0].type,'respond');
   assert.equal(h.opened[0].requirement.count,160);
   assert.equal(h.opened[0].requirement.budget,1.4);
   assert.equal(h.opened[0].requirement.originListingId,item.id);
+  assert.equal(h.state.user.role,'seller');assert.deepEqual(h.roleHints,[]);
+});
+
+test('Buyer cannot resume an offer-capacity intent or silently become a Seller',()=>{
+  const item={id:'rental-buyer-target',kind:'rental',model:'H100',count:'8',region:'Singapore',months:1,price:2};
+  const h=routing(item,{role:'Buyer'});assert.equal(h.context.queue(item.id,'offer'),true);h.context.resume();
+  assert.equal(h.state.role,'Buyer');assert.equal(h.state.user.role,'buyer');assert.deepEqual(h.roleHints,[]);assert.equal(h.opened.length,0);assert.equal(h.contacts.length,0);assert.equal(h.state.pendingListing,null);assert.match(h.toasts[0],/Switch to Seller from your account menu/);
+});
+
+test('Seller cannot resume purchase intents for catalog resources or silently become a Buyer',()=>{
+  for(const kind of ['model','hardware','rental']){
+    const item={id:kind+'-purchase-target',kind};const h=routing(item,{role:'Seller'});assert.equal(h.context.queue(item.id,'buy'),true);h.context.resume();
+    assert.equal(h.state.role,'Seller');assert.equal(h.state.user.role,'seller');assert.deepEqual(h.roleHints,[]);assert.equal(h.opened.length,0);assert.equal(h.contacts.length,0);assert.equal(h.state.pendingListing,null);assert.match(h.toasts[0],/Switch to Buyer from your account menu/);
+  }
+});
+
+test('cross-origin catalog links preserve existing verified roles and route incompatible requests to market',()=>{
+  for(const [role,intent] of [['Buyer','offer'],['Seller','buy']]){
+    const item={id:'rental-role-boundary',kind:'rental'};const h=routing(item,{role,onSite:true});h.context.queue(item.id,intent);
+    const url=new URL(h.context.location.href);assert.equal(url.searchParams.get('role'),role.toLowerCase());assert.equal(url.searchParams.get('intent'),intent);assert.equal(url.hash,'#terminal/market');assert.equal(h.state.user.role,role.toLowerCase());assert.deepEqual(h.roleHints,[]);
+  }
+});
+
+test('first-time Seller intent is an onboarding hint, not a verified account role change',()=>{
+  const item={id:'rental-new-account',kind:'rental'};const h=routing(item,{onboardingCompleted:false,onSite:true});h.context.queue(item.id,'offer');
+  const url=new URL(h.context.location.href);assert.equal(url.searchParams.get('role'),'seller');assert.equal(url.hash,'#terminal/supply');assert.deepEqual(h.roleHints,['seller']);assert.equal(h.state.user.role,null);assert.equal(h.state.user.onboardingCompleted,false);assert.equal(h.opened.length,0);
 });
 
 test('catalog references cannot be offered as if they were buyer RFQs',()=>{

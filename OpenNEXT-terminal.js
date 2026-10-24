@@ -29,9 +29,11 @@
   function persist(){window.OpenNEXTExchange?.init(S);try{localStorage.setItem(key,JSON.stringify({model:S.model,region:S.region,priceMetric:S.priceMetric,priceMetrics:S.priceMetrics}));}catch{toast('Display preferences could not be saved.');}}
   function toast(s){const t=document.getElementById('toast');t.textContent=s;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400);}
   function go(route){
-    const target=routeTarget(route);
+    let target=routeTarget(route);
+    // Role hints only preselect onboarding. Completed accounts retain their verified role.
+    if(S.user?.onboardingCompleted&&((S.role==='Buyer'&&target==='supply')||(S.role==='Seller'&&['rfqs','mandates'].includes(target))))target='market';
     if(onSite){
-      const params=new URLSearchParams({role:S.role});
+      const params=new URLSearchParams({role:window.OpenNEXTAuth.getPreferredRole?.()||S.role.toLowerCase()});
       if(S.pendingListing){params.set('listing',S.pendingListing.id);params.set('intent',S.pendingListing.intent);}
       if(S.pendingOpportunity){params.set('opportunity',S.pendingOpportunity.id);params.set('intent',S.pendingOpportunity.intent);}
       location.href=TERMINAL_ORIGIN+'/?'+params+'#terminal/'+target;return;
@@ -42,6 +44,13 @@
     S.route=target;if(['market','models'].includes(target))S.marketRoute=target;
     S.view='terminal';S.pending=null;history.pushState({},'','#terminal/'+S.route);
     render();resumeListingIntent();resumeMarketOpportunity();
+  }
+  function preferPublicRole(role){
+    if(!S.user?.onboardingCompleted&&window.OpenNEXTAuth.setPreferredRole?.(role))S.role=role==='seller'?'Seller':'Buyer';
+  }
+  function openPublicWorkspace(target,preferredRole){
+    preferPublicRole(preferredRole||(target==='supply'?'seller':target==='rfq'?'buyer':''));
+    go(target==='models'?'models':target==='supply'?'supply':target==='rfq'?'rfqs':'market');
   }
   function resumeMarketOpportunity(){
     if(!S.pendingOpportunity||!S.auth||S.view!=='terminal'||!S.marketplaceAuthoritative)return;
@@ -54,7 +63,7 @@
   function queueListingIntent(id,intent){
     const item=window.OpenNEXTListings?.get(id);
     if(!item||!['rental','model','hardware'].includes(item.kind)||!['buy','offer'].includes(intent)||(item.kind!=='rental'&&intent!=='buy'))return false;
-    S.pendingListing={id,intent};S.role=intent==='offer'?'Seller':'Buyer';persist();
+    S.pendingListing={id,intent};preferPublicRole(intent==='offer'?'seller':'buyer');persist();
     go(intent==='offer'?'supply':item.kind==='model'?'models':'rfqs');return true;
   }
   function clearListingIntent(){
@@ -69,6 +78,7 @@
     if(!S.auth||S.view!=='terminal'||!S.pendingListing)return;
     const {id,intent}=S.pendingListing,item=window.OpenNEXTListings?.get(id);clearListingIntent();
     if(!item)return;
+    if((intent==='offer'&&S.role!=='Seller')||(intent==='buy'&&S.role!=='Buyer')){toast('Switch to '+(intent==='offer'?'Seller':'Buyer')+' from your account menu to continue with this listing.');return;}
     if(item.kind==='model'){
       const quote=item.sku&&findModelQuote(item.sku);
       if(quote){open('model-rfq-form',{sku:quote.sku});return;}
@@ -215,9 +225,10 @@
   function terminal(){const pages={insight:()=>window.OpenNEXTSellerActivities?.render(context())||'<div class="page-content"><h1>Market Insight</h1></div>',market:()=>S.role==='Seller'?(window.OpenNEXTSellerActivities?.render(context())||'<div class="page-content"><h1>Market Insight</h1></div>'):(window.OpenNEXTSpotMarket?.render(context())||market()),models,rfqs:previewRfqs,supply,instances:()=>instances().replace(/My Instances/g,'Instances'),billing,saved:()=>collection('saved'),cart:()=>collection('cart'),profile,settings,help,mandates:previewRfqs,notifications:()=>window.OpenNEXTQuotePreview?.history(context())||'<div class="page-content"><h1>Notifications</h1></div>'};return `<main class="terminal preview-terminal"><section class="terminal-main">${header()}${(pages[S.route]||pages.market)()}</section></main>`;}
   let tickerIndex=0,tickerManual=false;
   function ticker(){
-    const rows=D.tickerRows(),row=rows[tickerIndex%Math.max(1,rows.length)],price=row?.perGpuHourly,model=row?.gpuModel||'GPU prices',region=row?(row.regionName||D.regionLabel(row.region)):'Connecting',term=row?.term||'Provider API',provider=row?.provider?row.provider.toUpperCase():'OpenNEXT',values=row?.points||(row?D.history({recordId:row.recordId}):[]);
+    const rows=D.tickerRows(),row=rows[tickerIndex%Math.max(1,rows.length)],price=row?.perGpuHourly,model=row?.gpuModel||'GPU prices',country=row?.country||'—',term=row?.term||'Spot',values=row?.points||[];
+    const vcpu=Number.isFinite(row?.vcpu)&&row.vcpu>0?row.vcpu+' vCPU':'— vCPU',memory=Number.isFinite(row?.gpuMemoryGb)&&row.gpuMemoryGb>0?row.gpuMemoryGb+' GB':'— GB';
     const recorded=values.filter(p=>Number.isFinite(p.value)),first=recorded[0],last=recorded[recorded.length-1],change=first?.value>0&&last?(last.value/first.value-1)*100:null;
-    return `<section class="ticker" id="ticker" tabindex="0" aria-label="GPU price ticker"><div class="ticker-row"><strong class="ticker-label">GPU MARKET</strong><div class="ticker-entry"><strong>${esc(region)}</strong><strong>${esc(model)}</strong><span class="ticker-divider">${money(price)} / GPU-hour</span><span class="ticker-divider">${esc(term)}</span>${provider==='AWS'?'':`<span class="ticker-divider">${esc(provider)}</span>`}<span class="ticker-divider">${row?.historical?'Daily reference':rows.length+' price records'}</span></div><button class="ticker-control" data-act="ticker-pause" aria-label="${tickerManual?'Resume':'Pause'} market ticker">${tickerManual?'▶':'Ⅱ'}</button></div><div class="ticker-detail"><div class="ticker-card-head"><div><div class="eyebrow">${esc(region)} · ${esc(model)} · ${esc(term)}</div><div class="ticker-price">${money(price)}</div></div><div class="ticker-chart-meta"><span class="tag">${row?.historical?'Daily Spot avg':'Source quote'}</span>${change!==null?`<strong class="${change<0?'negative':'positive'}">${change>0?'+':''}${change.toFixed(2)}%</strong>`:''}</div></div>${tickerSpark(values)}<div class="ticker-foot"><span>${row?row.gpuCount+' GPU · '+esc(regionText(region)):'Awaiting price feed'}</span><span>${row?.historical?'As of '+esc(row.observedAt):row?stamp(row.observedAt):'Waiting for collection'}</span></div></div></section>`;
+    return `<section class="ticker" id="ticker" tabindex="0" aria-label="GPU price ticker"><div class="ticker-row"><strong class="ticker-label">GPU MARKET</strong><div class="ticker-entry"><strong data-ticker-field="country">${esc(country)}</strong><strong data-ticker-field="model">${esc(model)}</strong><span class="ticker-divider" data-ticker-field="vcpu">${esc(vcpu)}</span><span class="ticker-divider" data-ticker-field="memory" title="Memory per GPU">${esc(memory)}</span><span class="ticker-divider" data-ticker-field="price">${money(price)} / GPU-hour</span><span class="ticker-divider" data-ticker-field="term">${esc(term)}</span></div><button class="ticker-control" data-act="ticker-pause" aria-label="${tickerManual?'Resume':'Pause'} market ticker">${tickerManual?'▶':'Ⅱ'}</button></div><div class="ticker-detail"><div class="ticker-card-head"><div><div class="eyebrow">${esc(country)} · ${esc(model)} · ${esc(term)}</div><div class="ticker-price">${money(price)}</div></div><div class="ticker-chart-meta"><span class="tag">7D history</span>${change!==null?`<strong class="${change<0?'negative':'positive'}">${change>0?'+':''}${change.toFixed(2)}%</strong>`:''}</div></div>${tickerSpark(values)}</div></section>`;
   }
   function tickerSpark(points){
     const rows=points.map(p=>({time:Date.parse(p.date||p.time||p.timestamp||p.observedAt),value:p.value})).filter(p=>Number.isFinite(p.time)).sort((a,b)=>a.time-b.time);
@@ -228,7 +239,7 @@
     const x=t=>start===end?185:8+(t-start)/(end-start)*354,y=v=>82-(v-low)/range*74;
     let path='',previous=null;
     for(const p of rows){if(!Number.isFinite(p.value)){previous=null;continue;}const join=previous&&p.time-previous.time<=day*1.5;path+=(join?'L':'M')+x(p.time).toFixed(2)+','+y(p.value).toFixed(2)+' ';previous=p;}
-    const date=t=>new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',timeZone:'UTC'}).format(new Date(t));
+    const date=t=>new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(t));
     const last=valid[valid.length-1];
     return `<svg class="spark" viewBox="0 0 370 90" role="img" aria-label="Recorded price history, ${valid.length} observations"><path d="M8 8H362 M8 45H362 M8 82H362" fill="none" stroke="#334035" stroke-dasharray="3 5"/><path class="ticker-price-line" d="${path.trim()}" fill="none" stroke="#80d3a5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${valid.map(p=>`<circle cx="${x(p.time).toFixed(2)}" cy="${y(p.value).toFixed(2)}" r="1.8" fill="#80d3a5"/>`).join('')}<circle cx="${x(last.time).toFixed(2)}" cy="${y(last.value).toFixed(2)}" r="3.5" fill="#80d3a5"/></svg><div class="ticker-chart-dates"><span>${date(start)}</span><span>${date(end)}</span></div>`;
   }
@@ -433,7 +444,7 @@
     case 'agent-prompt':agentReply(value);break;
     case 'ticker-pause':tickerManual=!tickerManual;b.textContent=tickerManual?'▶':'Ⅱ';b.setAttribute('aria-label',tickerManual?'Resume market ticker':'Pause market ticker');break;
   }}
-  document.addEventListener('click',e=>{if(S.menu&&!e.target.closest('.filter-wrap'))closeMenu();const pub=e.target.closest('[data-public-action]');if(pub){e.preventDefault();if(pub.dataset.publicAction==='scroll'){document.getElementById(pub.dataset.section)?.scrollIntoView({behavior:'smooth'});return;}if(pub.dataset.publicAction==='home'){if(onTerminalHost){location.href=SITE_ORIGIN+'/';return;}S.view='landing';render();window.scrollTo(0,0);return;}if(pub.dataset.publicAction==='signin'||pub.dataset.publicAction==='open-workspace'){if(pub.dataset.exchangeId){window.OpenNEXTProcurement.opportunity(context(),pub.dataset.exchangeId,pub.dataset.exchangeIntent);return;}if(pub.dataset.listingSelection&&queueListingIntent(pub.dataset.listingSelection,pub.dataset.listingIntent))return;const target=pub.dataset.target;if(S.role!=='Broker')S.role=target==='supply'?'Seller':'Buyer';go(target==='models'?'models':target==='supply'?'supply':target==='rfq'?'rfqs':'market');window.scrollTo(0,0);return;}if(pub.dataset.publicAction==='info'){if(pub.dataset.info==='contact')window.OpenNEXTContact?.open();else open('info',{info:pub.dataset.info});return;}}const nav=e.target.closest('[data-nav]');if(nav){go(nav.dataset.nav);return;}const b=e.target.closest('[data-act]');if(b){e.preventDefault();perform(b.dataset.act,b);return;}if(e.target.classList.contains('overlay')){S.modal=null;renderOverlays();}if(S.menu&&!e.target.closest('.filter-wrap')){S.menu=null;render();}if(S.userOpen&&!e.target.closest('.user-pop')&&!e.target.closest('.user-button')){S.userOpen=false;render();}});
+  document.addEventListener('click',e=>{if(S.menu&&!e.target.closest('.filter-wrap'))closeMenu();const pub=e.target.closest('[data-public-action]');if(pub){e.preventDefault();if(pub.dataset.publicAction==='scroll'){document.getElementById(pub.dataset.section)?.scrollIntoView({behavior:'smooth'});return;}if(pub.dataset.publicAction==='home'){if(onTerminalHost){location.href=SITE_ORIGIN+'/';return;}S.view='landing';render();window.scrollTo(0,0);return;}if(pub.dataset.publicAction==='signin'||pub.dataset.publicAction==='open-workspace'){if(pub.dataset.exchangeId){window.OpenNEXTProcurement.opportunity(context(),pub.dataset.exchangeId,pub.dataset.exchangeIntent);return;}if(pub.dataset.listingSelection&&queueListingIntent(pub.dataset.listingSelection,pub.dataset.listingIntent))return;openPublicWorkspace(pub.dataset.target,pub.dataset.preferredRole);window.scrollTo(0,0);return;}if(pub.dataset.publicAction==='info'){if(pub.dataset.info==='contact')window.OpenNEXTContact?.open();else open('info',{info:pub.dataset.info});return;}}const nav=e.target.closest('[data-nav]');if(nav){go(nav.dataset.nav);return;}const b=e.target.closest('[data-act]');if(b){e.preventDefault();perform(b.dataset.act,b);return;}if(e.target.classList.contains('overlay')){S.modal=null;renderOverlays();}if(S.menu&&!e.target.closest('.filter-wrap')){S.menu=null;render();}if(S.userOpen&&!e.target.closest('.user-pop')&&!e.target.closest('.user-button')){S.userOpen=false;render();}});
   document.addEventListener('input',e=>{if(e.target.dataset.filterSearch){const type=e.target.dataset.filterSearch,q=e.target.value.trim().toLowerCase(),menu=e.target.closest('.select-menu');let visible=0;menu.querySelectorAll('.option').forEach(b=>{const matches=type==='count'&&/^\d+$/.test(q)?Number(b.dataset.value)===Number(q):b.textContent.toLowerCase().includes(q);b.hidden=!matches;if(matches)visible++;});menu.querySelector('.filter-empty').hidden=visible>0;}if(e.target.dataset.search){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-search-item]').forEach(el=>el.hidden=!el.dataset.searchItem.toLowerCase().includes(q));}});
   document.addEventListener('change',e=>{if(e.target.dataset.priceMetric){const metric=e.target.dataset.priceMetric;if(!Object.hasOwn(metricLabels,metric))return;const next=e.target.checked?[...S.priceMetrics,metric]:S.priceMetrics.filter(value=>value!==metric);if(!next.length){e.target.checked=true;toast('Keep at least one price metric selected.');return;}S.priceMetrics=normalizeMetrics(next);S.priceMetric=S.priceMetrics.includes('avg')?'avg':S.priceMetrics[0];S.hiddenSeries=[];persist();render();document.querySelector(`[data-price-metric="${metric}"]`)?.focus();return;}if(e.target.dataset.procFilter){S[e.target.dataset.procFilter]=e.target.value;render();return;}if(e.target.dataset.compare){const id=e.target.dataset.compare;S.selected=e.target.checked?[...new Set([...S.selected,id])]:S.selected.filter(x=>x!==id);}const form=e.target.closest('form[data-form="model-rfq"]');if(form)updateModelForm(form);});
   document.addEventListener('input',e=>{if(['inputMillion','outputMillion'].includes(e.target.name)){const form=e.target.closest('form[data-form="model-rfq"]');if(form)updateModelForm(form);}});

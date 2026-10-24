@@ -8,9 +8,40 @@
 const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let user=null,config=null,mode='signin',callbacks={},currentRoot=null,emailAddress='',emailChallenge='',onboardingRole='',onboardingStage='role';
+  // This is an onboarding preference, never authorization or an instruction to switch an account role.
+  const roleIntentKey='opennext-auth-role-intent-v1:'+(/^\/demo(?:\/|$)/.test(window.location?.pathname||'')?'demo':'account');
+  const allowedRole=value=>typeof value==='string'&&['buyer','seller'].includes(value.trim().toLowerCase())?value.trim().toLowerCase():'';
+  const queryRole=(()=>{try{return allowedRole(new URLSearchParams(window.location?.search||'').get('role'));}catch{return '';}})();
+  let roleIntent=null;
+  function saveRoleIntent(){try{if(roleIntent)window.sessionStorage?.setItem(roleIntentKey,JSON.stringify(roleIntent));else window.sessionStorage?.removeItem(roleIntentKey);}catch{}}
+  function clearPreferredRole(){roleIntent=null;onboardingRole='';saveRoleIntent();}
+  function initializeRoleIntent(){
+    try{const saved=JSON.parse(window.sessionStorage?.getItem(roleIntentKey)||'null');if(saved&&allowedRole(saved.role)&&Number.isFinite(saved.updatedAt)&&Date.now()-saved.updatedAt<86400000&&saved.updatedAt<=Date.now()+60000)roleIntent={role:allowedRole(saved.role),queryRole:allowedRole(saved.queryRole),ownerId:typeof saved.ownerId==='string'?saved.ownerId:null,updatedAt:saved.updatedAt};}catch{}
+    // A changed URL hint is a new CTA. The same URL must not undo a user's later selection on reload.
+    if(queryRole&&(!roleIntent||roleIntent.queryRole!==queryRole))roleIntent={role:queryRole,queryRole,ownerId:null,updatedAt:Date.now()};
+    saveRoleIntent();
+  }
+  initializeRoleIntent();
+  function getPreferredRole(){return user?.onboardingCompleted?'':allowedRole(roleIntent?.role);}
+  function paintRoleSelection(){
+    onboardingRole=getPreferredRole();
+    currentRoot?.querySelectorAll('[data-onboarding-role]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.onboardingRole===onboardingRole)));
+    const next=currentRoot?.querySelector('[data-onboarding-next]');if(next)next.disabled=!onboardingRole;
+  }
+  function setPreferredRole(value){
+    const role=allowedRole(value);if(!role)return false;
+    if(user?.onboardingCompleted){clearPreferredRole();return false;}
+    roleIntent={role,queryRole,ownerId:user?.id||null,updatedAt:Date.now()};saveRoleIntent();paintRoleSelection();return true;
+  }
   function logo(light=false){return '<span class="onx-brand'+(light?' onx-brand-light':'')+'"><svg viewBox="0 0 42 44" role="img" aria-label="OpenNEXT mark"><path d="'+BRAND_PATH+'"/></svg><span>OpenNEXT</span></span>';}
   function notify(){window.dispatchEvent(new CustomEvent('opennext:authchange',{detail:{user}}));}
-  function setUser(value,emit=true){user=value&&typeof value.id==='string'&&typeof value.email==='string'?value:null;if(emit)notify();return user;}
+  function setUser(value,emit=true){
+    const previousId=user?.id;user=value&&typeof value.id==='string'&&typeof value.email==='string'?value:null;
+    if(previousId&&previousId!==user?.id)onboardingStage='role';
+    if(user?.onboardingCompleted)clearPreferredRole();
+    else if(user&&roleIntent){if(roleIntent.ownerId&&roleIntent.ownerId!==user.id)clearPreferredRole();else{roleIntent.ownerId=user.id;saveRoleIntent();}}
+    if(emit)notify();return user;
+  }
   async function request(endpoint,options={}){
     if(!/^\/api\//.test(endpoint))throw new Error('Invalid API endpoint.');
     const headers={...options.headers};
@@ -23,7 +54,7 @@ const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
   }
   async function refreshSession(){const result=await request('/api/auth/session');return setUser(result.user);}
   async function boot(){try{return await refreshSession();}catch{return setUser(null);}}
-  async function logout(){try{await request('/api/auth/logout',{method:'POST',body:'{}'});}catch(reason){if(reason.status!==401)throw reason;}emailAddress='';emailChallenge='';onboardingStage='role';return setUser(null);}
+  async function logout(){try{await request('/api/auth/logout',{method:'POST',body:'{}'});}catch(reason){if(reason.status!==401)throw reason;}emailAddress='';emailChallenge='';onboardingStage='role';clearPreferredRole();return setUser(null);}
   async function switchRole(role){const result=await request('/api/auth/role',{method:'POST',body:JSON.stringify({role})});return setUser(result.user);}
   function error(message){const box=currentRoot?.querySelector('[data-auth-error]');if(box){box.textContent=message;box.hidden=false;box.focus();}}
   function clearError(){const box=currentRoot?.querySelector('[data-auth-error]');if(box){box.textContent='';box.hidden=true;}currentRoot?.querySelectorAll('[aria-invalid]').forEach(input=>input.removeAttribute('aria-invalid'));}
@@ -73,18 +104,32 @@ const check='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
   function renderOnboarding(verifiedUser){
     if(verifiedUser)setUser(verifiedUser,false);
     if(!user)return render();
+    onboardingRole=getPreferredRole();
+    if(user.onboardingCompleted&&onboardingStage!=='reward')return shell('<div class="onx-auth-kicker">Your workspace is ready</div><h1>Welcome back.</h1><p class="onx-auth-subtitle">Continue to your existing OpenNEXT workspace.</p><button class="onx-auth-submit" type="button" data-onboarding-complete>Open Terminal '+arrow+'</button>');
     if(onboardingStage==='reward'&&user.onboardingCompleted)return shell('<div class="onx-auth-success-icon">'+check+'</div><div class="onx-auth-kicker">Welcome to OpenNEXT</div><h1>Your first $100.<br>On us.</h1><p class="onx-auth-subtitle">A one-time <strong>$100 promotional credit</strong> has been added to your account.</p><div class="onx-auth-reward"><span>Promotional credit</span><strong>$100.00</strong><small>For eligible OpenNEXT purchases. Non-withdrawable and non-transferable. Future funding is available in Billing.</small></div><button class="onx-auth-submit" type="button" data-onboarding-complete>Open Terminal '+arrow+'</button>');
-    return shell('<div class="onx-auth-kicker">Set up your workspace</div><h1>How will you<br>use OpenNEXT?</h1><p class="onx-auth-subtitle">Signed in as <strong>'+esc(user.email)+'</strong>. Choose your primary role. You can switch between Buyer and Seller later.</p><div class="onx-auth-roles" role="group" aria-label="Choose your role"><button type="button" class="onx-auth-role" data-onboarding-role="buyer" aria-pressed="false"><strong>Buyer</strong><span>Find GPU capacity, request quotes and manage your resources.</span><i aria-hidden="true"></i></button><button type="button" class="onx-auth-role" data-onboarding-role="seller" aria-pressed="false"><strong>Seller</strong><span>Verify your business, list available capacity and respond to demand.</span><i aria-hidden="true"></i></button><button type="button" class="onx-auth-role" disabled aria-disabled="true"><strong>Broker <small>Coming soon</small></strong><span>Broker access is not available yet.</span></button></div><div class="onx-auth-error" data-auth-error role="alert" tabindex="-1" hidden></div><button class="onx-auth-submit" type="button" data-onboarding-next disabled>Next '+arrow+'</button><p class="onx-auth-smallnote">Complete setup to receive a one-time $100 promotional credit. Promotional credit cannot be withdrawn.</p>');
+    return shell('<div class="onx-auth-kicker">Set up your workspace</div><h1>How will you<br>use OpenNEXT?</h1><p class="onx-auth-subtitle">Signed in as <strong>'+esc(user.email)+'</strong>. Choose your primary role. You can switch between Buyer and Seller later.</p><div class="onx-auth-roles" role="group" aria-label="Choose your role"><button type="button" class="onx-auth-role" data-onboarding-role="buyer" aria-pressed="'+String(onboardingRole==='buyer')+'"><strong>Buyer</strong><span>Find GPU capacity, request quotes and manage your resources.</span><i aria-hidden="true"></i></button><button type="button" class="onx-auth-role" data-onboarding-role="seller" aria-pressed="'+String(onboardingRole==='seller')+'"><strong>Seller</strong><span>Verify your business, list available capacity and respond to demand.</span><i aria-hidden="true"></i></button><button type="button" class="onx-auth-role" disabled aria-disabled="true"><strong>Broker <small>Coming soon</small></strong><span>Broker access is not available yet.</span></button></div><div class="onx-auth-error" data-auth-error role="alert" tabindex="-1" hidden></div><button class="onx-auth-submit" type="button" data-onboarding-next '+(onboardingRole?'':'disabled')+'>Next '+arrow+'</button><p class="onx-auth-smallnote">Complete setup to receive a one-time $100 promotional credit. Promotional credit cannot be withdrawn.</p>');
   }
   function bindOnboarding(host,next){
     const resolved=resolve(host,next);currentRoot=resolved.root;callbacks=resolved.callbacks;if(!currentRoot)return;
     currentRoot.querySelector('[data-auth-back]').onclick=()=>callbacks.onBack?.();
-    onboardingRole='';
-    currentRoot.querySelectorAll('[data-onboarding-role]').forEach(button=>button.onclick=()=>{onboardingRole=button.dataset.onboardingRole;currentRoot.querySelectorAll('[data-onboarding-role]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));currentRoot.querySelector('[data-onboarding-next]').disabled=false;});
+    paintRoleSelection();
+    currentRoot.querySelectorAll('[data-onboarding-role]').forEach(button=>button.onclick=()=>{if(!button.disabled)setPreferredRole(button.dataset.onboardingRole);});
     const nextButton=currentRoot.querySelector('[data-onboarding-next]');
-    if(nextButton)nextButton.onclick=async()=>{clearError();nextButton.disabled=true;try{const result=await request('/api/auth/onboarding',{method:'POST',body:JSON.stringify({role:onboardingRole})});setUser(result.user,false);onboardingStage='reward';replace(renderOnboarding(user),bindOnboarding);}catch(reason){error(reason.message);nextButton.disabled=false;}};
+    if(nextButton)nextButton.onclick=async()=>{
+      if(nextButton.disabled)return;
+      clearError();
+      if(!user||user.onboardingCompleted||!allowedRole(onboardingRole)){error('Choose Buyer or Seller for your first workspace setup.');return;}
+      const accountId=user.id,selectedRole=onboardingRole,buttons=[...currentRoot.querySelectorAll('[data-onboarding-role]')];
+      nextButton.disabled=true;buttons.forEach(button=>{button.disabled=true;});
+      try{
+        const result=await request('/api/auth/onboarding',{method:'POST',body:JSON.stringify({role:selectedRole})});
+        if(user?.id!==accountId)return;
+        if(result.user?.id!==accountId||!result.user.onboardingCompleted||!allowedRole(result.user.role))throw Error('Account setup was not confirmed. Refresh your session before trying again.');
+        setUser(result.user,false);onboardingStage='reward';replace(renderOnboarding(user),bindOnboarding);
+      }catch(reason){if(user?.id===accountId){error(reason.message);nextButton.disabled=!getPreferredRole();buttons.forEach(button=>{button.disabled=false;});}}
+    };
     const complete=currentRoot.querySelector('[data-onboarding-complete]');
     if(complete)complete.onclick=()=>{onboardingStage='role';notify();callbacks.onComplete?.(user);};
   }
-  window.OpenNEXTAuth={logo,render,bind,boot,refreshSession,session:()=>user,getUser:()=>user,request,logout,switchRole,renderOnboarding,bindOnboarding};
+  window.OpenNEXTAuth={logo,render,bind,boot,refreshSession,session:()=>user,getUser:()=>user,request,logout,switchRole,renderOnboarding,bindOnboarding,setPreferredRole,getPreferredRole,clearPreferredRole};
 })();

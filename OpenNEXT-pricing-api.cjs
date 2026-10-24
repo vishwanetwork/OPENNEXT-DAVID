@@ -53,7 +53,8 @@ function createPricingRouter(service,{env=process.env,importedHistory=importedSp
   const publicHistoryPaths=new Set(['/api/pricing/regional-history','/api/pricing/capacity-history','/api/pricing/imported-history','/api/pricing/history','/api/pricing/ticker']);
   function publicHistoryPeriod(url,res){
     const requested=url.searchParams.getAll('period');
-    const period=String(requested[0]||'3D').trim().toUpperCase()||'3D';
+    const defaultPeriod=url.pathname==='/api/pricing/ticker'?'1W':'3D';
+    const period=String(requested[0]||defaultPeriod).trim().toUpperCase()||defaultPeriod;
     if(requested.length>1||!['1D','3D','1W','1M','3M','6M','1Y','ALL'].includes(period)){
       send(res,400,{error:'Invalid history period'});return null;
     }

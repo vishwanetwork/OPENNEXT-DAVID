@@ -40,7 +40,7 @@ test('homepage restores isolated supply and RFQ cards with exact demo deep links
   assert.equal(cardsIn(panel(html)).length,6);
   assert.match(html,/01 — 05 \/ 6/);
   assert.match(html,/GPU rental<\/label>/);
-  assert.match(html,/Demo marketplace · Test data · No real transactions/);
+  assert.doesNotMatch(html,/Demo marketplace · Test data · No real transactions/);
   assert.match(html,/href="https:\/\/terminal\.opennextlab\.ai\/demo\/\?role=buyer&amp;opportunity=SUP-DEMO-0&amp;intent=buy#terminal\/market"/);
   const cards=cardsIn(panel(html));
   cards.forEach(card=>{assert.match(card,/Supplier offer/);assert.match(card,/<span>Buy capacity<\/span>/);assert.doesNotMatch(card,/data-public-action|data-exchange-id|on-listing-sample|Preview/);});
@@ -72,7 +72,7 @@ test('approved production rows supersede showcase lane without mixing data or ch
   api.selectSide('demand');
   html=api.render(copy);
   assert.match(html,/RFQ-DEMO-0/);
-  assert.match(html,/Demo marketplace/);
+  assert.doesNotMatch(html,/Demo marketplace/);
 });
 
 test('fully populated approved lanes need no showcase fetch',async()=>{

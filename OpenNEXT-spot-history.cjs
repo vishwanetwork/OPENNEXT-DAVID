@@ -10,6 +10,20 @@ const DEFAULT_FILE = path.join(__dirname, 'data', 'gpu-spot-history.json');
 const normal = value => String(value ?? '').trim().toLowerCase();
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const valueOrNull = value => value === undefined ? null : value;
+// Region identifiers are retained internally; public labels do not expose them.
+const REGION_COUNTRIES = Object.freeze({
+  'af-south-1':'South Africa', 'ap-east-1':'Hong Kong',
+  'ap-northeast-1':'Japan', 'ap-northeast-2':'South Korea', 'ap-northeast-3':'Japan',
+  'ap-south-1':'India', 'ap-south-2':'India', 'ap-southeast-1':'Singapore',
+  'ap-southeast-2':'Australia', 'ap-southeast-3':'Indonesia', 'ap-southeast-5':'Malaysia',
+  'ca-central-1':'Canada', 'eu-central-1':'Germany', 'eu-central-2':'Switzerland',
+  'eu-north-1':'Sweden', 'eu-south-1':'Italy', 'eu-south-2':'Spain',
+  'eu-west-1':'Ireland', 'eu-west-2':'United Kingdom', 'eu-west-3':'France',
+  'il-central-1':'Israel', 'me-central-1':'United Arab Emirates', 'sa-east-1':'Brazil',
+  'us-east-1':'United States', 'us-east-2':'United States',
+  'us-west-1':'United States', 'us-west-2':'United States',
+});
+const positiveMetadata = value => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 
 function failure(message, status = 400) {
   const error = new Error(message);
@@ -286,9 +300,16 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
     };
   }
 
-  async function ticker({period='3D'} = {}) {
+  async function ticker({period='1W'} = {}) {
     const snapshot = await load();
     const window = windowFor(snapshot.asOf, period);
+    // The homepage week is seven calendar dates ending at the snapshot date,
+    // not eight inclusive daily points or a window relabelled as today's data.
+    if (window.period === '1W') {
+      window.from = new Date(Date.parse(snapshot.asOf + 'T00:00:00Z') - 6 * DAY).toISOString().slice(0, 10);
+      window.elapsedDays = 6;
+      window.calendarDays = 7;
+    }
     const priority = ['H100', 'H200', 'B200', 'A100', 'L40S', 'L4', 'A10G', 'V100', 'T4'];
     const rank = model => priority.includes(model) ? priority.indexOf(model) : priority.length;
     const seen = new Set(), groups = new Map();
@@ -309,9 +330,17 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
       if (observed.length < 2) continue;
       const latest = observed[observed.length - 1];
       const region = snapshot.regions.find(r => r.code === item.region);
+      const vcpu = positiveMetadata(item.vCpu ?? item.vcpu);
       const row = {recordId: 'history:' + item.id, provider: item.provider, gpuModel: item.gpuModel,
         region: item.region, regionName: region?.city || region?.name || item.region, zone: item.zone,
+        country: region?.country || REGION_COUNTRIES[item.region] || null,
         instanceType: item.instanceType, gpuCount: item.gpuCount, term: 'Spot',
+        vcpu: vcpu !== null && Number.isInteger(vcpu) ? vcpu : null,
+        vCpu: vcpu !== null && Number.isInteger(vcpu) ? vcpu : null,
+        gpuMemoryGb: positiveMetadata(item.gpuMemoryGb),
+        memoryGiB: positiveMetadata(item.memoryGiB),
+        instanceGpuMemoryGiB: positiveMetadata(item.instanceGpuMemoryGiB),
+        hardwareMetadataSource: 'uploaded_configuration',
         perGpuHourly: latest.value, observedAt: latest.date, historical: true, points};
       if (!groups.has(item.gpuModel)) groups.set(item.gpuModel, []);
       groups.get(item.gpuModel).push(row);
@@ -327,6 +356,8 @@ function createSpotHistoryStore({ filePath = DEFAULT_FILE, readFile = fs.readFil
       if (!added) break;
     }
     return {records, meta: {asOf: snapshot.asOf, window, windowReference: 'snapshot_as_of', aggregation: 'daily_average', livePrices: false,
+      windowSemantics: window.period === '1W' ? 'Latest seven calendar dates ending at the recorded snapshot date. Missing observations remain gaps.' : 'Inclusive calendar-date endpoints separated by elapsedDays.',
+      gpuMemoryUnit: 'GB / GPU', hostMemoryUnit: 'GiB / instance', vcpuBasis: 'instance',
       unit: 'USD/GPU-hour', sourceKind: snapshot.sourceKind || 'uploaded_daily_history'}};
   }
 

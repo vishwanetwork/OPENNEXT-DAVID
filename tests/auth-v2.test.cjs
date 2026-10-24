@@ -130,9 +130,18 @@ test('OAuth uses server-side state and PKCE, and validates browser correlation',
 
 test('frontend does not fabricate logins and renders verified-role onboarding', async () => {
   const source = await fs.readFile(path.join(__dirname, '..', 'OpenNEXT-auth.js'), 'utf8');
-  assert.doesNotMatch(source, /Nova|nova@|246810|localStorage|sessionStorage|localLogin|preview-account/);
-  const window = {dispatchEvent() {}}, context = {window, CustomEvent: class {}, console};
+  assert.doesNotMatch(source, /Nova|nova@|246810|localStorage|localLogin|preview-account/);
+  // Only the explicit onboarding-intent key may use sessionStorage, never a login or credentials.
+  const withoutRoleStorage=source
+    .replaceAll('window.sessionStorage?.setItem(roleIntentKey,JSON.stringify(roleIntent))','')
+    .replaceAll('window.sessionStorage?.removeItem(roleIntentKey)','')
+    .replaceAll('window.sessionStorage?.getItem(roleIntentKey)','');
+  assert.doesNotMatch(withoutRoleStorage,/sessionStorage/);
+  const key='opennext-auth-role-intent-v1:account',stored=new Map([[key,JSON.stringify({role:'seller',queryRole:'',ownerId:null,updatedAt:Date.now(),user:{id:'forged',email:'forged@example.test',verified:true},csrfToken:'must-not-persist',emailChallenge:'must-not-persist'})]]);
+  const window = {dispatchEvent() {},sessionStorage:{getItem:name=>stored.get(name)||null,removeItem:name=>{assert.equal(name,key);stored.delete(name);},setItem(name,value){assert.equal(name,key);const hint=JSON.parse(value);assert.deepEqual(Object.keys(hint).sort(),['ownerId','queryRole','role','updatedAt']);assert.ok(['buyer','seller'].includes(hint.role));assert.ok(hint.ownerId===null||typeof hint.ownerId==='string');assert.doesNotMatch(value,/must-not-persist|forged@example|csrfToken|emailChallenge|password|"user"|"email"|"session"/);stored.set(name,value);}}}, context = {window, CustomEvent: class {}, console};
   vm.runInNewContext(source, context);
+  assert.equal(window.OpenNEXTAuth.getUser(),null);
+  assert.equal(window.OpenNEXTAuth.getPreferredRole(),'seller');
   const html = window.OpenNEXTAuth.render();
   assert.match(html, /Continue with Google/); assert.match(html, /Continue with GitHub/); assert.match(html, /Send verification code/);
   assert.doesNotMatch(html, /type="password"/);

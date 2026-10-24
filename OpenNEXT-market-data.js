@@ -89,15 +89,16 @@
     if(tickerLoadedAt&&Date.now()-tickerLoadedAt<60000)return false;
     if(tickerPending)return tickerPending;
     tickerPending=(async()=>{
-      try{const response=await fetch('/api/pricing/ticker',{signal:AbortSignal.timeout(10000)});
+      try{const response=await fetch('/api/pricing/ticker?period=1W',{signal:AbortSignal.timeout(10000)});
         if(!response.ok)throw Error('Ticker history unavailable');
         const data=await response.json();
-        const valid=(data.records||[]).filter(row=>Number.isFinite(row.perGpuHourly)&&row.points?.filter(p=>Number.isFinite(p.value)).length>1);
-        if(valid.length)tickerHistory=valid;
+        const valid=(data.records||[]).filter(row=>row.term==='Spot'&&row.historical===true&&Number.isFinite(row.perGpuHourly)&&row.perGpuHourly>=0&&row.points?.filter(p=>Number.isFinite(p.value)&&p.value>=0).length>1);
+        tickerHistory=valid;
         tickerLoadedAt=Date.now();return valid.length>0;
       }catch{tickerLoadedAt=Date.now();return false;}finally{tickerPending=null;}
     })();return tickerPending;
   }
-  function tickerRows(){return tickerHistory.length?tickerHistory:records.filter(r=>Number.isFinite(r.perGpuHourly)).sort((a,b)=>(a.provider==='aws'?0:1)-(b.provider==='aws'?0:1)||a.perGpuHourly-b.perGpuHourly);}
+  // A current catalog quote cannot stand in for a seven-day historical series.
+  function tickerRows(){return tickerHistory;}
 window.ONMarket={catalog,regions,news,money,offers,history,reference,refresh,base,ensureHistory,historyFor,chartSeries,tickerRows,loadTickerHistory,regionLabel,regionCode,modelOf,loadHistoryCatalog,get importedCatalog(){return importedCatalog;},get records(){return records;},get meta(){return meta;}};
 })();
