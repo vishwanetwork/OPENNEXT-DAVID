@@ -71,11 +71,17 @@ its own host.
 
 ```sh
 pnpm install
-pnpm dev:api     # legacy backend on http://127.0.0.1:4189
-pnpm dev         # Next.js on http://localhost:4188  (/, /terminal, /admin)
+pnpm dev         # http://localhost:4188 → /  /terminal  /admin  /demo
 pnpm test        # vitest (web + contracts)
 pnpm test:legacy # the original node --test suite
 ```
+
+`pnpm dev` (`scripts/dev.cjs`) starts the interim API on 4189 and `next dev` on 4190 behind a
+small local proxy on 4188. The proxy forwards `/api/*` to the API **without** adding forwarded
+headers, so the backend sees a direct localhost client just like before (the console works
+without an administrator token, same-origin checks pass). Everything else goes to Next with HMR.
+`pnpm dev:web` / `pnpm dev:api` run the pieces separately (then Next proxies `/api` itself, which
+is the production path and requires `OPENNEXT_ADMIN_TOKEN` for the console).
 
 ## Production
 
