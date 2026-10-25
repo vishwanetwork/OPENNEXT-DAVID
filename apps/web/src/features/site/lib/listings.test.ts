@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CuratedRfq, PublicMarketResponse } from '@opennext/contracts';
-import { HARDWARE_REFERENCES, MODEL_LISTINGS, RENTAL_REFERENCES } from '../data/catalog';
+import { HARDWARE_REFERENCES, MODEL_LISTINGS, RENTAL_REFERENCES } from '@/data/catalog';
 import {
   disclosureFor,
   findListing,

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
-import { renderTerminal, signIn } from '@/test/terminal-utils';
-import { useWorkspaceStore, initialWorkspace } from '@/features/terminal/store';
+import { renderTerminal, signIn } from '@/test/render';
+import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
 import { useSessionStore } from '@/lib/session-store';
 import { InstancesPage } from './components/InstancesPage';
 
@@ -28,9 +28,8 @@ describe('Instances page', () => {
     ).toBe('Running');
   });
   it('delivered allocations show live cards with region metadata and no supplier identity', () => {
-    useWorkspaceStore
-      .getState()
-      .patch({
+    renderTerminal(<InstancesPage />, {
+      workspace: {
         instances: [
           {
             id: 'INS-1',
@@ -46,8 +45,8 @@ describe('Instances page', () => {
             sshUser: 'ubuntu',
           },
         ],
-      });
-    renderTerminal(<InstancesPage />);
+      },
+    });
     expect(screen.queryByLabelText('Example instance')).toBeNull();
     const card = document.querySelector('[data-instance-live="INS-1"]')!;
     expect(card.getAttribute('data-instance-life')).toBe('Running');

@@ -2,8 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useOpenNotice, useQuoteNotifications } from '../hooks';
-import { useTerminal } from '@/features/terminal/context';
-import { registerHeaderBell } from '@/features/terminal/components/TerminalHeader';
+import { useTerminal } from '@/terminal-kit';
 import { BellIcon, EmptyNotifications, NotificationRows, ServiceError } from './NotificationList';
 import '../quotes.css';
 
@@ -131,12 +130,4 @@ export function NotificationBell() {
       ) : null}
     </div>
   );
-}
-
-let registered = false;
-/** Mounts the bell in the terminal header (legacy `OpenNEXTQuotePreview.bell` slot). */
-export function registerNotificationBell() {
-  if (registered) return;
-  registered = true;
-  registerHeaderBell(() => <NotificationBell />);
 }

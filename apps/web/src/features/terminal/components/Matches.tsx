@@ -1,19 +1,9 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { money, stampUtc } from '@/lib/format';
-import { regionText, type Offer } from '@/features/market/catalog';
-import { useRegions } from '@/features/market/hooks';
-import { useWorkspaceStore } from '../store';
-import { TButton } from './ui';
-
-/** Other features may replace the matches panels (legacy `OpenNEXTProcurement.matches`). */
-let matchesSlot: ((kind: 'best' | 'recent') => ReactNode) | null = null;
-export function registerMatchesPanel(render: ((kind: 'best' | 'recent') => ReactNode) | null) {
-  matchesSlot = render;
-}
-export const hasMatchesPanel = () => Boolean(matchesSlot);
-export const renderMatchesPanel = (kind: 'best' | 'recent') => matchesSlot?.(kind);
+import { regionText, useRegions, type Offer } from '@/features/market';
+import { Button, useWorkspaceStore } from '@/terminal-kit';
 
 function MatchCard({
   o,
@@ -51,9 +41,9 @@ function MatchCard({
               ? 'Not currently available'
               : 'Availability requires confirmation'}
         </span>
-        <TButton cls="secondary small" data-act="quote" data-id={o.id} onClick={() => onQuote(o)}>
+        <Button cls="secondary small" data-act="quote" data-id={o.id} onClick={() => onQuote(o)}>
           Request quote
-        </TButton>
+        </Button>
       </div>
     </article>
   );
@@ -71,7 +61,11 @@ export function Matches({
   onQuote: (o: Offer) => void;
   onRefresh: () => void;
 }) {
-  const { model, region, count, matchOffset, modal } = useWorkspaceStore();
+  const model = useWorkspaceStore((s) => s.model);
+  const region = useWorkspaceStore((s) => s.region);
+  const count = useWorkspaceStore((s) => s.count);
+  const matchOffset = useWorkspaceStore((s) => s.matchOffset);
+  const modal = useWorkspaceStore((s) => s.modal);
   const viewport = useRef<HTMLDivElement>(null);
   const list =
     kind === 'best'

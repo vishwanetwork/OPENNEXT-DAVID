@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { renderConsole, mockFetch, json } from '@/features/console/test-utils';
+import { renderConsole, mockFetch, json } from '@/test/render';
 import { assertScope, filterTopups, pendingRow, topupAmount, topupLabel } from './topups';
 import { ConsoleTopupsPage } from './topups-page';
 

@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { LedgerEntry, Order, Payout } from '@opennext/contracts';
 import { useToast } from '@/components/ui/toast';
-import { useTerminal } from '@/features/terminal/context';
-import { downloadText } from '@/features/terminal/export';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { downloadText, useBalance, useTerminal } from '@/terminal-kit';
+import { useBillingData } from '../hooks';
 import {
   COLORS,
   activityRows,
@@ -17,7 +15,6 @@ import {
   metrics,
   num,
   orderSide,
-  roleOf,
   seriesFor,
   stamp,
   usd,
@@ -25,19 +22,6 @@ import {
   type BillingData,
 } from '../analytics';
 import { useBillingUi } from '../ui-store';
-
-export function useBillingData(): BillingData {
-  const role = useWorkspaceStore((s) => s.role);
-  const ledger = useWorkspaceStore((s) => s.ledger) as LedgerEntry[];
-  const orders = useWorkspaceStore((s) => s.orders) as Order[];
-  const payouts = useWorkspaceStore((s) => s.payouts) as Payout[];
-  const listings = useWorkspaceStore((s) => s.listings);
-  const billingUI = useBillingUi();
-  return useMemo(
-    () => ({ role: roleOf(role), ledger, orders, payouts, listings, billingUI }),
-    [role, ledger, orders, payouts, listings, billingUI],
-  );
-}
 
 const Btn = ({
   act,
@@ -132,11 +116,7 @@ export function BillingChart({ S, a }: { S: BillingData; a: Analytics }) {
       <div className="bill-panel-head">
         <div>
           <h2>
-            {S.role === 'Buyer'
-              ? 'Compute spend'
-              : S.role === 'Seller'
-                ? 'Earnings over time'
-                : 'Buying, selling & commission'}
+            {S.role === 'buyer' ? 'Compute spend' : 'Earnings over time'}
           </h2>
           <p>
             {a.sample
@@ -283,11 +263,9 @@ export function BillingChart({ S, a }: { S: BillingData; a: Analytics }) {
         ) : null}
       </div>
       <p className="bill-footnote">
-        {S.role === 'Buyer'
+        {S.role === 'buyer'
           ? 'Payments and posted usage charges are shown on their posting date. Prepaid orders are not a measure of actual GPU utilization.'
-          : S.role === 'Seller'
-            ? 'Net settlement earnings already include the OpenNEXT fee deduction. Broker commissions, if recorded, are separate expenses shown below zero. Only settled earnings are withdrawable.'
-            : 'Only settled earnings are withdrawable. Quotes and projected sales are not spendable funds.'}
+          : 'Net settlement earnings already include the OpenNEXT fee deduction. Broker commissions, if recorded, are separate expenses shown below zero. Only settled earnings are withdrawable.'}
       </p>
     </section>
   );
@@ -313,7 +291,7 @@ function CapacityPanel({ S }: { S: BillingData }) {
     used = 7920;
     coverage = true;
   }
-  const seller = S.role === 'Seller';
+  const seller = S.role === 'seller';
   const delivering = S.orders.filter(
     (o) => orderSide(o) === 'sell' && /provisioning|active/i.test(o.status),
   ).length;
@@ -429,16 +407,16 @@ function DailyTable({
   const hasActivity = a.rows.some((row) => columns.some(([key]) => Math.abs(num(row[key])) > 0));
   const rows = hasActivity ? a.rows.slice().reverse() : a.rows.slice(-1);
   const emptyLabel =
-    S.role === 'Buyer'
+    S.role === 'buyer'
       ? 'No spent history yet'
-      : S.role === 'Seller'
+      : S.role === 'seller'
         ? 'No earnings history yet'
         : 'No financial history yet';
   return (
     <section className="panel">
       <div className="bill-panel-head">
         <h2>
-          Daily {S.role === 'Buyer' ? 'spend' : 'financial'} details{a.sample ? ' · example' : ''}
+          Daily {S.role === 'buyer' ? 'spend' : 'financial'} details{a.sample ? ' · example' : ''}
         </h2>
         <Btn act="bill-export" value="daily" onClick={() => onExport('daily')}>
           Export daily data
@@ -452,7 +430,7 @@ function DailyTable({
               {columns.map(([, label]) => (
                 <th key={label}>{label}</th>
               ))}
-              <th>{S.role === 'Broker' ? 'Trading margin' : 'Total'}</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -466,11 +444,7 @@ function DailyTable({
                 ))}
                 <td className="bill-number">
                   <strong>
-                    {usd(
-                      S.role === 'Broker'
-                        ? r.revenue - r.purchase
-                        : columns.reduce((sum, [k]) => sum + r[k], 0),
-                    )}
+                    {usd(columns.reduce((sum, [k]) => sum + r[k], 0))}
                   </strong>
                 </td>
               </tr>
@@ -526,7 +500,7 @@ function Activity({ S, onExport }: { S: BillingData; onExport: (type: string) =>
                         className="detail-link bill-order-link"
                         data-act="bill-order"
                         data-id={l.orderId}
-                        onClick={() => openModal('bill-order', { id: l.orderId })}
+                        onClick={() => openModal('bill-order', { id: String(l.orderId) })}
                       >
                         {l.orderId}
                       </button>
@@ -581,7 +555,7 @@ function Activity({ S, onExport }: { S: BillingData; onExport: (type: string) =>
 
 function Payouts({ S }: { S: BillingData }) {
   const { openModal } = useTerminal();
-  if (S.role === 'Buyer') return null;
+  if (S.role === 'buyer') return null;
   return (
     <section className="panel">
       <div className="bill-panel-head">
@@ -646,8 +620,7 @@ export function BillingPage() {
   const ui = useBillingUi();
   const { openModal } = useTerminal();
   const toast = useToast();
-  const balance = useWorkspaceStore((s) => s.balance);
-  const earningsBalance = useWorkspaceStore((s) => s.earningsBalance);
+  const { available: balance, earnings: earningsBalance } = useBalance();
   const a = analytics(S);
   const r = S.role;
   const onExport = (type: string, id?: string) => {
@@ -673,27 +646,21 @@ export function BillingPage() {
       <div className="page-heading">
         <div>
           <h1>
-            {r === 'Seller'
-              ? 'Earnings & payouts'
-              : r === 'Broker'
-                ? 'Billing & earnings'
-                : 'Billing & usage'}
+            {r === 'seller' ? 'Earnings & payouts' : 'Billing & usage'}
           </h1>
           <p>
-            {r === 'Seller'
+            {r === 'seller'
               ? 'Track sales, delivery settlement and withdrawals.'
-              : r === 'Broker'
-                ? 'Keep procurement, sales proceeds and commissions in clear view.'
-                : 'Manage your credit and understand your capacity spending.'}
+              : 'Manage your credit and understand your capacity spending.'}
           </p>
         </div>
         <div className="bill-actions">
-          {r !== 'Seller' ? (
+          {r !== 'seller' ? (
             <Btn act="pay-start" primary onClick={() => openModal('pay-start')}>
               Add credit
             </Btn>
           ) : null}
-          {r !== 'Buyer' ? (
+          {r !== 'buyer' ? (
             <Btn act="cashout-start" primary onClick={() => openModal('cashout-start')}>
               Cash out
             </Btn>
@@ -705,13 +672,13 @@ export function BillingPage() {
           <span>Available credit</span>
           <strong>{usd(balance)}</strong>
           <p>For purchases and usage charges</p>
-          {r === 'Seller' ? (
+          {r === 'seller' ? (
             <Btn act="pay-start" onClick={() => openModal('pay-start')}>
               Add credit
             </Btn>
           ) : null}
         </section>
-        {r !== 'Buyer' ? (
+        {r !== 'buyer' ? (
           <>
             <section className="bill-wallet">
               <span>Available to withdraw</span>

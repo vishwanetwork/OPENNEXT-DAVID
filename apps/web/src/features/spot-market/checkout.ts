@@ -4,6 +4,7 @@
  * rules (fresh verified balance, offer signature checks, idempotency, uncertain-payment
  * freeze, demo/preview rows never purchasable) can be unit-tested without a DOM.
  */
+import type { CreditBalanceResult, PurchaseResult } from '@/terminal-kit';
 import { round, usd, type SpotRow } from './inventory';
 
 export const CHECKOUT_STORAGE = 'opennext:pending-spot-purchase:v1:';
@@ -94,12 +95,7 @@ export interface CheckoutDraft {
   error: string;
 }
 
-export interface CreditBalanceResult {
-  confirmed?: boolean;
-  accountId?: string;
-  currency?: string;
-  availableCredit?: number | null;
-}
+export type { CreditBalanceResult, PurchaseResult };
 
 export interface PurchaseInput {
   pricingVersion: 'duration-v1';
@@ -108,15 +104,6 @@ export interface PurchaseInput {
   expectedPricing: CheckoutTotals;
   sshPublicKey: string | null;
   idempotencyKey: string;
-}
-
-export interface PurchaseResult {
-  confirmed?: boolean;
-  offerId?: string;
-  orderId?: string;
-  currency?: string;
-  durationHours?: number;
-  totalCents?: number;
 }
 
 /**
@@ -277,7 +264,7 @@ export class SpotCheckout {
   }
 
   beginCheckout(row: SpotRow) {
-    if (!this.deps.owner() || this.deps.role() !== 'Buyer')
+    if (!this.deps.owner() || this.deps.role() !== 'buyer')
       return this.deps.toast('Sign in to a Buyer account before purchasing capacity.');
     if (this.pending()?.paymentSubmitted)
       return this.deps.toast(
@@ -483,7 +470,7 @@ export class SpotCheckout {
       if (draft.stage !== 'confirm')
         throw new Error('Confirm the purchase duration and total before authorizing payment.');
       const row = this.liveRow();
-      if (this.deps.role() !== 'Buyer')
+      if (this.deps.role() !== 'buyer')
         throw new Error('A Buyer account is required to purchase capacity.');
       if (draft.reviewRequired)
         throw new Error('Review the updated offer before authorizing payment.');

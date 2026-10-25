@@ -3,10 +3,16 @@
 import type { ReactNode } from 'react';
 import type { LedgerEntry, Order, Payout } from '@opennext/contracts';
 import { useToast } from '@/components/ui/toast';
-import type { ModalRender, ModalRenderer } from '@/features/terminal/components/TerminalModal';
-import { useTerminal } from '@/features/terminal/context';
-import { downloadText } from '@/features/terminal/export';
-import { useWorkspaceStore, type ModalState } from '@/features/terminal/store';
+import {
+  ModalFrame,
+  downloadText,
+  useBalance,
+  useTerminal,
+  useWorkspaceStore,
+  type ModalComponent,
+  type ModalComponents,
+} from '@/terminal-kit';
+import { useBillingData } from '../hooks';
 import {
   FEE_LABEL,
   csv,
@@ -23,7 +29,7 @@ import {
   usd,
   type BillingData,
 } from '../analytics';
-import { Detail, useBillingData } from './BillingPage';
+import { Detail } from './BillingPage';
 import { PaymentAmount, PaymentMethod, PaymentProvider, TopupStatus } from './PaymentModals';
 
 const Btn = ({
@@ -334,7 +340,7 @@ export function OrderModal({ id }: { id?: string }) {
         <OrderFeeRows o={o} />
         {commission != null ? (
           <Detail
-            label={S.role === 'Seller' ? 'Commission paid' : 'Commission earned'}
+            label={S.role === 'seller' ? 'Commission paid' : 'Commission earned'}
             value={usd(commission)}
           />
         ) : null}
@@ -407,9 +413,9 @@ function Measurement() {
         />
         <Detail label="Trading margin" value="Sales revenue minus purchase charges" />
         <Detail
-          label={role === 'Seller' ? 'Commission paid' : 'Commission earned'}
+          label={role === 'seller' ? 'Commission paid' : 'Commission earned'}
           value={
-            role === 'Seller'
+            role === 'seller'
               ? 'Broker fees are negative expenses'
               : 'Broker fees, reported separately'
           }
@@ -425,7 +431,7 @@ function Measurement() {
 
 function CashoutStart() {
   const { closeModal } = useTerminal();
-  const earnings = useWorkspaceStore((s) => s.earningsBalance);
+  const { earnings } = useBalance();
   return (
     <>
       <div className="pay-summary">
@@ -504,59 +510,117 @@ function RecordModal({ l }: { l: LedgerEntry }) {
   );
 }
 
-/** Modal renderer registered with the terminal (legacy `OpenNEXTBilling.modal` + `OpenNEXTPayments.modal`). */
-export const billingModalRenderer: ModalRenderer = (modal: ModalState): ModalRender | null => {
-  const S = useWorkspaceStore.getState();
-  const id = modal.id as string | undefined;
-  switch (modal.type) {
-    case 'bill-order':
-      return {
-        title: S.orders.some((o) => o.id === id) ? 'Order details · ' + id : 'Order unavailable',
-        wide: true,
-        body: <OrderModal id={id} />,
-      };
-    case 'bill-measurement':
-      return { title: 'How reporting is measured', body: <Measurement /> };
-    case 'pay-start':
-    case 'topup':
-    case 'pay-checkout':
-      return {
-        title: 'Add credit',
-        body: (
-          <PaymentAmount
-            orderId={modal.orderId as string | undefined}
-            purchaseReference={modal.purchaseReference as string | undefined}
-            spotCheckout={modal.spotCheckout === true}
-          />
-        ),
-      };
-    case 'payment-method':
-      return { title: 'Choose payment method', body: <PaymentMethod /> };
-    case 'payment-topup-status':
-      return { title: <TopupStatus.Title id={id} />, body: <TopupStatus id={id} /> };
-    case 'payment-provider':
-      return { title: 'Complete your credit top-up', body: <PaymentProvider /> };
-    case 'cashout-start':
-      return { title: 'Cash out earnings', body: <CashoutStart /> };
-    case 'cashout-detail': {
-      const payout = (S.payouts as Payout[]).find((item) => item.id === id);
-      return payout
-        ? { title: 'Payout details · ' + payout.id, body: <CashoutDetail payout={payout} /> }
-        : null;
-    }
-    case 'bill-record':
-    case 'receipt': {
-      const l = (S.ledger as LedgerEntry[]).find((x) => x.id === id);
-      if (!l) return null;
-      if (l.orderId)
-        return {
-          title: 'Order details · ' + l.orderId,
-          wide: true,
-          body: <OrderModal id={l.orderId} />,
-        };
-      return { title: 'Activity details · ' + l.id, body: <RecordModal l={l} /> };
-    }
-    default:
-      return null;
+declare module '@/terminal-kit/modal' {
+  interface TerminalModalMap {
+    'bill-order': { id: string };
+    'bill-measurement': Record<string, never>;
+    'pay-start': { orderId?: string; purchaseReference?: string; spotCheckout?: boolean };
+    topup: { orderId?: string; purchaseReference?: string; spotCheckout?: boolean };
+    'pay-checkout': { orderId?: string; purchaseReference?: string; spotCheckout?: boolean };
+    'payment-method': Record<string, never>;
+    'payment-topup-status': { id: string };
+    'payment-provider': Record<string, never>;
+    'cashout-start': Record<string, never>;
+    'cashout-detail': { id: string };
+    'bill-record': { id: string };
+    receipt: { id: string };
   }
+}
+
+const BillOrderModal: ModalComponent<'bill-order'> = ({ modal, close }) => {
+  const S = useBillingData();
+  const id = modal.id;
+  return (
+    <ModalFrame
+      title={S.orders.some((o) => o.id === id) ? 'Order details · ' + id : 'Order unavailable'}
+      wide
+      close={close}
+    >
+      <OrderModal id={id} />
+    </ModalFrame>
+  );
+};
+
+const MeasurementModal: ModalComponent<'bill-measurement'> = ({ close }) => (
+  <ModalFrame title="How reporting is measured" close={close}>
+    <Measurement />
+  </ModalFrame>
+);
+
+const PayStartModal: ModalComponent<'pay-start' | 'topup' | 'pay-checkout'> = ({ modal, close }) => (
+  <ModalFrame title="Add credit" close={close}>
+    <PaymentAmount
+      orderId={modal.orderId}
+      purchaseReference={modal.purchaseReference}
+      spotCheckout={modal.spotCheckout === true}
+    />
+  </ModalFrame>
+);
+
+const PaymentMethodModal: ModalComponent<'payment-method'> = ({ close }) => (
+  <ModalFrame title="Choose payment method" close={close}>
+    <PaymentMethod />
+  </ModalFrame>
+);
+
+const TopupStatusModal: ModalComponent<'payment-topup-status'> = ({ modal, close }) => (
+  <ModalFrame title={<TopupStatus.Title id={modal.id} />} close={close}>
+    <TopupStatus id={modal.id} />
+  </ModalFrame>
+);
+
+const PaymentProviderModal: ModalComponent<'payment-provider'> = ({ close }) => (
+  <ModalFrame title="Complete your credit top-up" close={close}>
+    <PaymentProvider />
+  </ModalFrame>
+);
+
+const CashoutStartModal: ModalComponent<'cashout-start'> = ({ close }) => (
+  <ModalFrame title="Cash out earnings" close={close}>
+    <CashoutStart />
+  </ModalFrame>
+);
+
+const CashoutDetailModal: ModalComponent<'cashout-detail'> = ({ modal, close }) => {
+  const S = useBillingData();
+  const payout = S.payouts.find((item) => item.id === modal.id);
+  if (!payout) return null;
+  return (
+    <ModalFrame title={'Payout details · ' + payout.id} close={close}>
+      <CashoutDetail payout={payout} />
+    </ModalFrame>
+  );
+};
+
+const RecordDetailModal: ModalComponent<'bill-record' | 'receipt'> = ({ modal, close }) => {
+  const S = useBillingData();
+  const l = S.ledger.find((x) => x.id === modal.id);
+  if (!l) return null;
+  if (l.orderId)
+    return (
+      <ModalFrame title={'Order details · ' + l.orderId} wide close={close}>
+        <OrderModal id={l.orderId} />
+      </ModalFrame>
+    );
+  return (
+    <ModalFrame title={'Activity details · ' + l.id} close={close}>
+      <RecordModal l={l} />
+    </ModalFrame>
+  );
+};
+
+/** Modals owned by billing and payments (legacy `OpenNEXTBilling.modal` + `OpenNEXTPayments.modal`). */
+export const billingModals: ModalComponents = {
+  'bill-order': BillOrderModal,
+  'bill-measurement': MeasurementModal,
+  'pay-start': PayStartModal,
+  topup: PayStartModal,
+  'pay-checkout': PayStartModal,
+  'payment-method': PaymentMethodModal,
+  'payment-topup-status': TopupStatusModal,
+  'payment-provider': PaymentProviderModal,
+  'cashout-start': CashoutStartModal,
+  'cashout-detail': CashoutDetailModal,
+  'bill-record': RecordDetailModal,
+  receipt: RecordDetailModal,
 };

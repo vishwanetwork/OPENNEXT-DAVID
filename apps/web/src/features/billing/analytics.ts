@@ -1,6 +1,7 @@
 /** Role-aware billing analytics (legacy OpenNEXT-billing.js, pure part). */
 import type { LedgerEntry, Order, Payout } from '@opennext/contracts';
-import { FEE_POLICY } from '@/features/procurement/fees';
+import { FEE_POLICY } from '@/features/procurement';
+import type { Role } from '@/terminal-kit';
 
 export const FEE_LABEL = 'OpenNEXT Fee 5%';
 export const COLORS: Record<string, string> = {
@@ -47,9 +48,7 @@ export const stamp = (value: unknown): string => {
       }) + ' UTC';
 };
 
-export type BillingRole = 'Buyer' | 'Seller' | 'Broker';
-export const roleOf = (role: string): BillingRole =>
-  role === 'Seller' || role === 'Broker' ? role : 'Buyer';
+export type BillingRole = Role;
 export const orderSide = (o: Order): 'buy' | 'sell' =>
   o.side || (o.role === 'Seller' ? 'sell' : 'buy');
 
@@ -109,12 +108,12 @@ export function flow(l: LedgerEntry): Flow {
   return num(l.amount) < 0 ? 'purchase' : 'transfer';
 }
 export const signedCommission = (role: BillingRole, value: unknown) =>
-  (role === 'Seller' ? -1 : 1) * Math.abs(num(value));
+  (role === 'seller' ? -1 : 1) * Math.abs(num(value));
 export const ledgerAmount = (role: BillingRole, item: LedgerEntry) =>
   flow(item) === 'commission' ? signedCommission(role, item.amount) : num(item.amount);
 export const ledgerLabel = (role: BillingRole, item: LedgerEntry) =>
   flow(item) === 'commission'
-    ? role === 'Seller'
+    ? role === 'seller'
       ? 'Commission paid'
       : 'Commission earned'
     : String(item.type || '');
@@ -271,7 +270,7 @@ export function metrics(S: BillingData, a: Analytics): MetricCard[] {
         ),
       0,
     );
-  if (r === 'Buyer')
+  if (r === 'buyer')
     return [
       { label: 'Purchases & usage charges', value: a.sums.purchase, note: sample },
       {
@@ -296,7 +295,7 @@ export function metrics(S: BillingData, a: Analytics): MetricCard[] {
         count: true,
       },
     ];
-  if (r === 'Seller')
+  if (r === 'seller')
     return [
       { label: 'Settled earnings', value: a.sums.revenue, note: sample },
       {
@@ -339,13 +338,13 @@ export function metrics(S: BillingData, a: Analytics): MetricCard[] {
 }
 
 export const seriesFor = (role: BillingRole): [SeriesKey, string][] =>
-  role === 'Buyer'
+  role === 'buyer'
     ? [
         ['demand', 'On-demand'],
         ['spot', 'Spot'],
         ['other', 'Other capacity'],
       ]
-    : role === 'Seller'
+    : role === 'seller'
       ? [
           ['revenue', 'Earnings'],
           ['commission', 'Commission paid'],

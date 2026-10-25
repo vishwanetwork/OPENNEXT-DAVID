@@ -1,25 +1,32 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, type ComponentType, type ReactNode } from 'react';
 import type { SessionUser } from '@opennext/contracts';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/components/providers/app-context';
 import { useToast } from '@/components/ui/toast';
 import { useSessionStore } from '@/lib/session-store';
-import { CATALOG } from '@/features/market/catalog';
+import { CATALOG } from '@/features/market';
 import { useLogout, useRoleIntent, useSessionBoot, useSwitchRole } from '@/features/auth';
-import { refreshWorkspace, resumePendingIntents, TerminalProvider, useTerminal } from './context';
+import {
+  TerminalProvider,
+  TerminalSlotsProvider,
+  useInvalidateWorkspace,
+  useTerminal,
+  useTerminalSlots,
+  useWorkspaceStore,
+  type Role,
+  type TerminalSlots,
+} from '@/terminal-kit';
 import { AgentHintProvider } from './components/AgentDrawer';
 import { TerminalHeader } from './components/TerminalHeader';
-import { openContact } from './components/TerminalModal';
 import { TerminalOverlays } from './components/TerminalOverlays';
 import { DemoToolbar } from './DemoToolbar';
 import { LegacyHashRedirect } from './LegacyHashRedirect';
-import { FeatureRegistrations } from './FeatureRegistrations';
-import { useWorkspaceStore } from './store';
 import './terminal.css';
 import './preview-shell.css';
 
+/** Boot-time query handling: `?gpu=&count=&role=&listing=&intent=&opportunity=`. */
 function BootQuery() {
   const params = useSearchParams();
   const patch = useWorkspaceStore((s) => s.patch);
@@ -39,7 +46,7 @@ function BootQuery() {
       next.pendingOpportunity = { id: params.get('opportunity')!, intent: listingIntent };
     const preferred = intent.preferred(useSessionStore.getState().user);
     if (preferred && !useSessionStore.getState().user?.onboardingCompleted)
-      next.role = preferred === 'seller' ? 'Seller' : 'Buyer';
+      next.role = preferred === 'seller' ? 'seller' : 'buyer';
     patch(next);
     // Boot-time only: later query changes are handled by the pages themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,19 +54,13 @@ function BootQuery() {
   return null;
 }
 
+/** Seeds the session from the server render, confirms it on the client, mirrors it into the UI store. */
 function SessionSync({ initialUser }: { initialUser?: SessionUser | null }) {
   const { demo } = useApp();
-  // Seed the store from the server-rendered session before the client boot confirms it.
-  useState(() => {
-    if (
-      initialUser !== undefined &&
-      !demo &&
-      typeof window !== 'undefined' &&
-      useSessionStore.getState().status === 'booting'
-    )
+  useEffect(() => {
+    if (initialUser !== undefined && !demo && useSessionStore.getState().status === 'booting')
       useSessionStore.getState().setUser(initialUser);
-    return true;
-  });
+  }, [initialUser, demo]);
   const status = useSessionBoot(!demo);
   const user = useSessionStore((s) => s.user);
   const applySession = useWorkspaceStore((s) => s.applySession);
@@ -67,32 +68,17 @@ function SessionSync({ initialUser }: { initialUser?: SessionUser | null }) {
     if (status === 'booting') return;
     applySession(user);
   }, [status, user, applySession]);
-  // Workspace refresh loop: after sign-in, every 30 s while visible.
-  useEffect(() => {
-    if (!user?.onboardingCompleted) return;
-    let active = true;
-    const run = () => {
-      if (!active || document.hidden) return;
-      refreshWorkspace()
-        .then(() => active && resumePendingIntents())
-        .catch(() => {});
-    };
-    run();
-    const timer = setInterval(run, 30_000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [user?.id, user?.onboardingCompleted, user?.role]);
   return null;
 }
 
 function Chrome({ children }: { children: ReactNode }) {
   const user = useSessionStore((s) => s.user);
   const { go } = useTerminal();
+  const { openContact } = useTerminalSlots();
   const toast = useToast();
   const logout = useLogout();
   const switchRole = useSwitchRole();
+  const invalidate = useInvalidateWorkspace();
   const { crossHref } = useApp();
   const applySession = useWorkspaceStore((s) => s.applySession);
   const signOut = () => {
@@ -103,11 +89,11 @@ function Chrome({ children }: { children: ReactNode }) {
       })
       .catch((e: Error) => toast(e.message));
   };
-  const role = (value: 'Buyer' | 'Seller') => {
-    switchRole(value.toLowerCase() as 'buyer' | 'seller')
+  const role = (value: Role) => {
+    switchRole(value)
       .then((next) => {
         applySession(next);
-        void refreshWorkspace();
+        void invalidate();
         go('market');
       })
       .catch((e: Error) => toast(e.message));
@@ -130,25 +116,56 @@ function Chrome({ children }: { children: ReactNode }) {
   );
 }
 
-/** Client shell mounted by the terminal layout: session boot, preferences, header, overlays, demo. */
+function SlotsBoundary({
+  useSlots,
+  children,
+}: {
+  useSlots: () => TerminalSlots;
+  children: ReactNode;
+}) {
+  const slots = useSlots();
+  return <TerminalSlotsProvider slots={slots}>{children}</TerminalSlotsProvider>;
+}
+
+export interface TerminalShellProps {
+  children: ReactNode;
+  initialUser?: SessionUser | null;
+  /** Hook evaluated inside the terminal providers that assembles the feature slots. */
+  useSlots: () => TerminalSlots;
+  /** Headless feature components (pollers, intent resumers) mounted beside the chrome. */
+  integrations?: ReactNode;
+  /** Feature context providers that must wrap the chrome and the modals (e.g. Spot checkout). */
+  providers?: ComponentType<{ children: ReactNode }>;
+}
+
+/**
+ * Client shell mounted by the terminal layout: session boot, preferences, header, overlays,
+ * demo toolbar. Which features fill the slots is decided by the composition root.
+ */
 export function TerminalShell({
   children,
   initialUser,
-}: {
-  children: ReactNode;
-  initialUser?: SessionUser | null;
-}) {
+  useSlots,
+  integrations,
+  providers: Providers = Passthrough,
+}: TerminalShellProps) {
   const { demo } = useApp();
   return (
     <TerminalProvider initialUser={initialUser}>
-      <AgentHintProvider>
-        <LegacyHashRedirect />
-        <BootQuery />
-        <SessionSync initialUser={initialUser} />
-        <FeatureRegistrations />
-        <Chrome>{children}</Chrome>
-        {demo ? <DemoToolbar /> : null}
-      </AgentHintProvider>
+      <SlotsBoundary useSlots={useSlots}>
+        <Providers>
+          <AgentHintProvider>
+            <LegacyHashRedirect />
+            <BootQuery />
+            <SessionSync initialUser={initialUser} />
+            {integrations}
+            <Chrome>{children}</Chrome>
+            {demo ? <DemoToolbar /> : null}
+          </AgentHintProvider>
+        </Providers>
+      </SlotsBoundary>
     </TerminalProvider>
   );
 }
+
+const Passthrough = ({ children }: { children: ReactNode }) => <>{children}</>;

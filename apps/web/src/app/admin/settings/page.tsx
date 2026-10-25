@@ -1,4 +1,4 @@
-import { SettingsPage } from '@/features/console/pages/settings';
+import { ConsoleSettingsPage } from '@/features/console';
 export default function Page() {
-  return <SettingsPage />;
+  return <ConsoleSettingsPage />;
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
+import { useTerminalSlots, type AccountService } from '@/terminal-kit';
 import { accountRef, type AccountRef } from './ssh-keys';
 import {
   changeKey,
@@ -21,9 +22,22 @@ export function useAccountRef(): AccountRef {
   return useMemo(() => accountRef(user, demo), [user, demo]);
 }
 
-function depsFor(demo: boolean): KeyLibraryDeps {
+/** Backend adapter for the SSH key library, supplied by the composition root (undefined until connected). */
+export function useAccountService(): {
+  service: AccountService | undefined;
+  connected: (method: keyof AccountService) => boolean;
+} {
+  const { account } = useTerminalSlots().services;
+  return {
+    service: account,
+    connected: (method) => typeof account?.[method] === 'function',
+  };
+}
+
+function depsFor(demo: boolean, service: AccountService | undefined): KeyLibraryDeps {
   return {
     account: () => accountRef(useSessionStore.getState().user, demo),
+    service: () => service,
     storage: () => window.localStorage,
     uuid: () => crypto.randomUUID(),
     now: () => Date.now(),
@@ -38,9 +52,16 @@ export function useKeyLibrary(): {
 } {
   const account = useAccountRef();
   const { demo } = useApp();
+  const { service } = useAccountService();
   const library = useKeyLibraries((s) => s.libraries[account.key]) || libraryFor(account.key);
-  const load = useCallback((force = false) => loadKeys(depsFor(demo), { force }), [demo]);
-  const change = useCallback((input: ChangeKeyInput) => changeKey(depsFor(demo), input), [demo]);
+  const load = useCallback(
+    (force = false) => loadKeys(depsFor(demo, service), { force }),
+    [demo, service],
+  );
+  const change = useCallback(
+    (input: ChangeKeyInput) => changeKey(depsFor(demo, service), input),
+    [demo, service],
+  );
   return { account, library, load, change };
 }
 

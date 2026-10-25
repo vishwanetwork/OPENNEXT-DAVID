@@ -7,7 +7,16 @@ import { useSessionStore } from '@/lib/session-store';
 
 const ApiContext = createContext<ApiClient | null>(null);
 
-export function ApiProvider({ demo, children }: { demo: boolean; children: ReactNode }) {
+export function ApiProvider({
+  demo,
+  queryClient: provided,
+  children,
+}: {
+  demo: boolean;
+  /** Tests may supply a pre-seeded client. */
+  queryClient?: QueryClient;
+  children: ReactNode;
+}) {
   const client = useMemo(
     () =>
       createApiClient({
@@ -19,12 +28,13 @@ export function ApiProvider({ demo, children }: { demo: boolean; children: React
   );
   const queryClient = useMemo(
     () =>
+      provided ??
       new QueryClient({
         defaultOptions: {
           queries: { retry: 1, staleTime: 15_000, refetchOnWindowFocus: true },
         },
       }),
-    [],
+    [provided],
   );
   return (
     <ApiContext.Provider value={client}>

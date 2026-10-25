@@ -4,11 +4,18 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import type { Instance, Order } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
-import type { ModalRender, ModalRenderer } from '@/features/terminal/components/TerminalModal';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore, type ModalState } from '@/features/terminal/store';
 import { ResellResponse } from '@opennext/contracts';
-import { refreshMarketplace } from '@/features/procurement';
+import {
+  ModalFrame,
+  useInvalidateWorkspace,
+  useTerminal,
+  useTerminalSlots,
+  useWorkspaceData,
+  type ModalComponent,
+  type ModalComponents,
+  type ModalOf,
+  type ModalType,
+} from '@/terminal-kit';
 import {
   eligibility,
   lifecycle,
@@ -28,17 +35,6 @@ import {
 } from '../preview';
 import { IBtn, SshLibrary, usePreviewScope, useTick } from './common';
 
-/** Adapter hook point for real termination; absent until the backend lifecycle API is connected. */
-export type InstanceLifecycleAdapter = {
-  end: (input: {
-    instanceId: string;
-    confirmation: 'END';
-  }) => Promise<{ confirmed?: boolean; instance?: Partial<Instance> & { id?: string } }>;
-};
-let lifecycleAdapter: InstanceLifecycleAdapter | null = null;
-export const registerInstanceLifecycle = (adapter: InstanceLifecycleAdapter | null) => {
-  lifecycleAdapter = adapter;
-};
 
 const ENDED = [
   'end',
@@ -61,7 +57,7 @@ const Cell = ({ label, children }: { label: string; children: ReactNode }) => (
 
 function useInstance(id: string | undefined, isExample: boolean) {
   const { scope, demo, role } = usePreviewScope();
-  const instances = useWorkspaceStore((s) => s.instances) as Instance[];
+  const instances = useWorkspaceData().instances as Instance[];
   const now = useTick();
   const original = isExample ? example(scope) : instances.find((row) => row.id === id);
   const i = original ? (isExample ? original : instanceView(original, scope, demo)) : undefined;
@@ -84,7 +80,7 @@ function useInstance(id: string | undefined, isExample: boolean) {
 
 function OrderField({ i, isExample }: { i: Instance; isExample: boolean }) {
   const { openModal, toast } = useTerminal();
-  const orders = useWorkspaceStore((s) => s.orders) as Order[];
+  const orders = useWorkspaceData().orders as Order[];
   const idRef = i.orderId || i.purchaseOrderId;
   const order = isExample
     ? { id: 'ORDER-EXAMPLE-1024' }
@@ -168,6 +164,8 @@ function ExampleOrder() {
 }
 
 function EndDialog({ id, isExample }: { id?: string; isExample: boolean }) {
+  const { instanceLifecycle: lifecycleAdapter } = useTerminalSlots().services;
+  const invalidate = useInvalidateWorkspace();
   const { openModal, closeModal } = useTerminal();
   const toast = useToast();
   const { i, original, scope, demo, life } = useInstance(id, isExample);
@@ -206,12 +204,7 @@ function EndDialog({ id, isExample }: { id?: string; isExample: boolean }) {
         throw new Error(
           'Termination has not been confirmed. The allocation was not marked as ended. Refresh its status or contact operations.',
         );
-      const S = useWorkspaceStore.getState();
-      S.patch({
-        instances: (S.instances as Instance[]).map((row) =>
-          row.id === i.id ? { ...row, ...(result.instance as Partial<Instance>) } : row,
-        ),
-      });
+      await invalidate();
       closeModal();
       toast('Instance ended. The backend confirmed release.');
     } catch (err) {
@@ -411,8 +404,9 @@ function Manage({ id }: { id?: string }) {
   const { openModal, closeModal, toast } = useTerminal();
   const { i, life, e, t, demo, role } = useInstance(id, false);
   const api = useApi();
+  const invalidate = useInvalidateWorkspace();
   if (!i) return <p>Refresh your instances and try again.</p>;
-  const refresh = () => refreshMarketplace().catch((err: Error) => toast(err.message));
+  const refresh = () => invalidate().catch((err: Error) => toast(err.message));
   const connect = () => {
     if (!life.running)
       return toast(
@@ -476,7 +470,7 @@ function Manage({ id }: { id?: string }) {
         >
           Connection details
         </IBtn>
-        {role === 'Buyer' ? (
+        {role === 'buyer' ? (
           <IBtn
             act="instance-resell"
             id={i.id}
@@ -507,6 +501,7 @@ function Manage({ id }: { id?: string }) {
 }
 
 function Resell({ id }: { id?: string }) {
+  const invalidate = useInvalidateWorkspace();
   const { closeModal, toast } = useTerminal();
   const api = useApi();
   const { i, e, now } = useInstance(id, false);
@@ -519,7 +514,7 @@ function Resell({ id }: { id?: string }) {
         <IBtn
           act="instance-refresh"
           id={i.id}
-          onClick={() => refreshMarketplace().catch((err: Error) => toast(err.message))}
+          onClick={() => invalidate().catch((err: Error) => toast(err.message))}
         >
           Refresh status
         </IBtn>
@@ -537,7 +532,7 @@ function Resell({ id }: { id?: string }) {
       ResellResponse.parse(result);
       closeModal();
       toast('Resale request submitted. Track it in your supply.');
-      await refreshMarketplace();
+      await invalidate();
     } catch (err) {
       toast((err as Error).message);
     } finally {
@@ -663,38 +658,116 @@ function Connect({ id }: { id?: string }) {
   );
 }
 
-/** Modal renderer registered with the terminal (legacy `OpenNEXTInstances.modal` + terminal `connect`). */
-export const instanceModalRenderer: ModalRenderer = (modal: ModalState): ModalRender | null => {
-  const id = modal.id as string | undefined;
+declare module '@/terminal-kit/modal' {
+  interface TerminalModalMap {
+    'instance-example-order': Record<string, never>;
+    'instance-example-connect': Record<string, never>;
+    'instance-example-manage': Record<string, never>;
+    'instance-example-end': Record<string, never>;
+    instance: { id: string };
+    'instance-manage': { id: string };
+    'instance-resell': { id: string };
+    'instance-end-confirm': { id: string };
+    'instance-access': { id?: string; example?: boolean };
+    connect: { id: string };
+  }
+}
+
+type InstanceModalType =
+  | 'instance-example-order'
+  | 'instance-example-connect'
+  | 'instance-example-manage'
+  | 'instance-example-end'
+  | 'instance'
+  | 'instance-manage'
+  | 'instance-resell'
+  | 'instance-end-confirm'
+  | 'instance-access'
+  | 'connect';
+
+/** One component renders every instance modal (legacy `OpenNEXTInstances.modal` + terminal `connect`). */
+function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; close: () => void }) {
+  const instances = useWorkspaceData().instances as Instance[];
+  const id = 'id' in modal ? modal.id : undefined;
   const name = () => {
-    const i = (useWorkspaceStore.getState().instances as Instance[]).find((row) => row.id === id);
+    const i = instances.find((row) => row.id === id);
     return i ? i.name || i.model || 'Instance' : 'Instance unavailable';
   };
   switch (modal.type) {
     case 'instance-example-order':
-      return { title: 'Example purchase record', wide: true, body: <ExampleOrder /> };
+      return (
+        <ModalFrame title="Example purchase record" wide close={close}>
+          <ExampleOrder />
+        </ModalFrame>
+      );
     case 'instance-example-connect':
-      return { title: 'Connect to your workspace', body: <ExampleConnect /> };
+      return (
+        <ModalFrame title="Connect to your workspace" close={close}>
+          <ExampleConnect />
+        </ModalFrame>
+      );
     case 'instance-example-manage':
-      return { title: 'Training workspace · example', body: <ExampleManage /> };
+      return (
+        <ModalFrame title="Training workspace · example" close={close}>
+          <ExampleManage />
+        </ModalFrame>
+      );
     case 'instance-example-end':
-      return { title: 'End this instance?', body: <EndDialog isExample /> };
+      return (
+        <ModalFrame title="End this instance?" close={close}>
+          <EndDialog isExample />
+        </ModalFrame>
+      );
     case 'instance':
     case 'instance-manage':
-      return { title: name(), body: <Manage id={id} /> };
+      return (
+        <ModalFrame title={name()} close={close}>
+          <Manage id={id} />
+        </ModalFrame>
+      );
     case 'instance-resell':
-      return { title: 'Resell idle capacity', body: <Resell id={id} /> };
+      return (
+        <ModalFrame title="Resell idle capacity" close={close}>
+          <Resell id={id} />
+        </ModalFrame>
+      );
     case 'instance-end-confirm':
-      return { title: 'End this instance?', body: <EndDialog id={id} isExample={false} /> };
+      return (
+        <ModalFrame title="End this instance?" close={close}>
+          <EndDialog id={id} isExample={false} />
+        </ModalFrame>
+      );
     case 'instance-access':
-      return {
-        title: 'SSH access',
-        wide: true,
-        body: <Access id={id} isExample={modal.example === true} />,
-      };
+      return (
+        <ModalFrame title="SSH access" wide close={close}>
+          <Access id={id} isExample={modal.example === true} />
+        </ModalFrame>
+      );
     case 'connect':
-      return { title: 'Connection details', body: <Connect id={id} /> };
+      return (
+        <ModalFrame title="Connection details" close={close}>
+          <Connect id={id} />
+        </ModalFrame>
+      );
     default:
       return null;
   }
-};
+}
+
+const TYPES: InstanceModalType[] = [
+  'instance-example-order',
+  'instance-example-connect',
+  'instance-example-manage',
+  'instance-example-end',
+  'instance',
+  'instance-manage',
+  'instance-resell',
+  'instance-end-confirm',
+  'instance-access',
+  'connect',
+];
+
+/** Modals owned by the instances feature, keyed by type for the composition root. */
+export const instanceModals: ModalComponents = Object.fromEntries(
+  TYPES.map((type) => [type, InstanceModal as ModalComponent<ModalType>]),
+) as ModalComponents;

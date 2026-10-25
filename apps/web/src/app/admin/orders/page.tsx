@@ -1,4 +1,4 @@
-import { OrdersPage } from '@/features/console/pages/orders';
+import { OrdersPage } from '@/features/console';
 export default function Page() {
   return <OrdersPage />;
 }

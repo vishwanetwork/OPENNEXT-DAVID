@@ -2,57 +2,32 @@ import http from 'node:http';
 import https from 'node:https';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
+import { HOP_BY_HOP, backendHeaders, serverEnv } from '@/lib/env';
 
 /**
  * Transparent pass-through for every `/api/*` request to the backend (`API_ORIGIN`).
  *
- * Unlike `next.config` rewrites, this keeps the request exactly as the browser sent it:
- * the original `Host` (the backend's same-origin checks compare it with `Origin`), cookies,
- * CSRF headers, and whatever `X-Forwarded-*` headers the outer reverse proxy added. No
- * forwarded headers are invented, so in local development the backend still sees a direct
- * localhost client, and in production it trusts only the HTTPS reverse proxy in front of Next.
+ * Unlike `next.config` rewrites, this keeps the request as the browser sent it: the original
+ * `Host` (the backend's same-origin checks compare it with `Origin`), cookies and CSRF headers.
+ * Forwarded headers follow `OPENNEXT_TRUST_PROXY` (see `backendHeaders`).
  */
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const API_ORIGIN = new URL((process.env.API_ORIGIN || 'http://127.0.0.1:4189').replace(/\/$/, ''));
-const TRUST_PROXY = process.env.OPENNEXT_TRUST_PROXY === '1';
-const HOP_BY_HOP = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'te',
-  'trailer',
-  'upgrade',
-  'proxy-connection',
-]);
-
 async function forward(request: Request): Promise<Response> {
+  const { apiOrigin, trustProxy } = serverEnv();
+  const target = new URL(apiOrigin);
   const url = new URL(request.url);
-  const headers: Record<string, string> = {};
-  request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key)) headers[key] = value;
-  });
-  // Next synthesises x-forwarded-* headers for every request. They are only meaningful when a
-  // trusted reverse proxy sits in front of Next (production: OPENNEXT_TRUST_PROXY=1). Otherwise
-  // they are dropped so the backend sees a direct client — its "localhost administrator" rule and
-  // same-origin checks depend on that in local development.
-  if (!TRUST_PROXY) {
-    for (const key of Object.keys(headers))
-      if (key.startsWith('x-forwarded-') || key === 'forwarded') delete headers[key];
-  }
-  // Keep the client-facing host so the backend can scope routes per host and verify origins.
-  headers.host = headers['x-forwarded-host'] || request.headers.get('host') || url.host;
-
-  const transport = API_ORIGIN.protocol === 'https:' ? https : http;
+  const headers = backendHeaders(request.headers, trustProxy, url.host);
+  const transport = target.protocol === 'https:' ? https : http;
   const hasBody = !['GET', 'HEAD'].includes(request.method) && request.body;
 
   return new Promise<Response>((resolve) => {
     const upstream = transport.request(
       {
-        protocol: API_ORIGIN.protocol,
-        hostname: API_ORIGIN.hostname,
-        port: API_ORIGIN.port || (API_ORIGIN.protocol === 'https:' ? 443 : 80),
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || (target.protocol === 'https:' ? 443 : 80),
         method: request.method,
         path: url.pathname + url.search,
         headers,
@@ -78,10 +53,7 @@ async function forward(request: Request): Promise<Response> {
           }),
           {
             status: 502,
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Cache-Control': 'no-store',
-            },
+            headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
           },
         ),
       );

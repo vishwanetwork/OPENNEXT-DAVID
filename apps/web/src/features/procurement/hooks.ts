@@ -3,11 +3,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useApi } from '@/components/providers/api-context';
-import { refreshMarketplace } from './workspace';
+import { useInvalidateWorkspace } from '@/terminal-kit';
 
 /** Legacy `runServer`: disables the trigger while a server write runs, then refreshes records. */
 export function useRunServer() {
   const toast = useToast();
+  const invalidate = useInvalidateWorkspace();
   const [busy, setBusy] = useState(false);
   const run = useCallback(
     async (work: () => Promise<void>) => {
@@ -15,14 +16,14 @@ export function useRunServer() {
       setBusy(true);
       try {
         await work();
-        await refreshMarketplace();
+        await invalidate();
       } catch (error) {
         toast((error as Error).message);
       } finally {
         setBusy(false);
       }
     },
-    [busy, toast],
+    [busy, toast, invalidate],
   );
   return { run, busy };
 }

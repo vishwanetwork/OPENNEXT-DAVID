@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 /** Terminal page heading (`.page-heading`), identical to legacy `pageHead()`. */
 export function PageHeading({
@@ -40,6 +40,20 @@ export function StatusTag({ status }: { status: string }) {
   return <span className={`tag ${tone}`}>{status}</span>;
 }
 
+/** Terminal `.btn` with the legacy class variants (`secondary`, `small`, `ghost`, `danger`, '' = primary). */
+export function Button({
+  cls = 'secondary',
+  children,
+  type = 'button',
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { cls?: string; children: ReactNode }) {
+  return (
+    <button type={type} className={`btn ${cls}`} {...rest}>
+      <span className="btn-label">{children}</span>
+    </button>
+  );
+}
+
 export const SaveIcon = () => (
   <svg
     className="btn-icon"
@@ -67,16 +81,3 @@ export const PlusIcon = () => (
     <path d="M12 5v14M5 12h14" />
   </svg>
 );
-
-/** Terminal `.btn` with the legacy class variants (`secondary`, `small`, `ghost`, `danger`, '' = primary). */
-export function TButton({
-  cls = 'secondary',
-  children,
-  ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { cls?: string; children: ReactNode }) {
-  return (
-    <button type="button" className={`btn ${cls}`} {...rest}>
-      <span className="btn-label">{children}</span>
-    </button>
-  );
-}

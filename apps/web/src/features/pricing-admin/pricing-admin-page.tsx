@@ -5,8 +5,7 @@ import { useCallback, useState, type FormEvent, type ReactNode } from 'react';
 import type { CollectionRun, PricingProvider } from '@opennext/contracts';
 import { ApiError } from '@/lib/api/client';
 import { useApi } from '@/components/providers/api-context';
-import { NativeDialog } from '@/features/console/components/native-dialog';
-import { AdminLoginForm, isAccessError } from '@/features/console/components/admin-access';
+import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
 import { PROVIDER_LOGOS } from './provider-logos';
 import {
   STATUS_LABELS,

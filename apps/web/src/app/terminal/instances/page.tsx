@@ -1,5 +1,5 @@
 import { InstancesPage } from '@/features/instances';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

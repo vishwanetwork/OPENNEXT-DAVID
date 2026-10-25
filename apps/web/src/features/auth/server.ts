@@ -1,24 +1,25 @@
 import 'server-only';
 import { cookies, headers } from 'next/headers';
 import { SessionResponse, type SessionUser } from '@opennext/contracts';
-
-const API_ORIGIN = (process.env.API_ORIGIN || 'http://127.0.0.1:4189').replace(/\/$/, '');
+import { backendHeaders, serverEnv } from '@/lib/env';
 
 /**
  * Reads the verified session on the server (forwarding the browser's cookies to the backend)
- * so the first render already knows whether to show the sign-in view. Returns null when the
- * backend is unreachable or the visitor is anonymous.
+ * so the first render already knows whether to show the sign-in view. Uses the same header
+ * policy as the /api pass-through. Returns null when the backend is unreachable or anonymous.
  */
 export async function getServerSession(host: string): Promise<SessionUser | null> {
   try {
-    const cookie = (await cookies()).toString();
-    const forwarded = (await headers()).get('x-forwarded-proto') || 'http';
-    const response = await fetch(`${API_ORIGIN}/api/auth/session`, {
+    const { apiOrigin, trustProxy } = serverEnv();
+    const incoming = await headers();
+    const forwarded = backendHeaders(incoming, trustProxy, host);
+    const response = await fetch(`${apiOrigin}/api/auth/session`, {
       headers: {
-        cookie,
-        'x-forwarded-host': host,
-        'x-forwarded-proto': forwarded,
+        cookie: (await cookies()).toString(),
         accept: 'application/json',
+        ...(forwarded['x-forwarded-host'] ? { 'x-forwarded-host': forwarded['x-forwarded-host'] } : {}),
+        ...(forwarded['x-forwarded-proto'] ? { 'x-forwarded-proto': forwarded['x-forwarded-proto'] } : {}),
+        ...(forwarded['x-forwarded-for'] ? { 'x-forwarded-for': forwarded['x-forwarded-for'] } : {}),
       },
       cache: 'no-store',
       signal: AbortSignal.timeout(3000),

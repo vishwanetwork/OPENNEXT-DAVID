@@ -1,44 +1,39 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useToast } from '@/components/ui/toast';
-import { useWorkspaceStore } from '../store';
-import { downloadWorkspace } from '../export';
-import { PageHeading, TButton } from './ui';
+import {
+  Button,
+  PageHeading,
+  downloadWorkspace,
+  useToast,
+  useWorkspaceData,
+  useWorkspaceStore,
+  type Identity,
+} from '@/terminal-kit';
 
-const OPTIONS: [
-  keyof NonNullable<ReturnType<typeof useWorkspaceStore.getState>['identity']['preferences']>,
-  string,
-  string,
-][] = [
+const OPTIONS: [keyof NonNullable<Identity['preferences']>, string, string][] = [
   ['quotes', 'Quotes & RFQ responses', 'Updates on supplier quotes and your requests.'],
   ['delivery', 'Instance updates', 'Delivery and Spot interruption warnings.'],
   ['market', 'Saved capacity', 'Price changes for resources you follow.'],
 ];
 
-export function exportWorkspace(type: string) {
-  const S = useWorkspaceStore.getState();
-  const data =
-    type === 'workspace'
-      ? {
-          rfqs: S.rfqs,
-          listings: S.listings,
-          saved: S.saved,
-          cart: S.cart,
-          orders: S.orders,
-          ledger: S.ledger,
-          notifications: S.notifications,
-          responses: S.responses,
-          payouts: S.payouts,
-        }
-      : (S as unknown as Record<string, unknown>)[type] || S.ledger;
-  downloadWorkspace(type, data);
-}
-
 export function SettingsPage() {
   const identity = useWorkspaceStore((s) => s.identity);
   const patch = useWorkspaceStore((s) => s.patch);
+  const saved = useWorkspaceStore((s) => s.saved);
+  const cart = useWorkspaceStore((s) => s.cart);
+  const workspace = useWorkspaceData();
   const toast = useToast();
+  const exportWorkspace = () =>
+    downloadWorkspace('workspace', {
+      rfqs: workspace.rfqs,
+      listings: workspace.listings,
+      saved,
+      cart,
+      orders: workspace.orders,
+      notifications: workspace.notifications,
+      responses: workspace.responses,
+    });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -116,14 +111,14 @@ export function SettingsPage() {
           <h2>Workspace data</h2>
           <p>Download your requirements, saved resources and procurement records.</p>
         </div>
-        <TButton
+        <Button
           cls="secondary small"
           data-act="export"
           data-value="workspace"
-          onClick={() => exportWorkspace('workspace')}
+          onClick={exportWorkspace}
         >
           Export workspace
-        </TButton>
+        </Button>
       </section>
     </div>
   );

@@ -1,5 +1,4 @@
-import { SettingsPage } from '@/features/terminal/components/SettingsPage';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { SettingsPage, TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

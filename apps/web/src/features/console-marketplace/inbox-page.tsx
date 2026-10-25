@@ -4,8 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useMemo, useState } from 'react';
 import type { FeaturedCandidate, KybRecord, MarketRecord } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
-import { NativeDialog } from '@/features/console/components/native-dialog';
-import { AdminLoginForm, isAccessError } from '@/features/console/components/admin-access';
+import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
 import {
   MARKETS,
   POLL_MS,

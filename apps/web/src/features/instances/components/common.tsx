@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSessionStore } from '@/lib/session-store';
 import { useApp } from '@/components/providers/app-context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useTerminalSlots, useWorkspaceStore } from '@/terminal-kit';
 import type { Lifecycle } from '../lifecycle';
 import { previewScope, subscribePreview } from '../preview';
 
@@ -75,19 +75,16 @@ export function IBtn({
   );
 }
 
-/** SSH public-key library hook point (owned by the account profile feature). */
-let sshLibrarySlot: ((scope: 'instances' | 'instance-access') => ReactNode) | null = null;
-export function registerSshLibrary(
-  render: ((scope: 'instances' | 'instance-access') => ReactNode) | null,
-) {
-  sshLibrarySlot = render;
+/** SSH public-key library, supplied by the composition root (owned by the account feature). */
+export function SshLibrary({ scope }: { scope: 'instances' | 'instance-access' }) {
+  const { sshLibrary } = useTerminalSlots();
+  return (
+    <>
+      {sshLibrary ? (
+        sshLibrary(scope)
+      ) : (
+        <p className="form-note">SSH key management is temporarily unavailable.</p>
+      )}
+    </>
+  );
 }
-export const SshLibrary = ({ scope }: { scope: 'instances' | 'instance-access' }) => (
-  <>
-    {sshLibrarySlot ? (
-      sshLibrarySlot(scope)
-    ) : (
-      <p className="form-note">SSH key management is temporarily unavailable.</p>
-    )}
-  </>
-);

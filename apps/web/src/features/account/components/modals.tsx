@@ -2,19 +2,20 @@
 
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
-import { useCloseModal } from '@/features/terminal/context';
 import {
-  openContact,
-  registerTerminalModal,
-  type ModalRender,
-} from '@/features/terminal/components/TerminalModal';
-import type { ModalState } from '@/features/terminal/store';
-import { serviceConnected } from '../service';
+  ModalFrame,
+  useCloseModal,
+  useTerminalSlots,
+  type ModalComponent,
+  type ModalComponents,
+} from '@/terminal-kit';
+import { useAccountService } from '../hooks';
 import { UNCONFIGURED } from '../ssh-keys';
 import { useKeyLibrary } from '../hooks';
 
 function VerificationModal() {
   const closeModal = useCloseModal();
+  const { openContact } = useTerminalSlots();
   return (
     <div className="onx-account-dialog">
       <p>
@@ -45,6 +46,7 @@ function VerificationModal() {
 }
 
 function AddKeyModal() {
+  const { connected: serviceConnected } = useAccountService();
   const { account, change } = useKeyLibrary();
   const closeModal = useCloseModal();
   const toast = useToast();
@@ -178,21 +180,33 @@ function RemoveKeyModal({ id }: { id: string }) {
   );
 }
 
-export function accountModal(modal: ModalState): ModalRender | null {
-  if (modal.type === 'account-verification')
-    return { title: 'Identity verification', body: <VerificationModal /> };
-  if (modal.type === 'account-ssh-add') return { title: 'Add SSH key', body: <AddKeyModal /> };
-  if (modal.type === 'account-ssh-remove') {
-    const id = String(modal.id || '');
-    return { title: 'Remove SSH key?', body: <RemoveKeyModal id={id} /> };
+declare module '@/terminal-kit/modal' {
+  interface TerminalModalMap {
+    'account-verification': Record<string, never>;
+    'account-ssh-add': Record<string, never>;
+    'account-ssh-remove': { id: string };
   }
-  return null;
 }
 
-let registered = false;
-/** Registers the account dialogs with the terminal modal registry (idempotent). */
-export function registerAccountModals() {
-  if (registered) return;
-  registered = true;
-  registerTerminalModal(accountModal);
-}
+const VerificationDialog: ModalComponent<'account-verification'> = ({ close }) => (
+  <ModalFrame title="Identity verification" close={close}>
+    <VerificationModal />
+  </ModalFrame>
+);
+const AddKeyDialog: ModalComponent<'account-ssh-add'> = ({ close }) => (
+  <ModalFrame title="Add SSH key" close={close}>
+    <AddKeyModal />
+  </ModalFrame>
+);
+const RemoveKeyDialog: ModalComponent<'account-ssh-remove'> = ({ modal, close }) => (
+  <ModalFrame title="Remove SSH key?" close={close}>
+    <RemoveKeyModal id={String(modal.id || '')} />
+  </ModalFrame>
+);
+
+/** Account dialogs, keyed by type for the composition root. */
+export const accountModals: ModalComponents = {
+  'account-verification': VerificationDialog,
+  'account-ssh-add': AddKeyDialog,
+  'account-ssh-remove': RemoveKeyDialog,
+};

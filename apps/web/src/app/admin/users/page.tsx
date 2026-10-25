@@ -1,4 +1,4 @@
-import { UsersPage } from '@/features/console/pages/users';
+import { UsersPage } from '@/features/console';
 export default function Page() {
   return <UsersPage />;
 }

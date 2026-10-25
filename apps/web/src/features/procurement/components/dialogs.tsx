@@ -15,13 +15,12 @@ import { money } from '@/lib/format';
 import { useToast } from '@/components/ui/toast';
 import { useApi } from '@/components/providers/api-context';
 import { RfqDetails } from '@/features/rfq-details';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useTerminal, useTerminalSlots, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { procurementApi } from '../api';
 import { FEE_LABEL, baseRate, currentFees, maximumQuotePrice } from '../fees';
 import { deliveryMethod, isHardware, isModel, totalFor, unitSuffix } from '../exchange';
 import { useRunServer } from '../hooks';
-import { refreshMarketplace } from '../workspace';
+import { useProcurementUi } from '../ui-store';
 import { KybForm, ResponseForm, SupplyForm } from './forms';
 import { useOpportunity } from './opportunity';
 import {
@@ -48,9 +47,10 @@ import {
 /* ---------- Supplier review (KYB) ---------- */
 
 export function ReviewDialog() {
-  const r = useWorkspaceStore((s) => s.review) as KybReview & { step: number };
-  const patch = useWorkspaceStore((s) => s.patch);
-  if (['Reviewing', 'Approved', 'Rejected'].includes(r.status))
+  const r = useWorkspaceData().review as KybReview & { step: number };
+  const revising = useProcurementUi((s) => s.revisingKyb);
+  const setRevising = useProcurementUi((s) => s.setRevisingKyb);
+  if (['Reviewing', 'Approved', 'Rejected'].includes(r.status) && !(revising && r.status === 'Rejected'))
     return (
       <>
         <Tag className={r.status === 'Reviewing' ? 'proc-reviewing' : ''}>{r.status}</Tag>
@@ -74,7 +74,7 @@ export function ReviewDialog() {
         {r.status === 'Rejected' ? (
           <PBtn
             data-act="proc-kyb-revise"
-            onClick={() => patch({ review: { ...r, status: 'Draft' } })}
+            onClick={() => setRevising(true)}
           >
             Revise submission
           </PBtn>
@@ -90,12 +90,12 @@ export const reviewTitle = (status: string) =>
     : 'Verify your business';
 
 export function SupplyDialog() {
-  const status = useWorkspaceStore((s) => s.review.status);
+  const status = useWorkspaceData().review.status;
   return status === 'Approved' ? <SupplyForm /> : <ReviewDialog />;
 }
 
 export function SupplyStatus({ id }: { id: string }) {
-  const listings = useWorkspaceStore((s) => s.listings) as OwnedSupply[];
+  const listings = useWorkspaceData().listings as OwnedSupply[];
   const api = useApi();
   const toast = useToast();
   const { run, busy } = useRunServer();
@@ -319,7 +319,7 @@ export function QuoteRows({ r }: { r: OwnedRfq }) {
 
 export function RecordView({ r }: { r: OwnedRfq | undefined }) {
   const { openModal } = useTerminal();
-  const orders = useWorkspaceStore((s) => s.orders) as Order[];
+  const orders = useWorkspaceData().orders as Order[];
   const toast = useToast();
   if (!r) return <p>Requirement not found.</p>;
   const order = orders.find((o) => o.id === r.orderId);
@@ -558,7 +558,7 @@ export function OrderAction({
   const { go, closeModal } = useTerminal();
   const role = useWorkspaceStore((s) => s.role);
   if (!o) return <>The order could not be found.</>;
-  const side = o.side || (role === 'Seller' ? 'sell' : 'buy');
+  const side = o.side || (role === 'seller' ? 'sell' : 'buy');
   const note =
     type === 'proc-payment'
       ? 'Secure order checkout is not connected yet. The payment provider must confirm payment before provisioning begins. No funds have been charged.'
@@ -693,7 +693,7 @@ export function ListingDialog({
 }) {
   const { closeModal, openModal } = useTerminal();
   const role = useWorkspaceStore((s) => s.role);
-  const review = useWorkspaceStore((s) => s.review.status);
+  const review = useWorkspaceData().review.status;
   const { open } = useOpportunity();
   if (!item) return <>Refresh the market to load this record.</>;
   if (item.external) return <ExternalDetails item={item} />;
@@ -729,7 +729,7 @@ export function ListingDialog({
           <PBtn data-act="close-modal" onClick={closeModal}>
             Close
           </PBtn>
-          {role === 'Buyer' ? (
+          {role === 'buyer' ? (
             <PBtn data-act="new-rfq" onClick={() => openModal('rfq-form')}>
               Post RFQ
             </PBtn>
@@ -744,7 +744,7 @@ export function ListingDialog({
         </div>
       </>
     );
-  const canAct = item.side === 'supply' ? role === 'Buyer' : role === 'Seller';
+  const canAct = item.side === 'supply' ? role === 'buyer' : role === 'seller';
   return (
     <>
       <div className="details-grid">
@@ -827,7 +827,7 @@ export function ResponseRecord({ response }: { response: SupplierResponse | unde
         <PBtn
           data-act="bill-order"
           data-id={response.orderId}
-          onClick={() => openModal('bill-order', { id: response.orderId })}
+          onClick={() => openModal('bill-order', { id: String(response.orderId) })}
         >
           View order
         </PBtn>
@@ -946,6 +946,7 @@ export function SubmissionModal({ m }: { m: SubmissionModalState }) {
 
 export function HistoryUpgrade() {
   const { closeModal } = useTerminal();
+  const { openContact } = useTerminalSlots();
   return (
     <>
       <p className="form-note">
@@ -961,9 +962,7 @@ export function HistoryUpgrade() {
           data-act="proc-contact-sales"
           onClick={() => {
             closeModal();
-            void import('@/features/terminal/components/TerminalModal').then((m) =>
-              m.openContact(),
-            );
+            openContact();
           }}
         >
           Contact Sales
@@ -973,4 +972,4 @@ export function HistoryUpgrade() {
   );
 }
 
-export { maximumQuotePrice, refreshMarketplace };
+export { maximumQuotePrice };

@@ -6,7 +6,7 @@ import { DemoSessionResponse } from '@opennext/contracts';
 import { useApp } from '@/components/providers/app-context';
 import { useApi } from '@/components/providers/api-context';
 import { useSessionStore } from '@/lib/session-store';
-import { useWorkspaceStore } from './store';
+import { useWorkspaceStore } from '@/terminal-kit';
 import './demo.css';
 
 type DemoState = 'loading' | 'ready' | 'error';

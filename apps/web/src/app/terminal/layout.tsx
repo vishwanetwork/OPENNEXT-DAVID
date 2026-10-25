@@ -3,7 +3,7 @@ import { Suspense, type ReactNode } from 'react';
 import { AppShell } from '@/components/app-shell/app-shell';
 import { requestApp } from '@/lib/request-app';
 import { getServerSession } from '@/features/auth/server';
-import { TerminalShell } from '@/features/terminal/TerminalShell';
+import { TerminalApp } from './terminal-app';
 
 export const metadata: Metadata = {
   title: 'OpenNEXT — Capacity Terminal',
@@ -16,7 +16,7 @@ export default async function TerminalLayout({ children }: { children: ReactNode
   return (
     <AppShell app="terminal">
       <Suspense fallback={null}>
-        <TerminalShell initialUser={initialUser}>{children}</TerminalShell>
+        <TerminalApp initialUser={initialUser}>{children}</TerminalApp>
       </Suspense>
     </AppShell>
   );

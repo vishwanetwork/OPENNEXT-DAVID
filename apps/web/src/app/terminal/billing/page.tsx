@@ -1,5 +1,5 @@
 import { BillingPage } from '@/features/billing';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

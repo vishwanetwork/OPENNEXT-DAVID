@@ -1,8 +1,7 @@
 'use client';
 
 import { money } from '@/lib/format';
-import { regionText, type Offer } from '@/features/market/catalog';
-import { useRegions } from '@/features/market/hooks';
+import { regionText, useRegions, type Offer } from '@/features/market';
 
 export interface ComparisonProps {
   offers: Offer[];

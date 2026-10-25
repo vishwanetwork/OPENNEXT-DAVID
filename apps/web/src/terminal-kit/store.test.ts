@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SessionUser } from '@opennext/contracts';
-import type { Offer } from '@/features/market/catalog';
+import type { Offer } from '@/features/market';
 import { initialWorkspace, readPreferences, useWorkspaceStore } from './store';
 
 const user = (over: Partial<SessionUser>): SessionUser => ({
@@ -58,13 +58,13 @@ describe('workspace store', () => {
     const s = useWorkspaceStore.getState();
     s.applySession(user({ fundedCredit: 50 }));
     expect(useWorkspaceStore.getState()).toMatchObject({
-      role: 'Buyer',
-      balance: 150,
+      role: 'buyer',
       identity: { name: 'Ada Lovelace', id: 'u1' },
     });
-    useWorkspaceStore.getState().patch({ rfqs: [{ id: 'RFQ-1' }], balance: 999 });
+    useWorkspaceStore.getState().addToCart(offer('c'));
+    useWorkspaceStore.getState().patch({ afterReview: 'supply-form' });
     s.applySession(user({ id: 'u2', role: 'seller', promotionalCredit: 0 }));
-    expect(useWorkspaceStore.getState()).toMatchObject({ role: 'Seller', rfqs: [], balance: 0 });
+    expect(useWorkspaceStore.getState()).toMatchObject({ role: 'seller', cart: [], afterReview: null });
     s.applySession(null);
     expect(useWorkspaceStore.getState().identity).toEqual({ name: '', email: '' });
   });

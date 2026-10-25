@@ -16,6 +16,11 @@ COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/web ./apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
+# Hosts baked into the statically rendered public site; runtime env still wins after revalidation.
+ARG SITE_HOST=opennextlab.ai
+ARG TERMINAL_HOST=terminal.opennextlab.ai
+ARG ADMIN_HOST=admin.opennextlab.ai
+ENV SITE_HOST=$SITE_HOST TERMINAL_HOST=$TERMINAL_HOST ADMIN_HOST=$ADMIN_HOST
 RUN pnpm --filter @opennext/web build
 
 FROM node:22-alpine AS runtime

@@ -6,15 +6,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
 import { useToast } from '@/components/ui/toast';
+import type { ModalArgs, ModalType } from './modal';
 import { resolveTarget, routeFromPath, type TerminalRoute } from './routing';
-import { useWorkspaceStore, type Record_ } from './store';
+import { useWorkspaceStore } from './store';
 
 export interface TerminalApi {
   /** Legacy `go()`: applies the role rules, remembers a pending route when signed out, navigates. */
   go: (route: string) => void;
   /** Current route derived from the pathname ('' on the terminal root). */
   route: TerminalRoute | '';
-  openModal: (type: string, extra?: Record_) => void;
+  openModal: <K extends ModalType>(type: K, ...args: ModalArgs<K>) => void;
   closeModal: () => void;
   toast: (message: string) => void;
   /** Navigate to the public site (legacy "home"). */
@@ -64,7 +65,7 @@ export function TerminalProvider({
     () => ({
       go,
       route,
-      openModal: (type, extra) => useWorkspaceStore.getState().openModal(type, extra),
+      openModal: (type, ...args) => useWorkspaceStore.getState().openModal(type, ...args),
       closeModal: () => useWorkspaceStore.getState().closeModal(),
       toast,
       home: () => {
@@ -89,46 +90,3 @@ export function useTerminal(): TerminalApi {
 export const useGo = () => useTerminal().go;
 export const useOpenModal = () => useTerminal().openModal;
 export const useCloseModal = () => useTerminal().closeModal;
-
-/**
- * Workspace refresh registry. The shell runs every registered refresher after sign-in,
- * every 30 s while the tab is visible, and on explicit `refreshWorkspace()` calls — the
- * replacement for the legacy `OpenNEXTExchange.refresh(S)` loop. Feature modules
- * (marketplace, billing, instances…) register their own loaders.
- */
-export type WorkspaceRefresher = () => Promise<void> | void;
-const refreshers = new Set<WorkspaceRefresher>();
-export function registerWorkspaceRefresher(fn: WorkspaceRefresher): () => void {
-  refreshers.add(fn);
-  return () => refreshers.delete(fn);
-}
-export async function refreshWorkspace(): Promise<void> {
-  await Promise.all([...refreshers].map((fn) => Promise.resolve().then(fn)));
-}
-
-/**
- * Hook point for resuming public-site intents (listing `?listing=&intent=` and
- * `?opportunity=&intent=`) once the workspace is authoritative. The procurement feature
- * registers a handler; until then the pending intent stays in the store untouched.
- */
-export type IntentResumer = (intent: {
-  kind: 'listing' | 'opportunity';
-  id: string;
-  intent: 'buy' | 'offer';
-}) => boolean | void;
-let intentResumer: IntentResumer | null = null;
-export function registerIntentResumer(fn: IntentResumer | null) {
-  intentResumer = fn;
-}
-export function resumePendingIntents() {
-  const state = useWorkspaceStore.getState();
-  if (!intentResumer) return;
-  if (state.pendingListing) {
-    const handled = intentResumer({ kind: 'listing', ...state.pendingListing });
-    if (handled !== false) state.patch({ pendingListing: null });
-  }
-  if (state.pendingOpportunity && state.marketplaceAuthoritative) {
-    const handled = intentResumer({ kind: 'opportunity', ...state.pendingOpportunity });
-    if (handled !== false) state.patch({ pendingOpportunity: null });
-  }
-}

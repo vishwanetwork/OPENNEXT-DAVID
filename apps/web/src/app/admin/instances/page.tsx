@@ -1,4 +1,4 @@
-import { InstancesPage } from '@/features/console/pages/instances';
+import { ConsoleInstancesPage } from '@/features/console';
 export default function Page() {
-  return <InstancesPage />;
+  return <ConsoleInstancesPage />;
 }

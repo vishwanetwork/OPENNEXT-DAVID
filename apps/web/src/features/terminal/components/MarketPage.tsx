@@ -1,49 +1,48 @@
 'use client';
 
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/toast';
 import {
   CATALOG,
   METRIC_SHORT,
+  NewsSection,
+  RegionalHistoryChart,
+  dateLabel,
+  emptyChoice,
+  marketKeys,
   offersFor,
   primaryMetric,
   regionalHistoryQuery,
-  type Offer,
-} from '@/features/market/catalog';
-import { marketKeys, usePrices, useRegionalHistory, useRegions } from '@/features/market/hooks';
-import {
-  dateLabel,
   selectionKey,
   summary as historySummary,
-} from '@/features/market/regional-history';
-import { useHistoryChoices } from '@/features/market/history-choices';
-import { emptyChoice } from '@/features/market/regional-history';
-import {
-  RegionalHistoryChart,
+  useHistoryChoices,
+  usePrices,
+  useRegionalHistory,
+  useRegions,
+  type Offer,
   type PriceHoverDetail,
-} from '@/features/market/RegionalHistoryChart';
-import { NewsSection } from '@/features/market/NewsSection';
-import '@/features/market/capacity-chart.css';
-import { useTerminal } from '../context';
-import { useWorkspaceStore } from '../store';
+} from '@/features/market';
+import {
+  Button,
+  useTerminal,
+  useTerminalSlots,
+  useWorkspaceData,
+  useWorkspaceStore,
+} from '@/terminal-kit';
 import { Comparison } from './Comparison';
 import { Filters } from './Filters';
-import { hasMatchesPanel, Matches, renderMatchesPanel } from './Matches';
-import { TButton } from './ui';
+import { Matches } from './Matches';
 import { useAgentHints } from './AgentDrawer';
-
-/** Other features may replace the comparison table (legacy `OpenNEXTProcurement.listingTable`). */
-let listingTableSlot: ((offers: Offer[]) => ReactNode) | null = null;
-export function registerListingTable(render: ((offers: Offer[]) => ReactNode) | null) {
-  listingTableSlot = render;
-}
 
 /** Current offers for the selected filters; also indexes them for modals. */
 export function useCurrentOffers(): Offer[] {
   const prices = usePrices();
   const regions = useRegions();
-  const { model, region, term, count } = useWorkspaceStore();
+  const model = useWorkspaceStore((s) => s.model);
+  const region = useWorkspaceStore((s) => s.region);
+  const term = useWorkspaceStore((s) => s.term);
+  const count = useWorkspaceStore((s) => s.count);
   const indexOffers = useWorkspaceStore((s) => s.indexOffers);
   const offers = useMemo(
     () => offersFor(prices.data?.records || [], { model, region, term, count }, regions),
@@ -70,6 +69,8 @@ export function useRefreshPrices() {
 /** GPU Market page: filters, same-offering history chart, comparison, news and matches. */
 export function MarketPage() {
   const state = useWorkspaceStore();
+  const review = useWorkspaceData().review;
+  const { listingTable, matchesPanel } = useTerminalSlots();
   const regions = useRegions();
   const toast = useToast();
   const { openModal } = useTerminal();
@@ -106,6 +107,7 @@ export function MarketPage() {
     [suggest],
   );
   const term = history.data?.term || state.term || 'Spot';
+  const seller = state.role === 'seller';
   const onPeriod = (value: string) => {
     if (['6M', '1Y', 'ALL'].includes(value)) return openModal('history-access');
     if (['1D', '3D', '1W', '1M', '3M'].includes(value)) state.setPeriod(value);
@@ -114,7 +116,7 @@ export function MarketPage() {
   const cart = (o: Offer) =>
     toast(state.addToCart(o) ? 'Added to quote cart' : 'Already in your quote cart');
   const quote = (o: Offer) => {
-    if (state.role === 'Seller') {
+    if (seller) {
       const requirement = {
         id: 'DEMAND-' + o.id,
         model: o.model,
@@ -124,18 +126,18 @@ export function MarketPage() {
         hours: 72,
         budget: o.price,
       };
-      if (state.review.status !== 'Approved') {
+      if (review.status !== 'Approved') {
         state.patch({ afterReview: { type: 'respond', requirement } });
         openModal('review');
       } else openModal('respond', { requirement });
     } else openModal('rfq-form', { offer: o });
   };
   const newRfq = () => {
-    if (state.role === 'Seller') return toast('Switch to Buyer to post an RFQ.');
+    if (seller) return toast('Switch to Buyer to post an RFQ.');
     openModal('rfq-form');
   };
   const newSupply = () => {
-    if (state.review.status !== 'Approved') {
+    if (review.status !== 'Approved') {
       state.patch({ afterReview: 'supply-form' });
       openModal('review');
     } else openModal('supply-form');
@@ -164,6 +166,10 @@ export function MarketPage() {
       />
     );
   };
+  const refreshMatches = () => {
+    state.bumpMatchOffset();
+    toast('Matched resources refreshed');
+  };
   return (
     <>
       <Filters onRefresh={() => void refreshPrices()} />
@@ -172,13 +178,13 @@ export function MarketPage() {
           <div className="market-tabs">
             <span className="form-note">GPU market · research, compare and procure</span>
             <span className="gap" />
-            <TButton
+            <Button
               cls="small"
-              data-act={state.role === 'Seller' ? 'new-supply' : 'new-rfq'}
-              onClick={state.role === 'Seller' ? newSupply : newRfq}
+              data-act={seller ? 'new-supply' : 'new-rfq'}
+              onClick={seller ? newSupply : newRfq}
             >
-              {state.role === 'Seller' ? 'List Supply' : 'Post RFQ'}
-            </TButton>
+              {seller ? 'List Supply' : 'Post RFQ'}
+            </Button>
           </div>
           <section className="market-panel">
             <div className="market-summary">
@@ -241,8 +247,8 @@ export function MarketPage() {
                 Methodology
               </button>
             </div>
-            {listingTableSlot ? (
-              listingTableSlot(offers)
+            {listingTable ? (
+              listingTable(offers)
             ) : (
               <Comparison
                 offers={offers.slice(0, 3)}
@@ -256,31 +262,15 @@ export function MarketPage() {
           <NewsSection />
         </div>
         <aside className="side-stack">
-          {hasMatchesPanel() ? (
+          {matchesPanel ? (
             <>
-              {renderMatchesPanel('best')}
-              {renderMatchesPanel('recent')}
+              {matchesPanel('best')}
+              {matchesPanel('recent')}
             </>
           ) : (
             <>
-              <Matches
-                kind="best"
-                offers={offers}
-                onQuote={quote}
-                onRefresh={() => {
-                  state.bumpMatchOffset();
-                  toast('Matched resources refreshed');
-                }}
-              />
-              <Matches
-                kind="recent"
-                offers={offers}
-                onQuote={quote}
-                onRefresh={() => {
-                  state.bumpMatchOffset();
-                  toast('Matched resources refreshed');
-                }}
-              />
+              <Matches kind="best" offers={offers} onQuote={quote} onRefresh={refreshMatches} />
+              <Matches kind="recent" offers={offers} onQuote={quote} onRefresh={refreshMatches} />
             </>
           )}
         </aside>

@@ -1,4 +1,4 @@
-import { OverviewPage } from '@/features/console/pages/overview';
+import { OverviewPage } from '@/features/console';
 export default function Page() {
   return <OverviewPage />;
 }

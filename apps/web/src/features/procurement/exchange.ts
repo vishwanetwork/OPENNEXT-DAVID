@@ -3,14 +3,12 @@
  * public market, matches, settlements and reference catalog live in `useMarketplaceStore`
  * (see workspace.ts) and are passed in explicitly.
  */
-import { create } from 'zustand';
 import type {
   MarketRow,
   ReferenceCatalogResponse,
   SettlementRow,
-  WorkspaceNotification,
 } from '@opennext/contracts';
-import { ALL_REGIONS } from '@/features/market/catalog';
+import { ALL_REGIONS } from '@/features/market';
 import { countryList, findCountry } from './countries';
 
 export type MarketKindShort = 'rental' | 'model' | 'hardware';
@@ -200,7 +198,7 @@ export interface MarketFilters {
   region: string;
   count?: number;
   term?: string;
-  role?: string;
+  role?: 'buyer' | 'seller';
 }
 
 export function eligible(row: MarketRow, filters: MarketFilters, code?: RegionCoder): boolean {
@@ -244,46 +242,31 @@ export interface PublicMarket {
   featured: { rfqs: MarketRow[]; supplies: MarketRow[] };
 }
 
-export interface MarketplaceState {
+/** Marketplace records as seen by the procurement views (derived from TanStack Query data). */
+export interface MarketplaceView {
   market: PublicMarket;
   bestRows: MarketRow[];
   matchReason: string;
   matchPrompt: string;
   recentRows: SettlementRow[];
   referenceCatalog: ReferenceCatalogResponse;
-  referenceLoaded: boolean;
   loaded: boolean;
   error: string;
-  /** Rows shown to the user (by id) so dialogs can resolve them without a second lookup. */
-  generated: Map<string, MarketRow>;
-  set: (patch: Partial<Omit<MarketplaceState, 'set' | 'reset'>>) => void;
-  reset: () => void;
 }
 
-const emptyMarket = (): PublicMarket => ({
+export const emptyMarket = (): PublicMarket => ({
   rfqs: [],
   supplies: [],
   featured: { rfqs: [], supplies: [] },
 });
-const emptyReference = (): ReferenceCatalogResponse => ({ supplies: [], rfqs: [], recent: [] });
-
-export const useMarketplaceStore = create<MarketplaceState>((set) => ({
-  market: emptyMarket(),
-  bestRows: [],
-  matchReason: '',
-  matchPrompt: '',
-  recentRows: [],
-  referenceCatalog: emptyReference(),
-  referenceLoaded: false,
-  loaded: false,
-  error: '',
-  generated: new Map(),
-  set: (patch) => set(patch),
-  reset: () => set({ bestRows: [], matchReason: 'No matches.', matchPrompt: '' }),
-}));
+export const emptyReference = (): ReferenceCatalogResponse => ({
+  supplies: [],
+  rfqs: [],
+  recent: [],
+});
 
 export const marketStatus = (
-  s: Pick<MarketplaceState, 'loaded' | 'error' | 'matchReason' | 'matchPrompt'>,
+  s: Pick<MarketplaceView, 'loaded' | 'error' | 'matchReason' | 'matchPrompt'>,
 ) => ({ loaded: s.loaded, error: s.error, matchReason: s.matchReason, matchPrompt: s.matchPrompt });
 
 export function listPublic(
@@ -343,53 +326,47 @@ export function referenceRows(
 
 /** Listing rows: genuine marketplace matches, or reference catalog rows when there are none. */
 export function marketRows(
-  state: MarketplaceState,
+  view: MarketplaceView,
   filters: MarketFilters,
   side: MarketSide,
   demo = false,
   code?: RegionCoder,
 ): MarketRow[] {
-  const actual = matchesFor(state.market, filters, side, code);
-  const rows = actual.length
-    ? actual
-    : referenceRows(state.referenceCatalog, filters, side, demo, code);
-  rows.forEach((r) => state.generated.set(r.id, r));
-  return rows;
+  const actual = matchesFor(view.market, filters, side, code);
+  return actual.length ? actual : referenceRows(view.referenceCatalog, filters, side, demo, code);
 }
 
 export function bestFor(
-  state: MarketplaceState,
+  view: MarketplaceView,
   filters: MarketFilters,
   demo = false,
   code?: RegionCoder,
 ): MarketRow[] {
-  const actual = state.bestRows
+  const actual = view.bestRows
     .map((r) => projectModel(r, filters.model))
     .filter((r) => r.model === filters.model && recordRegionMatches(r, filters.region, code))
     .map((r) => (r.external ? { ...r, bestMatch: false } : r));
-  const rows = actual.length
+  return actual.length
     ? actual
     : referenceRows(
-        state.referenceCatalog,
+        view.referenceCatalog,
         filters,
-        filters.role === 'Seller' ? 'demand' : 'supply',
+        filters.role === 'seller' ? 'demand' : 'supply',
         demo,
         code,
       );
-  rows.forEach((r) => state.generated.set(r.id, r));
-  return rows;
 }
 
 export function recentFor(
-  state: MarketplaceState,
+  view: MarketplaceView,
   filters: MarketFilters | null,
   days = 3,
   demo = false,
   code?: RegionCoder,
 ): SettlementRow[] {
-  if (!filters) return state.recentRows;
+  if (!filters) return view.recentRows;
   const cutoff = Date.now() - Number(days) * 86400000;
-  const actual = state.recentRows.filter(
+  const actual = view.recentRows.filter(
     (r) =>
       !r.external &&
       r.model === filters.model &&
@@ -400,7 +377,7 @@ export function recentFor(
       Date.parse(String(r.settledAt)) <= Date.now(),
   );
   if (actual.length || demo) return actual;
-  return state.referenceCatalog.recent.filter(
+  return view.referenceCatalog.recent.filter(
     (r) =>
       r.model === filters.model &&
       (!filters.region ||
@@ -409,14 +386,20 @@ export function recentFor(
   ) as SettlementRow[];
 }
 
-/** Finds a market row by id across shown rows, the public market and saved/cart supply items. */
+/** Finds a market row by id across the public market, matches, references, settlements and saved/cart supply items. */
 export function findRow(
-  state: MarketplaceState,
+  view: MarketplaceView,
   id: string | null | undefined,
   extra: { id: string; side?: string; kind?: string; originSupply?: unknown }[] = [],
 ): MarketRow | null {
   if (!id) return null;
-  const current = state.generated.get(id) || getPublic(state.market, id);
+  const current =
+    getPublic(view.market, id) ||
+    view.bestRows.find((r) => r.id === id) ||
+    view.referenceCatalog.supplies.find((r) => r.id === id) ||
+    view.referenceCatalog.rfqs.find((r) => r.id === id) ||
+    (view.referenceCatalog.recent.find((r) => r.id === id) as MarketRow | undefined) ||
+    (view.recentRows.find((r) => r.id === id) as unknown as MarketRow | undefined);
   if (current) return current;
   const saved = extra.find(
     (r) =>
@@ -431,20 +414,4 @@ export function findRow(
   return (saved as MarketRow | undefined) || null;
 }
 
-/* ---------- Notifications ---------- */
-
-/** Merge marketplace and billing notifications owned by the signed-in account, newest first. */
-export function mergeNotifications(
-  ownerId: string | undefined,
-  marketplaceRows: WorkspaceNotification[],
-  billingRows: WorkspaceNotification[],
-): WorkspaceNotification[] {
-  const rows = new Map<string, WorkspaceNotification>();
-  for (const row of [...marketplaceRows, ...billingRows])
-    if (ownerId && row?.ownerId === ownerId && typeof row.id === 'string') rows.set(row.id, row);
-  return [...rows.values()].sort(
-    (a, b) =>
-      (Date.parse(String(b.created || b.createdAt)) || 0) -
-      (Date.parse(String(a.created || a.createdAt)) || 0),
-  );
-}
+export { mergeNotifications } from '@/terminal-kit';

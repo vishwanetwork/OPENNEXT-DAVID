@@ -1,24 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
-import { useApp } from '@/components/providers/app-context';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
-import { refreshBillingAccount } from '../account';
+import { useSessionStore } from '@/lib/session-store';
+import { useRefreshBillingAccount, useTerminal, useWorkspaceStore } from '@/terminal-kit';
 import { billingApi } from '../api';
 import { usd } from '../analytics';
+import { useOwnTopups, usePaymentIdentity } from '../hooks';
 import {
   METHODS,
   PRESETS,
-  canReturn,
   hasPendingTopup,
-  ownRequests,
-  paymentIdentity,
-  purchaseReference,
-  requestFor,
-  resumePurchase,
   safeCheckoutUrl,
   usePaymentStore,
   validAmount,
@@ -62,7 +55,8 @@ export function PaymentAmount({
 }) {
   const { openModal, closeModal } = useTerminal();
   const toast = useToast();
-  const { demo } = useApp();
+  const owner = usePaymentIdentity();
+  const { purchaseReference } = useOwnTopups();
   const draft = usePaymentStore((s) => s.draft);
   const setDraft = usePaymentStore((s) => s.setDraft);
   const amount = Number(draft?.amount) || 100;
@@ -85,7 +79,7 @@ export function PaymentAmount({
       amount: Math.round(value * 100) / 100,
       orderId: orderId || null,
       purchaseReference: linked && linked === purchaseReference() ? linked : '',
-      owner: paymentIdentity(undefined, demo),
+      owner,
       idempotencyKey: crypto.randomUUID(),
     });
     openModal('payment-method');
@@ -157,7 +151,13 @@ export function PaymentMethod() {
   const { openModal } = useTerminal();
   const api = useApi();
   const toast = useToast();
-  const { demo } = useApp();
+  const owner = usePaymentIdentity();
+  const ownerRef = useRef(owner);
+  useLayoutEffect(() => {
+    ownerRef.current = owner;
+  }, [owner]);
+  const userId = useSessionStore((s) => s.user?.id);
+  const refreshBillingAccount = useRefreshBillingAccount();
   const draft = usePaymentStore((s) => s.draft);
   const update = usePaymentStore((s) => s.update);
   const [error, setError] = useState('');
@@ -183,7 +183,6 @@ export function PaymentMethod() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const method = String(new FormData(event.currentTarget).get('method') || '');
-    const owner = paymentIdentity(undefined, demo);
     const current = usePaymentStore.getState().draft;
     if (!current || !owner || current.owner !== owner || !METHODS.some(([m]) => m === method))
       return toast('Choose an amount and payment method in your signed-in account.');
@@ -196,7 +195,7 @@ export function PaymentMethod() {
     setBusy(true);
     setError('');
     const stillCurrent = () =>
-      paymentIdentity(undefined, demo) === owner &&
+      ownerRef.current === owner &&
       usePaymentStore.getState().draft?.idempotencyKey === current.idempotencyKey &&
       mounted.current;
     try {
@@ -209,15 +208,11 @@ export function PaymentMethod() {
       });
       if (!stillCurrent()) return;
       const checked = { ...current, method };
-      if (!validRequest(result.request, checked))
+      if (!validRequest(result.request, checked, userId))
         throw new Error(
           'The top-up request was not confirmed. Check your notifications before trying again.',
         );
       const request = result.request;
-      const S = useWorkspaceStore.getState();
-      S.patch({
-        topupRequests: [request, ...ownRequests().filter((row) => row.id !== request.id)],
-      });
       update({ requestId: request.id });
       openModal('payment-topup-status', { id: request.id });
       refreshBillingAccount().catch(() => {});
@@ -274,9 +269,9 @@ export function PaymentMethod() {
 export function TopupStatus({ id }: { id?: string }) {
   const { closeModal } = useTerminal();
   const toast = useToast();
-  const topups = useWorkspaceStore((s) => s.topupRequests);
-  void topups;
-  const request = requestFor(id);
+  const refreshBillingAccount = useRefreshBillingAccount();
+  const topups = useOwnTopups();
+  const request = topups.find(id);
   const [error, setError] = useState('');
   const refresh = () =>
     refreshBillingAccount().catch((e: Error) => {
@@ -284,15 +279,16 @@ export function TopupStatus({ id }: { id?: string }) {
       toast(e.message);
     });
   const returnToPurchase = async () => {
-    const reference = purchaseReference();
-    if (!canReturn(request))
+    const reference = topups.purchaseReference();
+    if (!topups.canReturn(request))
       return toast('This top-up is not linked to an approved purchase return.');
     try {
       const account = await refreshBillingAccount();
-      if (!account || purchaseReference() !== reference) return;
-      if (!canReturn(requestFor(id)))
+      if (!account || topups.purchaseReference() !== reference) return;
+      const confirmed = account.requests.find((row) => row.id === id);
+      if (!topups.canReturn(confirmed))
         throw new Error('This top-up has not been confirmed for the current purchase.');
-      resumePurchase();
+      topups.resumePurchase();
     } catch (e) {
       toast((e as Error).message);
     }
@@ -336,7 +332,7 @@ export function TopupStatus({ id }: { id?: string }) {
         {error}
       </div>
       <div className="modal-footer">
-        {canReturn(request) ? (
+        {topups.canReturn(request) ? (
           <Btn act="payment-return-purchase" id={request.id} onClick={returnToPurchase}>
             Back to purchase
           </Btn>
@@ -349,8 +345,7 @@ export function TopupStatus({ id }: { id?: string }) {
   );
 }
 TopupStatus.Title = function TopupStatusTitle({ id }: { id?: string }) {
-  useWorkspaceStore((s) => s.topupRequests);
-  const request = requestFor(id);
+  const request = useOwnTopups().find(id);
   return (
     <>
       {!request
@@ -399,26 +394,29 @@ export function PaymentProvider() {
 
 /** Polls the credit account every 10 s while a top-up is pending, and on focus / visibility. */
 export function useTopupPolling() {
-  const { demo } = useApp();
-  const topups = useWorkspaceStore((s) => s.topupRequests);
+  const owner = usePaymentIdentity();
+  const { requests } = useOwnTopups();
+  const refreshBillingAccount = useRefreshBillingAccount();
   const modalType = useWorkspaceStore((s) => s.modal?.type);
+  const pending = hasPendingTopup(requests);
   useEffect(() => {
     const quiet = () => {
-      if (
-        !paymentIdentity(undefined, demo) ||
-        document.hidden ||
-        (!hasPendingTopup() && modalType !== 'payment-topup-status')
-      )
-        return;
+      if (!owner || document.hidden || (!pending && modalType !== 'payment-topup-status')) return;
       refreshBillingAccount().catch(() => {});
     };
     window.addEventListener('focus', quiet);
     document.addEventListener('visibilitychange', quiet);
-    const timer = hasPendingTopup() ? setInterval(quiet, 10000) : null;
+    const timer = pending ? setInterval(quiet, 10000) : null;
     return () => {
       window.removeEventListener('focus', quiet);
       document.removeEventListener('visibilitychange', quiet);
       if (timer) clearInterval(timer);
     };
-  }, [demo, topups, modalType]);
+  }, [owner, pending, modalType, refreshBillingAccount]);
+}
+
+/** Headless component mounted by the composition root: keeps pending top-ups polling. */
+export function BillingPolling() {
+  useTopupPolling();
+  return null;
 }

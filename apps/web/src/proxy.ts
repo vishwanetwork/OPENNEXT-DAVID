@@ -1,12 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { normalizeHosts, resolveRequest } from '@/lib/apps';
-
-export const APP_HEADERS = {
-  app: 'x-on-app',
-  base: 'x-on-base',
-  demo: 'x-on-demo',
-  host: 'x-on-host',
-} as const;
+import { APP_HEADERS, normalizeHosts, resolveRequest } from '@/lib/apps';
 
 /**
  * Maps the incoming host + path to one of the three applications (see src/lib/apps.ts),

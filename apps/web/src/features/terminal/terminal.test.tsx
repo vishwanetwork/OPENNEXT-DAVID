@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
-import { jsonResponse, renderTerminal, signIn } from '@/test/terminal-utils';
+import { jsonResponse, renderTerminal, signIn } from '@/test/render';
 import { useSessionStore } from '@/lib/session-store';
+import { initialWorkspace, useWorkspaceStore } from '@/terminal-kit';
 import { TerminalPage } from './TerminalPage';
-import { initialWorkspace, useWorkspaceStore } from './store';
 import { HelpPage } from './components/HelpPage';
 import { ModelsPage } from './components/ModelsPage';
 import { CollectionPage } from './components/CollectionPage';
 import { TerminalHeader } from './components/TerminalHeader';
 import { MarketPage } from './components/MarketPage';
-import { TerminalModal } from './components/TerminalModal';
+import { TerminalModal, terminalModals } from './components/modals';
 
 beforeEach(() => {
   useSessionStore.setState({ status: 'booting', user: null });
@@ -149,6 +149,7 @@ describe('terminal pages', () => {
         <MarketPage />
         <TerminalModal />
       </>,
+      { slots: { modals: terminalModals } },
     );
     expect(screen.getByText('Switch Market')).toBeInTheDocument();
     expect(await screen.findByText('AWS adds capacity')).toBeInTheDocument();

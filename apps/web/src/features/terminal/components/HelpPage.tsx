@@ -1,4 +1,4 @@
-import { PageHeading } from './ui';
+import { PageHeading } from '@/terminal-kit';
 
 const TOPICS: [string, string][] = [
   [

@@ -1,4 +1,4 @@
-import { BillingPage } from '@/features/console/pages/billing';
+import { ConsoleBillingPage } from '@/features/console';
 export default function Page() {
-  return <BillingPage />;
+  return <ConsoleBillingPage />;
 }

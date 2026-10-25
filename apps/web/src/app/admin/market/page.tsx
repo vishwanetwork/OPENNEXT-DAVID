@@ -1,4 +1,4 @@
-import { MarketPage } from '@/features/console/pages/market';
+import { ConsoleMarketPage } from '@/features/console';
 export default function Page() {
-  return <MarketPage />;
+  return <ConsoleMarketPage />;
 }

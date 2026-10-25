@@ -3,7 +3,7 @@
  * Records come from the verified workspace (`/api/marketplace/me`); ownership is established
  * by `ownerId` on the server record, never by role alone.
  */
-import type { Record_ } from '@/features/terminal/store';
+type Record_ = Record<string, unknown>;
 
 export const QUOTE_MARKER = 'OpenNEXT Terminal quote request';
 export const NOTIFICATION_PAGE = 20;

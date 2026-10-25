@@ -1,11 +1,7 @@
 'use client';
 
 import { type FormEvent } from 'react';
-import {
-  registerTerminalModal,
-  type ModalRender,
-} from '@/features/terminal/components/TerminalModal';
-import type { ModalState } from '@/features/terminal/store';
+import { ModalFrame, type ModalComponent, type ModalComponents } from '@/terminal-kit';
 import { usd, type SpotRow } from '../inventory';
 import { CHECKOUT_MODALS, totalsView, type CheckoutDraft } from '../checkout';
 import { useSpotCheckout } from '../hooks';
@@ -297,26 +293,40 @@ function PendingTitle({ fallback }: { fallback: string }) {
   return <>{checkout.pending() ? fallback : 'Purchase unavailable'}</>;
 }
 
-export function spotCheckoutModal(modal: ModalState): ModalRender | null {
-  if (!(CHECKOUT_MODALS as readonly string[]).includes(modal.type)) return null;
-  switch (modal.type) {
-    case 'spot-review':
-      return { title: <PendingTitle fallback="Review Spot purchase" />, body: <ReviewBody /> };
-    case 'spot-payment-choice':
-      return { title: <PendingTitle fallback="Choose payment" />, body: <PaymentChoiceBody /> };
-    case 'spot-credit-confirm':
-      return {
-        title: <PendingTitle fallback="Confirm Credit payment" />,
-        body: <CreditConfirmBody />,
-      };
-    default:
-      return { title: <PendingTitle fallback="Purchase confirmed" />, body: <CompleteBody /> };
+declare module '@/terminal-kit/modal' {
+  interface TerminalModalMap {
+    'spot-review': Record<string, never>;
+    'spot-payment-choice': Record<string, never>;
+    'spot-credit-confirm': Record<string, never>;
+    'spot-complete': Record<string, never>;
   }
 }
 
-let registered = false;
-export function registerSpotCheckoutModals() {
-  if (registered) return;
-  registered = true;
-  registerTerminalModal(spotCheckoutModal);
-}
+const ReviewModal: ModalComponent<'spot-review'> = ({ close }) => (
+  <ModalFrame title={<PendingTitle fallback="Review Spot purchase" />} close={close}>
+    <ReviewBody />
+  </ModalFrame>
+);
+const PaymentChoiceModal: ModalComponent<'spot-payment-choice'> = ({ close }) => (
+  <ModalFrame title={<PendingTitle fallback="Choose payment" />} close={close}>
+    <PaymentChoiceBody />
+  </ModalFrame>
+);
+const CreditConfirmModal: ModalComponent<'spot-credit-confirm'> = ({ close }) => (
+  <ModalFrame title={<PendingTitle fallback="Confirm Credit payment" />} close={close}>
+    <CreditConfirmBody />
+  </ModalFrame>
+);
+const CompleteModal: ModalComponent<'spot-complete'> = ({ close }) => (
+  <ModalFrame title={<PendingTitle fallback="Purchase confirmed" />} close={close}>
+    <CompleteBody />
+  </ModalFrame>
+);
+
+/** Spot checkout dialogs, keyed by type for the composition root. */
+export const spotCheckoutModals: ModalComponents = {
+  'spot-review': ReviewModal,
+  'spot-payment-choice': PaymentChoiceModal,
+  'spot-credit-confirm': CreditConfirmModal,
+  'spot-complete': CompleteModal,
+};

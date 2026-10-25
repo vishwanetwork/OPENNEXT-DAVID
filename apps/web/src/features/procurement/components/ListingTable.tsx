@@ -2,11 +2,10 @@
 
 import type { MarketRow } from '@opennext/contracts';
 import { useRegions, regionCode } from '@/features/market';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useIsDemo, useTerminal, useWorkspaceStore } from '@/terminal-kit';
 import { FEE_LABEL } from '../fees';
-import { marketRows, useMarketplaceStore, type MarketSide } from '../exchange';
-import { isDemo } from '../workspace';
+import { marketRows, type MarketSide } from '../exchange';
+import { useMarketplaceView } from '../market-view';
 import { useOpportunity } from './opportunity';
 import {
   PBtn,
@@ -20,14 +19,19 @@ import {
 /** Supply & Demand listing table on the market page (legacy `listingTable`). */
 export function ListingTable() {
   const { openModal } = useTerminal();
-  const { model, region, count, term, role } = useWorkspaceStore();
+  const model = useWorkspaceStore((s) => s.model);
+  const region = useWorkspaceStore((s) => s.region);
+  const count = useWorkspaceStore((s) => s.count);
+  const term = useWorkspaceStore((s) => s.term);
+  const role = useWorkspaceStore((s) => s.role);
   const regions = useRegions();
   const code = (value: string) => regionCode(regions, value);
-  const market = useMarketplaceStore();
+  const market = useMarketplaceView();
+  const demo = useIsDemo();
   const { open: openOpportunity, inquire } = useOpportunity();
   const filters = { model, region, count, term, role };
   const sides: [MarketSide, string][] =
-    role === 'Buyer'
+    role === 'buyer'
       ? [
           ['supply', 'Supply'],
           ['demand', 'RFQs'],
@@ -37,7 +41,7 @@ export function ListingTable() {
           ['supply', 'Supply'],
         ];
   const bySide = Object.fromEntries(
-    sides.map(([side]) => [side, marketRows(market, filters, side, isDemo(), code)]),
+    sides.map(([side]) => [side, marketRows(market, filters, side, demo, code)]),
   ) as Record<MarketSide, MarketRow[]>;
   const allRows = sides.flatMap(([side]) => bySide[side]);
   const hasReference = allRows.some((r) => r.referenceOnly);
@@ -57,7 +61,7 @@ export function ListingTable() {
       {sides.map(([side, label]) => {
         const rows = bySide[side];
         const supply = side === 'supply';
-        const canAct = supply ? role === 'Buyer' : role === 'Seller';
+        const canAct = supply ? role === 'buyer' : role === 'seller';
         const prices = rows.filter((r) => r.price != null).map((r) => Number(r.price));
         const best = prices.length > 1 && new Set(prices).size > 1 ? Math.min(...prices) : null;
         return (
@@ -71,7 +75,7 @@ export function ListingTable() {
                     <th>Country / region</th>
                     <th>$/GPU-hour</th>
                     <th>Quantity / term</th>
-                    <th>{role === 'Buyer' ? 'Bidding Parties' : 'Capacity'}</th>
+                    <th>{role === 'buyer' ? 'Bidding Parties' : 'Capacity'}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -98,7 +102,7 @@ export function ListingTable() {
                           <small className="proc-sub">{terms}</small>
                         </td>
                         <td>
-                          {role === 'Buyer'
+                          {role === 'buyer'
                             ? r.referenceOnly || r.external
                               ? '—'
                               : Number(r.biddingParties || 0)

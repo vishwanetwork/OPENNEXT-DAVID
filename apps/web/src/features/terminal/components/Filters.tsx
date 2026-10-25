@@ -7,11 +7,10 @@ import {
   PRICE_METRICS,
   type PriceMetric,
   type Region,
-} from '@/features/market/catalog';
-import { useRegions } from '@/features/market/hooks';
+  useRegions,
+} from '@/features/market';
 import { useToast } from '@/components/ui/toast';
-import { useTerminal } from '../context';
-import { useWorkspaceStore } from '../store';
+import { useInvalidateWorkspace, useTerminal, useWorkspaceStore } from '@/terminal-kit';
 
 type FilterType = 'model' | 'region' | 'priceMetric' | 'term' | 'count';
 
@@ -292,6 +291,7 @@ function FilterMenu({
 export function Filters({ onRefresh }: { onRefresh: () => void }) {
   const regions = useRegions();
   const state = useWorkspaceStore();
+  const invalidate = useInvalidateWorkspace();
   const wrap = useRef<HTMLElement>(null);
   const menu = state.menu;
   const filterType = (['model', 'region', 'priceMetric', 'term', 'count'] as FilterType[]).includes(
@@ -376,8 +376,7 @@ export function Filters({ onRefresh }: { onRefresh: () => void }) {
                 regions={regions}
                 onSelect={(v) => {
                   state.setFilter(type, v);
-                  if (type === 'model' || type === 'region')
-                    void import('../context').then((m) => m.refreshWorkspace());
+                  if (type === 'model' || type === 'region') void invalidate();
                 }}
               />
             )

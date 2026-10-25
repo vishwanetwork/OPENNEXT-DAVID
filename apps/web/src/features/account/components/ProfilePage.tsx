@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
-import { useOpenModal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { roleLabel, useOpenModal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { initialsOf, profileIdentity, verificationFor } from '../ssh-keys';
 import { useAccountRef } from '../hooks';
 import { AccountIcons } from './icons';
@@ -16,11 +15,11 @@ export function ProfilePage() {
   const user = useSessionStore((s) => s.user);
   const account = useAccountRef();
   const role = useWorkspaceStore((s) => s.role);
-  const review = useWorkspaceStore((s) => s.review);
+  const review = useWorkspaceData().review;
   const openModal = useOpenModal();
   const { href } = useApp();
   const identity = profileIdentity(user as Record<string, unknown> | null, account);
-  const check = verificationFor(role, review?.status);
+  const check = verificationFor(roleLabel(role), review?.status);
   const initials = initialsOf(identity.name);
   const rows: [string, string][] = [
     ['Name', identity.name],
@@ -60,7 +59,7 @@ export function ProfilePage() {
             type="button"
             className={`onx-account-verify ${check.kind}`}
             data-act="account-verification"
-            onClick={() => openModal(role === 'Seller' ? 'review' : 'account-verification')}
+            onClick={() => openModal(role === 'seller' ? 'review' : 'account-verification')}
           >
             <AccountIcons.shield />
             <span>{check.label}</span>

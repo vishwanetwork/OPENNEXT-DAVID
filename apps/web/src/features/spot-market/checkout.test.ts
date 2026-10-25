@@ -83,7 +83,7 @@ function setup({
   let inventory = normalizeInjected(rows);
   const ctx: Env['ctx'] = {
     balance: 100,
-    role: 'Buyer',
+    role: 'buyer',
     userId: 'buyer-one',
     demo,
     modal: null,

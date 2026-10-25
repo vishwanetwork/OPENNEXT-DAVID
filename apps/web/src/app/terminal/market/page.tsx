@@ -1,5 +1,5 @@
-import { MarketRoute } from '@/features/spot-market/components/MarketRoute';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { TerminalPage } from '@/features/terminal';
+import { MarketRoute } from './market-route';
 
 export default function Page() {
   return (

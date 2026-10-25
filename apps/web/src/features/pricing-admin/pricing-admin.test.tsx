@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import type { PricingProvider } from '@opennext/contracts';
-import { renderConsole, mockFetch, json } from '@/features/console/test-utils';
+import { renderConsole, mockFetch, json } from '@/test/render';
 import { filterProviders, providerMetrics, providerState } from './api';
 import { PricingAdminPage } from './pricing-admin-page';
 

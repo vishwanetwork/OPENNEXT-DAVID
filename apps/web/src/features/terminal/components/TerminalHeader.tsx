@@ -1,29 +1,30 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { Brand } from '@/components/ui/brand';
 import { money } from '@/lib/format';
-import { useTerminal } from '../context';
-import { useWorkspaceStore } from '../store';
-import type { TerminalRoute } from '../routing';
-
-/** Slot for the quote-preview notification bell (another feature registers it). */
-let bellSlot: (() => ReactNode) | null = null;
-export function registerHeaderBell(render: (() => ReactNode) | null) {
-  bellSlot = render;
-}
+import {
+  roleLabel,
+  useBalance,
+  useTerminal,
+  useTerminalSlots,
+  useWorkspaceStore,
+  type Role,
+  type TerminalRoute,
+} from '@/terminal-kit';
 
 export interface TerminalHeaderProps {
   onSignOut: () => void;
-  onRole: (role: 'Buyer' | 'Seller') => void;
+  onRole: (role: Role) => void;
   onContact: () => void;
 }
 
 export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderProps) {
   const { go, route, home } = useTerminal();
+  const { headerBell } = useTerminalSlots();
   const role = useWorkspaceStore((s) => s.role);
   const identity = useWorkspaceStore((s) => s.identity);
-  const balance = useWorkspaceStore((s) => s.balance);
+  const balance = useBalance();
   const userOpen = useWorkspaceStore((s) => s.userOpen);
   const setUserOpen = useWorkspaceStore((s) => s.setUserOpen);
   const savedCount = useWorkspaceStore((s) => s.saved.length);
@@ -39,10 +40,11 @@ export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderP
     return () => document.removeEventListener('click', onClick);
   }, [userOpen, setUserOpen]);
 
+  const seller = role === 'seller';
   const items: [TerminalRoute, string][] = [
-    ['market', role === 'Seller' ? 'Market Insight' : 'GPU Market'],
-    ...(role === 'Buyer' ? ([['insight', 'Market Insight']] as [TerminalRoute, string][]) : []),
-    [role === 'Seller' ? 'supply' : 'rfqs', role === 'Seller' ? 'Supply' : 'RFQs & Quote'],
+    ['market', seller ? 'Market Insight' : 'GPU Market'],
+    ...(seller ? [] : ([['insight', 'Market Insight']] as [TerminalRoute, string][])),
+    [seller ? 'supply' : 'rfqs', seller ? 'Supply' : 'RFQs & Quote'],
     ['instances', 'Instances'],
     ['billing', 'Billing'],
   ];
@@ -55,6 +57,11 @@ export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderP
     setUserOpen(false);
     go(target);
   };
+  const roleTabs: [Role | 'broker', string][] = [
+    ['buyer', 'Buyer'],
+    ['seller', 'Seller'],
+    ['broker', 'Broker'],
+  ];
   return (
     <header ref={header} className="terminal-head preview-terminal-head">
       <a
@@ -69,8 +76,11 @@ export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderP
       >
         <Brand />
       </a>
-      <span className="preview-workspace-role" aria-label={`Current workspace role: ${role}`}>
-        {role.toUpperCase()}
+      <span
+        className="preview-workspace-role"
+        aria-label={`Current workspace role: ${roleLabel(role)}`}
+      >
+        {roleLabel(role).toUpperCase()}
       </span>
       <nav className="preview-terminal-nav" aria-label="Terminal navigation">
         {items.map(([target, label]) => (
@@ -86,9 +96,9 @@ export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderP
         ))}
       </nav>
       <button type="button" className="credit" data-nav="billing" onClick={() => nav('billing')}>
-        Credit <strong>{money(balance)}</strong>
+        Credit <strong>{money(balance.available)}</strong>
       </button>
-      {bellSlot?.()}
+      {headerBell}
       <button
         type="button"
         className="user-button"
@@ -108,18 +118,18 @@ export function TerminalHeader({ onSignOut, onRole, onContact }: TerminalHeaderP
           </div>
           <span className="eyebrow muted">Workspace role</span>
           <div className="role-tabs">
-            {(['Buyer', 'Seller', 'Broker'] as const).map((r) => (
+            {roleTabs.map(([value, label]) => (
               <button
-                key={r}
+                key={value}
                 type="button"
-                className={`role-tab ${role === r ? 'active' : ''}`}
+                className={`role-tab ${role === value ? 'active' : ''}`}
                 data-act="role"
-                data-value={r}
-                disabled={r === 'Broker'}
-                title={r === 'Broker' ? 'Coming soon' : undefined}
-                onClick={() => r !== 'Broker' && onRole(r)}
+                data-value={label}
+                disabled={value === 'broker'}
+                title={value === 'broker' ? 'Coming soon' : undefined}
+                onClick={() => value !== 'broker' && onRole(value)}
               >
-                {r}
+                {label}
               </button>
             ))}
           </div>

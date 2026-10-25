@@ -1,8 +1,7 @@
 'use client';
 
 import type { Instance } from '@opennext/contracts';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { lifecycle, moneyOrNa, stampUtcFull, telemetry } from '../lifecycle';
 import { example, instanceView } from '../preview';
 import { IBtn, SshLibrary, StatusTagLive, usePreviewScope, useTick } from './common';
@@ -196,7 +195,7 @@ function InstanceCard({ original }: { original: Instance }) {
 export function InstancesPage() {
   const { go } = useTerminal();
   const role = useWorkspaceStore((s) => s.role);
-  const items = useWorkspaceStore((s) => s.instances) as Instance[];
+  const items = useWorkspaceData().instances as Instance[];
   useTick();
   return (
     <>
@@ -205,12 +204,12 @@ export function InstancesPage() {
           <div>
             <h1>Instances</h1>
             <p>
-              {role === 'Seller'
+              {role === 'seller'
                 ? 'Your verified supplied resources and delivery status.'
                 : 'Your purchased GPU capacity, access and utilization.'}
             </p>
           </div>
-          {role === 'Buyer' ? (
+          {role === 'buyer' ? (
             <IBtn act="navigate-market" onClick={() => go('market')}>
               Find capacity
             </IBtn>
@@ -227,7 +226,7 @@ export function InstancesPage() {
             <div className="instance-empty-summary">
               <strong>No instances yet</strong>
               <p>
-                {role === 'Seller'
+                {role === 'seller'
                   ? 'Your supplied GPU resources will appear here after verification and Agent installation.'
                   : 'Your GPU instances will appear here after a purchase is delivered.'}
               </p>

@@ -5,15 +5,13 @@ import type { OwnedRfq, OwnedSupply, RfqRequest, SupplyRequest } from '@opennext
 import { money } from '@/lib/format';
 import { useToast } from '@/components/ui/toast';
 import { ALL_REGIONS, offersFor, usePrices, useRegions } from '@/features/market';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useInvalidateWorkspace, useIsDemo, useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { procurementApi } from '../api';
 import { countryList } from './../countries';
 import { FEE_LABEL, maximumQuotePrice } from '../fees';
 import { deliveryMethod, isHardware, isModel, kindOf, uid } from '../exchange';
 import { useRunServer, useSubmissionId } from '../hooks';
-import { isDemo, refreshMarketplace } from '../workspace';
-import { findMarketRow } from './opportunity';
+import { useFindMarketRow } from '../market-view';
 import { PBtn, SellerEstimate, isoInput, receiptFor } from './shared';
 
 /* ---------- Primitive fields ---------- */
@@ -95,6 +93,8 @@ interface SubmitOptions {
 export function useSubmitRecord() {
   const { api, id: submissionId } = useSubmissionId();
   const toast = useToast();
+  const invalidate = useInvalidateWorkspace();
+  const demo = useIsDemo();
   const [submitting, setSubmitting] = useState(false);
   const submit = async ({ recordKind, id, data }: SubmitOptions) => {
     if (submitting) return;
@@ -147,13 +147,13 @@ export function useSubmitRecord() {
         );
       saved = { id: result.id };
       const modal = {
-        type: 'proc-submission',
+        type: 'proc-submission' as const,
         id: result.id,
         recordKind,
         receipt: receiptFor(result),
         recordStatus: result.status || 'Saved',
         warnings,
-        demo: isDemo(),
+        demo,
       };
       S.patch({ modal });
       if (recordKind === 'supply') {
@@ -167,7 +167,7 @@ export function useSubmitRecord() {
         }
       }
       try {
-        await refreshMarketplace();
+        await invalidate();
       } catch {
         warnings.push(
           'Your submission is saved, but the workspace could not refresh. Keep this reference and refresh your records. Do not submit it again.',
@@ -210,7 +210,8 @@ function BudgetRange({
 }) {
   const prices = usePrices();
   const regions = useRegions();
-  const term = String(r.term || useWorkspaceStore.getState().term);
+  const storedTerm = useWorkspaceStore((s) => s.term);
+  const term = String(r.term || storedTerm);
   const rates = useMemo(
     () =>
       offersFor(prices.data?.records || [], { model, term, region: ALL_REGIONS }, regions)
@@ -272,6 +273,7 @@ export function RfqForm({
   const S = useWorkspaceStore();
   const { closeModal } = useTerminal();
   const { submit, submitting } = useSubmitRecord();
+  const findMarketRow = useFindMarketRow();
   const model = isModel(r);
   const hardware = isHardware(r);
   const chosen = findMarketRow(r.originSupply as string | undefined);
@@ -339,15 +341,6 @@ export function RfqForm({
             defaultValue={r.title || ''}
             required
             maxLength={140}
-          />
-        ) : null}
-        {S.role === 'Broker' ? (
-          <Input
-            label="Client / mandate reference"
-            name="project"
-            defaultValue={r.project || ''}
-            required
-            maxLength={120}
           />
         ) : null}
         <Input
@@ -607,15 +600,6 @@ export function RfqForm({
             ))}
           </select>
         </div>
-        {S.role === 'Broker' ? (
-          <Input
-            label="Represented client"
-            name="client"
-            defaultValue={r.client || ''}
-            required
-            maxLength={120}
-          />
-        ) : null}
         <div className="full">
           <label className="form-label">
             {hardware
@@ -640,12 +624,6 @@ export function RfqForm({
         />
         Share the awarded price with participating suppliers after the RFQ closes.
       </label>
-      {S.role === 'Broker' ? (
-        <label className="row form-note">
-          <input type="checkbox" name="mandateConfirmed" required />I am authorized to request
-          quotes for this client.
-        </label>
-      ) : null}
       <p className="form-note">
         No payment is taken. A supplier quote confirms the exact capacity, availability window and
         payable amount.
@@ -855,7 +833,9 @@ export function SupplyForm() {
 /* ---------- Seller response (quote) ---------- */
 
 export function ResponseForm({ req }: { req: OwnedRfq }) {
-  const listings = useWorkspaceStore((s) => s.listings) as OwnedSupply[];
+  const workspace = useWorkspaceData();
+  const listings = workspace.listings as OwnedSupply[];
+  const findMarketRow = useFindMarketRow();
   const { api } = useSubmissionId();
   const { run, busy } = useRunServer();
   const toast = useToast();
@@ -892,9 +872,7 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
         <PBtn
           data-act="new-supply"
           onClick={() =>
-            openModal(
-              useWorkspaceStore.getState().review.status === 'Approved' ? 'supply-form' : 'review',
-            )
+            openModal(workspace.review.status === 'Approved' ? 'supply-form' : 'review')
           }
         >
           List matching supply

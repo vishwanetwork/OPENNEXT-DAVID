@@ -1,0 +1,95 @@
+'use client';
+
+import { useMemo, useState, type ReactNode } from 'react';
+import type { SessionUser } from '@opennext/contracts';
+import {
+  EMPTY_SLOTS,
+  composeModals,
+  type TerminalSlots,
+} from '@/terminal-kit';
+import { TerminalShell, terminalModals } from '@/features/terminal';
+import {
+  ListingTable,
+  MatchesPanel,
+  ProcurementIntentResumer,
+  procurementModals,
+  useOpportunity,
+} from '@/features/procurement';
+import { BillingPolling, billingModals } from '@/features/billing';
+import { instanceModals } from '@/features/instances';
+import {
+  SpotCheckoutProvider,
+  spotCheckoutModals,
+  useSpotPurchaseContext,
+} from '@/features/spot-market';
+import { NotificationBell } from '@/features/quotes';
+import { SshKeyLibrary, accountModals } from '@/features/account';
+import { ContactDialog } from '@/features/site';
+
+/**
+ * Composition root of the Capacity Terminal. This is the only module that knows every
+ * feature: it decides which feature fills each shell slot, merges the modal maps and mounts
+ * the headless integrations. Features themselves only depend on `@/terminal-kit`.
+ */
+const MODALS = composeModals(
+  terminalModals,
+  procurementModals,
+  billingModals,
+  instanceModals,
+  spotCheckoutModals,
+  accountModals,
+);
+
+function useTerminalSlotsComposition(
+  openContact: TerminalSlots['openContact'],
+): TerminalSlots {
+  const { open: openOpportunity } = useOpportunity();
+  const purchaseContext = useSpotPurchaseContext();
+  return useMemo<TerminalSlots>(
+    () => ({
+      ...EMPTY_SLOTS,
+      headerBell: <NotificationBell />,
+      listingTable: () => <ListingTable />,
+      matchesPanel: (kind) => <MatchesPanel key={kind} kind={kind} />,
+      sshLibrary: (scope) => <SshKeyLibrary scope={scope} />,
+      modals: MODALS,
+      openContact,
+      openOpportunity,
+      // Backend adapters (account SSH keys, instance termination, Spot purchase) are connected
+      // here once the backend exposes them; until then features fail closed.
+      services: { purchaseContext },
+    }),
+    [openContact, openOpportunity, purchaseContext],
+  );
+}
+
+export function TerminalApp({
+  children,
+  initialUser,
+}: {
+  children: ReactNode;
+  initialUser?: SessionUser | null;
+}) {
+  const [contact, setContact] = useState<{ message?: string } | null>(null);
+  const openContact = useMemo<TerminalSlots['openContact']>(
+    () => (options) => setContact(options ?? {}),
+    [],
+  );
+  const useSlots = () => useTerminalSlotsComposition(openContact);
+  return (
+    <TerminalShell
+      initialUser={initialUser}
+      useSlots={useSlots}
+      providers={SpotCheckoutProvider}
+      integrations={
+        <>
+          <ProcurementIntentResumer />
+          <BillingPolling />
+        </>
+      }
+    >
+      {children}
+      {contact ? <ContactDialog message={contact.message} onClose={() => setContact(null)} /> : null}
+    </TerminalShell>
+  );
+}

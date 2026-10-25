@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { accountService, serviceConnected } from './service';
+import type { AccountService } from '@/terminal-kit';
 import {
   fingerprint,
   keyLabel,
@@ -50,6 +50,7 @@ export const libraryFor = (key: string): KeyLibraryState =>
   useKeyLibraries.getState().libraries[key] || empty();
 
 export interface KeyLibraryDeps {
+  service: () => AccountService | undefined;
   /** Current account; `null` means signed out. Re-read after every await (legacy `current()`). */
   account: () => AccountRef;
   storage: () => Pick<Storage, 'getItem' | 'setItem'>;
@@ -77,11 +78,12 @@ export async function loadKeys(deps: KeyLibraryDeps, { force = false } = {}): Pr
       let keys: SshKeyRecord[];
       if (account.demo) keys = await readDemoKeys(account, deps.storage(), deps.runtime);
       else {
-        if (!serviceConnected('listSshKeys')) throw new Error(UNCONFIGURED);
-        const result = await accountService()!.listSshKeys!();
+        const service = deps.service();
+        if (typeof service?.listSshKeys !== 'function') throw new Error(UNCONFIGURED);
+        const result = await service.listSshKeys();
         if (!Array.isArray(result?.keys) || result.keys.length > MAX_KEYS)
           throw new Error('The account service returned an invalid key list.');
-        keys = await Promise.all(result.keys.map((row) => normalizeKey(row, deps.runtime)));
+        keys = await Promise.all(result.keys.map((row: unknown) => normalizeKey(row, deps.runtime)));
       }
       if (deps.account().key === account.key) set({ keys });
     } catch (error) {
@@ -123,12 +125,14 @@ export async function changeKey(
   const current = () => deps.account().key === account.key && deps.account().available;
   if (operations.has(account.key)) return null;
   operations.add(account.key);
+  const service = deps.service();
+  const connected = (method: 'listSshKeys' | 'addSshKey' | 'removeSshKey') =>
+    typeof service?.[method] === 'function';
   try {
     if (!account.available) throw new Error('Sign in to manage your SSH keys.');
     if (
       !account.demo &&
-      (!serviceConnected('listSshKeys') ||
-        !serviceConnected(input.removing ? 'removeSshKey' : 'addSshKey'))
+      (!connected('listSshKeys') || !connected(input.removing ? 'removeSshKey' : 'addSshKey'))
     )
       throw new Error(UNCONFIGURED);
     await loadKeys(deps, { force: true });
@@ -148,7 +152,7 @@ export async function changeKey(
           deps.storage(),
         );
       else {
-        const result = await accountService()!.removeSshKey!({ id });
+        const result = await service!.removeSshKey!({ id });
         if (result?.confirmed !== true || result.id !== id)
           throw new Error('Removal was not confirmed by the account service.');
       }
@@ -178,7 +182,7 @@ export async function changeKey(
         };
         saveDemoKeys(account, [...state.keys, key], deps.storage());
       } else {
-        const result = await accountService()!.addSshKey!({ label, publicKey: parsed.publicKey });
+        const result = await service!.addSshKey!({ label, publicKey: parsed.publicKey });
         if (result?.confirmed !== true)
           throw new Error('The account service has not confirmed this key was saved.');
         key = await normalizeKey(result.key, deps.runtime);

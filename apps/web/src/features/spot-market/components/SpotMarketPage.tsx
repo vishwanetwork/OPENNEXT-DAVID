@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { LucideIcon } from '@/components/icons/lucide';
 import { useToast } from '@/components/ui/toast';
-import { useOpenModal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
-import { useOpenQuoteRequest } from '@/features/quotes/hooks';
+import { useOpenModal, useWorkspaceStore } from '@/terminal-kit';
+import { useOpenQuoteRequest } from '@/features/quotes';
 import {
   filteredRows,
   GROUPS,
@@ -55,7 +54,7 @@ export function SpotMarketPage() {
     },
   };
   const newRfq = () => {
-    if (role === 'Seller') return toast('Switch to Buyer to post an RFQ.');
+    if (role === 'seller') return toast('Switch to Buyer to post an RFQ.');
     openModal('rfq-form');
   };
   const count = selectedCount(ui);

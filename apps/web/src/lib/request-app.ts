@@ -1,7 +1,6 @@
 import 'server-only';
 import { headers } from 'next/headers';
-import type { AppKind } from './apps';
-import { APP_HEADERS } from '@/proxy';
+import { APP_HEADERS, type AppKind } from './apps';
 import { serverEnv } from './env';
 
 export interface RequestApp {

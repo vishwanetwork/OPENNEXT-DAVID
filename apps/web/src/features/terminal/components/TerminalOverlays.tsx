@@ -1,22 +1,23 @@
 'use client';
 
-import { useTerminal } from '../context';
-import { useWorkspaceStore } from '../store';
+import { useTerminal, useTerminalSlots, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { AgentCompanion, AgentDrawer, type AgentHint } from './AgentDrawer';
-import { TerminalModal } from './TerminalModal';
+import { TerminalModal } from './modals';
 
 /** Agent drawer, contextual companion and the active modal (legacy `renderOverlays()`). */
 export function TerminalOverlays() {
   const { openModal, route } = useTerminal();
+  const { openOpportunity } = useTerminalSlots();
   const state = useWorkspaceStore();
+  const review = useWorkspaceData().review;
   const onHintAction = (hint: AgentHint) => {
     if (hint.model !== state.model || hint.role !== state.role) return;
     if (hint.kind === 'match') {
-      opportunitySlot?.(hint.id || '', hint.side === 'demand' ? 'offer' : 'buy');
+      openOpportunity(hint.id || '', hint.side === 'demand' ? 'offer' : 'buy');
       return;
     }
-    if (state.role === 'Seller') {
-      if (state.review.status !== 'Approved') {
+    if (state.role === 'seller') {
+      if (review.status !== 'Approved') {
         state.patch({ afterReview: 'supply-form' });
         openModal('review');
       } else openModal('supply-form');
@@ -28,7 +29,7 @@ export function TerminalOverlays() {
         region: hint.region || state.region,
         count: state.count,
         term: state.term,
-        budget: Number.isFinite(hint.price as number) ? hint.price : undefined,
+        budget: Number.isFinite(hint.price as number) ? (hint.price as number) : undefined,
         notes:
           'Reference price range: ' +
           (Number.isFinite(hint.min as number) ? '$' + Number(hint.min).toFixed(2) : 'To confirm') +
@@ -46,13 +47,3 @@ export function TerminalOverlays() {
     </div>
   );
 }
-
-/** Procurement opportunity hook point (legacy `OpenNEXTProcurement.opportunity`). */
-let opportunitySlot: ((id: string, intent: 'buy' | 'offer') => void) | null = null;
-export function registerOpportunityOpener(
-  fn: ((id: string, intent: 'buy' | 'offer') => void) | null,
-) {
-  opportunitySlot = fn;
-}
-export const openOpportunity = (id: string, intent: 'buy' | 'offer') =>
-  opportunitySlot?.(id, intent);

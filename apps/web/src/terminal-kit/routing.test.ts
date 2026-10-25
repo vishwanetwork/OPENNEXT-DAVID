@@ -15,13 +15,13 @@ describe('terminal routing', () => {
     expect(routeTarget('billing')).toBe('billing');
   });
   it('keeps completed accounts on pages their verified role can use', () => {
-    expect(resolveTarget('supply', 'Buyer', true)).toBe('market');
-    expect(resolveTarget('supply', 'Buyer', false)).toBe('supply');
-    expect(resolveTarget('rfqs', 'Seller', true)).toBe('market');
-    expect(resolveTarget('mandates', 'Seller', true)).toBe('market');
-    expect(resolveTarget('instances', 'Seller', true)).toBe('instances');
-    expect(defaultRoute('Seller')).toBe('supply');
-    expect(defaultRoute('Buyer')).toBe('market');
+    expect(resolveTarget('supply', 'buyer', true)).toBe('market');
+    expect(resolveTarget('supply', 'buyer', false)).toBe('supply');
+    expect(resolveTarget('rfqs', 'seller', true)).toBe('market');
+    expect(resolveTarget('mandates', 'seller', true)).toBe('market');
+    expect(resolveTarget('instances', 'seller', true)).toBe('instances');
+    expect(defaultRoute('seller')).toBe('supply');
+    expect(defaultRoute('buyer')).toBe('market');
   });
   it('translates legacy hashes and paths', () => {
     expect(legacyHashToPath('#terminal/instances')).toBe('/instances');

@@ -1,7 +1,6 @@
 export { LandingPage } from './components/landing-page';
+export { ContactDialog } from './components/contact-dialog';
 export { COPY as LANDING_COPY } from './components/landing-sections';
-export { listModelQuotes, getModelQuote, MODEL_QUOTES, type ModelQuote } from './data/model-quotes';
-export { CATALOG_GROUPS, findCatalogItem, type CatalogItem } from './data/catalog';
 export {
   workspacePath,
   demoOpportunityPath,

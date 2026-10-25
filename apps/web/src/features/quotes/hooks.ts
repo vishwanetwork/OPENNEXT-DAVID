@@ -4,8 +4,13 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '@/components/providers/app-context';
 import { useToast } from '@/components/ui/toast';
 import { useSessionStore } from '@/lib/session-store';
-import { refreshWorkspace, useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import {
+  useInvalidateWorkspace,
+  useNotifications,
+  useTerminal,
+  useWorkspaceData,
+  useWorkspaceStore,
+} from '@/terminal-kit';
 import {
   accountRows,
   notices,
@@ -23,10 +28,12 @@ export function useQuoteNotifications() {
   const { demo } = useApp();
   const owner = ownerKey(user, demo);
   const store = useQuoteStore();
-  const rfqs = useWorkspaceStore((s) => s.rfqs);
-  const notifications = useWorkspaceStore((s) => s.notifications);
-  const orders = useWorkspaceStore((s) => s.orders);
+  const workspace = useWorkspaceData();
+  const rfqs = workspace.rfqs;
+  const orders = workspace.orders;
+  const notifications = useNotifications();
   const identityId = useWorkspaceStore((s) => s.identity.id);
+  const invalidate = useInvalidateWorkspace();
   const sync = store.sync;
   useEffect(() => {
     sync(owner);
@@ -60,7 +67,7 @@ export function useQuoteNotifications() {
     if (!force && Date.now() - state.lastLoaded < 15000) return;
     const job = (async () => {
       try {
-        await refreshWorkspace();
+        await invalidate();
         if (useQuoteStore.getState().owner === state.owner)
           useQuoteStore.getState().patch({ ready: true, error: '', lastLoaded: Date.now() });
       } catch (error) {
@@ -77,7 +84,7 @@ export function useQuoteNotifications() {
     })();
     state.patch({ pending: job });
     return job;
-  }, []);
+  }, [invalidate]);
   return { owner, rows, requests, ownedOrders, ownedRfqs, store, refresh };
 }
 

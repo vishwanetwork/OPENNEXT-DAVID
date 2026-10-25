@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
-import { APP_HEADERS } from '@/proxy';
+import { requestApp } from '@/lib/request-app';
 
 /** Legacy `#terminal/credentials` → instances. */
 export default async function Page() {
-  const base = (await headers()).get(APP_HEADERS.base) ?? '/terminal';
-  redirect((base || '') + '/instances');
+  const { base } = await requestApp('terminal');
+  redirect(base + '/instances');
 }

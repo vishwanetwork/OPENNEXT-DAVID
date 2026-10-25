@@ -1,5 +1,4 @@
-import { HelpPage } from '@/features/terminal/components/HelpPage';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { HelpPage, TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

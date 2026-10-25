@@ -1,5 +1,5 @@
 import type { CuratedRfq, MarketplaceListing, PublicMarketResponse } from '@opennext/contracts';
-import { CATALOG_GROUPS, MARKET_KINDS, type CatalogItem, type MarketKind } from '../data/catalog';
+import { CATALOG_GROUPS, MARKET_KINDS, type CatalogItem, type MarketKind } from '@/data/catalog';
 import type { ShowcaseLanes } from '../api';
 
 export type MarketSide = 'supply' | 'demand';

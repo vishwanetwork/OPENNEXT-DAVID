@@ -3,10 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MarketRow, SettlementRow } from '@opennext/contracts';
 import { useRegions, regionCode } from '@/features/market';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
-import { bestFor, marketStatus, recentFor, regionMatches, useMarketplaceStore } from '../exchange';
-import { isDemo } from '../workspace';
+import {
+  useInvalidateWorkspace,
+  useIsDemo,
+  useTerminal,
+  useWorkspaceData,
+  useWorkspaceStore,
+} from '@/terminal-kit';
+import { bestFor, marketStatus, recentFor, regionMatches } from '../exchange';
+import { useMarketplaceView } from '../market-view';
 import {
   FREE_SETTLEMENT_DAYS,
   SETTLEMENT_PERIODS,
@@ -23,9 +28,6 @@ import {
   externalQuantity,
   rowPrice,
 } from './shared';
-
-/** Shown settlement / reference rows so the settlement dialog can resolve them by id. */
-export const settlementRows = new Map<string, SettlementRow>();
 
 /** Continuous vertical cycling of the match cards; pauses on hover/focus, modal or hidden tab. */
 function useMatchScroll(active: boolean) {
@@ -108,7 +110,7 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
     if (act === 'proc-external-inquiry') inquire(r);
     else if (act === 'proc-opportunity')
       openOpportunity(r.id, r.side === 'demand' ? 'offer' : 'buy');
-    else openModal(act, { id: r.id });
+    else openModal(act as 'proc-listing' | 'proc-settlement', { id: r.id });
   };
   return (
     <article
@@ -160,13 +162,19 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
 /** Best Matches / Recent Settled panels (legacy `matches(c, kind)`). */
 export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
   const { openModal } = useTerminal();
-  const { model, region, count, term, role } = useWorkspaceStore();
+  const model = useWorkspaceStore((s) => s.model);
+  const region = useWorkspaceStore((s) => s.region);
+  const count = useWorkspaceStore((s) => s.count);
+  const term = useWorkspaceStore((s) => s.term);
+  const role = useWorkspaceStore((s) => s.role);
+  const reviewStatus = useWorkspaceData().review.status;
   const regions = useRegions();
   const code = (value: string) => regionCode(regions, value);
-  const market = useMarketplaceStore();
+  const market = useMarketplaceView();
+  const invalidate = useInvalidateWorkspace();
   const { settlementDays, setSettlementDays } = useProcurementUi();
   const status = marketStatus(market);
-  const demo = isDemo();
+  const demo = useIsDemo();
   const now = useNow();
   const filters = { model, region, count, term, role };
   let rows: Row[];
@@ -182,7 +190,6 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
           (Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) >= cutoff &&
             Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) <= now)),
     );
-    rows.forEach((r) => settlementRows.set(r.id, r as SettlementRow));
   }
   const hasReference = rows.some((r) => r.referenceOnly);
   const empty = kind === 'best' ? status.matchReason || 'No matches.' : 'No matches.';
@@ -211,9 +218,7 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
             className="icon-btn"
             data-act="proc-refresh"
             aria-label="Refresh matches"
-            onClick={() =>
-              void import('../workspace').then((m) => m.refreshMarketplace().catch(() => {}))
-            }
+            onClick={() => void invalidate().catch(() => {})}
           >
             ↻
           </button>
@@ -250,18 +255,18 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
               <strong>{empty}</strong>
               {kind === 'best' && !rows.length ? (
                 <PBtn
-                  data-act={role === 'Seller' ? 'new-supply' : 'new-rfq'}
+                  data-act={role === 'seller' ? 'new-supply' : 'new-rfq'}
                   onClick={() =>
                     openModal(
-                      role === 'Seller'
-                        ? useWorkspaceStore.getState().review.status === 'Approved'
+                      role === 'seller'
+                        ? reviewStatus === 'Approved'
                           ? 'supply-form'
                           : 'review'
                         : 'rfq-form',
                     )
                   }
                 >
-                  {role === 'Seller' ? 'List supply' : 'Post RFQ'}
+                  {role === 'seller' ? 'List supply' : 'Post RFQ'}
                 </PBtn>
               ) : null}
             </div>

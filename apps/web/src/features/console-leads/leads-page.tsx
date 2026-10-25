@@ -5,8 +5,7 @@ import { useState, type FormEvent } from 'react';
 import type { ContactLead } from '@opennext/contracts';
 import { ApiError } from '@/lib/api/client';
 import { useApi } from '@/components/providers/api-context';
-import { NativeDialog } from '@/features/console/components/native-dialog';
-import { AdminLoginForm, isAccessError } from '@/features/console/components/admin-access';
+import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
 import { LEAD_STATUSES, POLL_MS, filterLeads, leadTime, leadsApi } from './leads';
 import './console-leads.css';
 

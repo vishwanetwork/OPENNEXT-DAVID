@@ -1,17 +1,17 @@
 /**
  * Spot market feature: buyer GPU market listing (list/cards, filters, paging) and the
- * Credit purchase checkout (legacy OpenNEXT-spot-market-preview.js).
+ * Credit purchase checkout (legacy OpenNEXT-spot-market-preview.js). The composition root
+ * mounts <SpotCheckoutProvider>, `spotCheckoutModals` and `useSpotPurchaseContext()`.
  */
 export { SpotMarketPage } from './components/SpotMarketPage';
-export { spotCheckoutModal, registerSpotCheckoutModals } from './components/CheckoutModals';
+export { spotCheckoutModals } from './components/CheckoutModals';
 export {
+  SpotCheckoutProvider,
   usePublicMarket,
   useSpotInventory,
   useSpotCheckout,
-  registerSpotCheckoutService,
-  setCheckoutInventory,
+  useSpotPurchaseContext,
   regionCountry,
-  spotKeys,
 } from './hooks';
 export { useSpotMarketStore } from './store';
 export * from './inventory';

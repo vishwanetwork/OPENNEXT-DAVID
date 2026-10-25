@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import { renderTerminal, signIn, jsonResponse } from '@/test/terminal-utils';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { renderTerminal, signIn, jsonResponse } from '@/test/render';
+import { useWorkspaceStore } from '@/terminal-kit';
 import { useSpotMarketStore } from './store';
 import { SpotMarketPage } from './components/SpotMarketPage';
-import { SellerActivitiesPage } from '@/features/seller/components/SellerActivitiesPage';
-import { useSellerStore } from '@/features/seller/store';
-import { NotificationsPage } from '@/features/quotes/components/NotificationsPage';
-import { ProfilePage } from '@/features/account/components/ProfilePage';
-import { normalizeSettlement } from '@/features/seller/settlements';
+import { SpotCheckoutProvider } from './hooks';
+import { SellerActivitiesPage, normalizeSettlement, useSellerStore } from '@/features/seller';
+import { NotificationsPage } from '@/features/quotes';
+import { ProfilePage } from '@/features/account';
 
 vi.stubGlobal(
   'fetch',
@@ -36,7 +35,12 @@ describe('Spot market page', () => {
         onboardingCompleted: true,
         demo: true,
       } as never);
-    renderTerminal(<SpotMarketPage />, { demo: true });
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <SpotMarketPage />
+      </SpotCheckoutProvider>,
+      { demo: true },
+    );
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
     expect(headers.slice(0, 6)).toEqual([
       'Model',
@@ -63,7 +67,12 @@ describe('Spot market page', () => {
   });
   it('Buy Now opens the review dialog with duration, compute, fee and total', async () => {
     signIn({ demo: true });
-    renderTerminal(<SpotMarketPage />, { demo: true });
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <SpotMarketPage />
+      </SpotCheckoutProvider>,
+      { demo: true },
+    );
     fireEvent.click(screen.getAllByRole('button', { name: /^Buy Now/ })[0]);
     expect(useWorkspaceStore.getState().modal?.type).toBe('spot-review');
   });

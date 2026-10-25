@@ -3,9 +3,8 @@
 import { useState } from 'react';
 import type { Order, OwnedRfq } from '@opennext/contracts';
 import { money } from '@/lib/format';
-import { useTerminal } from '@/features/terminal/context';
-import { csvFrom, downloadText } from '@/features/terminal/export';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { csvFrom, downloadText, useTerminal, useWorkspaceData } from '@/terminal-kit';
+import { useOwnedRfqs } from '../records';
 import { maximumQuotePrice } from '../fees';
 import { unitSuffix } from '../exchange';
 import { useProcurementUi } from '../ui-store';
@@ -84,9 +83,8 @@ function RfqRow({ r, hidden }: { r: OwnedRfq; hidden: boolean }) {
 /** RFQs & Quote (buyer) / RFQs & mandates (broker) — legacy `page(c)`. */
 export function RfqPage() {
   const { openModal } = useTerminal();
-  const role = useWorkspaceStore((s) => s.role);
-  const rfqs = useWorkspaceStore((s) => s.rfqs) as OwnedRfq[];
-  const orders = useWorkspaceStore((s) => s.orders) as Order[];
+  const rfqs = useOwnedRfqs();
+  const orders = useWorkspaceData().orders as Order[];
   const { rfqFilter, setRfqFilter } = useProcurementUi();
   const [query, setQuery] = useState('');
   const q = query.toLowerCase();
@@ -115,7 +113,7 @@ export function RfqPage() {
     <div className="page-content">
       <div className="page-heading">
         <div>
-          <h1>{role === 'Broker' ? 'RFQs & mandates' : 'RFQs & Quote'}</h1>
+          <h1>RFQs & Quote</h1>
           <p>Keep requirements, competing quotes, decisions and delivery together.</p>
         </div>
         <PBtn primary data-act="new-rfq" onClick={() => openModal('rfq-form')}>

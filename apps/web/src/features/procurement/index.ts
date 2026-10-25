@@ -1,13 +1,22 @@
 /**
  * Procurement feature: marketplace records, RFQs, supply, quotes and the market-page listings.
- * Mounted into the terminal shell by <ProcurementRegistrar>.
+ * The composition root mounts `procurementModals`, `ListingTable`, `MatchesPanel` and
+ * `ProcurementIntentResumer` into the terminal shell.
  */
-export { ProcurementRegistrar } from './Registrar';
+import './procurement.css';
+
+export { procurementModals } from './components/modals';
+export { ProcurementIntentResumer } from './components/intent';
+export { ListingTable } from './components/ListingTable';
+export { MatchesPanel } from './components/MatchesPanel';
 export { RfqPage } from './components/RfqPage';
 export { SupplyPage, SupplyDemand, SupplyExtra } from './components/SupplyPage';
 export { NotificationsPanel } from './components/Notifications';
+export { useOpportunity } from './components/opportunity';
+export { useMarketplaceView, useFindMarketRow } from './market-view';
+export { normalizeRfq, useOwnedRfqs } from './records';
+export { useRunServer, useSubmissionId } from './hooks';
 export {
-  useMarketplaceStore,
   kindOf,
   isModel,
   isHardware,
@@ -18,9 +27,8 @@ export {
   regionCountry,
   regionMatches,
   recordRegionMatches,
-  mergeNotifications,
+  type MarketplaceView,
 } from './exchange';
-export { refreshMarketplace, normalizeRfq, isDemo } from './workspace';
 export {
   FEE_LABEL,
   FEE_POLICY,

@@ -1,64 +1,14 @@
 /**
- * Terminal feature API for other features (procurement, instances, billing, account, seller…).
- *
- * State:      useWorkspaceStore (legacy `S`), findOffer
- * Navigation: useGo (legacy go()), useTerminal().route
- * Modals:     useOpenModal / useCloseModal, ModalShell, registerTerminalModal(type renderer)
- * Overlays:   registerOpportunityOpener, registerContactOpener, registerHeaderBell,
- *             registerMatchesPanel, registerListingTable
- * Data:       registerWorkspaceRefresher (30 s loop), refreshWorkspace(), registerIntentResumer
- * UI:         PageHeading, EmptyState, StatusTag, TButton, useToast
- * Gate:       TerminalPage (auth / onboarding), PendingFeaturePage (stub)
+ * Terminal shell and core pages. Other features never import this module; the composition
+ * root (src/app/terminal) mounts the shell and passes feature slots to it.
  */
-export {
-  useWorkspaceStore,
-  findOffer,
-  initialWorkspace,
-  type WorkspaceData,
-  type WorkspaceStore,
-  type ModalState,
-  type Record_,
-} from './store';
-export {
-  useTerminal,
-  useGo,
-  useOpenModal,
-  useCloseModal,
-  registerWorkspaceRefresher,
-  refreshWorkspace,
-  registerIntentResumer,
-  resumePendingIntents,
-  type IntentResumer,
-} from './context';
-export {
-  TERMINAL_ROUTES,
-  routeTarget,
-  resolveTarget,
-  defaultRoute,
-  type TerminalRoute,
-  type WorkspaceRole,
-} from './routing';
-export {
-  ModalShell,
-  registerTerminalModal,
-  registerContactOpener,
-  openContact,
-  type ModalRender,
-  type ModalRenderer,
-} from './components/TerminalModal';
-export { registerOpportunityOpener, openOpportunity } from './components/TerminalOverlays';
-export { registerHeaderBell } from './components/TerminalHeader';
-export { registerMatchesPanel } from './components/Matches';
-export { registerListingTable } from './components/MarketPage';
+export { TerminalShell, type TerminalShellProps } from './TerminalShell';
+export { TerminalPage } from './TerminalPage';
+export { terminalModals, TerminalModal } from './components/modals';
 export { useCurrentOffers, useRefreshPrices, MarketPage } from './components/MarketPage';
 export { ModelsPage, ModelRateSummary, tokenMoney, tokenVolume } from './components/ModelsPage';
 export { CollectionPage } from './components/CollectionPage';
-export { SettingsPage, exportWorkspace } from './components/SettingsPage';
+export { SettingsPage } from './components/SettingsPage';
 export { HelpPage } from './components/HelpPage';
 export { Filters, MarketSwitcher } from './components/Filters';
-export { PageHeading, EmptyState, StatusTag, TButton } from './components/ui';
-export { useToast } from '@/components/ui/toast';
-export { TerminalPage } from './TerminalPage';
-export { TerminalShell } from './TerminalShell';
-export { PendingFeaturePage } from './placeholders';
-export { downloadWorkspace, csvFrom } from './export';
+export { TerminalHeader } from './components/TerminalHeader';

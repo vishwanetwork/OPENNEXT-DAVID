@@ -2,7 +2,7 @@
  * Quotes feature: account notifications (header bell + history page) and quote requests
  * for On-demand / Reserved offers (legacy OpenNEXT-quote-preview.js).
  */
-export { NotificationBell, registerNotificationBell } from './components/NotificationBell';
+export { NotificationBell } from './components/NotificationBell';
 export { NotificationsPage } from './components/NotificationsPage';
 export { QuoteRequests } from './components/QuoteRequests';
 export { useQuoteNotifications, useOpenQuoteRequest, useOpenNotice } from './hooks';

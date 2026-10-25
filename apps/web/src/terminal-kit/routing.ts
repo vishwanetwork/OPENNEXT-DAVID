@@ -1,4 +1,5 @@
 /** Terminal routes and the navigation rules of the legacy `go()` / `routeTarget()`. */
+import type { Role } from './types';
 
 export const TERMINAL_ROUTES = [
   'market',
@@ -25,27 +26,24 @@ export const routeTarget = (route: string | null | undefined): TerminalRoute =>
       ? (route as TerminalRoute)
       : 'market';
 
-export type WorkspaceRole = 'Buyer' | 'Seller' | 'Broker';
-
 /** Role hints only preselect onboarding. Completed accounts retain their verified role. */
 export function resolveTarget(
   route: string | null | undefined,
-  role: WorkspaceRole,
+  role: Role,
   onboardingCompleted: boolean,
 ): TerminalRoute {
   let target = routeTarget(route);
   if (
     onboardingCompleted &&
-    ((role === 'Buyer' && target === 'supply') ||
-      (role === 'Seller' && ['rfqs', 'mandates'].includes(target)))
+    ((role === 'buyer' && target === 'supply') ||
+      (role === 'seller' && ['rfqs', 'mandates'].includes(target)))
   )
     target = 'market';
   return target;
 }
 
 /** Default landing route on the terminal host when none is requested. */
-export const defaultRoute = (role: WorkspaceRole): TerminalRoute =>
-  role === 'Seller' ? 'supply' : 'market';
+export const defaultRoute = (role: Role): TerminalRoute => (role === 'seller' ? 'supply' : 'market');
 
 /** Maps a legacy `#terminal/<route>` (or `#`) hash to a path. Returns null when the hash is not a terminal hash. */
 export function legacyHashToPath(hash: string): string | null {

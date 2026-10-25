@@ -17,6 +17,14 @@
 
 export type AppKind = 'site' | 'terminal' | 'admin';
 
+/** Request headers the proxy sets so layouts know which application they render. */
+export const APP_HEADERS = {
+  app: 'x-on-app',
+  base: 'x-on-base',
+  demo: 'x-on-demo',
+  host: 'x-on-host',
+} as const;
+
 export interface HostConfig {
   site?: string;
   terminal?: string;

@@ -1,12 +1,8 @@
-export { BillingPage, useBillingData } from './components/BillingPage';
-export { BillingRegistrar } from './Registrar';
-export {
-  refreshBillingAccount,
-  applyBillingAccount,
-  hasVerifiedBillingAccount,
-  invalidateBillingAccount,
-  syncNotifications,
-  setBillingApi,
-} from './account';
-export { registerPurchaseContext, usePaymentStore, validAmount } from './payments';
+import './billing.css';
+
+export { BillingPage } from './components/BillingPage';
+export { billingModals } from './components/BillingModals';
+export { BillingPolling } from './components/PaymentModals';
+export { useBillingData, useOwnTopups, usePaymentIdentity } from './hooks';
+export { usePaymentStore, validAmount } from './payments';
 export * as billingAnalytics from './analytics';

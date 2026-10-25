@@ -1,9 +1,8 @@
 'use client';
 
 import { useToast } from '@/components/ui/toast';
-import { useOpenModal } from '@/features/terminal/context';
-import { serviceConnected } from '../service';
-import { useKeyLibrary, useLoadKeysOnMount } from '../hooks';
+import { useOpenModal } from '@/terminal-kit';
+import { useAccountService, useKeyLibrary, useLoadKeysOnMount } from '../hooks';
 import { AccountIcons } from './icons';
 
 export type SshLibraryScope = 'profile' | 'instances' | 'instance-access';
@@ -22,6 +21,7 @@ function addedOn(createdAt: string | null) {
 
 /** Saved SSH public keys list (legacy `renderKeys`). */
 export function SshKeyList() {
+  const { connected: serviceConnected } = useAccountService();
   const { account, library } = useKeyLibrary();
   const openModal = useOpenModal();
   const toast = useToast();

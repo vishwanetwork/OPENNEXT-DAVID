@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
 import type { AppKind, AppOrigins } from '@/lib/apps';
 import { AppProvider } from './app-context';
 import { ApiProvider } from './api-context';
@@ -11,17 +12,19 @@ export function Providers({
   base,
   demo,
   origins,
+  queryClient,
   children,
 }: {
   app: AppKind;
   base: string;
   demo: boolean;
   origins: AppOrigins;
+  queryClient?: QueryClient;
   children: ReactNode;
 }) {
   return (
     <AppProvider app={app} base={base} demo={demo} origins={origins}>
-      <ApiProvider demo={demo}>
+      <ApiProvider demo={demo} queryClient={queryClient}>
         <ToastProvider>{children}</ToastProvider>
       </ApiProvider>
     </AppProvider>

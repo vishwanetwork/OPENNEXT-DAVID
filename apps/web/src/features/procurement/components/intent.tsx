@@ -1,64 +1,36 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useApi } from '@/components/providers/api-context';
-import { useToast } from '@/components/ui/toast';
-import { findCatalogItem, getModelQuote } from '@/features/site';
-import { tokenMoney } from '@/features/terminal/components/ModelsPage';
-import { openContact, registerTerminalModal } from '@/features/terminal/components/TerminalModal';
-import { registerOpportunityOpener } from '@/features/terminal/components/TerminalOverlays';
-import { registerMatchesPanel } from '@/features/terminal/components/Matches';
-import { registerListingTable } from '@/features/terminal/components/MarketPage';
-import {
-  registerIntentResumer,
-  registerWorkspaceRefresher,
-  useTerminal,
-} from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useCallback } from 'react';
 import { money } from '@/lib/format';
-import { setBillingApi } from '@/features/billing/account';
-import { ListingTable } from './components/ListingTable';
-import { MatchesPanel } from './components/MatchesPanel';
-import { procurementModalRenderer } from './components/ProcurementModals';
-import { resumeOpportunity, useOpportunity } from './components/opportunity';
-import { refreshMarketplace, setProcurementApi } from './workspace';
-import './procurement.css';
+import { findCatalogItem, getModelQuote } from '@/data';
+import { useToast } from '@/components/ui/toast';
+import { useIntentResume, useTerminalSlots, useWorkspaceData, useWorkspaceStore, type IntentResumer } from '@/terminal-kit';
+import { useOpportunity } from './opportunity';
+
+const tokenMoney = (value: unknown) =>
+  Number.isFinite(Number(value)) ? '$' + Number(value).toFixed(2) : 'Confirm in quote';
 
 /**
- * Mounts the procurement hooks into the terminal shell: API client, modal renderer, market
- * page listing table and matches, workspace refresher, opportunity opener and the resume of
- * public-site intents (`?listing=&intent=` / `?opportunity=&intent=`).
+ * Resumes public-site intents (`?listing=&intent=` catalog items and `?opportunity=&intent=`
+ * market rows) once the account is onboarded. Mounted by the composition root.
  */
-export function ProcurementRegistrar() {
-  const api = useApi();
+export function ProcurementIntentResumer() {
   const toast = useToast();
-  const { go } = useTerminal();
-  const { open } = useOpportunity();
-  useEffect(() => {
-    setProcurementApi(api);
-    setBillingApi(api);
-    return () => {
-      setProcurementApi(null);
-      setBillingApi(null);
-    };
-  }, [api]);
-  useEffect(() => {
-    const offModal = registerTerminalModal(procurementModalRenderer);
-    registerListingTable(() => <ListingTable />);
-    registerMatchesPanel((kind) => <MatchesPanel key={kind} kind={kind} />);
-    const offRefresh = registerWorkspaceRefresher(refreshMarketplace);
-    registerOpportunityOpener(open);
-    registerIntentResumer((intent) => {
+  const { openContact } = useTerminalSlots();
+  const { resume } = useOpportunity();
+  const review = useWorkspaceData().review;
+  const handler = useCallback<IntentResumer>(
+    (intent) => {
       const S = useWorkspaceStore.getState();
       if (intent.kind === 'opportunity') {
-        resumeOpportunity(go, toast);
+        resume();
         return true;
       }
       const item = findCatalogItem(intent.id);
       if (!item) return true;
       if (
-        (intent.intent === 'offer' && S.role !== 'Seller') ||
-        (intent.intent === 'buy' && S.role !== 'Buyer')
+        (intent.intent === 'offer' && S.role !== 'seller') ||
+        (intent.intent === 'buy' && S.role !== 'buyer')
       ) {
         toast(
           'Switch to ' +
@@ -142,21 +114,15 @@ export function ProcurementRegistrar() {
         notes: item.note,
       };
       if (intent.intent === 'offer') {
-        if (S.review.status !== 'Approved') {
+        if (review.status !== 'Approved') {
           S.patch({ afterReview: { type: 'respond', requirement } });
           S.openModal('review');
         } else S.openModal('respond', { requirement });
       } else S.openModal('rfq-form', { model: item.model, prefill: requirement });
       return true;
-    });
-    return () => {
-      offModal();
-      offRefresh();
-      registerListingTable(null);
-      registerMatchesPanel(null);
-      registerOpportunityOpener(null);
-      registerIntentResumer(null);
-    };
-  }, [open, go, toast]);
+    },
+    [resume, toast, openContact, review.status],
+  );
+  useIntentResume(handler);
   return null;
 }

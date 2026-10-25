@@ -3,11 +3,10 @@
 import type { MarketRow, OwnedSupply, SupplierResponse } from '@opennext/contracts';
 import { money } from '@/lib/format';
 import { useRegions, regionCode } from '@/features/market';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { useIsDemo, useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { FEE_LABEL, baseRate } from '../fees';
-import { marketRows, unitSuffix, useMarketplaceStore } from '../exchange';
-import { isDemo } from '../workspace';
+import { marketRows, unitSuffix } from '../exchange';
+import { useMarketplaceView } from '../market-view';
 import { NotificationsPanel } from './Notifications';
 import { useOpportunity } from './opportunity';
 import {
@@ -23,11 +22,16 @@ import {
 /** Buyer requirements matched to the current filters (legacy `supplyDemand`). */
 export function SupplyDemand() {
   const { openModal } = useTerminal();
-  const { model, region, count, term, role } = useWorkspaceStore();
+  const model = useWorkspaceStore((s) => s.model);
+  const region = useWorkspaceStore((s) => s.region);
+  const count = useWorkspaceStore((s) => s.count);
+  const term = useWorkspaceStore((s) => s.term);
+  const role = useWorkspaceStore((s) => s.role);
   const regions = useRegions();
-  const market = useMarketplaceStore();
+  const market = useMarketplaceView();
+  const demo = useIsDemo();
   const { open, inquire } = useOpportunity();
-  const rows = marketRows(market, { model, region, count, term, role }, 'demand', isDemo(), (v) =>
+  const rows = marketRows(market, { model, region, count, term, role }, 'demand', demo, (v) =>
     regionCode(regions, v),
   ).slice(0, 5);
   const reference = rows.some((r) => r.referenceOnly);
@@ -84,7 +88,7 @@ export function SupplyDemand() {
 /** My RFQ responses + notifications (legacy `supplyExtra`). */
 export function SupplyExtra() {
   const { openModal } = useTerminal();
-  const responses = useWorkspaceStore((s) => s.responses) as SupplierResponse[];
+  const responses = useWorkspaceData().responses as SupplierResponse[];
   return (
     <>
       <section className="panel">
@@ -124,8 +128,9 @@ export function SupplyExtra() {
 /** My Supply (legacy `supplyPage`). */
 export function SupplyPage() {
   const { openModal } = useTerminal();
-  const review = useWorkspaceStore((s) => s.review);
-  const listings = useWorkspaceStore((s) => s.listings) as OwnedSupply[];
+  const workspace = useWorkspaceData();
+  const review = workspace.review;
+  const listings = workspace.listings as OwnedSupply[];
   const reviewed = review.status === 'Approved';
   const pending = review.status === 'Reviewing';
   return (

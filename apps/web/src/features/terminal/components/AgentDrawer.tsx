@@ -11,10 +11,8 @@ import {
   type ReactNode,
 } from 'react';
 import { money } from '@/lib/format';
-import { regionText } from '@/features/market/catalog';
-import { useRegions } from '@/features/market/hooks';
-import { useTerminal } from '../context';
-import { useWorkspaceStore } from '../store';
+import { regionText, useRegions } from '@/features/market';
+import { useTerminal, useWorkspaceStore } from '@/terminal-kit';
 import { useCurrentOffers } from './MarketPage';
 
 export interface AgentHint {
@@ -152,7 +150,7 @@ export function AgentCompanion({ onHintAction }: { onHintAction: (hint: AgentHin
   const { hint, dismiss } = useAgentHints();
   const { agentOpen, modal, role, setAgentOpen } = useWorkspaceStore();
   if (agentOpen || modal) return null;
-  const seller = role === 'Seller';
+  const seller = role === 'seller';
   const matching = hint?.kind === 'match';
   const prompt = matching
     ? seller

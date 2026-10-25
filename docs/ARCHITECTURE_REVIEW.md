@@ -107,3 +107,24 @@ Items within a phase are ordered so that earlier ones unblock later ones.
 | Non-test modules > 150 lines with no test importer            | 51                   | import-name grep over `*.test.*`                                                                                     |
 | Source files failing prettier                                 | 176 / 282            | `npx prettier --check "apps/web/src/**/*.{ts,tsx}"`                                                                  |
 | Routes dynamic in `next build`                                | 41 / 41              | build output                                                                                                         |
+
+## Status
+
+Updated as the phases land. "Resolved" means the verification condition of the finding holds.
+
+### Phase 0 — formatting baseline (`91366e0`)
+
+- F14 (partially): `pnpm format` applied; the 14 minified stylesheets are expanded; `apps/web/AGENTS.md` untracked.
+
+### Phase 1 — structure
+
+| Finding | Status | Notes |
+| --- | --- | --- |
+| F01 Module boundaries | resolved | `src/terminal-kit/` extracted; features import other features only through barrels; `eslint-plugin-boundaries` (folder elements) + `no-restricted-imports` forbid deep imports and any feature → shell import. Cycle count 0. |
+| F02 Registries / global state | resolved | All `register*` functions, side-effect `register.ts` modules, module-level slots and the `opennext:*` CustomEvents are gone. `src/app/terminal/terminal-app.tsx` is the composition root: slots (`headerBell`, `listingTable`, `matchesPanel`, `sshLibrary`, `openContact`, `openOpportunity`, `services`) and a typed modal map (`composeModals`, duplicates throw). The six dead hook points are wired: Contact opens the site dialog, the SSH key library renders in the instances feature, purchase context flows from the Spot engine to billing. |
+| F03 Two server-state systems | resolved | `terminal-kit/data.ts` owns every account/marketplace read with one key factory (`src/lib/api/query-keys.ts`); the 30 s loop is `refetchInterval`; writes call `useInvalidateWorkspace()`. The zustand workspace store holds UI state only. |
+| F04 Untyped records | resolved | `Record_`, `extra`/`setExtra` and the 17 record collections removed from the store; `ModalState` is a discriminated union built from the augmentable `TerminalModalMap`; one `Role` (`'buyer' \| 'seller'`), one `useBalance()` model. |
+| F09 Layering | resolved | `APP_HEADERS` lives in `src/lib/apps.ts`; static datasets moved to `src/data/`; the market/seller route decision moved to `src/app/terminal/market/market-route.tsx`. |
+| F10 Routing / SSR / env | resolved | `src/lib/env.ts` is the single reader of `API_ORIGIN`/`OPENNEXT_TRUST_PROXY`/hosts and defines the forwarded-header policy used by both `app/api/[...path]/route.ts` and `features/auth/server.ts`; the site layout is header-free so `/` is static (ISR 5 min); `docker-compose.yml` defaults `OPENNEXT_TRUST_PROXY=1`; the Dockerfile bakes the production hosts into the static render. |
+| F13 (partially) | in progress | One shared render helper `src/test/render.tsx` with query-cache seeding; `terminal-utils` / `console/test-utils` removed. |
+| F18 (partially) | in progress | The Spot checkout engine is created by `SpotCheckoutProvider`; its live dependencies live in a zustand store instead of module `let`s. |

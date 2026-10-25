@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LucideIcon } from '@/components/icons/lucide';
 import { useToast } from '@/components/ui/toast';
-import { InsightIndex } from '@/features/market/InsightIndex';
-import { openContact } from '@/features/terminal/components/TerminalModal';
-import { useOpenModal, useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { InsightIndex } from '@/features/market';
+import {
+  useOpenModal,
+  useTerminal,
+  useTerminalSlots,
+  useWorkspaceData,
+  useWorkspaceStore,
+} from '@/terminal-kit';
 import { useIndexFilterRows, useSettlements } from '../hooks';
 import {
   ACTIVITY_SHOW_OPTIONS,
@@ -341,8 +345,8 @@ function ActivitiesPanel({ rows }: { rows: Settlement[] }) {
 }
 
 function HistoryModal() {
+  const { openContact } = useTerminalSlots();
   const ui = useSellerStore();
-  const toast = useToast();
   const dialog = useRef<HTMLElement>(null);
   const gated = ui.modal === 'range-gate';
   useEffect(() => {
@@ -381,11 +385,10 @@ function HistoryModal() {
   if (!ui.modal) return null;
   const contact = () => {
     ui.closeHistory();
-    const opened = openContact({
+    openContact({
       message:
         'I would like access to older anonymized GPU settlement activity and historical market data.',
     });
-    if (opened === undefined) toast('Contact Sales is not available in this preview.');
   };
   return (
     <div
@@ -456,7 +459,7 @@ function useClock(intervalMs = 60_000): number {
 export function SellerActivitiesPage() {
   const ui = useSellerStore();
   const role = useWorkspaceStore((s) => s.role);
-  const review = useWorkspaceStore((s) => s.review);
+  const review = useWorkspaceData().review;
   const patch = useWorkspaceStore((s) => s.patch);
   const openModal = useOpenModal();
   const { go } = useTerminal();
@@ -502,7 +505,7 @@ export function SellerActivitiesPage() {
           <h1>Market Insight</h1>
           <p>Market indexes, executed-price analytics and anonymized GPU capacity activity.</p>
         </div>
-        {role === 'Buyer' ? (
+        {role === 'buyer' ? (
           <button
             type="button"
             className="btn onx-sa-list-supply"

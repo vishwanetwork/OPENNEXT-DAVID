@@ -13,9 +13,21 @@ import {
   regionCountry,
   tokenTotal,
   totalFor,
-  useMarketplaceStore,
-  type MarketplaceState,
+  emptyMarket,
+  emptyReference,
+  type MarketplaceView,
 } from './exchange';
+
+const emptyView = (): MarketplaceView => ({
+  market: emptyMarket(),
+  bestRows: [],
+  matchReason: '',
+  matchPrompt: '',
+  recentRows: [],
+  referenceCatalog: emptyReference(),
+  loaded: true,
+  error: '',
+});
 
 const row = (over: Partial<MarketRow>): MarketRow => ({
   id: 'SUP-1',
@@ -107,15 +119,14 @@ describe('matching', () => {
       matchesFor(market, { model: 'H100', region: 'Germany' }, 'demand').map((r) => r.id),
     ).toEqual(['RFQ-2', 'RFQ-1']);
     const state = {
-      ...useMarketplaceStore.getState(),
+      ...emptyView(),
       market,
       referenceCatalog: {
         supplies: [row({ id: 'REF-1', model: 'B200', referenceOnly: true, price: 5 })],
         rfqs: [],
         recent: [],
       },
-      generated: new Map(),
-    } as MarketplaceState;
+    } as MarketplaceView;
     expect(
       marketRows(state, { model: 'B200', region: 'All regions' }, 'supply').map((r) => r.id),
     ).toEqual(['REF-1']);
@@ -126,7 +137,7 @@ describe('matching', () => {
   });
   it('best matches keep the selected model and region, never mark external rows as precise matches, and recent settlements respect the window', () => {
     const state = {
-      ...useMarketplaceStore.getState(),
+      ...emptyView(),
       bestRows: [
         row({ id: 'B-1', bestMatch: true }),
         row({ id: 'B-2', external: true, bestMatch: true, regionScope: { type: 'worldwide' } }),
@@ -155,8 +166,7 @@ describe('matching', () => {
           price: 2,
         },
       ],
-      generated: new Map(),
-    } as MarketplaceState;
+    } as MarketplaceView;
     const best = bestFor(state, { model: 'H100', region: 'Germany' });
     expect(best.map((r) => [r.id, r.bestMatch])).toEqual([
       ['B-1', true],

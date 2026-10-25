@@ -5,7 +5,7 @@ import type { MarketRow, OwnedRfq, Quote } from '@opennext/contracts';
 import { money } from '@/lib/format';
 import { FEE_LABEL, currentFees, sellerEstimate } from '../fees';
 import { isHardware, isModel, type MarketSide } from '../exchange';
-import { isDemo } from '../workspace';
+import { useIsDemo, type Role } from '@/terminal-kit';
 
 /** `18 Oct 2026, 08:00 UTC` (legacy procurement `date()`); "To be confirmed" when empty. */
 export const date = (v: unknown): string =>
@@ -194,11 +194,12 @@ export function ReceiptDetails({
 }: {
   record: { submission?: unknown } | null | undefined;
 }) {
+  const demo = useIsDemo();
   const receipt = receiptFor(record);
   if (!receipt) return null;
   return (
     <section className="callout">
-      <strong>{isDemo() ? 'Demo submission received' : 'Received by OpenNEXT operations'}</strong>
+      <strong>{demo ? 'Demo submission received' : 'Received by OpenNEXT operations'}</strong>
       <p className="form-note">
         {receipt.receiptId} · {date(receipt.receivedAt)} · Revision {receipt.revision || 1}
       </p>
@@ -253,8 +254,8 @@ export const externalName = (row: { side?: unknown } | null | undefined): string
 export const externalNotice = (row?: { side?: unknown } | null): string =>
   (row ? externalName(row) : 'Sourced listings') +
   '. Availability and commercial terms are confirmed through OpenNEXT.';
-export const canInquire = (role: string, row: { side?: unknown } | null | undefined): boolean =>
-  row?.side === 'supply' ? role === 'Buyer' : role === 'Seller';
+export const canInquire = (role: Role, row: { side?: unknown } | null | undefined): boolean =>
+  row?.side === 'supply' ? role === 'buyer' : role === 'seller';
 export const rowPrice = (r: { price?: unknown }): string =>
   r.price == null ? 'To confirm' : money(r.price);
 

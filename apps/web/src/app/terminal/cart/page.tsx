@@ -1,5 +1,4 @@
-import { CollectionPage } from '@/features/terminal/components/CollectionPage';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { CollectionPage, TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

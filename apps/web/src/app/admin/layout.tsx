@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/app-shell/app-shell';
-import { ConsoleShell } from '@/features/console/components/shell';
+import { ConsoleShell } from '@/features/console';
 
 export const metadata: Metadata = {
   title: 'OpenNEXT — Operations Console',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LedgerEntry, Order } from '@opennext/contracts';
-import { FEE_POLICY } from '@/features/procurement/fees';
+import { FEE_POLICY } from '@/features/procurement';
 import {
   activityRows,
   analytics,
@@ -34,7 +34,7 @@ const order = (over: Partial<Order>): Order => ({
   ...over,
 });
 const data = (over: Partial<BillingData>): BillingData => ({
-  role: 'Buyer',
+  role: 'buyer',
   ledger: [],
   orders: [],
   payouts: [],
@@ -49,8 +49,8 @@ describe('billing analytics', () => {
     expect(flow(entry({ type: 'Broker commission', amount: 5 }))).toBe('commission');
     expect(flow(entry({ type: 'Sale settlement', amount: 50 }))).toBe('revenue');
     expect(flow(entry({ amount: -5 }))).toBe('purchase');
-    expect(ledgerAmount('Seller', entry({ type: 'Commission', amount: 5 }))).toBe(-5);
-    expect(ledgerAmount('Broker', entry({ type: 'Commission', amount: -5 }))).toBe(5);
+    expect(ledgerAmount('seller', entry({ type: 'Commission', amount: 5 }))).toBe(-5);
+    expect(ledgerAmount('buyer', entry({ type: 'Commission', amount: -5 }))).toBe(5);
   });
   it('excludes credit, payout and pending transactions and splits purchases by market term', () => {
     const S = data({
@@ -71,7 +71,7 @@ describe('billing analytics', () => {
   });
   it('seller pending settlement excludes unpaid, completed and buy-side orders and uses net proceeds', () => {
     const S = data({
-      role: 'Seller',
+      role: 'seller',
       orders: [
         order({
           id: 'p1',

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useApp } from '@/components/providers/app-context';
 import { money } from '@/lib/format';
-import type { CatalogItem } from '../data/catalog';
+import type { CatalogItem } from '@/data/catalog';
 import {
   isCurated,
   isExchange,

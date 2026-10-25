@@ -1,5 +1,5 @@
-import { NotificationsPage } from '@/features/quotes/components/NotificationsPage';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { NotificationsPage } from '@/features/quotes';
+import { TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

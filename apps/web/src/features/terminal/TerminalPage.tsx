@@ -6,9 +6,7 @@ import type { SessionUser } from '@opennext/contracts';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
 import { AuthView, OnboardingView } from '@/features/auth';
-import { useTerminal, refreshWorkspace, useInitialUser } from './context';
-import { defaultRoute } from './routing';
-import { useWorkspaceStore } from './store';
+import { defaultRoute, useInitialUser, useTerminal, useWorkspaceStore } from '@/terminal-kit';
 
 /**
  * Gate for every terminal page: anonymous visitors see the sign-in view, verified accounts
@@ -37,7 +35,6 @@ export function TerminalPage({ children }: { children: ReactNode }) {
   const verifiedLogin = (next: SessionUser) => {
     applySession(next);
     if (next.onboardingCompleted) {
-      void refreshWorkspace();
       const target = pending || route || defaultRoute(useWorkspaceStore.getState().role);
       go(target);
     }

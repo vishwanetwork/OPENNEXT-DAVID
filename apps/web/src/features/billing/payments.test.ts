@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useSessionStore } from '@/lib/session-store';
-import { useWorkspaceStore, initialWorkspace } from '@/features/terminal/store';
+import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
 import { safeCheckoutUrl, validAmount, validRequest } from './payments';
 
 beforeEach(() => {
@@ -48,12 +48,12 @@ describe('top-up rules', () => {
       method: 'paypal',
       status: 'Pending',
     };
-    expect(validRequest(ok, draft)).toBe(true);
-    expect(validRequest({ ...ok, accountId: 'u2' }, draft)).toBe(false);
-    expect(validRequest({ ...ok, amount: 99 }, draft)).toBe(false);
-    expect(validRequest({ ...ok, status: 'Paid' }, draft)).toBe(false);
-    expect(validRequest({ ...ok, id: 'TOPUP-1' }, draft)).toBe(false);
-    expect(validRequest({ ...ok, purchaseReference: 'SPOT-1' }, draft)).toBe(false);
+    expect(validRequest(ok, draft, 'u1')).toBe(true);
+    expect(validRequest({ ...ok, accountId: 'u2' }, draft, 'u1')).toBe(false);
+    expect(validRequest({ ...ok, amount: 99 }, draft, 'u1')).toBe(false);
+    expect(validRequest({ ...ok, status: 'Paid' }, draft, 'u1')).toBe(false);
+    expect(validRequest({ ...ok, id: 'TOPUP-1' }, draft, 'u1')).toBe(false);
+    expect(validRequest({ ...ok, purchaseReference: 'SPOT-1' }, draft, 'u1')).toBe(false);
   });
   it('provider checkout URLs must be https without credentials', () => {
     expect(safeCheckoutUrl('https://pay.example.com/x')).toBe('https://pay.example.com/x');

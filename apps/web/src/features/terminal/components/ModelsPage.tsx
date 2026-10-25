@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useToast } from '@/components/ui/toast';
-import { listModelQuotes, type ModelQuote } from '@/features/market/model-quotes';
-import { useTerminal } from '../context';
+import { listModelQuotes, type ModelQuote } from '@/data/model-quotes';
+import { Button, EmptyState, PageHeading, useTerminal, useToast } from '@/terminal-kit';
 import { MarketSwitcher } from './Filters';
-import { PageHeading, EmptyState, TButton } from './ui';
 
 export const tokenMoney = (value: unknown): string =>
   Number.isFinite(Number(value))
@@ -65,9 +63,9 @@ export function ModelsPage() {
           title="Model Capacity"
           subtitle="Review supplier indications by exact model and pricing tier, then confirm capacity and terms."
           action={
-            <TButton data-act="new-rfq" onClick={() => openModal('model-rfq-form')}>
+            <Button data-act="new-rfq" onClick={() => openModal('model-rfq-form')}>
               Post RFQ
-            </TButton>
+            </Button>
           }
         />
         <div className="toolbar">
@@ -120,7 +118,7 @@ export function ModelsPage() {
                   <span>Throughput & quote validity</span>
                   <span>Confirm in quote</span>
                 </div>
-                <TButton
+                <Button
                   data-act="model-quote"
                   data-sku={item.sku}
                   data-value={item.sku}
@@ -131,7 +129,7 @@ export function ModelsPage() {
                   }
                 >
                   Request quote
-                </TButton>
+                </Button>
               </article>
             );
           })}

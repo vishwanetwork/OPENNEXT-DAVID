@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { jsonResponse, renderTerminal, signIn } from '@/test/terminal-utils';
-import { useWorkspaceStore, initialWorkspace } from '@/features/terminal/store';
+import { jsonResponse, renderTerminal, signIn } from '@/test/render';
+import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
 import { useSessionStore } from '@/lib/session-store';
 import { RfqPage } from './components/RfqPage';
 import { SupplyPage } from './components/SupplyPage';
 import { RfqForm } from './components/forms';
-import { ProcurementRegistrar } from './Registrar';
 import { rfqStatus, receiptFor } from './components/shared';
 
 const rfq = (over: Record<string, unknown>) => ({
@@ -77,9 +76,8 @@ describe('RFQ status presentation', () => {
 
 describe('RFQ page', () => {
   it('lists owner records in a four-column table with status tags, details controls and status filters', () => {
-    useWorkspaceStore
-      .getState()
-      .patch({
+    renderTerminal(<RfqPage />, {
+      workspace: {
         rfqs: [
           rfq({ status: 'Reviewing' }),
           rfq({
@@ -89,9 +87,9 @@ describe('RFQ page', () => {
             quotes: [{ id: 'Q1', status: 'Pending', price: 2 }],
           }),
           rfq({ id: 'RFQ-3', status: 'Rejected', reviewReason: '<b>fix</b>' }),
-        ],
-      });
-    renderTerminal(<RfqPage />);
+        ] as never,
+      },
+    });
     expect(screen.getByRole('heading', { name: 'RFQs & Quote' })).toBeInTheDocument();
     expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
       'Model',
@@ -171,12 +169,7 @@ describe('RFQ form', () => {
         });
       }),
     );
-    renderTerminal(
-      <>
-        <ProcurementRegistrar />
-        <RfqForm r={{ budget: 2, count: 8, hours: 10, region: 'Germany' }} />
-      </>,
-    );
+    renderTerminal(<RfqForm r={{ budget: 2, count: 8, hours: 10, region: 'Germany' }} />);
     fireEvent.change(screen.getByLabelText('vCPU'), { target: { value: '32' } });
     fireEvent.change(screen.getByLabelText('Memory (GB / GPU)'), { target: { value: '80' } });
     const submit = screen.getByRole('button', { name: 'Post RFQ' });
@@ -200,10 +193,9 @@ describe('RFQ form', () => {
 
 describe('Supply page', () => {
   it('shows the review gate, capacity table and responses with base prices and the settlement fee label', () => {
-    useWorkspaceStore
-      .getState()
-      .patch({
-        role: 'Seller',
+    useWorkspaceStore.getState().patch({ role: 'seller' });
+    renderTerminal(<SupplyPage />, {
+      workspace: {
         review: { status: 'Reviewing', step: 1 },
         listings: [
           {
@@ -216,7 +208,7 @@ describe('Supply page', () => {
             status: 'Awaiting agent',
             agentStatus: 'Pending',
           },
-        ],
+        ] as never,
         responses: [
           {
             id: 'QUOTE-1',
@@ -226,9 +218,9 @@ describe('Supply page', () => {
             status: 'Pending',
             validUntil: '2026-11-01T00:00:00Z',
           },
-        ],
-      });
-    renderTerminal(<SupplyPage />);
+        ] as never,
+      },
+    });
     expect(screen.getByRole('heading', { name: 'My Supply' })).toBeInTheDocument();
     expect(document.querySelector('.proc-review-steps')?.textContent).toContain('KYB · Reviewing');
     expect(screen.getByRole('button', { name: 'View submission' })).toBeInTheDocument();

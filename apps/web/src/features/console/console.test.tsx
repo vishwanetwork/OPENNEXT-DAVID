@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
-import { renderConsole, mockFetch, json } from './test-utils';
+import { renderConsole, mockFetch, json } from '@/test/render';
 import { ConsoleShell } from './components/shell';
 import { OverviewPage } from './pages/overview';
 import { SchedulesPage } from './pages/schedules';

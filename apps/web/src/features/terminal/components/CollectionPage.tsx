@@ -1,10 +1,15 @@
 'use client';
 
-import { useToast } from '@/components/ui/toast';
 import { money } from '@/lib/format';
-import { useTerminal } from '../context';
-import { findOffer, useWorkspaceStore } from '../store';
-import { EmptyState, PageHeading, TButton } from './ui';
+import {
+  Button,
+  EmptyState,
+  PageHeading,
+  findOffer,
+  useTerminal,
+  useToast,
+  useWorkspaceStore,
+} from '@/terminal-kit';
 
 /** Saved Capacity / Quote Cart (legacy `collection()`), including compare and bulk quote actions. */
 export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
@@ -21,30 +26,14 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
     if (list.length > 4) return toast('Compare up to four suppliers at a time');
     openModal('compare');
   };
+  // Quote requests are server records: the RFQ form submits one request at a time.
   const collectionQuotes = () => {
     const list = state.selected.length
       ? state.selected.map((id) => findOffer(state, id)).filter(Boolean)
       : state.cart;
     if (!list.length) return toast('Select or add capacity first');
-    const rfqs = list.map((o, i) => ({
-      id: 'RFQ-' + (Date.now() + state.rfqs.length + i).toString().slice(-6),
-      title: o!.model + ' · ' + o!.provider,
-      model: o!.model,
-      count: o!.count,
-      region: o!.region,
-      term: o!.term,
-      hours: 72,
-      budget: o!.price,
-      status: 'Open',
-      created: new Date().toISOString(),
-      supplier: o!.provider,
-      selectedSupplier: o!.side === 'supply' ? o!.provider : undefined,
-      originSupply: o!.side === 'supply' ? o!.id : undefined,
-      visibility: 'Private RFQ',
-    }));
-    state.patch({ rfqs: [...rfqs, ...state.rfqs] });
-    go('rfqs');
-    toast(`${list.length} quote requests created`);
+    if (list.length > 1) toast('Quote requests are submitted one resource at a time');
+    openModal('rfq-form', { offer: list[0]! });
   };
   const savedToCart = () => {
     const next = [...state.cart];
@@ -66,9 +55,9 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
         }
         action={
           type === 'cart' ? (
-            <TButton data-act="collection-quotes" onClick={collectionQuotes}>
+            <Button data-act="collection-quotes" onClick={collectionQuotes}>
               Request quotes
-            </TButton>
+            </Button>
           ) : undefined
         }
       />
@@ -77,13 +66,13 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
           {items.length} resources · select up to 4 of the same model
         </span>
         <span className="gap" />
-        <TButton data-act="compare-selected" onClick={compareSelected}>
+        <Button data-act="compare-selected" onClick={compareSelected}>
           Compare selected
-        </TButton>
+        </Button>
         {type === 'saved' ? (
-          <TButton data-act="saved-to-cart" onClick={savedToCart}>
+          <Button data-act="saved-to-cart" onClick={savedToCart}>
             Add selected to cart
-          </TButton>
+          </Button>
         ) : null}
       </div>
       <div className="collection-grid">
@@ -115,23 +104,23 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
               {o.delivery != null ? o.delivery + ' min delivery' : 'Delivery to confirm'}
             </p>
             <div className="row">
-              <TButton
+              <Button
                 cls="secondary small"
                 data-act="detail"
                 data-id={o.id}
                 onClick={() => openModal('detail', { offer: o })}
               >
                 Details
-              </TButton>
-              <TButton
+              </Button>
+              <Button
                 cls="small"
                 data-act="quote"
                 data-id={o.id}
                 onClick={() => openModal('rfq-form', { offer: o })}
               >
                 Request quote
-              </TButton>
-              <TButton
+              </Button>
+              <Button
                 cls="ghost small"
                 data-act="remove"
                 data-type={type}
@@ -139,7 +128,7 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
                 onClick={() => state.removeFrom(type, o.id)}
               >
                 Remove
-              </TButton>
+              </Button>
             </div>
           </article>
         ))}

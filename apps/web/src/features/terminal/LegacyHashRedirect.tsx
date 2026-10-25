@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/components/providers/app-context';
-import { legacyHashToPath } from './routing';
+import { legacyHashToPath } from '@/terminal-kit';
 
 /** `#terminal/<route>` links from the old site become real paths; the query string is kept. */
 export function LegacyHashRedirect() {

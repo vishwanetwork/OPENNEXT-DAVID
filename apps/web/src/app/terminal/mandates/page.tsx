@@ -1,10 +1,8 @@
-import { RfqPage } from '@/features/procurement';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { redirect } from 'next/navigation';
+import { requestApp } from '@/lib/request-app';
 
-export default function Page() {
-  return (
-    <TerminalPage>
-      <RfqPage />
-    </TerminalPage>
-  );
+/** Broker mandates were never launched; the legacy route shows the RFQ page. */
+export default async function Page() {
+  const { base } = await requestApp('terminal');
+  redirect(base + '/rfqs');
 }

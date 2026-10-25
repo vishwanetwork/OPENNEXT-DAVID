@@ -1,6 +1,6 @@
 'use client';
 
-import { useOpenModal } from '@/features/terminal/context';
+import { useOpenModal } from '@/terminal-kit';
 import { formatDate, visibleStatus } from '../notifications';
 import { useQuoteNotifications } from '../hooks';
 import '../quotes.css';
@@ -59,7 +59,7 @@ export function QuoteRequests() {
                       className="btn secondary small"
                       data-qp-action="request"
                       data-qp-id={String(r.id)}
-                      onClick={() => openModal('proc-request-details', { id: r.id })}
+                      onClick={() => openModal('proc-request-details', { id: String(r.id) })}
                     >
                       View details
                     </button>

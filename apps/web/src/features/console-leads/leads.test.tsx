@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderConsole, mockFetch, json } from '@/features/console/test-utils';
+import { renderConsole, mockFetch, json } from '@/test/render';
 import { filterLeads, leadTime } from './leads';
 import { ConsoleLeadsPage } from './leads-page';
 

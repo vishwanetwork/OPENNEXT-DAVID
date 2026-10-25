@@ -16,7 +16,8 @@ services:
       ADMIN_HOST: admin.opennextlab.ai
       OPENNEXT_PRICING_DATA_DIR: /app/.opennext-data
       OPENNEXT_ADMIN_TOKEN: ${OPENNEXT_ADMIN_TOKEN:-}
-      OPENNEXT_TRUST_PROXY: ${OPENNEXT_TRUST_PROXY:-0}
+      # The container always sits behind the HTTPS reverse proxy (1Panel), so forwarded headers are trusted.
+      OPENNEXT_TRUST_PROXY: ${OPENNEXT_TRUST_PROXY:-1}
       OPENNEXT_AWS_SPOT_ENABLED: ${OPENNEXT_AWS_SPOT_ENABLED:-0}
       OPENNEXT_AWS_REGIONS: ${OPENNEXT_AWS_REGIONS:-us-east-1,us-east-2,us-west-2,eu-west-1,eu-central-1,ap-northeast-1,ap-southeast-1,ap-south-1}
       AWS_REGION: ${AWS_REGION:-us-east-1}

@@ -9,8 +9,13 @@ import {
   validatePublicKey,
   verificationFor,
 } from './ssh-keys';
+import type { AccountService } from '@/terminal-kit';
 import { changeKey, libraryFor, loadKeys, useKeyLibraries, type KeyLibraryDeps } from './store';
-import { registerAccountService } from './service';
+
+let accountService: AccountService | null = null;
+const registerAccountService = (next: AccountService | null) => {
+  accountService = next;
+};
 
 const field = (bytes: Buffer | string) => {
   const data = Buffer.from(bytes);
@@ -119,6 +124,7 @@ function deps(
   const user = { id, demo };
   return {
     account: () => accountRef(user, demo),
+    service: () => accountService ?? undefined,
     storage: () => ({
       getItem: (k) => storage.get(k) ?? null,
       setItem: (k, v) => void storage.set(k, v),
@@ -180,13 +186,13 @@ describe('SSH key library', () => {
     let received: unknown;
     registerAccountService({
       listSshKeys: async () => ({ keys }),
-      addSshKey: async (input) => {
+      addSshKey: async (input: { label: string; publicKey: string }) => {
         received = input;
         const key = { ...input, id: 'backend-key', createdAt: new Date().toISOString() };
         keys.push(key);
         return { confirmed: true, key };
       },
-      removeSshKey: async ({ id }) => {
+      removeSshKey: async ({ id }: { id: string }) => {
         keys = keys.filter((key) => key.id !== id);
         return { confirmed: true, id };
       },

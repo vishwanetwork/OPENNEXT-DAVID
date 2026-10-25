@@ -1,5 +1,5 @@
 import { SupplyPage } from '@/features/procurement';
-import { TerminalPage } from '@/features/terminal/TerminalPage';
+import { TerminalPage } from '@/features/terminal';
 
 export default function Page() {
   return (

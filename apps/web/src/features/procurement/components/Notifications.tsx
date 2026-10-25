@@ -2,32 +2,25 @@
 
 import type { WorkspaceNotification } from '@opennext/contracts';
 import { useSessionStore } from '@/lib/session-store';
-import { useTerminal } from '@/features/terminal/context';
-import { useWorkspaceStore } from '@/features/terminal/store';
+import { roleLabel, useNotifications, useTerminal, useWorkspaceStore } from '@/terminal-kit';
+import { useProcurementUi } from '../ui-store';
 import { PBtn, date } from './shared';
 
 /** Workspace notifications panel (latest 15) with "Mark all read" and the full page link. */
 export function NotificationsPanel() {
   const { go, openModal } = useTerminal();
   const role = useWorkspaceStore((s) => s.role);
-  const notifications = useWorkspaceStore((s) => s.notifications) as WorkspaceNotification[];
-  const patch = useWorkspaceStore((s) => s.patch);
+  const readIds = useProcurementUi((s) => s.readNotificationIds);
+  const markReadIds = useProcurementUi((s) => s.markRead);
   const owner = useSessionStore((s) => s.user?.id);
+  const notifications: WorkspaceNotification[] = useNotifications().map((n) =>
+    readIds.includes(n.id) ? { ...n, read: true } : n,
+  );
   const items = notifications
-    .filter((n) =>
-      n.ownerId
-        ? n.ownerId === owner
-        : n.role === role || (role === 'Broker' && ['Buyer', 'Seller'].includes(String(n.role))),
-    )
+    .filter((n) => (n.ownerId ? n.ownerId === owner : n.role === roleLabel(role)))
     .slice(0, 15);
   const markRead = () =>
-    patch({
-      notifications: notifications.map((n) =>
-        n.role === role || (role === 'Broker' && ['Buyer', 'Seller'].includes(String(n.role)))
-          ? { ...n, read: true }
-          : n,
-      ),
-    });
+    markReadIds(notifications.filter((n) => n.role === roleLabel(role)).map((n) => n.id));
   return (
     <section className="panel">
       <div className="row spread">
@@ -44,7 +37,10 @@ export function NotificationsPanel() {
         </div>
       </div>
       {items.length ? (
-        items.map((n) => (
+        items.map((n) => {
+          const orderId = n.orderId ? String(n.orderId) : '';
+          const rfqId = n.rfqId ? String(n.rfqId) : '';
+          return (
           <article key={n.id} className={`proc-notice ${n.read ? 'read' : ''}`}>
             <div>
               <strong>{n.subject}</strong>
@@ -54,25 +50,26 @@ export function NotificationsPanel() {
               </small>
               <p>{n.message}</p>
             </div>
-            {n.orderId ? (
+            {orderId ? (
               <PBtn
                 data-act="bill-order"
-                data-id={n.orderId}
-                onClick={() => openModal('bill-order', { id: n.orderId })}
+                data-id={orderId}
+                onClick={() => openModal('bill-order', { id: orderId })}
               >
                 Order details
               </PBtn>
-            ) : n.rfqId ? (
+            ) : rfqId ? (
               <PBtn
                 data-act="view-rfq"
-                data-id={n.rfqId}
-                onClick={() => openModal('proc-request-details', { id: n.rfqId })}
+                data-id={rfqId}
+                onClick={() => openModal('proc-request-details', { id: rfqId })}
               >
                 View RFQ
               </PBtn>
             ) : null}
           </article>
-        ))
+          );
+        })
       ) : (
         <p className="form-note">Quote, payment and delivery updates will appear here.</p>
       )}

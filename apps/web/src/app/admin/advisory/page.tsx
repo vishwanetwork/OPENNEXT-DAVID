@@ -1,4 +1,4 @@
-import { AdvisoryPage } from '@/features/console/pages/advisory';
+import { AdvisoryPage } from '@/features/console';
 export default function Page() {
   return <AdvisoryPage />;
 }
