@@ -49,8 +49,9 @@ charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`
    customer records are dropped (the server owns them).
 7. **Formatting** helpers live in `src/lib/format.ts` (`money`, `stampUtc`, `dateUtc`, `number`).
 8. **Styles**: copy the legacy CSS file into the feature folder and import it once from the
-   feature's root component. Do not rename classes. Remove `:root` token blocks that duplicate
-   `src/styles/tokens-<app>.css`. Add new rules only when React structure forces it.
+   feature's root component (or the app layout for shell styles). Do not rename classes and keep
+   each file's `:root` block as-is for now (each app loads its own set, so they do not clash).
+   Add new rules only when React structure forces it.
 9. **Icons and logos**: port only the SVGs actually referenced, as small React components in
    `src/components/icons/` (terminal) or `public/provider-logos/*.svg` (console).
 10. **No window globals**, no cross-feature imports of internals. Shared things go to
@@ -63,10 +64,12 @@ charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`
 
 ## Legacy sources
 
-The minified originals are in `legacy/`. Pretty-printed copies for reading are produced with:
+The minified originals are in `legacy/`. Make pretty-printed copies for reading (never edit
+`legacy/` itself):
 
 ```sh
-npx prettier@3 --print-width 110 --write "legacy-pretty/*.js"
+mkdir -p /tmp/legacy-pretty && cp legacy/OpenNEXT-*.js legacy/OpenNEXT-*.cjs legacy/OpenNEXT-*.css /tmp/legacy-pretty/
+npx prettier@3 --print-width 110 --write "/tmp/legacy-pretty/*.{js,cjs,css}"
 ```
 
 ## Tracking
