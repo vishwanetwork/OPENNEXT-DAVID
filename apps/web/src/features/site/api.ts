@@ -13,7 +13,9 @@ import type { ApiClient } from '@/lib/api/client';
 
 /** Curated customer requirements; malformed rows are dropped, never patched. */
 export async function fetchCuratedRfqs(api: ApiClient): Promise<CuratedRfq[]> {
-  const data = CuratedRfqsResponse.parse(await api.get('/api/homepage/rfqs', { credentials: 'omit' }));
+  const data = CuratedRfqsResponse.parse(
+    await api.get('/api/homepage/rfqs', { credentials: 'omit' }),
+  );
   return data.rfqs.flatMap((row) => {
     const parsed = CuratedRfq.safeParse(row);
     return parsed.success ? [parsed.data] : [];
@@ -54,6 +56,9 @@ export async function fetchTickerHistory(api: ApiClient): Promise<TickerRecord[]
   });
 }
 
-export async function submitContact(api: ApiClient, body: ContactRequest): Promise<ContactResponse> {
+export async function submitContact(
+  api: ApiClient,
+  body: ContactRequest,
+): Promise<ContactResponse> {
   return ContactResponse.parse(await api.post('/api/contact', body, { timeoutMs: 12_000 }));
 }

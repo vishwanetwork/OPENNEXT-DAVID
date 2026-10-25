@@ -52,7 +52,9 @@ export function demoPath(path: string, method: ApiMethod): { path: string } | { 
     return { blocked: 'Administration and infrastructure access are not available in the demo.' };
   if (DEMO_SANDBOX.test(path)) return { path: path.replace(/^\/api\//, '/api/demo/') };
   if (method !== 'GET' && !/^\/api\/demo\//.test(path))
-    return { blocked: 'This action is not available in the demo. No real transaction was submitted.' };
+    return {
+      blocked: 'This action is not available in the demo. No real transaction was submitted.',
+    };
   return { path };
 }
 
@@ -60,9 +62,20 @@ export interface ApiClient {
   readonly demo: boolean;
   request<T = unknown>(path: string, options?: ApiRequestOptions): Promise<T>;
   get<T = unknown>(path: string, options?: Omit<ApiRequestOptions, 'method' | 'body'>): Promise<T>;
-  post<T = unknown>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, 'method' | 'body'>): Promise<T>;
-  patch<T = unknown>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, 'method' | 'body'>): Promise<T>;
-  delete<T = unknown>(path: string, options?: Omit<ApiRequestOptions, 'method' | 'body'>): Promise<T>;
+  post<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+  ): Promise<T>;
+  patch<T = unknown>(
+    path: string,
+    body?: unknown,
+    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+  ): Promise<T>;
+  delete<T = unknown>(
+    path: string,
+    options?: Omit<ApiRequestOptions, 'method' | 'body'>,
+  ): Promise<T>;
 }
 
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
@@ -85,7 +98,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       if (token) headers['X-CSRF-Token'] = token;
     }
     const controller = init.signal ? null : new AbortController();
-    const timer = controller && init.timeoutMs ? setTimeout(() => controller.abort(), init.timeoutMs) : null;
+    const timer =
+      controller && init.timeoutMs ? setTimeout(() => controller.abort(), init.timeoutMs) : null;
     let response: Response;
     try {
       response = await doFetch(path, {
@@ -114,11 +128,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     if (!response.ok) {
       if (demo && response.status === 401) options.onUnauthorized?.(path);
       const message =
-        (payload && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string'
+        (payload &&
+        typeof payload === 'object' &&
+        typeof (payload as { error?: unknown }).error === 'string'
           ? (payload as { error: string }).error
           : null) || 'The request could not be completed.';
       const code =
-        payload && typeof payload === 'object' && typeof (payload as { code?: unknown }).code === 'string'
+        payload &&
+        typeof payload === 'object' &&
+        typeof (payload as { code?: unknown }).code === 'string'
           ? (payload as { code: string }).code
           : undefined;
       throw new ApiError(message, response.status, payload, code);

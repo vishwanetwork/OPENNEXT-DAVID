@@ -17,7 +17,15 @@ export const runtime = 'nodejs';
 
 const API_ORIGIN = new URL((process.env.API_ORIGIN || 'http://127.0.0.1:4189').replace(/\/$/, ''));
 const TRUST_PROXY = process.env.OPENNEXT_TRUST_PROXY === '1';
-const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'transfer-encoding', 'te', 'trailer', 'upgrade', 'proxy-connection']);
+const HOP_BY_HOP = new Set([
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'te',
+  'trailer',
+  'upgrade',
+  'proxy-connection',
+]);
 
 async function forward(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -30,7 +38,8 @@ async function forward(request: Request): Promise<Response> {
   // they are dropped so the backend sees a direct client — its "localhost administrator" rule and
   // same-origin checks depend on that in local development.
   if (!TRUST_PROXY) {
-    for (const key of Object.keys(headers)) if (key.startsWith('x-forwarded-') || key === 'forwarded') delete headers[key];
+    for (const key of Object.keys(headers))
+      if (key.startsWith('x-forwarded-') || key === 'forwarded') delete headers[key];
   }
   // Keep the client-facing host so the backend can scope routes per host and verify origins.
   headers.host = headers['x-forwarded-host'] || request.headers.get('host') || url.host;
@@ -62,10 +71,19 @@ async function forward(request: Request): Promise<Response> {
     );
     upstream.on('error', (error) => {
       resolve(
-        new Response(JSON.stringify({ error: 'The OpenNEXT service is temporarily unavailable.', detail: error.message }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-        }),
+        new Response(
+          JSON.stringify({
+            error: 'The OpenNEXT service is temporarily unavailable.',
+            detail: error.message,
+          }),
+          {
+            status: 502,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-store',
+            },
+          },
+        ),
       );
     });
     request.signal.addEventListener('abort', () => upstream.destroy());

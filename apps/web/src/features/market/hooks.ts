@@ -29,7 +29,11 @@ export function usePrices() {
 
 export function useHistoryCatalog() {
   const api = useApi();
-  return useQuery({ queryKey: marketKeys.catalog, queryFn: () => marketApi.historyCatalog(api), staleTime: 5 * 60_000 });
+  return useQuery({
+    queryKey: marketKeys.catalog,
+    queryFn: () => marketApi.historyCatalog(api),
+    staleTime: 5 * 60_000,
+  });
 }
 
 /** Region list with readable names from the history catalog merged in. */

@@ -13,7 +13,9 @@ let cached: Country[] | null = null;
 export function countryList(): Country[] {
   if (cached) return cached;
   const names = new Intl.DisplayNames(['en'], { type: 'region' });
-  cached = CODES.map((code) => ({ code, name: names.of(code) || code })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+  cached = CODES.map((code) => ({ code, name: names.of(code) || code })).sort((a, b) =>
+    a.name.localeCompare(b.name, 'en'),
+  );
   return cached;
 }
 
@@ -22,4 +24,5 @@ export const findCountry = (value: string | null | undefined): Country | undefin
   return countryList().find((item) => item.name === label || item.code === label);
 };
 
-export const validCountry = (value: unknown): boolean => findCountry(typeof value === 'string' ? value : '') !== undefined;
+export const validCountry = (value: unknown): boolean =>
+  findCountry(typeof value === 'string' ? value : '') !== undefined;

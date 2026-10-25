@@ -7,9 +7,22 @@ import { useTerminal } from '@/features/terminal/context';
 import { useWorkspaceStore } from '@/features/terminal/store';
 import { bestFor, marketStatus, recentFor, regionMatches, useMarketplaceStore } from '../exchange';
 import { isDemo } from '../workspace';
-import { FREE_SETTLEMENT_DAYS, SETTLEMENT_PERIODS, useProcurementUi, type SettlementDays } from '../ui-store';
+import {
+  FREE_SETTLEMENT_DAYS,
+  SETTLEMENT_PERIODS,
+  useProcurementUi,
+  type SettlementDays,
+} from '../ui-store';
 import { useOpportunity } from './opportunity';
-import { PBtn, canInquire, date, externalCommitment, externalName, externalQuantity, rowPrice } from './shared';
+import {
+  PBtn,
+  canInquire,
+  date,
+  externalCommitment,
+  externalName,
+  externalQuantity,
+  rowPrice,
+} from './shared';
 
 /** Shown settlement / reference rows so the settlement dialog can resolve them by id. */
 export const settlementRows = new Map<string, SettlementRow>();
@@ -27,7 +40,11 @@ function useMatchScroll(active: boolean) {
     const step = (now: number) => {
       const delta = Math.min(50, now - last || 16);
       last = now;
-      if (!modal && !document.hidden && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      if (
+        !modal &&
+        !document.hidden &&
+        !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ) {
         if (node.matches(':hover') || node.contains(document.activeElement)) auto = node.scrollTop;
         else {
           auto = (auto ?? node.scrollTop) + delta * 0.025;
@@ -76,14 +93,29 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
           ? 'Offer'
           : 'Request quote'
         : 'Details';
-  const act = r.external ? (canInquire(role, r) ? 'proc-external-inquiry' : 'proc-listing') : r.referenceOnly ? (kind === 'best' ? 'proc-listing' : 'proc-settlement') : kind === 'best' ? 'proc-opportunity' : 'proc-settlement';
+  const act = r.external
+    ? canInquire(role, r)
+      ? 'proc-external-inquiry'
+      : 'proc-listing'
+    : r.referenceOnly
+      ? kind === 'best'
+        ? 'proc-listing'
+        : 'proc-settlement'
+      : kind === 'best'
+        ? 'proc-opportunity'
+        : 'proc-settlement';
   const onClick = () => {
     if (act === 'proc-external-inquiry') inquire(r);
-    else if (act === 'proc-opportunity') openOpportunity(r.id, r.side === 'demand' ? 'offer' : 'buy');
+    else if (act === 'proc-opportunity')
+      openOpportunity(r.id, r.side === 'demand' ? 'offer' : 'buy');
     else openModal(act, { id: r.id });
   };
   return (
-    <article className="match-card proc-match" data-match-id={r.id} data-match-side={r.side || 'settled'}>
+    <article
+      className="match-card proc-match"
+      data-match-id={r.id}
+      data-match-side={r.side || 'settled'}
+    >
       <div className="match-top">
         <strong>{r.model}</strong>
         <strong>
@@ -94,7 +126,9 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
       <p>
         {r.external ? externalName(r) : r.provider} · {r.region}
         <br />
-        {r.external ? externalQuantity(r) + ' · ' + externalCommitment(r) : r.count + ' GPU · ' + r.term + ' · ' + r.hours + 'h'}
+        {r.external
+          ? externalQuantity(r) + ' · ' + externalCommitment(r)
+          : r.count + ' GPU · ' + r.term + ' · ' + r.hours + 'h'}
       </p>
       <div className="match-bottom">
         <span className="fit">
@@ -110,7 +144,12 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
                   : 'Same-model recommendation'
                 : 'Settled ' + date(r.settledAt)}
         </span>
-        <PBtn data-act={act} data-id={r.id} data-intent={kind === 'best' ? (r.side === 'demand' ? 'offer' : 'buy') : undefined} onClick={onClick}>
+        <PBtn
+          data-act={act}
+          data-id={r.id}
+          data-intent={kind === 'best' ? (r.side === 'demand' ? 'offer' : 'buy') : undefined}
+          onClick={onClick}
+        >
           {label}
         </PBtn>
       </div>
@@ -139,7 +178,9 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
         !r.external &&
         r.model === model &&
         (region === 'All regions' || regionMatches(region, r.region, code)) &&
-        ((r.referenceOnly && r.timeBasis === 'illustrative') || (Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) >= cutoff && Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) <= now)),
+        ((r.referenceOnly && r.timeBasis === 'illustrative') ||
+          (Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) >= cutoff &&
+            Date.parse(String(r.referenceOnly ? r.activityAt : r.settledAt)) <= now)),
     );
     rows.forEach((r) => settlementRows.set(r.id, r as SettlementRow));
   }
@@ -149,28 +190,58 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
   const onDays = (value: string) => {
     const days = Number(value);
     if (['180', '365', 'all'].includes(value)) openModal('proc-history-upgrade');
-    else if (FREE_SETTLEMENT_DAYS.includes(days as SettlementDays)) setSettlementDays(days as SettlementDays);
+    else if (FREE_SETTLEMENT_DAYS.includes(days as SettlementDays))
+      setSettlementDays(days as SettlementDays);
   };
   const cards = rows.map((r) => <MatchCard key={r.id} r={r} kind={kind} />);
   return (
     <section className="matches" data-match-kind={kind}>
       <div className="matches-head">
         <div>
-          <h3>{kind === 'best' ? 'Best Matches' : hasReference ? 'Recent Matches' : 'Recent Settled'}</h3>
-          <small>{model} · {region}</small>
+          <h3>
+            {kind === 'best' ? 'Best Matches' : hasReference ? 'Recent Matches' : 'Recent Settled'}
+          </h3>
+          <small>
+            {model} · {region}
+          </small>
         </div>
         {kind === 'best' ? (
-          <button type="button" className="icon-btn" data-act="proc-refresh" aria-label="Refresh matches" onClick={() => void import('../workspace').then((m) => m.refreshMarketplace().catch(() => {}))}>↻</button>
+          <button
+            type="button"
+            className="icon-btn"
+            data-act="proc-refresh"
+            aria-label="Refresh matches"
+            onClick={() =>
+              void import('../workspace').then((m) => m.refreshMarketplace().catch(() => {}))
+            }
+          >
+            ↻
+          </button>
         ) : (
-          <select className="field proc-history-days" aria-label="Settlement history" data-proc-days value={String(settlementDays)} onChange={(e) => onDays(e.target.value)}>
+          <select
+            className="field proc-history-days"
+            aria-label="Settlement history"
+            data-proc-days
+            value={String(settlementDays)}
+            onChange={(e) => onDays(e.target.value)}
+          >
             {SETTLEMENT_PERIODS.map(([days, label]) => (
-              <option key={String(days)} value={String(days)}>{label}</option>
+              <option key={String(days)} value={String(days)}>
+                {label}
+              </option>
             ))}
           </select>
         )}
       </div>
-      {kind === 'best' && status.matchPrompt ? <p className="proc-match-prompt">{status.matchPrompt}</p> : null}
-      <div ref={viewport} className="match-viewport proc-match-viewport" data-scroll={kind} tabIndex={0}>
+      {kind === 'best' && status.matchPrompt ? (
+        <p className="proc-match-prompt">{status.matchPrompt}</p>
+      ) : null}
+      <div
+        ref={viewport}
+        className="match-viewport proc-match-viewport"
+        data-scroll={kind}
+        tabIndex={0}
+      >
         <div className="match-cycle">
           {cards.length ? (
             cards
@@ -178,7 +249,18 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
             <div className="proc-match-empty">
               <strong>{empty}</strong>
               {kind === 'best' && !rows.length ? (
-                <PBtn data-act={role === 'Seller' ? 'new-supply' : 'new-rfq'} onClick={() => openModal(role === 'Seller' ? (useWorkspaceStore.getState().review.status === 'Approved' ? 'supply-form' : 'review') : 'rfq-form')}>
+                <PBtn
+                  data-act={role === 'Seller' ? 'new-supply' : 'new-rfq'}
+                  onClick={() =>
+                    openModal(
+                      role === 'Seller'
+                        ? useWorkspaceStore.getState().review.status === 'Approved'
+                          ? 'supply-form'
+                          : 'review'
+                        : 'rfq-form',
+                    )
+                  }
+                >
                   {role === 'Seller' ? 'List supply' : 'Post RFQ'}
                 </PBtn>
               ) : null}
@@ -192,7 +274,10 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
         ) : null}
       </div>
       <div className="match-foot">
-        <span>{rows.length} {hasReference ? 'reference records' : kind === 'best' ? 'matches' : 'settlements'}</span>
+        <span>
+          {rows.length}{' '}
+          {hasReference ? 'reference records' : kind === 'best' ? 'matches' : 'settlements'}
+        </span>
         <span>Hover to pause</span>
       </div>
     </section>

@@ -3,8 +3,51 @@ import type { SessionUser } from '@opennext/contracts';
 import type { Offer } from '@/features/market/catalog';
 import { initialWorkspace, readPreferences, useWorkspaceStore } from './store';
 
-const user = (over: Partial<SessionUser>): SessionUser => ({ id: 'u1', email: 'a@b.c', name: 'Ada Lovelace', role: 'buyer', onboardingCompleted: true, promotionalCredit: 100, promotionalCreditGranted: 100, promotionalCreditWithdrawable: false, ...over });
-const offer = (id: string): Offer => ({ id, recordId: id, model: 'H100', provider: 'AWS', sourceProvider: 'aws', region: 'US East', regionCode: 'us-east-1', city: 'US East', term: 'Spot', count: 8, price: 2, instanceHourly: 16, instanceType: null, available: null, availability: null, delivery: null, rating: null, response: null, uptime: null, memory: 80, network: '', fit: null, reviews: null, validUntil: null, observedAt: null, effectiveAt: null, sourceUrl: null, priceKind: null, stale: false, currency: null, operatingSystem: null, tenancy: null });
+const user = (over: Partial<SessionUser>): SessionUser => ({
+  id: 'u1',
+  email: 'a@b.c',
+  name: 'Ada Lovelace',
+  role: 'buyer',
+  onboardingCompleted: true,
+  promotionalCredit: 100,
+  promotionalCreditGranted: 100,
+  promotionalCreditWithdrawable: false,
+  ...over,
+});
+const offer = (id: string): Offer => ({
+  id,
+  recordId: id,
+  model: 'H100',
+  provider: 'AWS',
+  sourceProvider: 'aws',
+  region: 'US East',
+  regionCode: 'us-east-1',
+  city: 'US East',
+  term: 'Spot',
+  count: 8,
+  price: 2,
+  instanceHourly: 16,
+  instanceType: null,
+  available: null,
+  availability: null,
+  delivery: null,
+  rating: null,
+  response: null,
+  uptime: null,
+  memory: 80,
+  network: '',
+  fit: null,
+  reviews: null,
+  validUntil: null,
+  observedAt: null,
+  effectiveAt: null,
+  sourceUrl: null,
+  priceKind: null,
+  stale: false,
+  currency: null,
+  operatingSystem: null,
+  tenancy: null,
+});
 
 describe('workspace store', () => {
   beforeEach(() => {
@@ -14,7 +57,11 @@ describe('workspace store', () => {
   it('applies the verified session and clears records when the account changes', () => {
     const s = useWorkspaceStore.getState();
     s.applySession(user({ fundedCredit: 50 }));
-    expect(useWorkspaceStore.getState()).toMatchObject({ role: 'Buyer', balance: 150, identity: { name: 'Ada Lovelace', id: 'u1' } });
+    expect(useWorkspaceStore.getState()).toMatchObject({
+      role: 'Buyer',
+      balance: 150,
+      identity: { name: 'Ada Lovelace', id: 'u1' },
+    });
     useWorkspaceStore.getState().patch({ rfqs: [{ id: 'RFQ-1' }], balance: 999 });
     s.applySession(user({ id: 'u2', role: 'seller', promotionalCredit: 0 }));
     expect(useWorkspaceStore.getState()).toMatchObject({ role: 'Seller', rfqs: [], balance: 0 });
@@ -26,8 +73,18 @@ describe('workspace store', () => {
     useWorkspaceStore.getState().setPriceMetrics(['min', 'max']);
     useWorkspaceStore.getState().toggleSaved(offer('x'));
     const stored = JSON.parse(window.localStorage.getItem('opennext-terminal-v4')!);
-    expect(stored).toEqual({ model: 'H200', region: 'All regions', priceMetric: 'max', priceMetrics: ['max', 'min'] });
-    expect(readPreferences({ getItem: () => JSON.stringify({ model: 'B200', period: '1Y', cart: [1], priceMetric: 'min' }) })).toEqual({ model: 'B200', priceMetrics: ['min'], priceMetric: 'min' });
+    expect(stored).toEqual({
+      model: 'H200',
+      region: 'All regions',
+      priceMetric: 'max',
+      priceMetrics: ['max', 'min'],
+    });
+    expect(
+      readPreferences({
+        getItem: () =>
+          JSON.stringify({ model: 'B200', period: '1Y', cart: [1], priceMetric: 'min' }),
+      }),
+    ).toEqual({ model: 'B200', priceMetrics: ['min'], priceMetric: 'min' });
   });
   it('manages saved, cart, selection and hidden series', () => {
     const s = useWorkspaceStore.getState();

@@ -58,7 +58,13 @@ export function CuratedRfqDialog({
         const dialog = event.currentTarget;
         if (event.target !== dialog) return;
         const box = dialog.getBoundingClientRect();
-        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) closeDialog();
+        if (
+          event.clientX < box.left ||
+          event.clientX > box.right ||
+          event.clientY < box.top ||
+          event.clientY > box.bottom
+        )
+          closeDialog();
       }}
     >
       <header>
@@ -68,10 +74,18 @@ export function CuratedRfqDialog({
           </span>
           <h2 id="on-curated-heading">{item.title}</h2>
           <p id="on-curated-intro">
-            {item.description || 'Review the requirements and share your available capacity with the OpenNEXT team.'}
+            {item.description ||
+              'Review the requirements and share your available capacity with the OpenNEXT team.'}
           </p>
         </div>
-        <button type="button" className="on-curated-close" aria-label="Close RFQ details" onClick={closeDialog}>×</button>
+        <button
+          type="button"
+          className="on-curated-close"
+          aria-label="Close RFQ details"
+          onClick={closeDialog}
+        >
+          ×
+        </button>
       </header>
       <dl className="on-curated-specs">
         {requirementRows(item).map((row) => (
@@ -82,11 +96,16 @@ export function CuratedRfqDialog({
         ))}
       </dl>
       <p className="on-curated-notice">
-        Submit your proposed capacity and terms. OpenNEXT will review your response and coordinate the next steps. Availability and final pricing are confirmed by quote.
+        Submit your proposed capacity and terms. OpenNEXT will review your response and coordinate
+        the next steps. Availability and final pricing are confirmed by quote.
       </p>
-      <p className="on-curated-error" data-curated-error role="alert" hidden={!error}>{error}</p>
+      <p className="on-curated-error" data-curated-error role="alert" hidden={!error}>
+        {error}
+      </p>
       <footer>
-        <button type="button" className="on-curated-back" onClick={closeDialog}>Close</button>
+        <button type="button" className="on-curated-back" onClick={closeDialog}>
+          Close
+        </button>
         <button type="button" className="on-curated-offer" onClick={() => onOffer(item)}>
           Offer capacity <span aria-hidden="true">↗</span>
         </button>

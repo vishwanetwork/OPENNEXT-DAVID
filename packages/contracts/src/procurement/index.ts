@@ -64,7 +64,13 @@ export const MarketRow = MarketplaceListing.extend({
     .passthrough()
     .optional(),
   rentalMonths: z
-    .object({ min: num, max: num, preferred: num, options: z.array(z.number()).optional(), notes: str })
+    .object({
+      min: num,
+      max: num,
+      preferred: num,
+      options: z.array(z.number()).optional(),
+      notes: str,
+    })
     .passthrough()
     .optional(),
   sku: str,
@@ -116,7 +122,9 @@ export const SettlementRow = z
   })
   .passthrough();
 export type SettlementRow = z.infer<typeof SettlementRow>;
-export const SettlementsResponse = z.object({ rows: z.array(SettlementRow).default([]) }).passthrough();
+export const SettlementsResponse = z
+  .object({ rows: z.array(SettlementRow).default([]) })
+  .passthrough();
 export type SettlementsResponse = z.infer<typeof SettlementsResponse>;
 
 /* ---------- Owner records (`/api/marketplace/me`) ---------- */
@@ -433,7 +441,9 @@ export type SupplyRequest = z.infer<typeof SupplyRequest>;
 export const SupplyResponse = z.object({ supply: OwnedSupply }).passthrough();
 export type SupplyResponse = z.infer<typeof SupplyResponse>;
 
-export const AgentRequestResponse = z.object({ message: z.string().optional(), status: str }).passthrough();
+export const AgentRequestResponse = z
+  .object({ message: z.string().optional(), status: str })
+  .passthrough();
 export type AgentRequestResponse = z.infer<typeof AgentRequestResponse>;
 
 export const QuoteRequest = z

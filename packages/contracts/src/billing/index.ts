@@ -23,7 +23,16 @@ export const CreditTopup = z
 export type CreditTopup = z.infer<typeof CreditTopup>;
 
 export const BillingNotification = z
-  .object({ id: z.string(), ownerId: str, subject: str, message: str, created: str, createdAt: str, read: z.boolean().optional(), topupId: str })
+  .object({
+    id: z.string(),
+    ownerId: str,
+    subject: str,
+    message: str,
+    created: str,
+    createdAt: str,
+    read: z.boolean().optional(),
+    topupId: str,
+  })
   .passthrough();
 
 /** GET /api/billing/account — the verified credit account. Only `confirmed: true` snapshots may replace a balance. */
@@ -87,6 +96,15 @@ export const LedgerEntry = z
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
 
 export const Payout = z
-  .object({ id: z.string(), amount: z.number(), status: z.string(), destination: str, beneficiary: str, createdAt: str, paidAt: str, test: z.boolean().optional() })
+  .object({
+    id: z.string(),
+    amount: z.number(),
+    status: z.string(),
+    destination: str,
+    beneficiary: str,
+    createdAt: str,
+    paidAt: str,
+    test: z.boolean().optional(),
+  })
   .passthrough();
 export type Payout = z.infer<typeof Payout>;

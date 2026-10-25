@@ -1,4 +1,390 @@
-.onx-account-profile{color:#17211c;padding-bottom:56px}.onx-account-profile-header{display:flex;align-items:center;gap:22px;padding:10px 0 32px}.onx-account-avatar{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:#e9efea;color:#42674f;font-size:25px;font-weight:600;letter-spacing:-.5px}.onx-account-avatar svg{width:34px;height:34px}.onx-account-title{min-width:0;flex:1}.onx-account-title h1{font-size:26px;font-weight:600;letter-spacing:-.7px;margin:0 0 7px;line-height:1.25;overflow-wrap:anywhere}.onx-account-title p{font-size:14px;color:#77847c;margin:0;overflow-wrap:anywhere}.onx-account-icon{width:36px;height:36px;display:inline-grid;place-items:center;border:1px solid #dce3dd;background:white;border-radius:6px;color:#596d60;cursor:pointer;flex-shrink:0;text-decoration:none}.onx-account-icon:hover{background:#f1f5f1;border-color:#b5c6b8}.onx-account-icon svg{width:17px;height:17px}.onx-account-identity{background:#fff;border:1px solid #e0e5e0;border-radius:9px;padding:0 28px}.onx-account-identity dl{margin:0}.onx-account-row{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;min-height:73px;gap:28px;border-bottom:1px solid #e7ebe7}.onx-account-row dt{color:#7a877e;font-size:14px}.onx-account-row dd{margin:0;font-size:14px;overflow-wrap:anywhere}.onx-account-verification{display:flex;align-items:center;justify-content:flex-end;padding:19px 0}.onx-account-verify{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #d9e4da;border-radius:6px;background:#f2f7f2;color:#41664c;font:inherit;font-size:12px;cursor:pointer}.onx-account-verify svg{width:15px;height:15px}.onx-account-review-status{border-left:1px solid #cbd8cd;padding-left:8px;font-size:11px}.onx-account-verify.reviewing{background:#fbf6e9;color:#886c24;border-color:#e8ddb5}.onx-account-verify.rejected{background:#fcf0ee;color:#97564f;border-color:#edcfc9}.onx-account-ssh{margin-top:42px}.onx-account-section-header{display:flex;align-items:center;justify-content:space-between;gap:22px;padding-bottom:20px}.onx-account-section-header h2{font-size:20px;letter-spacing:-.4px;font-weight:600;margin:0 0 9px}.onx-account-section-header p{font-size:13px;line-height:1.6;color:#7a877e;margin:0}.onx-account-section-header>.btn{flex-shrink:0;min-height:38px;font-size:13px}.onx-account-empty{min-height:210px;background:#fff;border:1px solid #e0e5e0;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;color:#849087;font-size:13px}.onx-account-empty>svg{width:31px;height:31px;color:#8b9d8e;margin-bottom:16px}.onx-account-empty h3{font-size:15px;font-weight:500;color:#4b5d50;margin:0 0 9px}.onx-account-empty p{font-size:13px;line-height:1.6;margin:0;color:#8a958e}.onx-account-footnote{font-size:12px;color:#8a958e;line-height:1.7;margin:16px 0 0}.onx-account-key-list{border:1px solid #e0e5e0;border-radius:9px;background:#fff;overflow:hidden}.onx-account-key{display:flex;align-items:center;gap:17px;padding:22px 24px;border-bottom:1px solid #e7ebe7}.onx-account-key:last-child{border-bottom:0}.onx-account-key-icon{width:38px;height:38px;border-radius:7px;background:#f1f5f1;display:grid;place-items:center;flex-shrink:0;color:#57715f}.onx-account-key-icon svg{width:20px;height:20px}.onx-account-key-info{flex:1;min-width:0}.onx-account-key-info h3{font-size:14px;font-weight:600;margin:0 0 6px;overflow-wrap:anywhere}.onx-account-key-info code{display:block;font-size:11px;line-height:1.5;color:#6c7c71;overflow-wrap:anywhere}.onx-account-key-info small{display:block;font-size:11px;margin-top:6px;color:#8a958e}.onx-account-key-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}.onx-account-key-actions .btn{font-size:12px}.onx-account-form .form-label{display:block;margin-bottom:20px}.onx-account-form .field{margin-top:9px}.onx-account-form textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}.onx-account-form-error{min-height:18px;margin:10px 0;color:#a13e31;font-size:12px;line-height:1.6}.onx-account-service-note{font-size:12px;line-height:1.6;color:#7e6c3a;background:#f8f5eb;border:1px solid #e9e1c9;border-radius:6px;padding:11px 13px;margin:0 0 14px}.onx-account-remove-fingerprint{display:block;padding:12px;background:#f4f6f4;border-radius:5px;font-size:12px;overflow-wrap:anywhere}.onx-account-dialog>p{font-size:13px;line-height:1.75}.onx-account-profile button:focus-visible,.onx-account-profile a:focus-visible{outline:2px solid #36794f;outline-offset:3px}.onx-account-profile button:disabled{opacity:.45;cursor:not-allowed}
-.onx-account-empty{min-height:72px;display:flex;flex-direction:row;justify-content:flex-start;align-items:center;text-align:left;padding:21px 24px;border-radius:6px;line-height:1.7}
-.onx-account-ssh button:focus-visible{outline:2px solid #36794f;outline-offset:3px}.onx-account-ssh button:disabled{opacity:.45;cursor:not-allowed}
-@media(max-width:700px){.onx-account-profile-header{gap:15px;padding-bottom:25px}.onx-account-avatar{width:58px;height:58px;font-size:21px}.onx-account-avatar svg{width:27px;height:27px}.onx-account-title h1{font-size:22px}.onx-account-title p{font-size:12px}.onx-account-identity{padding:0 18px}.onx-account-row{grid-template-columns:78px minmax(0,1fr);gap:14px;min-height:68px}.onx-account-row dt,.onx-account-row dd{font-size:13px}.onx-account-ssh{margin-top:32px}.onx-account-section-header{align-items:flex-start;gap:15px}.onx-account-section-header h2{font-size:18px}.onx-account-section-header p{font-size:12px}.onx-account-key{padding:18px 15px;gap:12px;flex-wrap:wrap}.onx-account-key-info{flex-basis:calc(100% - 50px)}.onx-account-key-actions{margin-left:50px}.onx-account-footnote{font-size:11px}.onx-account-empty{min-height:72px;padding:18px}}
+.onx-account-profile {
+  color: #17211c;
+  padding-bottom: 56px;
+}
+.onx-account-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 10px 0 32px;
+}
+.onx-account-avatar {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: #e9efea;
+  color: #42674f;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+.onx-account-avatar svg {
+  width: 34px;
+  height: 34px;
+}
+.onx-account-title {
+  min-width: 0;
+  flex: 1;
+}
+.onx-account-title h1 {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+  margin: 0 0 7px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.onx-account-title p {
+  font-size: 14px;
+  color: #77847c;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.onx-account-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #dce3dd;
+  background: white;
+  border-radius: 6px;
+  color: #596d60;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.onx-account-icon:hover {
+  background: #f1f5f1;
+  border-color: #b5c6b8;
+}
+.onx-account-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.onx-account-identity {
+  background: #fff;
+  border: 1px solid #e0e5e0;
+  border-radius: 9px;
+  padding: 0 28px;
+}
+.onx-account-identity dl {
+  margin: 0;
+}
+.onx-account-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  min-height: 73px;
+  gap: 28px;
+  border-bottom: 1px solid #e7ebe7;
+}
+.onx-account-row dt {
+  color: #7a877e;
+  font-size: 14px;
+}
+.onx-account-row dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.onx-account-verification {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 19px 0;
+}
+.onx-account-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d9e4da;
+  border-radius: 6px;
+  background: #f2f7f2;
+  color: #41664c;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.onx-account-verify svg {
+  width: 15px;
+  height: 15px;
+}
+.onx-account-review-status {
+  border-left: 1px solid #cbd8cd;
+  padding-left: 8px;
+  font-size: 11px;
+}
+.onx-account-verify.reviewing {
+  background: #fbf6e9;
+  color: #886c24;
+  border-color: #e8ddb5;
+}
+.onx-account-verify.rejected {
+  background: #fcf0ee;
+  color: #97564f;
+  border-color: #edcfc9;
+}
+.onx-account-ssh {
+  margin-top: 42px;
+}
+.onx-account-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding-bottom: 20px;
+}
+.onx-account-section-header h2 {
+  font-size: 20px;
+  letter-spacing: -0.4px;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+.onx-account-section-header p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #7a877e;
+  margin: 0;
+}
+.onx-account-section-header > .btn {
+  flex-shrink: 0;
+  min-height: 38px;
+  font-size: 13px;
+}
+.onx-account-empty {
+  min-height: 210px;
+  background: #fff;
+  border: 1px solid #e0e5e0;
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px;
+  color: #849087;
+  font-size: 13px;
+}
+.onx-account-empty > svg {
+  width: 31px;
+  height: 31px;
+  color: #8b9d8e;
+  margin-bottom: 16px;
+}
+.onx-account-empty h3 {
+  font-size: 15px;
+  font-weight: 500;
+  color: #4b5d50;
+  margin: 0 0 9px;
+}
+.onx-account-empty p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  color: #8a958e;
+}
+.onx-account-footnote {
+  font-size: 12px;
+  color: #8a958e;
+  line-height: 1.7;
+  margin: 16px 0 0;
+}
+.onx-account-key-list {
+  border: 1px solid #e0e5e0;
+  border-radius: 9px;
+  background: #fff;
+  overflow: hidden;
+}
+.onx-account-key {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding: 22px 24px;
+  border-bottom: 1px solid #e7ebe7;
+}
+.onx-account-key:last-child {
+  border-bottom: 0;
+}
+.onx-account-key-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  background: #f1f5f1;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #57715f;
+}
+.onx-account-key-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.onx-account-key-info {
+  flex: 1;
+  min-width: 0;
+}
+.onx-account-key-info h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.onx-account-key-info code {
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #6c7c71;
+  overflow-wrap: anywhere;
+}
+.onx-account-key-info small {
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+  color: #8a958e;
+}
+.onx-account-key-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.onx-account-key-actions .btn {
+  font-size: 12px;
+}
+.onx-account-form .form-label {
+  display: block;
+  margin-bottom: 20px;
+}
+.onx-account-form .field {
+  margin-top: 9px;
+}
+.onx-account-form textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+.onx-account-form-error {
+  min-height: 18px;
+  margin: 10px 0;
+  color: #a13e31;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.onx-account-service-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7e6c3a;
+  background: #f8f5eb;
+  border: 1px solid #e9e1c9;
+  border-radius: 6px;
+  padding: 11px 13px;
+  margin: 0 0 14px;
+}
+.onx-account-remove-fingerprint {
+  display: block;
+  padding: 12px;
+  background: #f4f6f4;
+  border-radius: 5px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.onx-account-dialog > p {
+  font-size: 13px;
+  line-height: 1.75;
+}
+.onx-account-profile button:focus-visible,
+.onx-account-profile a:focus-visible {
+  outline: 2px solid #36794f;
+  outline-offset: 3px;
+}
+.onx-account-profile button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.onx-account-empty {
+  min-height: 72px;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: left;
+  padding: 21px 24px;
+  border-radius: 6px;
+  line-height: 1.7;
+}
+.onx-account-ssh button:focus-visible {
+  outline: 2px solid #36794f;
+  outline-offset: 3px;
+}
+.onx-account-ssh button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (max-width: 700px) {
+  .onx-account-profile-header {
+    gap: 15px;
+    padding-bottom: 25px;
+  }
+  .onx-account-avatar {
+    width: 58px;
+    height: 58px;
+    font-size: 21px;
+  }
+  .onx-account-avatar svg {
+    width: 27px;
+    height: 27px;
+  }
+  .onx-account-title h1 {
+    font-size: 22px;
+  }
+  .onx-account-title p {
+    font-size: 12px;
+  }
+  .onx-account-identity {
+    padding: 0 18px;
+  }
+  .onx-account-row {
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 14px;
+    min-height: 68px;
+  }
+  .onx-account-row dt,
+  .onx-account-row dd {
+    font-size: 13px;
+  }
+  .onx-account-ssh {
+    margin-top: 32px;
+  }
+  .onx-account-section-header {
+    align-items: flex-start;
+    gap: 15px;
+  }
+  .onx-account-section-header h2 {
+    font-size: 18px;
+  }
+  .onx-account-section-header p {
+    font-size: 12px;
+  }
+  .onx-account-key {
+    padding: 18px 15px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .onx-account-key-info {
+    flex-basis: calc(100% - 50px);
+  }
+  .onx-account-key-actions {
+    margin-left: 50px;
+  }
+  .onx-account-footnote {
+    font-size: 11px;
+  }
+  .onx-account-empty {
+    min-height: 72px;
+    padding: 18px;
+  }
+}

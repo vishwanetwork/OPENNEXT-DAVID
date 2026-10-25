@@ -19,7 +19,12 @@ export async function requestApp(fallback: AppKind): Promise<RequestApp> {
   const list = await headers();
   const app = (list.get(APP_HEADERS.app) as AppKind | null) || fallback;
   const base = list.get(APP_HEADERS.base) ?? (fallback === 'site' ? '' : `/${fallback}`);
-  return { app, base, demo: list.get(APP_HEADERS.demo) === '1', host: list.get(APP_HEADERS.host) || '' };
+  return {
+    app,
+    base,
+    demo: list.get(APP_HEADERS.demo) === '1',
+    host: list.get(APP_HEADERS.host) || '',
+  };
 }
 
 export { serverEnv };

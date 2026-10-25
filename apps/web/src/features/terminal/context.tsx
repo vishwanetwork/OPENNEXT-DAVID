@@ -25,7 +25,13 @@ const TerminalContext = createContext<TerminalApi | null>(null);
 const InitialUserContext = createContext<SessionUser | null | undefined>(undefined);
 export const useInitialUser = () => useContext(InitialUserContext);
 
-export function TerminalProvider({ children, initialUser }: { children: ReactNode; initialUser?: SessionUser | null }) {
+export function TerminalProvider({
+  children,
+  initialUser,
+}: {
+  children: ReactNode;
+  initialUser?: SessionUser | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { href, base, crossHref } = useApp();
@@ -36,7 +42,14 @@ export function TerminalProvider({ children, initialUser }: { children: ReactNod
       const user = useSessionStore.getState().user;
       const state = useWorkspaceStore.getState();
       const target = resolveTarget(requested, state.role, Boolean(user?.onboardingCompleted));
-      const patch: Parameters<typeof state.patch>[0] = { menu: null, userOpen: false, modal: null, query: '', selected: [], tab: 'all' };
+      const patch: Parameters<typeof state.patch>[0] = {
+        menu: null,
+        userOpen: false,
+        modal: null,
+        query: '',
+        selected: [],
+        tab: 'all',
+      };
       if (!user || !user.onboardingCompleted) patch.pending = target;
       else {
         patch.pending = null;
@@ -98,7 +111,11 @@ export async function refreshWorkspace(): Promise<void> {
  * `?opportunity=&intent=`) once the workspace is authoritative. The procurement feature
  * registers a handler; until then the pending intent stays in the store untouched.
  */
-export type IntentResumer = (intent: { kind: 'listing' | 'opportunity'; id: string; intent: 'buy' | 'offer' }) => boolean | void;
+export type IntentResumer = (intent: {
+  kind: 'listing' | 'opportunity';
+  id: string;
+  intent: 'buy' | 'offer';
+}) => boolean | void;
 let intentResumer: IntentResumer | null = null;
 export function registerIntentResumer(fn: IntentResumer | null) {
   intentResumer = fn;

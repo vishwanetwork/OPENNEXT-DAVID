@@ -25,8 +25,12 @@ export const stampUtc = (value: string | number | Date): string =>
 
 /** `Oct 18, 2026` in UTC */
 export const dateUtc = (value: string | number | Date): string =>
-  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(value),
-  );
+  new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(value));
 
-export const percent = (value: number, digits = 2): string => `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;
+export const percent = (value: number, digits = 2): string =>
+  `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;

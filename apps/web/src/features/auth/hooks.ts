@@ -14,7 +14,11 @@ let roleIntentSingleton: RoleIntentStore | null = null;
 function roleIntentFor(pathname: string, queryRole: string | null): RoleIntentStore {
   if (!roleIntentSingleton) {
     const storage = typeof window === 'undefined' ? null : window.sessionStorage;
-    roleIntentSingleton = new RoleIntentStore(roleIntentKey(pathname), allowedRole(queryRole), storage);
+    roleIntentSingleton = new RoleIntentStore(
+      roleIntentKey(pathname),
+      allowedRole(queryRole),
+      storage,
+    );
   }
   return roleIntentSingleton;
 }

@@ -37,7 +37,13 @@ export interface SiteActions {
 
 const SiteActionsContext = createContext<SiteActions | null>(null);
 
-export function SiteActionsProvider({ value, children }: { value: SiteActions; children: ReactNode }) {
+export function SiteActionsProvider({
+  value,
+  children,
+}: {
+  value: SiteActions;
+  children: ReactNode;
+}) {
   return <SiteActionsContext.Provider value={value}>{children}</SiteActionsContext.Provider>;
 }
 

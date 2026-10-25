@@ -20,19 +20,60 @@ export function NotificationsPage() {
   return (
     <div className="page-content qp-page" data-qp-history>
       <div className="qp-page-heading">
-        <div><h1>Notifications</h1><p>Account updates and quote decisions in one place.</p></div>
-        <button type="button" className="btn secondary" data-qp-action="read-all" disabled={!unread} onClick={() => store.markRead(rows.map((n) => n.id))}>Mark all as read</button>
+        <div>
+          <h1>Notifications</h1>
+          <p>Account updates and quote decisions in one place.</p>
+        </div>
+        <button
+          type="button"
+          className="btn secondary"
+          data-qp-action="read-all"
+          disabled={!unread}
+          onClick={() => store.markRead(rows.map((n) => n.id))}
+        >
+          Mark all as read
+        </button>
       </div>
       <div className="qp-history-panel">
         <ServiceError error={store.error} onRetry={() => void refresh(true)} />
-        {rows.length ? <NotificationRows rows={rows.slice(start, start + NOTIFICATION_PAGE)} onOpen={openNotice} /> : <EmptyNotifications />}
+        {rows.length ? (
+          <NotificationRows
+            rows={rows.slice(start, start + NOTIFICATION_PAGE)}
+            onOpen={openNotice}
+          />
+        ) : (
+          <EmptyNotifications />
+        )}
       </div>
       <div className="qp-pagination">
-        <span>{rows.length ? `${start + 1}–${Math.min(start + NOTIFICATION_PAGE, rows.length)} of ${rows.length} notifications` : 'No previous updates'}</span>
-        <button type="button" className="btn secondary small" data-qp-action="previous" disabled={!page} onClick={() => store.setPage(page - 1)}>Previous</button>
-        <button type="button" className="btn secondary small" data-qp-action="next" disabled={start + NOTIFICATION_PAGE >= rows.length} onClick={() => store.setPage(page + 1)}>Next</button>
+        <span>
+          {rows.length
+            ? `${start + 1}–${Math.min(start + NOTIFICATION_PAGE, rows.length)} of ${rows.length} notifications`
+            : 'No previous updates'}
+        </span>
+        <button
+          type="button"
+          className="btn secondary small"
+          data-qp-action="previous"
+          disabled={!page}
+          onClick={() => store.setPage(page - 1)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="btn secondary small"
+          data-qp-action="next"
+          disabled={start + NOTIFICATION_PAGE >= rows.length}
+          onClick={() => store.setPage(page + 1)}
+        >
+          Next
+        </button>
       </div>
-      <p className="qp-request-empty">Read and mute preferences are saved on this device. Email delivery depends on the configured notification service.</p>
+      <p className="qp-request-empty">
+        Read and mute preferences are saved on this device. Email delivery depends on the configured
+        notification service.
+      </p>
     </div>
   );
 }

@@ -6,7 +6,11 @@ import { useWorkspaceStore } from '../store';
 import { downloadWorkspace } from '../export';
 import { PageHeading, TButton } from './ui';
 
-const OPTIONS: [keyof NonNullable<ReturnType<typeof useWorkspaceStore.getState>['identity']['preferences']>, string, string][] = [
+const OPTIONS: [
+  keyof NonNullable<ReturnType<typeof useWorkspaceStore.getState>['identity']['preferences']>,
+  string,
+  string,
+][] = [
   ['quotes', 'Quotes & RFQ responses', 'Updates on supplier quotes and your requests.'],
   ['delivery', 'Instance updates', 'Delivery and Spot interruption warnings.'],
   ['market', 'Saved capacity', 'Price changes for resources you follow.'],
@@ -14,9 +18,20 @@ const OPTIONS: [keyof NonNullable<ReturnType<typeof useWorkspaceStore.getState>[
 
 export function exportWorkspace(type: string) {
   const S = useWorkspaceStore.getState();
-  const data = type === 'workspace'
-    ? { rfqs: S.rfqs, listings: S.listings, saved: S.saved, cart: S.cart, orders: S.orders, ledger: S.ledger, notifications: S.notifications, responses: S.responses, payouts: S.payouts }
-    : (S as unknown as Record<string, unknown>)[type] || S.ledger;
+  const data =
+    type === 'workspace'
+      ? {
+          rfqs: S.rfqs,
+          listings: S.listings,
+          saved: S.saved,
+          cart: S.cart,
+          orders: S.orders,
+          ledger: S.ledger,
+          notifications: S.notifications,
+          responses: S.responses,
+          payouts: S.payouts,
+        }
+      : (S as unknown as Record<string, unknown>)[type] || S.ledger;
   downloadWorkspace(type, data);
 }
 
@@ -27,7 +42,17 @@ export function SettingsPage() {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    patch({ identity: { ...identity, preferences: { quotes: !!data.get('quotes'), delivery: !!data.get('delivery'), market: !!data.get('market'), zone: String(data.get('zone') || 'UTC') } } });
+    patch({
+      identity: {
+        ...identity,
+        preferences: {
+          quotes: !!data.get('quotes'),
+          delivery: !!data.get('delivery'),
+          market: !!data.get('market'),
+          zone: String(data.get('zone') || 'UTC'),
+        },
+      },
+    });
     toast('Settings saved');
   };
   return (
@@ -36,30 +61,69 @@ export function SettingsPage() {
       <form data-form="settings" className="preview-settings-form" onSubmit={submit}>
         <div className="preview-settings-grid">
           <section className="panel preview-settings-card">
-            <header><h2>Notifications</h2><p>Choose which workspace updates matter to you.</p></header>
+            <header>
+              <h2>Notifications</h2>
+              <p>Choose which workspace updates matter to you.</p>
+            </header>
             <div className="preview-settings-options">
               {OPTIONS.map(([id, label, note]) => (
                 <label key={id} className="preview-settings-option">
-                  <span><strong>{label}</strong><small>{note}</small></span>
-                  <input type="checkbox" name={id} aria-label={label} defaultChecked={identity.preferences?.[id] !== false} />
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{note}</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    name={id}
+                    aria-label={label}
+                    defaultChecked={identity.preferences?.[id] !== false}
+                  />
                 </label>
               ))}
             </div>
           </section>
           <section className="panel preview-settings-card">
-            <header><h2>Display</h2><p>Set the time zone for your workspace preferences.</p></header>
-            <label className="form-label" htmlFor="workspace-time-zone">Time zone</label>
-            <select id="workspace-time-zone" name="zone" className="field" defaultValue={identity.preferences?.zone || 'UTC'}>
-              {['UTC', 'Asia/Shanghai', 'Asia/Singapore', 'America/Los_Angeles'].map((z) => <option key={z}>{z}</option>)}
+            <header>
+              <h2>Display</h2>
+              <p>Set the time zone for your workspace preferences.</p>
+            </header>
+            <label className="form-label" htmlFor="workspace-time-zone">
+              Time zone
+            </label>
+            <select
+              id="workspace-time-zone"
+              name="zone"
+              className="field"
+              defaultValue={identity.preferences?.zone || 'UTC'}
+            >
+              {['UTC', 'Asia/Shanghai', 'Asia/Singapore', 'America/Los_Angeles'].map((z) => (
+                <option key={z}>{z}</option>
+              ))}
             </select>
-            <p className="preview-settings-hint">Market history and settlement timestamps retain their displayed time-zone labels.</p>
+            <p className="preview-settings-hint">
+              Market history and settlement timestamps retain their displayed time-zone labels.
+            </p>
           </section>
         </div>
-        <footer className="preview-settings-save"><button className="btn small" type="submit">Save settings</button></footer>
+        <footer className="preview-settings-save">
+          <button className="btn small" type="submit">
+            Save settings
+          </button>
+        </footer>
       </form>
       <section className="panel preview-settings-export">
-        <div><h2>Workspace data</h2><p>Download your requirements, saved resources and procurement records.</p></div>
-        <TButton cls="secondary small" data-act="export" data-value="workspace" onClick={() => exportWorkspace('workspace')}>Export workspace</TButton>
+        <div>
+          <h2>Workspace data</h2>
+          <p>Download your requirements, saved resources and procurement records.</p>
+        </div>
+        <TButton
+          cls="secondary small"
+          data-act="export"
+          data-value="workspace"
+          onClick={() => exportWorkspace('workspace')}
+        >
+          Export workspace
+        </TButton>
       </section>
     </div>
   );

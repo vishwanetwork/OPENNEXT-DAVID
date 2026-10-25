@@ -14,34 +14,96 @@ import { TerminalModal } from './components/TerminalModal';
 beforeEach(() => {
   useSessionStore.setState({ status: 'booting', user: null });
   useWorkspaceStore.setState(initialWorkspace());
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url.startsWith('/api/pricing/prices')) return jsonResponse({ records: [{ recordId: 'r1', provider: 'aws', gpuModel: 'H100', region: 'us-east-1', term: 'Spot', gpuCount: 8, perGpuHourly: 2.5, instanceHourly: 20, observedAt: '2026-10-20T00:00:00Z' }], meta: { status: 'ok' } });
-    if (url.startsWith('/api/pricing/history-catalog')) return jsonResponse({ regions: [] });
-    if (url.startsWith('/api/pricing/regional-history')) return jsonResponse({ term: 'Spot', metric: 'avg', regions: [{ code: 'us-east-1', name: 'US East' }], meta: { bucketMinutes: 60 }, series: [{ id: 'a', region: 'us-east-1', name: 'US East', configuration: '8 × H100', gpuCount: 8, points: [{ time: '2026-10-20T00:00:00Z', avg: 2.5 }, { time: '2026-10-20T01:00:00Z', avg: 2.6 }] }] });
-    if (url.startsWith('/api/news')) return jsonResponse({ status: 'ok', fetchedAt: '2026-10-20T00:00:00Z', articles: [{ title: 'AWS adds capacity', url: 'https://aws.amazon.com/x', source: 'AWS', publishedAt: '2026-10-19' }] });
-    return jsonResponse({ user: null });
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/pricing/prices'))
+        return jsonResponse({
+          records: [
+            {
+              recordId: 'r1',
+              provider: 'aws',
+              gpuModel: 'H100',
+              region: 'us-east-1',
+              term: 'Spot',
+              gpuCount: 8,
+              perGpuHourly: 2.5,
+              instanceHourly: 20,
+              observedAt: '2026-10-20T00:00:00Z',
+            },
+          ],
+          meta: { status: 'ok' },
+        });
+      if (url.startsWith('/api/pricing/history-catalog')) return jsonResponse({ regions: [] });
+      if (url.startsWith('/api/pricing/regional-history'))
+        return jsonResponse({
+          term: 'Spot',
+          metric: 'avg',
+          regions: [{ code: 'us-east-1', name: 'US East' }],
+          meta: { bucketMinutes: 60 },
+          series: [
+            {
+              id: 'a',
+              region: 'us-east-1',
+              name: 'US East',
+              configuration: '8 × H100',
+              gpuCount: 8,
+              points: [
+                { time: '2026-10-20T00:00:00Z', avg: 2.5 },
+                { time: '2026-10-20T01:00:00Z', avg: 2.6 },
+              ],
+            },
+          ],
+        });
+      if (url.startsWith('/api/news'))
+        return jsonResponse({
+          status: 'ok',
+          fetchedAt: '2026-10-20T00:00:00Z',
+          articles: [
+            {
+              title: 'AWS adds capacity',
+              url: 'https://aws.amazon.com/x',
+              source: 'AWS',
+              publishedAt: '2026-10-19',
+            },
+          ],
+        });
+      return jsonResponse({ user: null });
+    }),
+  );
 });
 
 describe('TerminalPage gate', () => {
   it('shows the sign-in view to anonymous visitors and keeps the landing off the terminal', () => {
     useSessionStore.getState().setUser(null);
-    renderTerminal(<TerminalPage><div>secret</div></TerminalPage>);
+    renderTerminal(
+      <TerminalPage>
+        <div>secret</div>
+      </TerminalPage>,
+    );
     expect(screen.getByText('Welcome back.')).toBeInTheDocument();
     expect(screen.getByText('Continue with Google')).toBeInTheDocument();
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
   });
   it('shows onboarding until the workspace is set up', () => {
     signIn({ onboardingCompleted: false });
-    renderTerminal(<TerminalPage><div>secret</div></TerminalPage>);
+    renderTerminal(
+      <TerminalPage>
+        <div>secret</div>
+      </TerminalPage>,
+    );
     expect(screen.getByText('How will you', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('Buyer')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Next/ })).toBeDisabled();
   });
   it('renders the page for verified, onboarded accounts', () => {
     signIn();
-    renderTerminal(<TerminalPage><HelpPage /></TerminalPage>);
+    renderTerminal(
+      <TerminalPage>
+        <HelpPage />
+      </TerminalPage>,
+    );
     expect(screen.getByText('Help & Documentation')).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(6);
   });
@@ -53,7 +115,9 @@ describe('terminal pages', () => {
     renderTerminal(<ModelsPage />);
     expect(screen.getByText('Model Capacity', { selector: 'h1' })).toBeInTheDocument();
     expect(screen.getByText('29 quoted model tiers')).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText('Search model, brand, context tier or SKU…'), { target: { value: 'claude sonnet 5' } });
+    fireEvent.change(screen.getByPlaceholderText('Search model, brand, context tier or SKU…'), {
+      target: { value: 'claude sonnet 5' },
+    });
     const visible = document.querySelectorAll('.model-card:not([hidden])');
     expect(visible.length).toBeGreaterThan(0);
     expect(visible.length).toBeLessThan(29);
@@ -63,7 +127,9 @@ describe('terminal pages', () => {
     renderTerminal(<CollectionPage type="cart" />);
     expect(screen.getByText('Your quote cart is empty')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Compare selected'));
-    expect(screen.getByRole('status')).toHaveTextContent('Select at least two resources to compare');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Select at least two resources to compare',
+    );
   });
   it('renders the header navigation for the buyer role and the user menu', () => {
     signIn();
@@ -78,7 +144,12 @@ describe('terminal pages', () => {
   });
   it('renders the market page with filters, chart summary, news and matches', async () => {
     signIn();
-    renderTerminal(<><MarketPage /><TerminalModal /></>);
+    renderTerminal(
+      <>
+        <MarketPage />
+        <TerminalModal />
+      </>,
+    );
     expect(screen.getByText('Switch Market')).toBeInTheDocument();
     expect(await screen.findByText('AWS adds capacity')).toBeInTheDocument();
     await screen.findAllByText('$2.60');

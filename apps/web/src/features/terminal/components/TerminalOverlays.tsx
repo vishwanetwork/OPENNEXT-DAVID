@@ -49,7 +49,10 @@ export function TerminalOverlays() {
 
 /** Procurement opportunity hook point (legacy `OpenNEXTProcurement.opportunity`). */
 let opportunitySlot: ((id: string, intent: 'buy' | 'offer') => void) | null = null;
-export function registerOpportunityOpener(fn: ((id: string, intent: 'buy' | 'offer') => void) | null) {
+export function registerOpportunityOpener(
+  fn: ((id: string, intent: 'buy' | 'offer') => void) | null,
+) {
   opportunitySlot = fn;
 }
-export const openOpportunity = (id: string, intent: 'buy' | 'offer') => opportunitySlot?.(id, intent);
+export const openOpportunity = (id: string, intent: 'buy' | 'offer') =>
+  opportunitySlot?.(id, intent);

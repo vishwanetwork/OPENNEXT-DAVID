@@ -1,5 +1,19 @@
 import { create } from 'zustand';
-import { ACTIVITY_SHOW_OPTIONS, emptySelected, GROUPING_STEPS, PANELS, RANGES, TERMS, allowedActivityLimit, type GroupKey, type GroupingStep, type InsightTerm, type Panel, type Selected, type Settlement } from './settlements';
+import {
+  ACTIVITY_SHOW_OPTIONS,
+  emptySelected,
+  GROUPING_STEPS,
+  PANELS,
+  RANGES,
+  TERMS,
+  allowedActivityLimit,
+  type GroupKey,
+  type GroupingStep,
+  type InsightTerm,
+  type Panel,
+  type Selected,
+  type Settlement,
+} from './settlements';
 
 export interface SellerUi {
   term: InsightTerm;
@@ -37,7 +51,10 @@ interface SellerActions {
 
 const initial = (): SellerUi => ({
   term: 'All',
-  showFilters: typeof window === 'undefined' || typeof window.innerWidth !== 'number' || window.innerWidth > 650,
+  showFilters:
+    typeof window === 'undefined' ||
+    typeof window.innerWidth !== 'number' ||
+    window.innerWidth > 650,
   selected: emptySelected(),
   tradeModel: null,
   search: { model: '', tradeModel: '', country: '' },
@@ -54,19 +71,33 @@ const initial = (): SellerUi => ({
 /** Market Insight page state (module-level like the legacy `state`). */
 export const useSellerStore = create<SellerUi & SellerActions>((set, get) => ({
   ...initial(),
-  setTerm: (term) => set({ term: (TERMS as readonly string[]).includes(term) ? (term as InsightTerm) : 'All' }),
+  setTerm: (term) =>
+    set({ term: (TERMS as readonly string[]).includes(term) ? (term as InsightTerm) : 'All' }),
   toggleFilters: () => set({ showFilters: !get().showFilters }),
   toggleOption: (key, value, checked) => {
     const current = get().selected[key];
-    set({ selected: { ...get().selected, [key]: checked ? [...new Set([...current, value])] : current.filter((item) => item !== value) } });
+    set({
+      selected: {
+        ...get().selected,
+        [key]: checked
+          ? [...new Set([...current, value])]
+          : current.filter((item) => item !== value),
+      },
+    });
   },
   clearGroup: (key) => set({ selected: { ...get().selected, [key]: [] } }),
   setSelected: (selected) => set({ selected }),
   setTradeModel: (tradeModel) => set({ tradeModel }),
   setSearch: (key, value) => set({ search: { ...get().search, [key]: value } }),
-  setGroupOpen: (key, open) => set({ openGroups: open ? [...new Set([...get().openGroups, key])] : get().openGroups.filter((value) => value !== key) }),
+  setGroupOpen: (key, open) =>
+    set({
+      openGroups: open
+        ? [...new Set([...get().openGroups, key])]
+        : get().openGroups.filter((value) => value !== key),
+    }),
   setStep: (step) => {
-    if ((GROUPING_STEPS as readonly number[]).includes(step)) set({ groupingStepCents: step as GroupingStep });
+    if ((GROUPING_STEPS as readonly number[]).includes(step))
+      set({ groupingStepCents: step as GroupingStep });
   },
   setActivityShow: (value) => {
     const limit = allowedActivityLimit(value);
@@ -84,10 +115,19 @@ export const useSellerStore = create<SellerUi & SellerActions>((set, get) => ({
     const { panels } = get();
     const active = panels.includes(panel);
     if (active && panels.length === 1) return;
-    set({ panels: active ? panels.filter((value) => value !== panel) : PANELS.filter((value) => panels.includes(value) || value === panel) });
+    set({
+      panels: active
+        ? panels.filter((value) => value !== panel)
+        : PANELS.filter((value) => panels.includes(value) || value === panel),
+    });
   },
   openHistory: () => set({ modal: 'history' }),
   closeHistory: () => set({ modal: null, requestedRange: null }),
-  clear: () => set({ term: 'All', selected: emptySelected(), search: { model: '', tradeModel: '', country: '' } }),
+  clear: () =>
+    set({
+      term: 'All',
+      selected: emptySelected(),
+      search: { model: '', tradeModel: '', country: '' },
+    }),
   setInjected: (rows) => set({ injected: rows }),
 }));

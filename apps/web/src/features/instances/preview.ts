@@ -8,7 +8,12 @@ import { lifecycle } from './lifecycle';
 
 export interface PreviewState {
   version: 2;
-  example: { status: 'Running' | 'Connecting' | 'End'; createdAt: string; serviceEnd: string; endedAt?: string };
+  example: {
+    status: 'Running' | 'Connecting' | 'End';
+    createdAt: string;
+    serviceEnd: string;
+    endedAt?: string;
+  };
   endedDemo: Record<string, string>;
 }
 
@@ -20,10 +25,15 @@ export const subscribePreview = (fn: () => void) => {
 };
 const notify = () => listeners.forEach((fn) => fn());
 
-export const previewScope = (identity: string | undefined, role: string) => String(identity || 'anonymous') + ':' + String(role || 'Buyer');
+export const previewScope = (identity: string | undefined, role: string) =>
+  String(identity || 'anonymous') + ':' + String(role || 'Buyer');
 const keyFor = (scope: string) => 'opennext-instance-preview-v2:' + scope;
 
-const freshExample = (): PreviewState['example'] => ({ status: 'Running', createdAt: new Date().toISOString(), serviceEnd: new Date(Date.now() + 172800000).toISOString() });
+const freshExample = (): PreviewState['example'] => ({
+  status: 'Running',
+  createdAt: new Date().toISOString(),
+  serviceEnd: new Date(Date.now() + 172800000).toISOString(),
+});
 
 export function previewState(scope: string): PreviewState {
   const key = keyFor(scope);
@@ -36,11 +46,19 @@ export function previewState(scope: string): PreviewState {
     }
   }
   let created = false;
-  if (!saved || saved.version !== 2 || !saved.example || !['Running', 'Connecting', 'End'].includes(saved.example.status) || !Number.isFinite(Date.parse(saved.example.createdAt)) || !Number.isFinite(Date.parse(saved.example.serviceEnd))) {
+  if (
+    !saved ||
+    saved.version !== 2 ||
+    !saved.example ||
+    !['Running', 'Connecting', 'End'].includes(saved.example.status) ||
+    !Number.isFinite(Date.parse(saved.example.createdAt)) ||
+    !Number.isFinite(Date.parse(saved.example.serviceEnd))
+  ) {
     saved = { version: 2, example: freshExample(), endedDemo: {} };
     created = true;
   }
-  if (!saved.endedDemo || typeof saved.endedDemo !== 'object' || Array.isArray(saved.endedDemo)) saved.endedDemo = {};
+  if (!saved.endedDemo || typeof saved.endedDemo !== 'object' || Array.isArray(saved.endedDemo))
+    saved.endedDemo = {};
   memory.set(key, saved);
   if (created) persist(scope, saved);
   return saved;
@@ -56,7 +74,9 @@ function persist(scope: string, saved: PreviewState) {
   notify();
 }
 
-export function example(scope: string): Instance & { telemetry: { utilizationPercent: number | null; observedAt: string } } {
+export function example(
+  scope: string,
+): Instance & { telemetry: { utilizationPercent: number | null; observedAt: string } } {
   const saved = previewState(scope).example;
   return {
     ...saved,
@@ -69,14 +89,18 @@ export function example(scope: string): Instance & { telemetry: { utilizationPer
     rate: 2.3,
     paymentStatus: 'Example only',
     resaleAllowed: false,
-    telemetry: { utilizationPercent: saved.status === 'Running' ? 71 : null, observedAt: new Date().toISOString() },
+    telemetry: {
+      utilizationPercent: saved.status === 'Running' ? 71 : null,
+      observedAt: new Date().toISOString(),
+    },
   };
 }
 
 export function setExampleScenario(scope: string, value: 'reset' | 'interrupted' | 'running') {
   const saved = previewState(scope);
   if (value === 'reset') saved.example = freshExample();
-  else if (!lifecycle(example(scope)).ended) saved.example.status = value === 'interrupted' ? 'Connecting' : 'Running';
+  else if (!lifecycle(example(scope)).ended)
+    saved.example.status = value === 'interrupted' ? 'Connecting' : 'Running';
   persist(scope, saved);
 }
 
@@ -100,4 +124,5 @@ export function instanceView(i: Instance, scope: string, demoActive: boolean): I
   const ended = ends && Object.prototype.hasOwnProperty.call(ends, i.id) ? ends[i.id] : null;
   return ended ? { ...i, status: 'Ended', endedAt: ended } : i;
 }
-export const localDemo = (i: Instance, demoActive: boolean) => demoActive && (i.sample === true || i.demo === true || i.preview === true);
+export const localDemo = (i: Instance, demoActive: boolean) =>
+  demoActive && (i.sample === true || i.demo === true || i.preview === true);

@@ -10,16 +10,47 @@ import { NotificationsPage } from '@/features/quotes/components/NotificationsPag
 import { ProfilePage } from '@/features/account/components/ProfilePage';
 import { normalizeSettlement } from '@/features/seller/settlements';
 
-vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ rfqs: [], supplies: [], featured: { rfqs: [], supplies: [] }, rows: [], regions: [], series: [] })));
+vi.stubGlobal(
+  'fetch',
+  vi.fn(async () =>
+    jsonResponse({
+      rfqs: [],
+      supplies: [],
+      featured: { rfqs: [], supplies: [] },
+      rows: [],
+      regions: [],
+      series: [],
+    }),
+  ),
+);
 
 describe('Spot market page', () => {
   it('shows Demo inventory as a table with the legacy column order and Buy Now actions', async () => {
     signIn({ demo: true });
-    useWorkspaceStore.getState().applySession({ id: 'u1', email: 'ada@example.com', role: 'buyer', onboardingCompleted: true, demo: true } as never);
+    useWorkspaceStore
+      .getState()
+      .applySession({
+        id: 'u1',
+        email: 'ada@example.com',
+        role: 'buyer',
+        onboardingCompleted: true,
+        demo: true,
+      } as never);
     renderTerminal(<SpotMarketPage />, { demo: true });
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headers.slice(0, 6)).toEqual(['Model', 'Capacity', 'Price', 'Country', 'vCPU', 'Memory']);
-    await waitFor(() => expect(document.querySelector('.onx-spot-result-count')?.textContent).toMatch(/18 offers · Spot/));
+    expect(headers.slice(0, 6)).toEqual([
+      'Model',
+      'Capacity',
+      'Price',
+      'Country',
+      'vCPU',
+      'Memory',
+    ]);
+    await waitFor(() =>
+      expect(document.querySelector('.onx-spot-result-count')?.textContent).toMatch(
+        /18 offers · Spot/,
+      ),
+    );
     expect(screen.getAllByText('8 GPUs').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /^Buy Now/ }).length).toBe(12);
     expect(screen.queryByText(/GPU memory/)).toBeNull();
@@ -41,13 +72,42 @@ describe('Spot market page', () => {
 describe('Market Insight page', () => {
   it('renders all three panels, range buttons and twenty activities by default', () => {
     signIn({ role: 'seller' });
-    useWorkspaceStore.getState().applySession({ id: 'u1', email: 'ada@example.com', role: 'seller', onboardingCompleted: true } as never);
-    const rows = Array.from({ length: 125 }, (_, i) => normalizeSettlement({ id: 'ORD-' + i, model: 'H100 SXM', country: 'Singapore', term: 'Spot', gpuCount: 8, vcpu: 192, memory: 80, perGpuHourly: 2.31, status: 'Completed', settledAt: new Date(Date.now() - i * 60000).toISOString() }, i)!);
+    useWorkspaceStore
+      .getState()
+      .applySession({
+        id: 'u1',
+        email: 'ada@example.com',
+        role: 'seller',
+        onboardingCompleted: true,
+      } as never);
+    const rows = Array.from(
+      { length: 125 },
+      (_, i) =>
+        normalizeSettlement(
+          {
+            id: 'ORD-' + i,
+            model: 'H100 SXM',
+            country: 'Singapore',
+            term: 'Spot',
+            gpuCount: 8,
+            vcpu: 192,
+            memory: 80,
+            perGpuHourly: 2.31,
+            status: 'Completed',
+            settledAt: new Date(Date.now() - i * 60000).toISOString(),
+          },
+          i,
+        )!,
+    );
     useSellerStore.getState().setInjected(rows);
     renderTerminal(<SellerActivitiesPage />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Market Insight');
-    for (const panel of ['index', 'analytics', 'activities']) expect(document.querySelector(`[data-sa-panel="${panel}"]`)?.getAttribute('aria-pressed')).toBe('true');
-    for (const range of ['24H', '3D', '7D', '1M', '3M', '6M', '1Y', 'ALL']) expect(document.querySelector(`[data-sa-range="${range}"]`)).not.toBeNull();
+    for (const panel of ['index', 'analytics', 'activities'])
+      expect(
+        document.querySelector(`[data-sa-panel="${panel}"]`)?.getAttribute('aria-pressed'),
+      ).toBe('true');
+    for (const range of ['24H', '3D', '7D', '1M', '3M', '6M', '1Y', 'ALL'])
+      expect(document.querySelector(`[data-sa-range="${range}"]`)).not.toBeNull();
     expect(document.querySelectorAll('.onx-sa-activity-row').length).toBe(20);
     expect(screen.getByText('Showing 20 of 125 in the selected range')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Show activities'), { target: { value: '50' } });
@@ -62,7 +122,14 @@ describe('Market Insight page', () => {
 describe('Notifications and profile pages', () => {
   it('notifications page shows the empty state and disabled read-all', () => {
     signIn();
-    useWorkspaceStore.getState().applySession({ id: 'u1', email: 'ada@example.com', role: 'buyer', onboardingCompleted: true } as never);
+    useWorkspaceStore
+      .getState()
+      .applySession({
+        id: 'u1',
+        email: 'ada@example.com',
+        role: 'buyer',
+        onboardingCompleted: true,
+      } as never);
     renderTerminal(<NotificationsPage />);
     expect(screen.getByText('No notifications yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mark all as read' })).toBeDisabled();
@@ -70,7 +137,14 @@ describe('Notifications and profile pages', () => {
   });
   it('profile shows verified identity for real accounts and hides it in Demo', () => {
     signIn({ provider: 'google' } as never);
-    useWorkspaceStore.getState().applySession({ id: 'u1', email: 'ada@example.com', role: 'buyer', onboardingCompleted: true } as never);
+    useWorkspaceStore
+      .getState()
+      .applySession({
+        id: 'u1',
+        email: 'ada@example.com',
+        role: 'buyer',
+        onboardingCompleted: true,
+      } as never);
     const real = renderTerminal(<ProfilePage />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Ada Lovelace');
     expect(screen.getByText('Google')).toBeInTheDocument();

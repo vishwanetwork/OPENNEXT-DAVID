@@ -6,7 +6,15 @@ import { useToast } from '@/components/ui/toast';
 import { useSessionStore } from '@/lib/session-store';
 import { refreshWorkspace, useTerminal } from '@/features/terminal/context';
 import { useWorkspaceStore } from '@/features/terminal/store';
-import { accountRows, notices, ownerKey, prefill, quoteRequests, type Notice, type QuoteOffer } from './notifications';
+import {
+  accountRows,
+  notices,
+  ownerKey,
+  prefill,
+  quoteRequests,
+  type Notice,
+  type QuoteOffer,
+} from './notifications';
 import { useQuoteStore } from './store';
 
 /** Account-scoped notices, quote requests and the refresh loop (legacy `sync()` / `refresh()`). */
@@ -25,31 +33,51 @@ export function useQuoteNotifications() {
   }, [owner, sync]);
   const sameAccount = Boolean(user?.id) && identityId === user?.id;
   const readIds = useMemo(() => new Set(store.readIds), [store.readIds]);
-  const rows = useMemo(() => notices(sameAccount ? accountRows(notifications, 'notifications', user?.id, owner) : [], readIds), [notifications, owner, readIds, sameAccount, user?.id]);
-  const requests = useMemo(() => quoteRequests(sameAccount ? accountRows(rfqs, 'rfqs', user?.id, owner) : []), [rfqs, owner, sameAccount, user?.id]);
-  const ownedOrders = useMemo(() => (sameAccount ? accountRows(orders, 'orders', user?.id, owner) : []), [orders, owner, sameAccount, user?.id]);
-  const ownedRfqs = useMemo(() => (sameAccount ? accountRows(rfqs, 'rfqs', user?.id, owner) : []), [rfqs, owner, sameAccount, user?.id]);
-  const refresh = useCallback(
-    async (force = false) => {
-      const state = useQuoteStore.getState();
-      if (!state.owner) return;
-      if (state.pending) return state.pending;
-      if (!force && Date.now() - state.lastLoaded < 15000) return;
-      const job = (async () => {
-        try {
-          await refreshWorkspace();
-          if (useQuoteStore.getState().owner === state.owner) useQuoteStore.getState().patch({ ready: true, error: '', lastLoaded: Date.now() });
-        } catch (error) {
-          if (useQuoteStore.getState().owner === state.owner) useQuoteStore.getState().patch({ error: (error as Error).message || 'Account updates are temporarily unavailable.' });
-        } finally {
-          if (useQuoteStore.getState().owner === state.owner) useQuoteStore.getState().patch({ pending: null });
-        }
-      })();
-      state.patch({ pending: job });
-      return job;
-    },
-    [],
+  const rows = useMemo(
+    () =>
+      notices(
+        sameAccount ? accountRows(notifications, 'notifications', user?.id, owner) : [],
+        readIds,
+      ),
+    [notifications, owner, readIds, sameAccount, user?.id],
   );
+  const requests = useMemo(
+    () => quoteRequests(sameAccount ? accountRows(rfqs, 'rfqs', user?.id, owner) : []),
+    [rfqs, owner, sameAccount, user?.id],
+  );
+  const ownedOrders = useMemo(
+    () => (sameAccount ? accountRows(orders, 'orders', user?.id, owner) : []),
+    [orders, owner, sameAccount, user?.id],
+  );
+  const ownedRfqs = useMemo(
+    () => (sameAccount ? accountRows(rfqs, 'rfqs', user?.id, owner) : []),
+    [rfqs, owner, sameAccount, user?.id],
+  );
+  const refresh = useCallback(async (force = false) => {
+    const state = useQuoteStore.getState();
+    if (!state.owner) return;
+    if (state.pending) return state.pending;
+    if (!force && Date.now() - state.lastLoaded < 15000) return;
+    const job = (async () => {
+      try {
+        await refreshWorkspace();
+        if (useQuoteStore.getState().owner === state.owner)
+          useQuoteStore.getState().patch({ ready: true, error: '', lastLoaded: Date.now() });
+      } catch (error) {
+        if (useQuoteStore.getState().owner === state.owner)
+          useQuoteStore
+            .getState()
+            .patch({
+              error: (error as Error).message || 'Account updates are temporarily unavailable.',
+            });
+      } finally {
+        if (useQuoteStore.getState().owner === state.owner)
+          useQuoteStore.getState().patch({ pending: null });
+      }
+    })();
+    state.patch({ pending: job });
+    return job;
+  }, []);
   return { owner, rows, requests, ownedOrders, ownedRfqs, store, refresh };
 }
 
@@ -97,7 +125,8 @@ export function useOpenNotice() {
       else if (n.orderId) {
         if (ownedOrders.some((o) => o.id === n.orderId)) openModal('bill-order', { id: n.orderId });
         else go('billing');
-      } else if (n.rfqId && ownedRfqs.some((r) => r.id === n.rfqId)) openModal('proc-request-details', { id: n.rfqId });
+      } else if (n.rfqId && ownedRfqs.some((r) => r.id === n.rfqId))
+        openModal('proc-request-details', { id: n.rfqId });
       else {
         store.setPage(Math.floor(rows.findIndex((row) => row.id === n.id) / 20));
         go('notifications');

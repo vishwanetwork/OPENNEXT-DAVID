@@ -39,11 +39,23 @@ export function DemoToolbar() {
     let cancelled = false;
     (async () => {
       try {
-        let result = DemoSessionResponse.parse(await api.request('/api/demo/start', { method: 'POST', body: { role }, timeoutMs: 15_000 }));
+        let result = DemoSessionResponse.parse(
+          await api.request('/api/demo/start', {
+            method: 'POST',
+            body: { role },
+            timeoutMs: 15_000,
+          }),
+        );
         // Resuming a sandbox must not silently alter its role; an explicit toolbar selection changes it.
         if (['buyer', 'seller'].includes(requestedRole || '') && result.user.role !== role) {
           useSessionStore.getState().setUser(result.user);
-          result = DemoSessionResponse.parse(await api.request('/api/demo/auth/role', { method: 'POST', body: { role }, timeoutMs: 15_000 }));
+          result = DemoSessionResponse.parse(
+            await api.request('/api/demo/auth/role', {
+              method: 'POST',
+              body: { role },
+              timeoutMs: 15_000,
+            }),
+          );
         }
         if (cancelled) return;
         const demoUser = { ...result.user, demo: true };
@@ -53,7 +65,11 @@ export function DemoToolbar() {
       } catch (error) {
         if (cancelled) return;
         setState('error');
-        setFailure((error as Error).message === 'The request timed out.' ? 'The demo timed out. Please try again.' : (error as Error).message || 'The demo is temporarily unavailable. Please try again.');
+        setFailure(
+          (error as Error).message === 'The request timed out.'
+            ? 'The demo timed out. Please try again.'
+            : (error as Error).message || 'The demo is temporarily unavailable. Please try again.',
+        );
         setUser(null);
       }
     })();
@@ -66,7 +82,8 @@ export function DemoToolbar() {
   const exit = async (event: React.MouseEvent) => {
     event.preventDefault();
     try {
-      if (user?.csrfToken) await api.request('/api/demo/auth/logout', { method: 'POST', body: {}, timeoutMs: 3000 });
+      if (user?.csrfToken)
+        await api.request('/api/demo/auth/logout', { method: 'POST', body: {}, timeoutMs: 3000 });
     } catch {
       /* leave regardless */
     } finally {
@@ -74,19 +91,42 @@ export function DemoToolbar() {
       window.location.assign((terminal.startsWith('http') ? terminal : terminal || '') + '/market');
     }
   };
-  const status = state === 'loading' ? 'Preparing your test workspace…' : state === 'error' ? failure : 'Demo · test data · no real transactions';
+  const status =
+    state === 'loading'
+      ? 'Preparing your test workspace…'
+      : state === 'error'
+        ? failure
+        : 'Demo · test data · no real transactions';
   const active = user?.role || role;
   return (
     <aside className="onx-demo-toolbar" aria-label="Demo workspace" data-state={state}>
       <div className="onx-demo-label">
         <span className="onx-demo-dot" aria-hidden="true" />
-        <strong data-demo-status role="status">{status}</strong>
+        <strong data-demo-status role="status">
+          {status}
+        </strong>
       </div>
       <nav className="onx-demo-actions" aria-label="Demo controls">
-        <a data-demo-role="buyer" href={href('/market') + '?role=buyer'} aria-current={active === 'buyer' ? 'true' : 'false'}>Buyer</a>
-        <a data-demo-role="seller" href={href('/market') + '?role=seller'} aria-current={active === 'seller' ? 'true' : 'false'}>Seller</a>
-        <a data-demo-retry href={href('/market')} hidden={state !== 'error'}>Try again</a>
-        <a className="onx-demo-exit" data-demo-exit href="/market" onClick={exit}>Exit Demo <span aria-hidden="true">↗</span></a>
+        <a
+          data-demo-role="buyer"
+          href={href('/market') + '?role=buyer'}
+          aria-current={active === 'buyer' ? 'true' : 'false'}
+        >
+          Buyer
+        </a>
+        <a
+          data-demo-role="seller"
+          href={href('/market') + '?role=seller'}
+          aria-current={active === 'seller' ? 'true' : 'false'}
+        >
+          Seller
+        </a>
+        <a data-demo-retry href={href('/market')} hidden={state !== 'error'}>
+          Try again
+        </a>
+        <a className="onx-demo-exit" data-demo-exit href="/market" onClick={exit}>
+          Exit Demo <span aria-hidden="true">↗</span>
+        </a>
       </nav>
     </aside>
   );

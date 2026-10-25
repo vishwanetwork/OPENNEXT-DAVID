@@ -11,7 +11,13 @@ import { useTerminal } from '@/features/terminal/context';
 import { useWorkspaceStore } from '@/features/terminal/store';
 import { countryFor } from '@/features/market/insight-index';
 import { fingerprint, validatePublicKey } from '@/features/account/ssh-keys';
-import { agentInventory, inventoryState, pruneSelections, type Inventory, type SpotRow } from './inventory';
+import {
+  agentInventory,
+  inventoryState,
+  pruneSelections,
+  type Inventory,
+  type SpotRow,
+} from './inventory';
 import { SpotCheckout, type CreditBalanceResult, type SpotCheckoutService } from './checkout';
 import { useSpotMarketStore } from './store';
 
@@ -31,7 +37,8 @@ export function usePublicMarket() {
 }
 
 /** Legacy `exchange.regionCountry` for inventory rows. */
-export const regionCountry = (region: unknown) => countryFor(region) || (typeof region === 'string' ? region : null);
+export const regionCountry = (region: unknown) =>
+  countryFor(region) || (typeof region === 'string' ? region : null);
 
 /** Current Spot market inventory: injected rows, connected marketplace rows, or Demo fixtures. */
 export function useSpotInventory(): Inventory {
@@ -72,13 +79,23 @@ const bindings: {
   go: ((route: string) => void) | null;
   demo: boolean;
   balanceRefresh: (() => Promise<CreditBalanceResult | null>) | null;
-} = { inventory: [], open: null, close: null, toast: null, go: null, demo: false, balanceRefresh: null };
+} = {
+  inventory: [],
+  open: null,
+  close: null,
+  toast: null,
+  go: null,
+  demo: false,
+  balanceRefresh: null,
+};
 let engine: SpotCheckout | null = null;
 
 function owner(): string | null {
   const user = useSessionStore.getState().user;
   const role = useWorkspaceStore.getState().role;
-  return user?.id ? (bindings.demo || user.demo ? 'demo:' : 'account:') + user.id + ':' + role : null;
+  return user?.id
+    ? (bindings.demo || user.demo ? 'demo:' : 'account:') + user.id + ':' + role
+    : null;
 }
 
 function getEngine(): SpotCheckout {
@@ -91,7 +108,8 @@ function getEngine(): SpotCheckout {
     balance: () => useWorkspaceStore.getState().balance,
     setBalance: (value) => useWorkspaceStore.getState().patch({ balance: value }),
     inventory: () => bindings.inventory,
-    service: () => serviceOverride || { refreshBillingAccount: bindings.balanceRefresh || undefined },
+    service: () =>
+      serviceOverride || { refreshBillingAccount: bindings.balanceRefresh || undefined },
     validateSsh: async (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
@@ -131,7 +149,8 @@ export function useSpotCheckout(inventory?: Inventory): SpotCheckout {
     bindings.go = go;
     bindings.demo = demo;
     // Verified billing account; the backend confirms the account id and the available Credit.
-    bindings.balanceRefresh = async () => (await api.get('/api/billing/account')) as CreditBalanceResult | null;
+    bindings.balanceRefresh = async () =>
+      (await api.get('/api/billing/account')) as CreditBalanceResult | null;
   }, [openModal, closeModal, toast, go, demo, api]);
   useEffect(() => {
     if (inventory) bindings.inventory = inventory.rows;

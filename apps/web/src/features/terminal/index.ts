@@ -10,10 +10,42 @@
  * UI:         PageHeading, EmptyState, StatusTag, TButton, useToast
  * Gate:       TerminalPage (auth / onboarding), PendingFeaturePage (stub)
  */
-export { useWorkspaceStore, findOffer, initialWorkspace, type WorkspaceData, type WorkspaceStore, type ModalState, type Record_ } from './store';
-export { useTerminal, useGo, useOpenModal, useCloseModal, registerWorkspaceRefresher, refreshWorkspace, registerIntentResumer, resumePendingIntents, type IntentResumer } from './context';
-export { TERMINAL_ROUTES, routeTarget, resolveTarget, defaultRoute, type TerminalRoute, type WorkspaceRole } from './routing';
-export { ModalShell, registerTerminalModal, registerContactOpener, openContact, type ModalRender, type ModalRenderer } from './components/TerminalModal';
+export {
+  useWorkspaceStore,
+  findOffer,
+  initialWorkspace,
+  type WorkspaceData,
+  type WorkspaceStore,
+  type ModalState,
+  type Record_,
+} from './store';
+export {
+  useTerminal,
+  useGo,
+  useOpenModal,
+  useCloseModal,
+  registerWorkspaceRefresher,
+  refreshWorkspace,
+  registerIntentResumer,
+  resumePendingIntents,
+  type IntentResumer,
+} from './context';
+export {
+  TERMINAL_ROUTES,
+  routeTarget,
+  resolveTarget,
+  defaultRoute,
+  type TerminalRoute,
+  type WorkspaceRole,
+} from './routing';
+export {
+  ModalShell,
+  registerTerminalModal,
+  registerContactOpener,
+  openContact,
+  type ModalRender,
+  type ModalRenderer,
+} from './components/TerminalModal';
 export { registerOpportunityOpener, openOpportunity } from './components/TerminalOverlays';
 export { registerHeaderBell } from './components/TerminalHeader';
 export { registerMatchesPanel } from './components/Matches';

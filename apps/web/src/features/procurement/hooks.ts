@@ -37,7 +37,13 @@ export function useSubmissionId() {
   return {
     api,
     id: () => {
-      if (!ref.current) ref.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : 'REQ-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 8).toUpperCase();
+      if (!ref.current)
+        ref.current =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : 'REQ-' +
+              Date.now().toString(36).toUpperCase() +
+              Math.random().toString(36).slice(2, 8).toUpperCase();
       return ref.current;
     },
   };

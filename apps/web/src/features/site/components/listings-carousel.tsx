@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useCuratedRfqs, usePublicMarket, useShowcase } from '../hooks';
-import { allGroups, disclosureFor, hasApprovedRentalLanes, positionLabel, type Listing, type MarketSide } from '../lib/listings';
+import {
+  allGroups,
+  disclosureFor,
+  hasApprovedRentalLanes,
+  positionLabel,
+  type Listing,
+  type MarketSide,
+} from '../lib/listings';
 import { ListingIcon } from './icons';
 import { ListingCard } from './listing-card';
 import { useSiteActions } from './site-actions';
@@ -23,7 +30,11 @@ const subscribeReducedMotion = (callback: () => void) => {
   return () => query.removeEventListener('change', callback);
 };
 const useReducedMotion = () =>
-  useSyncExternalStore(subscribeReducedMotion, () => matchMedia(REDUCED).matches, () => false);
+  useSyncExternalStore(
+    subscribeReducedMotion,
+    () => matchMedia(REDUCED).matches,
+    () => false,
+  );
 
 const rotate = <T,>(items: T[], offset: number): T[] => {
   if (!items.length) return items;
@@ -36,9 +47,23 @@ function EmptyCards({ side }: { side: MarketSide }) {
   const supply = side === 'supply';
   return (
     <div className="on-listing-empty">
-      <h3>{supply ? 'No published offers in this market yet.' : 'No open requirements in this market yet.'}</h3>
-      <p>{supply ? 'Tell suppliers what you need and invite a quote.' : 'Publish your capacity so buyers can find you.'}</p>
-      <button type="button" className="on-button on-button-outline" data-public-action="open-workspace" data-target={supply ? 'rfq' : 'supply'} onClick={() => openWorkspace({ target: supply ? 'rfq' : 'supply' })}>
+      <h3>
+        {supply
+          ? 'No published offers in this market yet.'
+          : 'No open requirements in this market yet.'}
+      </h3>
+      <p>
+        {supply
+          ? 'Tell suppliers what you need and invite a quote.'
+          : 'Publish your capacity so buyers can find you.'}
+      </p>
+      <button
+        type="button"
+        className="on-button on-button-outline"
+        data-public-action="open-workspace"
+        data-target={supply ? 'rfq' : 'supply'}
+        onClick={() => openWorkspace({ target: supply ? 'rfq' : 'supply' })}
+      >
         {supply ? 'Post an RFQ' : 'List capacity'}
       </button>
     </div>
@@ -55,7 +80,12 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   const market = usePublicMarket();
   const showcase = useShowcase(!hasApprovedRentalLanes(market.data));
   const groups = useMemo(
-    () => (side: MarketSide) => allGroups(side, { market: market.data, showcase: showcase.data, curated: curated.data || [] }),
+    () => (side: MarketSide) =>
+      allGroups(side, {
+        market: market.data,
+        showcase: showcase.data,
+        curated: curated.data || [],
+      }),
     [market.data, showcase.data, curated.data],
   );
 
@@ -65,7 +95,8 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   // A manual toggle applies until the reduced-motion preference changes, which pauses again.
   const [manual, setManual] = useState<{ value: boolean; under: boolean } | null>(null);
   const paused = manual && manual.under === reducedMotion ? manual.value : reducedMotion;
-  const setPaused = (update: (value: boolean) => boolean) => setManual({ value: update(paused), under: reducedMotion });
+  const setPaused = (update: (value: boolean) => boolean) =>
+    setManual({ value: update(paused), under: reducedMotion });
   const [visible, setVisible] = useState(5);
   const [offsets, setOffsets] = useState([0, 0, 0]);
   const [announcement, setAnnouncement] = useState('');
@@ -83,7 +114,10 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
 
   const readVisible = useCallback(() => {
     if (!component.current) return 5;
-    return Math.max(1, Number(getComputedStyle(component.current).getPropertyValue('--on-visible-cards')) || 5);
+    return Math.max(
+      1,
+      Number(getComputedStyle(component.current).getPropertyValue('--on-visible-cards')) || 5,
+    );
   }, []);
 
   const finishAll = useCallback(() => {
@@ -99,7 +133,8 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
       if (!track || busy.current[panel] || items.length <= count) return;
       const first = track.firstElementChild as HTMLElement | null;
       if (!first) return;
-      const distance = first.getBoundingClientRect().width + parseFloat(getComputedStyle(track).gap || '0');
+      const distance =
+        first.getBoundingClientRect().width + parseFloat(getComputedStyle(track).gap || '0');
       if (!distance) return;
       const motion = matchMedia(REDUCED).matches;
       let fallback: ReturnType<typeof setTimeout> | null = null;
@@ -110,11 +145,16 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
         track.style.transform = 'translate3d(0,0,0)';
         track.classList.remove('is-moving');
         busy.current[panel] = null;
-        if (direction > 0) setOffsets((current) => current.map((value, i) => (i === panel ? value + 1 : value)));
+        if (direction > 0)
+          setOffsets((current) => current.map((value, i) => (i === panel ? value + 1 : value)));
         if (manual) {
           const next = rotate(items, offsets[panel] + direction);
           const title = next[0] && 'name' in next[0] ? next[0].name : '';
-          setAnnouncement(items.length ? `Showing ${Math.min(count, items.length)} listings, starting with ${title}.` : 'No listings for this selection.');
+          setAnnouncement(
+            items.length
+              ? `Showing ${Math.min(count, items.length)} listings, starting with ${title}.`
+              : 'No listings for this selection.',
+          );
         }
       };
       const ended = (event: TransitionEvent) => {
@@ -131,8 +171,11 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
         void track.offsetWidth;
       }
       requestAnimationFrame(() => {
-        track.style.transition = motion ? 'none' : `transform ${STEP_MS}ms cubic-bezier(.22,.68,.2,1)`;
-        track.style.transform = direction > 0 ? `translate3d(-${distance}px,0,0)` : 'translate3d(0,0,0)';
+        track.style.transition = motion
+          ? 'none'
+          : `transform ${STEP_MS}ms cubic-bezier(.22,.68,.2,1)`;
+        track.style.transform =
+          direction > 0 ? `translate3d(-${distance}px,0,0)` : 'translate3d(0,0,0)';
         fallback = setTimeout(() => busy.current[panel]?.(), motion ? 0 : STEP_MS + 80);
       });
     },
@@ -142,9 +185,12 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   useEffect(() => {
     const node = viewport.current;
     const observer = node
-      ? new IntersectionObserver((entries) => {
-          inView.current = entries[0].isIntersecting;
-        }, { threshold: 0.15 })
+      ? new IntersectionObserver(
+          (entries) => {
+            inView.current = entries[0].isIntersecting;
+          },
+          { threshold: 0.15 },
+        )
       : null;
     if (node) observer?.observe(node);
     const resize = node
@@ -163,7 +209,15 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   useEffect(() => {
     const timer = setInterval(() => {
       const node = component.current;
-      if (!node || paused || !inView.current || document.hidden || node.matches(':hover') || node.querySelector('.on-listing-card:focus-within')) return;
+      if (
+        !node ||
+        paused ||
+        !inView.current ||
+        document.hidden ||
+        node.matches(':hover') ||
+        node.querySelector('.on-listing-card:focus-within')
+      )
+        return;
       step(1);
     }, AUTO_MS);
     return () => clearInterval(timer);
@@ -209,7 +263,9 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   }, [step]);
 
   const disabled = activeItems.length <= visible;
-  const start = activeItems.length ? ((offsets[tab] % activeItems.length) + activeItems.length) % activeItems.length : 0;
+  const start = activeItems.length
+    ? ((offsets[tab] % activeItems.length) + activeItems.length) % activeItems.length
+    : 0;
 
   return (
     <div
@@ -220,17 +276,37 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
       aria-label="Capacity market listings"
       data-paused={String(paused)}
       onKeyDown={(event) => {
-        if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || (event.target as HTMLElement).matches('.public-listing-radio')) return;
+        if (
+          !['ArrowLeft', 'ArrowRight'].includes(event.key) ||
+          (event.target as HTMLElement).matches('.public-listing-radio')
+        )
+          return;
         event.preventDefault();
         step(event.key === 'ArrowLeft' ? -1 : 1, true);
       }}
     >
       <div className="on-listing-sides">
         <div role="group" aria-label="Choose your side of the market">
-          <button type="button" data-listing-side-filter="supply" aria-pressed={side === 'supply'} onClick={() => { finishAll(); setSide('supply'); }}>
+          <button
+            type="button"
+            data-listing-side-filter="supply"
+            aria-pressed={side === 'supply'}
+            onClick={() => {
+              finishAll();
+              setSide('supply');
+            }}
+          >
             Buy capacity<span>Browse supplier offers</span>
           </button>
-          <button type="button" data-listing-side-filter="demand" aria-pressed={side === 'demand'} onClick={() => { finishAll(); setSide('demand'); }}>
+          <button
+            type="button"
+            data-listing-side-filter="demand"
+            aria-pressed={side === 'demand'}
+            onClick={() => {
+              finishAll();
+              setSide('demand');
+            }}
+          >
             Offer capacity<span>Respond to buyer RFQs</span>
           </button>
         </div>
@@ -248,26 +324,66 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
               setTab(i);
               const items = rendered[i] || [];
               const first = rotate(items, offsets[i])[0];
-              setAnnouncement(items.length ? `Showing ${Math.min(visible, items.length)} listings, starting with ${first && 'name' in first ? first.name : ''}.` : 'No listings for this selection.');
+              setAnnouncement(
+                items.length
+                  ? `Showing ${Math.min(visible, items.length)} listings, starting with ${first && 'name' in first ? first.name : ''}.`
+                  : 'No listings for this selection.',
+              );
             }}
           />
-          <label className={`public-listing-tab public-listing-tab-${i}`} htmlFor={`public-listings-${i}`}>{name}</label>
+          <label
+            className={`public-listing-tab public-listing-tab-${i}`}
+            htmlFor={`public-listings-${i}`}
+          >
+            {name}
+          </label>
         </span>
       ))}
       <div className="on-listing-controls">
-        <span className="on-listing-position" aria-hidden="true">{positionLabel(activeItems.length, start, visible)}</span>
-        <button type="button" data-listing-move="-1" aria-label="Previous listing" disabled={disabled} onClick={() => step(-1, true)}><ListingIcon name="left" /></button>
-        <button type="button" data-listing-toggle aria-label={`${paused ? 'Play' : 'Pause'} listing carousel`} aria-pressed={paused} disabled={disabled} onClick={() => setPaused((value) => !value)}>
+        <span className="on-listing-position" aria-hidden="true">
+          {positionLabel(activeItems.length, start, visible)}
+        </span>
+        <button
+          type="button"
+          data-listing-move="-1"
+          aria-label="Previous listing"
+          disabled={disabled}
+          onClick={() => step(-1, true)}
+        >
+          <ListingIcon name="left" />
+        </button>
+        <button
+          type="button"
+          data-listing-toggle
+          aria-label={`${paused ? 'Play' : 'Pause'} listing carousel`}
+          aria-pressed={paused}
+          disabled={disabled}
+          onClick={() => setPaused((value) => !value)}
+        >
           <ListingIcon name={paused ? 'play' : 'pause'} />
         </button>
-        <button type="button" data-listing-move="1" aria-label="Next listing" disabled={disabled} onClick={() => step(1, true)}><ListingIcon name="right" /></button>
+        <button
+          type="button"
+          data-listing-move="1"
+          aria-label="Next listing"
+          disabled={disabled}
+          onClick={() => step(1, true)}
+        >
+          <ListingIcon name="right" />
+        </button>
       </div>
       <div className="public-listing-panels" ref={viewport}>
         {rendered.map((items, i) => {
           const cards = rotate(items, offsets[i]);
           const columns = Math.min(visible, Math.max(1, cards.length));
           return (
-            <div className={`public-listing-panel public-listing-panel-${i}`} role="region" aria-label={names[i]} data-listing-panel={i} key={i}>
+            <div
+              className={`public-listing-panel public-listing-panel-${i}`}
+              role="region"
+              aria-label={names[i]}
+              data-listing-panel={i}
+              key={i}
+            >
               <div className="on-listing-viewport">
                 <div
                   className="on-listing-track"
@@ -277,7 +393,12 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
                   style={{ ['--on-card-columns' as string]: columns } as React.CSSProperties}
                 >
                   {cards.map((item, position) => (
-                    <div key={item.id} style={{ display: 'contents' }} inert={position >= visible ? true : undefined} aria-hidden={position >= visible}>
+                    <div
+                      key={item.id}
+                      style={{ display: 'contents' }}
+                      inert={position >= visible ? true : undefined}
+                      aria-hidden={position >= visible}
+                    >
                       <ListingCard item={item} index={items.indexOf(item)} total={items.length} />
                     </div>
                   ))}
@@ -292,7 +413,9 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
         <span>{disclosureFor(activeCards)}</span>
         <span className="on-listing-motion-hint">Hover to pause</span>
       </div>
-      <span className="on-listing-announcement" role="status" aria-live="polite">{announcement}</span>
+      <span className="on-listing-announcement" role="status" aria-live="polite">
+        {announcement}
+      </span>
     </div>
   );
 }

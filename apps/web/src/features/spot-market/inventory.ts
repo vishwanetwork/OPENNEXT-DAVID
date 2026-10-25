@@ -29,13 +29,39 @@ export const SORTS: [SortKey, string][] = [
 ];
 export type SortKey = 'price-asc' | 'price-desc' | 'recent';
 
-const COUNTRIES = ['Singapore', 'Germany', 'United States', 'Japan', 'Netherlands', 'United Kingdom', 'Canada', 'France', 'Australia', 'Sweden', 'India', 'UAE'];
+const COUNTRIES = [
+  'Singapore',
+  'Germany',
+  'United States',
+  'Japan',
+  'Netherlands',
+  'United Kingdom',
+  'Canada',
+  'France',
+  'Australia',
+  'Sweden',
+  'India',
+  'UAE',
+];
 const BASE_FIXTURES: [string, number, number, number, number][] = [
-  ['H100 SXM', 80, 192, 1.8, 0], ['H100 SXM', 80, 192, 1.65, 1], ['H100 SXM', 80, 192, 1.72, 2], ['H100 SXM', 80, 192, 1.95, 3], ['H100 SXM', 80, 192, 1.78, 4], ['H100 SXM', 80, 192, 1.88, 5],
-  ['H200 SXM', 141, 192, 2.45, 0], ['H200 SXM', 141, 192, 2.38, 2], ['H200 SXM', 141, 192, 2.52, 6], ['H200 SXM', 141, 192, 2.41, 7],
-  ['B200', 180, 192, 3.05, 0], ['B200', 180, 192, 2.96, 1],
-  ['A100 SXM', 80, 96, 1.12, 8], ['A100 SXM', 80, 96, 1.08, 9], ['A100 SXM', 80, 128, 1.16, 10],
-  ['H100 SXM', 80, 128, 1.74, 11], ['H200 SXM', 141, 192, 2.57, 3], ['B200', 180, 192, 3.18, 2],
+  ['H100 SXM', 80, 192, 1.8, 0],
+  ['H100 SXM', 80, 192, 1.65, 1],
+  ['H100 SXM', 80, 192, 1.72, 2],
+  ['H100 SXM', 80, 192, 1.95, 3],
+  ['H100 SXM', 80, 192, 1.78, 4],
+  ['H100 SXM', 80, 192, 1.88, 5],
+  ['H200 SXM', 141, 192, 2.45, 0],
+  ['H200 SXM', 141, 192, 2.38, 2],
+  ['H200 SXM', 141, 192, 2.52, 6],
+  ['H200 SXM', 141, 192, 2.41, 7],
+  ['B200', 180, 192, 3.05, 0],
+  ['B200', 180, 192, 2.96, 1],
+  ['A100 SXM', 80, 96, 1.12, 8],
+  ['A100 SXM', 80, 96, 1.08, 9],
+  ['A100 SXM', 80, 128, 1.16, 10],
+  ['H100 SXM', 80, 128, 1.74, 11],
+  ['H200 SXM', 141, 192, 2.57, 3],
+  ['B200', 180, 192, 3.18, 2],
 ];
 const TERM_MULTIPLIER: Record<MarketTerm, number> = { Spot: 1, 'On-demand': 1.22, Reserved: 0.84 };
 const TERM_OFFSET: Record<MarketTerm, number> = { Spot: 0, 'On-demand': 18, Reserved: 36 };
@@ -71,8 +97,11 @@ const safeTime = (value: unknown) => {
 };
 
 export function canonicalTerm(value: unknown): MarketTerm {
-  const normalized = String(value || 'Spot').trim().toLowerCase();
-  if (normalized === 'on-demand' || normalized === 'on demand' || normalized === 'ondemand') return 'On-demand';
+  const normalized = String(value || 'Spot')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'on-demand' || normalized === 'on demand' || normalized === 'ondemand')
+    return 'On-demand';
   if (normalized === 'reserved' || normalized === 'reservation') return 'Reserved';
   return 'Spot';
 }
@@ -81,16 +110,30 @@ type AnyRow = Record<string, unknown> & { cpu?: { vcpu?: unknown }; node?: { gpu
 
 export function isPricingObservation(row: unknown): boolean {
   const r = row as AnyRow | null;
-  return r?.referenceOnly === true || r?.external === true || r?.observationOnly === true || /(?:price|pricing)[_-]?observation/i.test(String(r?.sourceType || r?.provenance || ''));
+  return (
+    r?.referenceOnly === true ||
+    r?.external === true ||
+    r?.observationOnly === true ||
+    /(?:price|pricing)[_-]?observation/i.test(String(r?.sourceType || r?.provenance || ''))
+  );
 }
 export function isAgentMarketplaceRow(row: unknown): boolean {
   const r = row as AnyRow | null;
-  return !isPricingObservation(r) && r?.executable !== false && (r?.agentStatus === 'Succeeded' || (r?.serverRecord === true && r?.status === 'Published'));
+  return (
+    !isPricingObservation(r) &&
+    r?.executable !== false &&
+    (r?.agentStatus === 'Succeeded' || (r?.serverRecord === true && r?.status === 'Published'))
+  );
 }
-const explicitNodeGpuCount = (r: AnyRow) => r.gpuCount ?? r.gpus ?? r.nodeGpuCount ?? r.node?.gpuCount;
+const explicitNodeGpuCount = (r: AnyRow) =>
+  r.gpuCount ?? r.gpus ?? r.nodeGpuCount ?? r.node?.gpuCount;
 export function isValidatedInstanceRow(row: unknown): boolean {
   const r = row as AnyRow;
-  return positive(explicitNodeGpuCount(r)) && positive(r.vcpu ?? r.vCPU ?? r.cpu?.vcpu) && positive(r.memory ?? r.gpuMemory ?? r.gpuMemoryGb);
+  return (
+    positive(explicitNodeGpuCount(r)) &&
+    positive(r.vcpu ?? r.vCPU ?? r.cpu?.vcpu) &&
+    positive(r.memory ?? r.gpuMemory ?? r.gpuMemoryGb)
+  );
 }
 
 export function normalizeRow(row: unknown, index: number, sourceKind: SourceKind): SpotRow | null {
@@ -104,7 +147,9 @@ export function normalizeRow(row: unknown, index: number, sourceKind: SourceKind
   const memorySource = r.memory ?? r.gpuMemory ?? r.gpuMemoryGb;
   const vcpuSource = r.vcpu ?? r.vCPU ?? r.cpu?.vcpu;
   const term = canonicalTerm(r.term);
-  const id = String(r.id || 'spot-preview-' + term.toLowerCase().replace(/[^a-z]+/g, '-') + '-' + index);
+  const id = String(
+    r.id || 'spot-preview-' + term.toLowerCase().replace(/[^a-z]+/g, '-') + '-' + index,
+  );
   const listedAt = (r.listedAt || r.createdAt || r.created || r.updatedAt || null) as string | null;
   return {
     _key: term + ':' + id + ':' + index,
@@ -130,13 +175,21 @@ function fixtureRows(): SpotRow[] {
     BASE_FIXTURES.map(([model, memory, vcpu, rate, countryIndex], index) =>
       normalizeRow(
         {
-          id: 'preview-' + term.toLowerCase().replace(/[^a-z]+/g, '-') + '-' + String(index + 1).padStart(2, '0'),
-          model, memory, vcpu,
+          id:
+            'preview-' +
+            term.toLowerCase().replace(/[^a-z]+/g, '-') +
+            '-' +
+            String(index + 1).padStart(2, '0'),
+          model,
+          memory,
+          vcpu,
           perGpuHourly: round(rate * TERM_MULTIPLIER[term]),
           country: COUNTRIES[countryIndex],
           gpuCount: 8,
           term,
-          listedAt: new Date(FIXTURE_EPOCH - (TERM_OFFSET[term] + index) * 37 * 60000).toISOString(),
+          listedAt: new Date(
+            FIXTURE_EPOCH - (TERM_OFFSET[term] + index) * 37 * 60000,
+          ).toISOString(),
           previewOnly: true,
         },
         index,
@@ -154,31 +207,54 @@ export interface Inventory {
 }
 
 /** Rows published through the connected marketplace (legacy `autoInventory`). */
-export function agentInventory(publicSupplies: unknown[], regionCountry: (region: unknown) => string | null | undefined): SpotRow[] {
+export function agentInventory(
+  publicSupplies: unknown[],
+  regionCountry: (region: unknown) => string | null | undefined,
+): SpotRow[] {
   return publicSupplies
     .filter((row) => isAgentMarketplaceRow(row) && isValidatedInstanceRow(row))
     .map((row, index) => {
       const r = row as AnyRow;
-      return normalizeRow({ ...r, country: r.country || regionCountry(r.region) || r.region }, index, 'agent');
+      return normalizeRow(
+        { ...r, country: r.country || regionCountry(r.region) || r.region },
+        index,
+        'agent',
+      );
     })
     .filter((row): row is SpotRow => Boolean(row));
 }
 
 export function normalizeInjected(rows: unknown[]): SpotRow[] {
-  return rows.map((row, index) => normalizeRow(row, index, isAgentMarketplaceRow(row) ? 'agent' : 'preview')).filter((row): row is SpotRow => Boolean(row));
+  return rows
+    .map((row, index) => normalizeRow(row, index, isAgentMarketplaceRow(row) ? 'agent' : 'preview'))
+    .filter((row): row is SpotRow => Boolean(row));
 }
 
-export function inventoryState(input: { injected: SpotRow[] | null; agentRows: SpotRow[]; demoActive: boolean }): Inventory {
+export function inventoryState(input: {
+  injected: SpotRow[] | null;
+  agentRows: SpotRow[];
+  demoActive: boolean;
+}): Inventory {
   if (input.injected !== null) {
     const hasAgent = input.injected.some((row) => row.sourceKind === 'agent' && !row.previewOnly);
     const hasPreview = input.injected.some((row) => row.previewOnly);
     return {
       rows: input.injected,
-      scope: hasAgent && hasPreview ? 'Mixed connected and preview feed · checkout remains disabled' : hasAgent ? 'Connected inventory preview · checkout remains disabled' : 'Injected preview feed · no live availability claim',
+      scope:
+        hasAgent && hasPreview
+          ? 'Mixed connected and preview feed · checkout remains disabled'
+          : hasAgent
+            ? 'Connected inventory preview · checkout remains disabled'
+            : 'Injected preview feed · no live availability claim',
       kind: hasAgent && !hasPreview ? 'agent' : 'preview',
     };
   }
-  if (input.agentRows.length) return { rows: input.agentRows, scope: 'Connected marketplace records · checkout remains preview-only', kind: 'agent' };
+  if (input.agentRows.length)
+    return {
+      rows: input.agentRows,
+      scope: 'Connected marketplace records · checkout remains preview-only',
+      kind: 'agent',
+    };
   if (input.demoActive) return { rows: FALLBACK_ROWS, scope: 'Demo inventory', kind: 'fixture' };
   return { rows: [], scope: 'Connected marketplace inventory', kind: 'agent' };
 }
@@ -196,15 +272,25 @@ export interface FilterState {
 export function pruneSelections(selected: Selected, rows: SpotRow[]): Selected {
   const next = { ...selected };
   for (const group of GROUPS) {
-    const available = new Set(rows.map((row) => row[group.key]).filter((value) => value !== null && value !== undefined).map(String));
+    const available = new Set(
+      rows
+        .map((row) => row[group.key])
+        .filter((value) => value !== null && value !== undefined)
+        .map(String),
+    );
     next[group.key] = selected[group.key].filter((value) => available.has(String(value)));
   }
   return next;
 }
 
-export const termRows = (rows: SpotRow[], term: MarketTerm) => rows.filter((row) => row.term === term);
+export const termRows = (rows: SpotRow[], term: MarketTerm) =>
+  rows.filter((row) => row.term === term);
 
-export function attributeFiltered(rows: SpotRow[], selected: Selected, skippedKey: GroupKey | null = null): SpotRow[] {
+export function attributeFiltered(
+  rows: SpotRow[],
+  selected: Selected,
+  skippedKey: GroupKey | null = null,
+): SpotRow[] {
   return rows.filter((row) =>
     GROUPS.every((group) => {
       if (group.key === skippedKey || !selected[group.key].length) return true;
@@ -214,7 +300,10 @@ export function attributeFiltered(rows: SpotRow[], selected: Selected, skippedKe
 }
 
 /** Price bounds follow the term and attribute filters; the price filter never feeds its own range. */
-export function boundsFor(rows: SpotRow[], state: Pick<FilterState, 'term' | 'selected'>): { min: number | null; max: number | null; rows: SpotRow[] } {
+export function boundsFor(
+  rows: SpotRow[],
+  state: Pick<FilterState, 'term' | 'selected'>,
+): { min: number | null; max: number | null; rows: SpotRow[] } {
   const candidates = attributeFiltered(termRows(rows, state.term), state.selected);
   const prices = candidates.map((row) => row.perGpuHourly).filter(positive);
   if (!prices.length) return { min: null, max: null, rows: candidates };
@@ -222,29 +311,67 @@ export function boundsFor(rows: SpotRow[], state: Pick<FilterState, 'term' | 'se
 }
 
 export function filteredRows(rows: SpotRow[], state: FilterState): SpotRow[] {
-  const bounded = boundsFor(rows, state).rows.filter((row) => state.maxPrice === null || row.perGpuHourly <= state.maxPrice + 1e-9);
+  const bounded = boundsFor(rows, state).rows.filter(
+    (row) => state.maxPrice === null || row.perGpuHourly <= state.maxPrice + 1e-9,
+  );
   const sorted = bounded.slice();
-  if (state.sort === 'price-asc') sorted.sort((a, b) => a.instanceHourly - b.instanceHourly || a.perGpuHourly - b.perGpuHourly || b.listedAtTime - a.listedAtTime || a._key.localeCompare(b._key));
-  else if (state.sort === 'price-desc') sorted.sort((a, b) => b.instanceHourly - a.instanceHourly || b.perGpuHourly - a.perGpuHourly || b.listedAtTime - a.listedAtTime || a._key.localeCompare(b._key));
+  if (state.sort === 'price-asc')
+    sorted.sort(
+      (a, b) =>
+        a.instanceHourly - b.instanceHourly ||
+        a.perGpuHourly - b.perGpuHourly ||
+        b.listedAtTime - a.listedAtTime ||
+        a._key.localeCompare(b._key),
+    );
+  else if (state.sort === 'price-desc')
+    sorted.sort(
+      (a, b) =>
+        b.instanceHourly - a.instanceHourly ||
+        b.perGpuHourly - a.perGpuHourly ||
+        b.listedAtTime - a.listedAtTime ||
+        a._key.localeCompare(b._key),
+    );
   else sorted.sort((a, b) => b.listedAtTime - a.listedAtTime || a._key.localeCompare(b._key));
   return sorted;
 }
 
-export function optionsFor(group: FilterGroupSpec, rows: SpotRow[], state: Pick<FilterState, 'term' | 'selected'>): string[] {
-  const values = new Set(termRows(rows, state.term).map((row) => row[group.key]).filter((value) => value !== null && value !== undefined).map(String));
+export function optionsFor(
+  group: FilterGroupSpec,
+  rows: SpotRow[],
+  state: Pick<FilterState, 'term' | 'selected'>,
+): string[] {
+  const values = new Set(
+    termRows(rows, state.term)
+      .map((row) => row[group.key])
+      .filter((value) => value !== null && value !== undefined)
+      .map(String),
+  );
   state.selected[group.key].forEach((value) => values.add(String(value)));
-  return [...values].sort(group.numeric ? (a, b) => Number(a) - Number(b) : (a, b) => a.localeCompare(b));
+  return [...values].sort(
+    group.numeric ? (a, b) => Number(a) - Number(b) : (a, b) => a.localeCompare(b),
+  );
 }
 
-export function optionCount(group: FilterGroupSpec, value: string, rows: SpotRow[], state: Pick<FilterState, 'term' | 'selected'>): number {
-  return attributeFiltered(termRows(rows, state.term), state.selected, group.key).filter((row) => String(row[group.key]) === String(value)).length;
+export function optionCount(
+  group: FilterGroupSpec,
+  value: string,
+  rows: SpotRow[],
+  state: Pick<FilterState, 'term' | 'selected'>,
+): number {
+  return attributeFiltered(termRows(rows, state.term), state.selected, group.key).filter(
+    (row) => String(row[group.key]) === String(value),
+  ).length;
 }
 
 export function selectedCount(state: Pick<FilterState, 'selected' | 'maxPrice'>): number {
-  return GROUPS.reduce((sum, group) => sum + state.selected[group.key].length, 0) + (state.maxPrice === null ? 0 : 1);
+  return (
+    GROUPS.reduce((sum, group) => sum + state.selected[group.key].length, 0) +
+    (state.maxPrice === null ? 0 : 1)
+  );
 }
 
-export const formatSpec = (value: unknown, fallback = 'To confirm') => (value === null || value === undefined ? fallback : String(value));
+export const formatSpec = (value: unknown, fallback = 'To confirm') =>
+  value === null || value === undefined ? fallback : String(value);
 
 export interface SpotOffer {
   id: string;
@@ -257,11 +384,27 @@ export interface SpotOffer {
   instanceHourly: number;
   term: MarketTerm;
 }
-export const offerFor = (row: SpotRow): SpotOffer => ({ id: row.id, model: row.model, country: row.country, vcpu: row.vcpu, gpuCount: row.gpuCount, memory: row.memory, perGpuHourly: row.perGpuHourly, instanceHourly: row.instanceHourly, term: row.term });
+export const offerFor = (row: SpotRow): SpotOffer => ({
+  id: row.id,
+  model: row.model,
+  country: row.country,
+  vcpu: row.vcpu,
+  gpuCount: row.gpuCount,
+  memory: row.memory,
+  perGpuHourly: row.perGpuHourly,
+  instanceHourly: row.instanceHourly,
+  term: row.term,
+});
 
 export function paginate(rows: SpotRow[], page: number) {
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const current = Math.max(0, Math.min(page, pages - 1));
   const start = current * PAGE_SIZE;
-  return { pages, page: current, visible: rows.slice(start, start + PAGE_SIZE), rangeStart: rows.length ? start + 1 : 0, rangeEnd: Math.min(start + PAGE_SIZE, rows.length) };
+  return {
+    pages,
+    page: current,
+    visible: rows.slice(start, start + PAGE_SIZE),
+    rangeStart: rows.length ? start + 1 : 0,
+    rangeEnd: Math.min(start + PAGE_SIZE, rows.length),
+  };
 }

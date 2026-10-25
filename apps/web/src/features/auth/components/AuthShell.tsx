@@ -13,17 +13,30 @@ export function AuthShell({ onBack, children }: { onBack: () => void; children: 
         <Brand />
         <div className="onx-auth-story-copy">
           <div className="onx-auth-kicker">AI capacity, on your terms</div>
-          <h2>A clearer market.<br />A better match.</h2>
-          <p>Discover GPU capacity, compare market signals and connect with providers in one focused workspace.</p>
+          <h2>
+            A clearer market.
+            <br />A better match.
+          </h2>
+          <p>
+            Discover GPU capacity, compare market signals and connect with providers in one focused
+            workspace.
+          </p>
         </div>
-        <div className="onx-auth-orbits" aria-hidden="true"><i /><i /><i /></div>
+        <div className="onx-auth-orbits" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </div>
       </aside>
       <section className="onx-auth-main">
         <button type="button" className="onx-auth-back" data-auth-back onClick={onBack}>
-          <ArrowIcon />Back to OpenNEXT
+          <ArrowIcon />
+          Back to OpenNEXT
         </button>
         <div className="onx-auth-card">
-          <div className="onx-auth-mobile-brand"><Brand /></div>
+          <div className="onx-auth-mobile-brand">
+            <Brand />
+          </div>
           {children}
         </div>
       </section>
@@ -42,7 +55,14 @@ export function SubmitButton({ children, disabled }: { children: ReactNode; disa
 
 export function AuthError({ id, message }: { id?: string; message: string }) {
   return (
-    <div id={id} className="onx-auth-error" data-auth-error role="alert" tabIndex={-1} hidden={!message}>
+    <div
+      id={id}
+      className="onx-auth-error"
+      data-auth-error
+      role="alert"
+      tabIndex={-1}
+      hidden={!message}
+    >
       {message}
     </div>
   );

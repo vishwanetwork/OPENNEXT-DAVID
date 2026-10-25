@@ -27,7 +27,12 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   const [busy, setBusy] = useState(false);
 
   const open = (
-    <button className="onx-auth-submit" type="button" data-onboarding-complete onClick={() => onComplete(user)}>
+    <button
+      className="onx-auth-submit"
+      type="button"
+      data-onboarding-complete
+      onClick={() => onComplete(user)}
+    >
       Open Terminal <ArrowIcon />
     </button>
   );
@@ -43,14 +48,25 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   if (stage === 'reward' && user.onboardingCompleted)
     return (
       <AuthShell onBack={onBack}>
-        <div className="onx-auth-success-icon"><CheckIcon /></div>
+        <div className="onx-auth-success-icon">
+          <CheckIcon />
+        </div>
         <div className="onx-auth-kicker">Welcome to OpenNEXT</div>
-        <h1>Your first $100.<br />On us.</h1>
-        <p className="onx-auth-subtitle">A one-time <strong>$100 promotional credit</strong> has been added to your account.</p>
+        <h1>
+          Your first $100.
+          <br />
+          On us.
+        </h1>
+        <p className="onx-auth-subtitle">
+          A one-time <strong>$100 promotional credit</strong> has been added to your account.
+        </p>
         <div className="onx-auth-reward">
           <span>Promotional credit</span>
           <strong>$100.00</strong>
-          <small>For eligible OpenNEXT purchases. Non-withdrawable and non-transferable. Future funding is available in Billing.</small>
+          <small>
+            For eligible OpenNEXT purchases. Non-withdrawable and non-transferable. Future funding
+            is available in Billing.
+          </small>
         </div>
         {open}
       </AuthShell>
@@ -61,12 +77,20 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   };
   const next = async () => {
     setError('');
-    if (user.onboardingCompleted || !allowedRole(role)) return setError('Choose Buyer or Seller for your first workspace setup.');
+    if (user.onboardingCompleted || !allowedRole(role))
+      return setError('Choose Buyer or Seller for your first workspace setup.');
     setBusy(true);
     try {
       const result = await authApi.onboarding(api, role as Role);
-      if (!result || result.id !== user.id || !result.onboardingCompleted || !allowedRole(result.role))
-        throw new Error('Account setup was not confirmed. Refresh your session before trying again.');
+      if (
+        !result ||
+        result.id !== user.id ||
+        !result.onboardingCompleted ||
+        !allowedRole(result.role)
+      )
+        throw new Error(
+          'Account setup was not confirmed. Refresh your session before trying again.',
+        );
       intent.bind(result);
       setUser(result);
       setStage('reward');
@@ -79,24 +103,61 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   return (
     <AuthShell onBack={onBack}>
       <div className="onx-auth-kicker">Set up your workspace</div>
-      <h1>How will you<br />use OpenNEXT?</h1>
-      <p className="onx-auth-subtitle">Signed in as <strong>{user.email}</strong>. Choose your primary role. You can switch between Buyer and Seller later.</p>
+      <h1>
+        How will you
+        <br />
+        use OpenNEXT?
+      </h1>
+      <p className="onx-auth-subtitle">
+        Signed in as <strong>{user.email}</strong>. Choose your primary role. You can switch between
+        Buyer and Seller later.
+      </p>
       <div className="onx-auth-roles" role="group" aria-label="Choose your role">
-        <button type="button" className="onx-auth-role" data-onboarding-role="buyer" aria-pressed={role === 'buyer'} disabled={busy} onClick={() => choose('buyer')}>
-          <strong>Buyer</strong><span>Find GPU capacity, request quotes and manage your resources.</span><i aria-hidden="true" />
+        <button
+          type="button"
+          className="onx-auth-role"
+          data-onboarding-role="buyer"
+          aria-pressed={role === 'buyer'}
+          disabled={busy}
+          onClick={() => choose('buyer')}
+        >
+          <strong>Buyer</strong>
+          <span>Find GPU capacity, request quotes and manage your resources.</span>
+          <i aria-hidden="true" />
         </button>
-        <button type="button" className="onx-auth-role" data-onboarding-role="seller" aria-pressed={role === 'seller'} disabled={busy} onClick={() => choose('seller')}>
-          <strong>Seller</strong><span>Verify your business, list available capacity and respond to demand.</span><i aria-hidden="true" />
+        <button
+          type="button"
+          className="onx-auth-role"
+          data-onboarding-role="seller"
+          aria-pressed={role === 'seller'}
+          disabled={busy}
+          onClick={() => choose('seller')}
+        >
+          <strong>Seller</strong>
+          <span>Verify your business, list available capacity and respond to demand.</span>
+          <i aria-hidden="true" />
         </button>
         <button type="button" className="onx-auth-role" disabled aria-disabled="true">
-          <strong>Broker <small>Coming soon</small></strong><span>Broker access is not available yet.</span>
+          <strong>
+            Broker <small>Coming soon</small>
+          </strong>
+          <span>Broker access is not available yet.</span>
         </button>
       </div>
       <AuthError message={error} />
-      <button className="onx-auth-submit" type="button" data-onboarding-next disabled={!role || busy} onClick={next}>
+      <button
+        className="onx-auth-submit"
+        type="button"
+        data-onboarding-next
+        disabled={!role || busy}
+        onClick={next}
+      >
         Next <ArrowIcon />
       </button>
-      <p className="onx-auth-smallnote">Complete setup to receive a one-time $100 promotional credit. Promotional credit cannot be withdrawn.</p>
+      <p className="onx-auth-smallnote">
+        Complete setup to receive a one-time $100 promotional credit. Promotional credit cannot be
+        withdrawn.
+      </p>
     </AuthShell>
   );
 }

@@ -36,7 +36,17 @@ export const useQuoteStore = create<QuoteState>((set, get) => ({
   sync: (owner) => {
     if (owner === get().owner) return;
     const prefs = readPreferences(storage(), owner);
-    set({ owner, muted: prefs.muted, readIds: prefs.readIds, panel: false, page: 0, ready: false, error: '', lastLoaded: 0, pending: null });
+    set({
+      owner,
+      muted: prefs.muted,
+      readIds: prefs.readIds,
+      panel: false,
+      page: 0,
+      ready: false,
+      error: '',
+      lastLoaded: 0,
+      pending: null,
+    });
   },
   setPanel: (panel) => set({ panel }),
   setPage: (page) => set({ page: Math.max(0, page) }),

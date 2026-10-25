@@ -4,10 +4,10 @@
   --on-muted: #636662;
   --on-line: #d5d7d2;
   --on-paper: #fff;
-  --on-serif: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif;
+  --on-serif: Georgia, 'Times New Roman', 'Noto Serif SC', 'Songti SC', serif;
   color: var(--on-ink);
   background: var(--on-paper);
-  font-family: Arial, Helvetica, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: Arial, Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -169,7 +169,7 @@
   color: #a4a79f;
 }
 .on-eyebrow {
-  font-family: Arial, Helvetica, "PingFang SC", sans-serif;
+  font-family: Arial, Helvetica, 'PingFang SC', sans-serif;
   font-size: 10px;
   letter-spacing: 1.65px;
   font-weight: 500;
@@ -506,7 +506,7 @@
   font-weight: 500;
 }
 .public-process h3 {
-  font-family: Arial, Helvetica, "PingFang SC", sans-serif;
+  font-family: Arial, Helvetica, 'PingFang SC', sans-serif;
   font-size: 18px;
   font-weight: 500;
   margin: 8px 0 7px;
@@ -729,7 +729,7 @@
   line-height: 1.3;
   margin-bottom: 9px;
 }
-.public-auth-form input:not([type="hidden"]) {
+.public-auth-form input:not([type='hidden']) {
   appearance: none;
   width: 100%;
   height: 52px;
@@ -839,18 +839,18 @@
 .public-footer-compact .public-footer-links button {
   font-size: 12px;
 }
-.public-page[lang="zh-CN"] h1,
-.public-page[lang="zh-CN"] h2,
-.auth-page[lang="zh-CN"] h1,
-.auth-page[lang="zh-CN"] h2,
-.auth-page[lang="zh-CN"] h3 {
+.public-page[lang='zh-CN'] h1,
+.public-page[lang='zh-CN'] h2,
+.auth-page[lang='zh-CN'] h1,
+.auth-page[lang='zh-CN'] h2,
+.auth-page[lang='zh-CN'] h3 {
   letter-spacing: -0.05em;
 }
-.public-page[lang="zh-CN"] .public-hero h1 {
+.public-page[lang='zh-CN'] .public-hero h1 {
   font-size: 67px;
   line-height: 1.12;
 }
-.auth-page[lang="zh-CN"] .public-auth-story h1 {
+.auth-page[lang='zh-CN'] .public-auth-story h1 {
   font-size: 70px;
   line-height: 1.13;
 }
@@ -951,10 +951,10 @@
     width: calc(100% + 20px);
     margin-top: 25px;
   }
-  .auth-page[lang="zh-CN"] .public-auth-story h1 {
+  .auth-page[lang='zh-CN'] .public-auth-story h1 {
     font-size: 58px;
   }
-  .public-page[lang="zh-CN"] .public-hero h1 {
+  .public-page[lang='zh-CN'] .public-hero h1 {
     font-size: 59px;
   }
   .public-auth-panel h3 {
@@ -1149,10 +1149,10 @@
     padding-top: 35px;
     gap: 30px;
   }
-  .public-page[lang="zh-CN"] .public-hero h1 {
+  .public-page[lang='zh-CN'] .public-hero h1 {
     font-size: 55px;
   }
-  .auth-page[lang="zh-CN"] .public-auth-story h1 {
+  .auth-page[lang='zh-CN'] .public-auth-story h1 {
     font-size: 53px;
   }
 }
@@ -1466,7 +1466,7 @@
     font-size: 13px;
     margin-bottom: 8px;
   }
-  .public-auth-form input:not([type="hidden"]) {
+  .public-auth-form input:not([type='hidden']) {
     height: 49px;
     font-size: 16px;
     padding: 0 14px;
@@ -1508,28 +1508,28 @@
   .public-register-page .public-auth-main {
     gap: 28px;
   }
-  .public-page[lang="zh-CN"] .public-hero h1 {
+  .public-page[lang='zh-CN'] .public-hero h1 {
     font-size: 45px;
     letter-spacing: -2px;
     line-height: 1.2;
   }
-  .public-page[lang="zh-CN"] .public-hero {
+  .public-page[lang='zh-CN'] .public-hero {
     min-height: 565px;
   }
-  .public-page[lang="zh-CN"] .public-market-row .on-button {
+  .public-page[lang='zh-CN'] .public-market-row .on-button {
     font-size: 11px !important;
   }
-  .auth-page[lang="zh-CN"] .public-auth-story h1 {
+  .auth-page[lang='zh-CN'] .public-auth-story h1 {
     font-size: 45px;
     line-height: 1.16;
   }
-  .public-page[lang="zh-CN"] h2 {
+  .public-page[lang='zh-CN'] h2 {
     font-size: 29px;
   }
-  .public-page[lang="zh-CN"] .public-preview-actions {
+  .public-page[lang='zh-CN'] .public-preview-actions {
     gap: 16px;
   }
-  .public-page[lang="zh-CN"] .public-preview-actions .on-button {
+  .public-page[lang='zh-CN'] .public-preview-actions .on-button {
     font-size: 11px !important;
   }
 }
@@ -1618,7 +1618,7 @@
   .public-hero {
     min-height: 625px;
   }
-  .public-page[lang="zh-CN"] .public-hero {
+  .public-page[lang='zh-CN'] .public-hero {
     min-height: 640px;
   }
 }
@@ -1638,7 +1638,7 @@
   margin: 12vh auto;
 }
 .public-startup h1 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(32px, 5vw, 54px);
   font-weight: 400;
   letter-spacing: -0.04em;
@@ -1893,7 +1893,7 @@
   font-size: 12px;
   line-height: 1.75;
 }
-.auth-page .public-auth-form .public-consent input[type="checkbox"] {
+.auth-page .public-auth-form .public-consent input[type='checkbox'] {
   appearance: auto;
   accent-color: #111310;
   position: static;
@@ -1950,7 +1950,7 @@
 }
 .public-auth-divider::before,
 .public-auth-divider::after {
-  content: "";
+  content: '';
   height: 1px;
   background: #d5d9d0;
   flex: 1;
@@ -2213,7 +2213,7 @@
     font-size: 11px;
     margin-top: 18px;
   }
-  .auth-page .public-consent input[type="checkbox"] {
+  .auth-page .public-consent input[type='checkbox'] {
     margin-top: 1px;
   }
   .public-auth-divider {
@@ -2263,7 +2263,7 @@
     transform: none;
     will-change: auto;
   }
-  .public-ticker-group[aria-hidden="true"] {
+  .public-ticker-group[aria-hidden='true'] {
     display: none;
   }
   .public-ticker-window {
@@ -2363,7 +2363,7 @@
   font-size: 12px;
 }
 .public-preview-label::before {
-  content: "";
+  content: '';
   display: block;
   width: 5px;
   height: 5px;
@@ -2418,7 +2418,7 @@
 }
 .public-page .public-process li::before {
   position: absolute;
-  content: "";
+  content: '';
   width: 7px;
   height: 7px;
   top: -4px;

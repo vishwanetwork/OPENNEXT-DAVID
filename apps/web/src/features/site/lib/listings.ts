@@ -21,8 +21,10 @@ export type ExchangeListing = MarketplaceListing & {
 
 export type Listing = CuratedListing | ExchangeListing | CatalogItem;
 
-export const isCurated = (item: Listing): item is CuratedListing => 'curated' in item && item.curated === true;
-export const isExchange = (item: Listing): item is ExchangeListing => 'exchange' in item && item.exchange === true;
+export const isCurated = (item: Listing): item is CuratedListing =>
+  'curated' in item && item.curated === true;
+export const isExchange = (item: Listing): item is ExchangeListing =>
+  'exchange' in item && item.exchange === true;
 
 const publicKind = (value: string): string =>
   ({ gpu_rental: 'rental', model_capacity: 'model', physical_gpu: 'hardware' })[value] || value;
@@ -61,7 +63,9 @@ export function rowsFor(kind: MarketKind, side: MarketSide, sources: ListingSour
   const published: MarketplaceListing[] = market
     ? kind === 'rental'
       ? market.featured?.[key] || []
-      : (side === 'demand' ? market.rfqs : market.supplies).filter((r) => publicKind(r.kind) === publicKind(kind))
+      : (side === 'demand' ? market.rfqs : market.supplies).filter(
+          (r) => publicKind(r.kind) === publicKind(kind),
+        )
     : [];
   if (kind === 'rental') {
     const requirements: Listing[] = side === 'demand' ? curatedListings(sources.curated) : [];
@@ -94,8 +98,12 @@ export const isHighUrgency = (urgency: unknown): boolean =>
 export function disclosureFor(items: Listing[]): string {
   const demo = items.some((item) => isExchange(item) && item.demo);
   const curated = items.some(isCurated);
-  if (demo) return curated ? 'Includes demo listings · Availability, pricing and delivery confirmed by quote.' : '';
-  if (curated) return 'Buyer requirements · Pricing, capacity and delivery confirmed in supplier quotes.';
+  if (demo)
+    return curated
+      ? 'Includes demo listings · Availability, pricing and delivery confirmed by quote.'
+      : '';
+  if (curated)
+    return 'Buyer requirements · Pricing, capacity and delivery confirmed in supplier quotes.';
   const sample = items.some((item) => isExchange(item) && item.sample);
   return `${sample ? 'Preview marketplace · ' : ''}USD · Final availability, fees and delivery confirmed by quote.`;
 }
@@ -109,7 +117,11 @@ export function positionLabel(cards: number, start: number, visible: number): st
 }
 
 /** Legacy `OpenNEXTListings.get`: rendered rows first, then curated, then the catalog. */
-export function findListing(id: string | null | undefined, groups: Listing[][], curated: CuratedRfq[]): Listing | undefined {
+export function findListing(
+  id: string | null | undefined,
+  groups: Listing[][],
+  curated: CuratedRfq[],
+): Listing | undefined {
   if (!id) return undefined;
   return (
     groups.flat().find((item) => item.id === id) ||

@@ -4,8 +4,22 @@ import { useWorkspaceStore, initialWorkspace } from '@/features/terminal/store';
 import { safeCheckoutUrl, validAmount, validRequest } from './payments';
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ ...initialWorkspace(), identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' } });
-  useSessionStore.setState({ status: 'verified', user: { id: 'u1', email: 'ada@example.com', role: 'buyer', onboardingCompleted: true, promotionalCredit: 0, promotionalCreditGranted: 0, promotionalCreditWithdrawable: false } });
+  useWorkspaceStore.setState({
+    ...initialWorkspace(),
+    identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' },
+  });
+  useSessionStore.setState({
+    status: 'verified',
+    user: {
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+      promotionalCredit: 0,
+      promotionalCreditGranted: 0,
+      promotionalCreditWithdrawable: false,
+    },
+  });
 });
 
 describe('top-up rules', () => {
@@ -18,8 +32,22 @@ describe('top-up rules', () => {
     expect(validAmount(Number.NaN)).toBe(false);
   });
   it('malformed, mismatched or cross-account responses never count as a confirmed request', () => {
-    const draft = { amount: 100, orderId: null, purchaseReference: '', owner: 'x', idempotencyKey: 'k', method: 'paypal' };
-    const ok = { id: 'TOPUP-' + '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12), accountId: 'u1', amount: 100, amountCents: 10000, method: 'paypal', status: 'Pending' };
+    const draft = {
+      amount: 100,
+      orderId: null,
+      purchaseReference: '',
+      owner: 'x',
+      idempotencyKey: 'k',
+      method: 'paypal',
+    };
+    const ok = {
+      id: 'TOPUP-' + '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12),
+      accountId: 'u1',
+      amount: 100,
+      amountCents: 10000,
+      method: 'paypal',
+      status: 'Pending',
+    };
     expect(validRequest(ok, draft)).toBe(true);
     expect(validRequest({ ...ok, accountId: 'u2' }, draft)).toBe(false);
     expect(validRequest({ ...ok, amount: 99 }, draft)).toBe(false);

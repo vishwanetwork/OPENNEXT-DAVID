@@ -5,10 +5,27 @@
  */
 
 function point(x: number, y: number, ux: number, uy: number, vx: number, vy: number) {
-  return (u: number, v: number, z = 0) => `${+(x + ux * u + vx * v).toFixed(2)} ${+(y + uy * u + vy * v + z).toFixed(2)}`;
+  return (u: number, v: number, z = 0) =>
+    `${+(x + ux * u + vx * v).toFixed(2)} ${+(y + uy * u + vy * v + z).toFixed(2)}`;
 }
 
-function CapacityPlane({ x, y, ux, uy, vx, vy, depth }: { x: number; y: number; ux: number; uy: number; vx: number; vy: number; depth: number }) {
+function CapacityPlane({
+  x,
+  y,
+  ux,
+  uy,
+  vx,
+  vy,
+  depth,
+}: {
+  x: number;
+  y: number;
+  ux: number;
+  uy: number;
+  vx: number;
+  vy: number;
+  depth: number;
+}) {
   const p = point(x, y, ux, uy, vx, vy);
   const outline = `M${p(0, 0)} L${p(1, 0)} L${p(1, 1)} L${p(0, 1)} Z`;
   const frontFace = `M${p(0, 0)} L${p(1, 0)} L${p(1, 0, depth)} L${p(0, 0, depth)} Z`;
@@ -25,10 +42,15 @@ function CapacityPlane({ x, y, ux, uy, vx, vy, depth }: { x: number; y: number; 
     const v = i / 16;
     return `M${p(1, v)} L${p(1, v, depth)}`;
   }).join(' ');
-  const louvers = [0.25, 0.5, 0.75].map((z) => `M${p(0, 0, depth * z)} L${p(1, 0, depth * z)}`).join(' ');
+  const louvers = [0.25, 0.5, 0.75]
+    .map((z) => `M${p(0, 0, depth * z)} L${p(1, 0, depth * z)}`)
+    .join(' ');
   return (
     <g className="public-flow-building">
-      <path className="public-flow-base" d={`M${p(-0.015, -0.015, depth + 10)} L${p(1.015, -0.015, depth + 10)} L${p(1.015, 1.015, depth + 10)}`} />
+      <path
+        className="public-flow-base"
+        d={`M${p(-0.015, -0.015, depth + 10)} L${p(1.015, -0.015, depth + 10)} L${p(1.015, 1.015, depth + 10)}`}
+      />
       <path className="public-flow-face public-flow-front-face" d={frontFace} />
       <path className="public-flow-face public-flow-side-face" d={sideFace} />
       <path className="public-flow-plane" d={outline} />
@@ -38,10 +60,19 @@ function CapacityPlane({ x, y, ux, uy, vx, vy, depth }: { x: number; y: number; 
 }
 
 function NetworkArtwork() {
-  const floor = 'M70 646 L1780 338 M70 719 L1780 411 M70 792 L1780 484 M406 805 L1780 557 M780 812 L1780 630';
+  const floor =
+    'M70 646 L1780 338 M70 719 L1780 411 M70 792 L1780 484 M406 805 L1780 557 M780 812 L1780 630';
   // All three rectangular enclosures share the same axonometric projection.
   const building = (x: number, y: number, width: number, length: number, depth: number) => (
-    <CapacityPlane x={x} y={y} ux={width} uy={width * 0.22} vx={length} vy={length * -0.32} depth={depth} />
+    <CapacityPlane
+      x={x}
+      y={y}
+      ux={width}
+      uy={width * 0.22}
+      vx={length}
+      vy={length * -0.32}
+      depth={depth}
+    />
   );
   return (
     <>
@@ -85,8 +116,18 @@ function GlobalArtwork() {
       {nodes.map(([x, y]) => (
         <g className="public-flow-node" key={`${x}-${y}`}>
           <rect x={x - 38} y={y - 38} width="76" height="76" rx="8" />
-          <rect className="public-flow-node-core" x={x - 14} y={y - 14} width="28" height="28" rx="2" />
-          <path className="public-flow-detail" d={`M${x - 18} ${y - 47} v9 M${x} ${y - 47} v9 M${x + 18} ${y - 47} v9 M${x - 18} ${y + 38} v9 M${x} ${y + 38} v9 M${x + 18} ${y + 38} v9`} />
+          <rect
+            className="public-flow-node-core"
+            x={x - 14}
+            y={y - 14}
+            width="28"
+            height="28"
+            rx="2"
+          />
+          <path
+            className="public-flow-detail"
+            d={`M${x - 18} ${y - 47} v9 M${x} ${y - 47} v9 M${x + 18} ${y - 47} v9 M${x - 18} ${y + 38} v9 M${x} ${y + 38} v9 M${x + 18} ${y + 38} v9`}
+          />
         </g>
       ))}
       <g className="public-flow-exchange">
@@ -101,7 +142,11 @@ type Route = [d: string, duration: number, delay: number];
 
 const NETWORK_ROUTES: Route[] = [
   ['M388 553 C424 406 675 375 822 287 C1001 210 1168 292 1243 450', 15, -3],
-  ['M486 526 C535 380 735 393 822 287 C935 122 1050 131 1228 194 C1388 244 1501 365 1564 464', 18, -7],
+  [
+    'M486 526 C535 380 735 393 822 287 C935 122 1050 131 1228 194 C1388 244 1501 365 1564 464',
+    18,
+    -7,
+  ],
   ['M849 435 C927 228 1111 124 1227 90 C1451 7 1668 10 1810 119', 20, -11],
   ['M939 644 C1021 404 1160 274 1321 216 C1517 145 1706 148 1760 403', 19, -13],
   ['M822 451 L822 287', 7, -2],
@@ -122,12 +167,25 @@ export function CapacityIllustration({ kind }: { kind: 'network' | 'global' }) {
     ? 'Capacity flowing between connected compute locations'
     : 'Compute nodes connecting through OpenNEXT to global destinations';
   return (
-    <figure className={`public-flow-figure ${network ? 'public-hero-visual' : 'public-auth-visual'}`} aria-label={label}>
+    <figure
+      className={`public-flow-figure ${network ? 'public-hero-visual' : 'public-auth-visual'}`}
+      aria-label={label}
+    >
       {network ? null : (
-        <input className="public-flow-toggle" type="checkbox" id={id} aria-label="Pause capacity flow animation" />
+        <input
+          className="public-flow-toggle"
+          type="checkbox"
+          id={id}
+          aria-label="Pause capacity flow animation"
+        />
       )}
       <div className="public-flow-art">
-        <svg className="public-flow-drawing" viewBox="0 0 1860 846" aria-hidden="true" focusable="false">
+        <svg
+          className="public-flow-drawing"
+          viewBox="0 0 1860 846"
+          aria-hidden="true"
+          focusable="false"
+        >
           <defs>
             {paths.map(([d], i) => (
               <path id={`${id}-route-${i}`} d={d} pathLength={1000} key={i} />
@@ -144,11 +202,30 @@ export function CapacityIllustration({ kind }: { kind: 'network' | 'global' }) {
               [0, 0.5].map((phase) => {
                 const begin = delay - duration * phase;
                 return (
-                  <circle className="public-flow-packet" data-route={`${id}-route-${i}`} cx="0" cy="0" r="4.5" key={`${i}-${phase}`}>
-                    <animateMotion dur={`${duration}s`} begin={`${begin}s`} calcMode="paced" repeatCount="indefinite">
+                  <circle
+                    className="public-flow-packet"
+                    data-route={`${id}-route-${i}`}
+                    cx="0"
+                    cy="0"
+                    r="4.5"
+                    key={`${i}-${phase}`}
+                  >
+                    <animateMotion
+                      dur={`${duration}s`}
+                      begin={`${begin}s`}
+                      calcMode="paced"
+                      repeatCount="indefinite"
+                    >
                       <mpath href={`#${id}-route-${i}`} />
                     </animateMotion>
-                    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.02;0.98;1" dur={`${duration}s`} begin={`${begin}s`} repeatCount="indefinite" />
+                    <animate
+                      attributeName="opacity"
+                      values="0;1;1;0"
+                      keyTimes="0;0.02;0.98;1"
+                      dur={`${duration}s`}
+                      begin={`${begin}s`}
+                      repeatCount="indefinite"
+                    />
                   </circle>
                 );
               }),
@@ -160,8 +237,12 @@ export function CapacityIllustration({ kind }: { kind: 'network' | 'global' }) {
         <figcaption className="public-flow-caption">
           <span>Local nodes. Global reach.</span>
           <label className="public-flow-control" htmlFor={id}>
-            <span className="public-flow-pause" aria-hidden="true">Ⅱ</span>
-            <span className="public-flow-play" aria-hidden="true">▷</span>
+            <span className="public-flow-pause" aria-hidden="true">
+              Ⅱ
+            </span>
+            <span className="public-flow-play" aria-hidden="true">
+              ▷
+            </span>
             <span className="public-flow-running-label">Pause motion</span>
             <span className="public-flow-paused-label">Resume motion</span>
           </label>

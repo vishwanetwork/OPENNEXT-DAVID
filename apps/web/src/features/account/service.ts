@@ -11,7 +11,10 @@ import type { SshKeyRecord } from './ssh-keys';
  */
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
-  addSshKey?: (input: { label: string; publicKey: string }) => Promise<{ confirmed?: boolean; key?: unknown }>;
+  addSshKey?: (input: {
+    label: string;
+    publicKey: string;
+  }) => Promise<{ confirmed?: boolean; key?: unknown }>;
   removeSshKey?: (input: { id: string }) => Promise<{ confirmed?: boolean; id?: string }>;
 }
 
@@ -21,6 +24,7 @@ export function registerAccountService(next: AccountService | null) {
   service = next;
 }
 export const accountService = () => service;
-export const serviceConnected = (method: keyof AccountService) => typeof service?.[method] === 'function';
+export const serviceConnected = (method: keyof AccountService) =>
+  typeof service?.[method] === 'function';
 
 export type { SshKeyRecord };

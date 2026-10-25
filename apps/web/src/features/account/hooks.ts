@@ -4,7 +4,15 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
 import { accountRef, type AccountRef } from './ssh-keys';
-import { changeKey, loadKeys, libraryFor, useKeyLibraries, type ChangeKeyInput, type KeyLibraryDeps, type KeyLibraryState } from './store';
+import {
+  changeKey,
+  loadKeys,
+  libraryFor,
+  useKeyLibraries,
+  type ChangeKeyInput,
+  type KeyLibraryDeps,
+  type KeyLibraryState,
+} from './store';
 
 /** Current account as the key library sees it (identity comes from the verified session). */
 export function useAccountRef(): AccountRef {
@@ -22,7 +30,12 @@ function depsFor(demo: boolean): KeyLibraryDeps {
   };
 }
 
-export function useKeyLibrary(): { account: AccountRef; library: KeyLibraryState; load: (force?: boolean) => Promise<void>; change: (input: ChangeKeyInput) => ReturnType<typeof changeKey> } {
+export function useKeyLibrary(): {
+  account: AccountRef;
+  library: KeyLibraryState;
+  load: (force?: boolean) => Promise<void>;
+  change: (input: ChangeKeyInput) => ReturnType<typeof changeKey>;
+} {
   const account = useAccountRef();
   const { demo } = useApp();
   const library = useKeyLibraries((s) => s.libraries[account.key]) || libraryFor(account.key);

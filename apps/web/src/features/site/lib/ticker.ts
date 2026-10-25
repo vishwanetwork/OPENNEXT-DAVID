@@ -8,7 +8,8 @@ export function validTickerRows(records: TickerRecord[]): TickerRecord[] {
       row.historical === true &&
       Number.isFinite(row.perGpuHourly) &&
       (row.perGpuHourly as number) >= 0 &&
-      (row.points || []).filter((p) => Number.isFinite(p.value) && (p.value as number) >= 0).length > 1,
+      (row.points || []).filter((p) => Number.isFinite(p.value) && (p.value as number) >= 0)
+        .length > 1,
   );
 }
 

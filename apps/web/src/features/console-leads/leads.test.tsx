@@ -5,8 +5,30 @@ import { filterLeads, leadTime } from './leads';
 import { ConsoleLeadsPage } from './leads-page';
 
 const leads = [
-  { id: 'LEAD-1', name: 'Ada', title: 'CTO', email: 'ada@example.com', company: 'Acme', message: 'Need 8 H100', status: 'New', createdAt: '2026-10-18T08:00:00.000Z', updatedAt: 'v1', history: [] },
-  { id: 'LEAD-2', name: 'Bo', title: 'Buyer', email: 'bo@example.com', company: 'Beta', message: '<b>x</b>', status: 'Closed', createdAt: '2026-10-19T08:00:00.000Z', updatedAt: 'v1', history: [] },
+  {
+    id: 'LEAD-1',
+    name: 'Ada',
+    title: 'CTO',
+    email: 'ada@example.com',
+    company: 'Acme',
+    message: 'Need 8 H100',
+    status: 'New',
+    createdAt: '2026-10-18T08:00:00.000Z',
+    updatedAt: 'v1',
+    history: [],
+  },
+  {
+    id: 'LEAD-2',
+    name: 'Bo',
+    title: 'Buyer',
+    email: 'bo@example.com',
+    company: 'Beta',
+    message: '<b>x</b>',
+    status: 'Closed',
+    createdAt: '2026-10-19T08:00:00.000Z',
+    updatedAt: 'v1',
+    history: [],
+  },
 ];
 
 describe('contact inbox helpers', () => {
@@ -31,6 +53,8 @@ describe('ConsoleLeadsPage', () => {
   it('shows the access-required state on 401', async () => {
     mockFetch(() => json(401, { error: 'Administrator sign-in required' }));
     renderConsole(<ConsoleLeadsPage />);
-    await waitFor(() => expect(screen.getByText('Administrator access required')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Administrator access required')).toBeInTheDocument(),
+    );
   });
 });

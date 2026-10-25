@@ -9,20 +9,28 @@ import { useSessionStore } from '@/lib/session-store';
 import { marketApi } from '@/features/market/api';
 import { marketKeys, useHistoryCatalog } from '@/features/market/hooks';
 import { buildCatalog, countryFor } from '@/features/market/insight-index';
-import { buildDemoSettlements, marketplaceSettlements, normalizeFilterRow, type FilterRow, type Settlement } from './settlements';
+import {
+  buildDemoSettlements,
+  marketplaceSettlements,
+  normalizeFilterRow,
+  type FilterRow,
+  type Settlement,
+} from './settlements';
 import { useSellerStore } from './store';
 
 export const sellerKeys = { settlements: ['marketplace', 'settlements', 90] as const };
 
 const DEMO_SETTLEMENTS = buildDemoSettlements();
-const regionCountry = (region: unknown) => countryFor(region) || (typeof region === 'string' ? region : null);
+const regionCountry = (region: unknown) =>
+  countryFor(region) || (typeof region === 'string' ? region : null);
 
 /** Anonymized settlement tape (GET /api/marketplace/settlements?days=90), windowed locally. */
 export function useSettlementTape() {
   const api = useApi();
   return useQuery({
     queryKey: sellerKeys.settlements,
-    queryFn: async () => SellerSettlementsResponse.parse(await api.get('/api/marketplace/settlements?days=90')),
+    queryFn: async () =>
+      SellerSettlementsResponse.parse(await api.get('/api/marketplace/settlements?days=90')),
     staleTime: 30_000,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
@@ -47,6 +55,17 @@ export function useSettlements(): Settlement[] {
 export function useIndexFilterRows(): FilterRow[] {
   const api = useApi();
   const catalogQuery = useHistoryCatalog();
-  const rawQuery = useQuery({ queryKey: marketKeys.imported('period=1D&unit=gpu'), queryFn: () => marketApi.importedHistory(api, 'period=1D&unit=gpu'), staleTime: 300_000, retry: false });
-  return useMemo(() => buildCatalog(catalogQuery.data, rawQuery.data).rows.map(normalizeFilterRow).filter((row): row is FilterRow => Boolean(row)), [catalogQuery.data, rawQuery.data]);
+  const rawQuery = useQuery({
+    queryKey: marketKeys.imported('period=1D&unit=gpu'),
+    queryFn: () => marketApi.importedHistory(api, 'period=1D&unit=gpu'),
+    staleTime: 300_000,
+    retry: false,
+  });
+  return useMemo(
+    () =>
+      buildCatalog(catalogQuery.data, rawQuery.data)
+        .rows.map(normalizeFilterRow)
+        .filter((row): row is FilterRow => Boolean(row)),
+    [catalogQuery.data, rawQuery.data],
+  );
 }

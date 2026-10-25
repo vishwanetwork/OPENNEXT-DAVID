@@ -8,16 +8,28 @@ export const round2 = (value: unknown): number => Math.round((Number(value) || 0
 export const num = (value: unknown): number => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
 /** True when the server wrote the complete explicit-fee breakdown for this record. */
-export function currentFees(record: Partial<FeeFields> | null | undefined): record is Required<Pick<FeeFields, 'subtotal' | 'buyerFee' | 'sellerFee' | 'buyerTotal' | 'sellerNet'>> & FeeFields {
+export function currentFees(
+  record: Partial<FeeFields> | null | undefined,
+): record is Required<
+  Pick<FeeFields, 'subtotal' | 'buyerFee' | 'sellerFee' | 'buyerTotal' | 'sellerNet'>
+> &
+  FeeFields {
   return (
     !!record &&
     record.feePolicyVersion === FEE_POLICY &&
-    (['subtotal', 'buyerFee', 'sellerFee', 'buyerTotal', 'sellerNet'] as const).every((key) => record[key] != null && Number.isFinite(Number(record[key])))
+    (['subtotal', 'buyerFee', 'sellerFee', 'buyerTotal', 'sellerNet'] as const).every(
+      (key) => record[key] != null && Number.isFinite(Number(record[key])),
+    )
   );
 }
 
 /** Legacy base rate of a supply / response record. */
-export const baseRate = (r: { unitPrice?: unknown; netPrice?: unknown; rate?: unknown; price?: unknown }): number | null => {
+export const baseRate = (r: {
+  unitPrice?: unknown;
+  netPrice?: unknown;
+  rate?: unknown;
+  price?: unknown;
+}): number | null => {
   for (const key of ['unitPrice', 'netPrice', 'rate', 'price'] as const) {
     const value = r[key];
     if (value !== null && value !== undefined) return Number(value);
@@ -45,7 +57,12 @@ export function sellerEstimate(rate: unknown, count: unknown, hours: unknown): F
  * Maximum quote price = budget × count × hours with one rounding at the subtotal, using
  * integer arithmetic (micro-rate precision). Mirrors the server's maximumQuotePrice.
  */
-export function maximumQuotePrice(r: { kind?: unknown; budget?: unknown; count?: unknown; hours?: unknown }): number | null {
+export function maximumQuotePrice(r: {
+  kind?: unknown;
+  budget?: unknown;
+  count?: unknown;
+  hours?: unknown;
+}): number | null {
   const kind = String(r.kind || 'gpu_rental');
   const isModel = kind === 'model_capacity';
   const isHardware = kind === 'physical_gpu';

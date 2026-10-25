@@ -67,24 +67,65 @@ export function NotificationBell() {
   const label = `Notifications${unread ? ', ' + unread + ' unread' : ''}${muted ? ', alerts muted on this device' : ''}`;
   return (
     <div className="qp-bell-shell" data-qp-bell-shell ref={shell}>
-      <button type="button" className="qp-bell" data-qp-action="bell" aria-label={label} aria-expanded={panel} aria-controls="qp-notification-dropdown" onClick={() => void toggle()}>
+      <button
+        type="button"
+        className="qp-bell"
+        data-qp-action="bell"
+        aria-label={label}
+        aria-expanded={panel}
+        aria-controls="qp-notification-dropdown"
+        onClick={() => void toggle()}
+      >
         <BellIcon />
         {unread && !muted ? <span className="qp-count">{unread > 99 ? '99+' : unread}</span> : null}
       </button>
       {panel ? (
-        <section className="qp-dropdown" id="qp-notification-dropdown" aria-label="Latest notifications">
+        <section
+          className="qp-dropdown"
+          id="qp-notification-dropdown"
+          aria-label="Latest notifications"
+        >
           <header>
             <strong>Notifications</strong>
-            <button type="button" className="qp-text-button" data-qp-action="mute" title="Mute the notification badge on this device; email settings are unchanged" onClick={store.toggleMuted}>{muted ? 'Unmute' : 'Mute'}</button>
-            <button type="button" className="qp-text-button" data-qp-action="read-all" disabled={!unread} onClick={() => store.markRead(rows.map((n) => n.id))}>{unread ? 'Mark all as read' : 'All marked as read'}</button>
+            <button
+              type="button"
+              className="qp-text-button"
+              data-qp-action="mute"
+              title="Mute the notification badge on this device; email settings are unchanged"
+              onClick={store.toggleMuted}
+            >
+              {muted ? 'Unmute' : 'Mute'}
+            </button>
+            <button
+              type="button"
+              className="qp-text-button"
+              data-qp-action="read-all"
+              disabled={!unread}
+              onClick={() => store.markRead(rows.map((n) => n.id))}
+            >
+              {unread ? 'Mark all as read' : 'All marked as read'}
+            </button>
           </header>
           <div className="qp-notification-list">
             <ServiceError error={error} onRetry={() => void refresh(true)} />
-            {rows.length ? <NotificationRows rows={rows.slice(0, 10)} onOpen={openNotice} /> : !ready && pending ? <p className="qp-service-error">Loading notifications…</p> : <EmptyNotifications />}
+            {rows.length ? (
+              <NotificationRows rows={rows.slice(0, 10)} onOpen={openNotice} />
+            ) : !ready && pending ? (
+              <p className="qp-service-error">Loading notifications…</p>
+            ) : (
+              <EmptyNotifications />
+            )}
           </div>
           <footer>
             <span>{muted ? 'Alerts muted on this device' : 'Latest 10 updates'}</span>
-            <button type="button" className="qp-text-button" data-qp-action="more" onClick={() => void more()}>More <span aria-hidden="true">→</span></button>
+            <button
+              type="button"
+              className="qp-text-button"
+              data-qp-action="more"
+              onClick={() => void more()}
+            >
+              More <span aria-hidden="true">→</span>
+            </button>
           </footer>
         </section>
       ) : null}

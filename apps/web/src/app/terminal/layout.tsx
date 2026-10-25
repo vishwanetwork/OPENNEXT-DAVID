@@ -5,7 +5,10 @@ import { requestApp } from '@/lib/request-app';
 import { getServerSession } from '@/features/auth/server';
 import { TerminalShell } from '@/features/terminal/TerminalShell';
 
-export const metadata: Metadata = { title: 'OpenNEXT — Capacity Terminal', robots: { index: false } };
+export const metadata: Metadata = {
+  title: 'OpenNEXT — Capacity Terminal',
+  robots: { index: false },
+};
 
 export default async function TerminalLayout({ children }: { children: ReactNode }) {
   const location = await requestApp('terminal');

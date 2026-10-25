@@ -33,10 +33,13 @@ function BootQuery() {
     const count = Number(params.get('count'));
     if (params.has('count') && [1, 2, 4, 8, 16].includes(count)) next.count = count;
     const listingIntent = params.get('intent');
-    if (params.get('listing') && (listingIntent === 'buy' || listingIntent === 'offer')) next.pendingListing = { id: params.get('listing')!, intent: listingIntent };
-    if (params.get('opportunity') && (listingIntent === 'buy' || listingIntent === 'offer')) next.pendingOpportunity = { id: params.get('opportunity')!, intent: listingIntent };
+    if (params.get('listing') && (listingIntent === 'buy' || listingIntent === 'offer'))
+      next.pendingListing = { id: params.get('listing')!, intent: listingIntent };
+    if (params.get('opportunity') && (listingIntent === 'buy' || listingIntent === 'offer'))
+      next.pendingOpportunity = { id: params.get('opportunity')!, intent: listingIntent };
     const preferred = intent.preferred(useSessionStore.getState().user);
-    if (preferred && !useSessionStore.getState().user?.onboardingCompleted) next.role = preferred === 'seller' ? 'Seller' : 'Buyer';
+    if (preferred && !useSessionStore.getState().user?.onboardingCompleted)
+      next.role = preferred === 'seller' ? 'Seller' : 'Buyer';
     patch(next);
     // Boot-time only: later query changes are handled by the pages themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,7 +51,13 @@ function SessionSync({ initialUser }: { initialUser?: SessionUser | null }) {
   const { demo } = useApp();
   // Seed the store from the server-rendered session before the client boot confirms it.
   useState(() => {
-    if (initialUser !== undefined && !demo && typeof window !== 'undefined' && useSessionStore.getState().status === 'booting') useSessionStore.getState().setUser(initialUser);
+    if (
+      initialUser !== undefined &&
+      !demo &&
+      typeof window !== 'undefined' &&
+      useSessionStore.getState().status === 'booting'
+    )
+      useSessionStore.getState().setUser(initialUser);
     return true;
   });
   const status = useSessionBoot(!demo);
@@ -122,7 +131,13 @@ function Chrome({ children }: { children: ReactNode }) {
 }
 
 /** Client shell mounted by the terminal layout: session boot, preferences, header, overlays, demo. */
-export function TerminalShell({ children, initialUser }: { children: ReactNode; initialUser?: SessionUser | null }) {
+export function TerminalShell({
+  children,
+  initialUser,
+}: {
+  children: ReactNode;
+  initialUser?: SessionUser | null;
+}) {
   const { demo } = useApp();
   return (
     <TerminalProvider initialUser={initialUser}>

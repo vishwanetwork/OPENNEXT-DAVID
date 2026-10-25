@@ -33,7 +33,12 @@ function outside(event: React.MouseEvent<HTMLDialogElement>) {
   const dialog = event.currentTarget;
   if (event.target !== dialog) return false;
   const box = dialog.getBoundingClientRect();
-  return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+  return (
+    event.clientX < box.left ||
+    event.clientX > box.right ||
+    event.clientY < box.top ||
+    event.clientY > box.bottom
+  );
 }
 
 /** Contact Us form (legacy OpenNEXT-contact.js): `POST /api/contact` with an idempotent submission id. */
@@ -99,10 +104,19 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
         {submittedEmail ? null : (
           <div>
             <h2 id="on-contact-heading">Let&apos;s talk capacity.</h2>
-            <p id="on-contact-intro">Tell us what you need. Our team will help you find the right next step.</p>
+            <p id="on-contact-intro">
+              Tell us what you need. Our team will help you find the right next step.
+            </p>
           </div>
         )}
-        <button type="button" className="on-contact-close" aria-label="Close contact form" onClick={() => ref.current?.close()}>×</button>
+        <button
+          type="button"
+          className="on-contact-close"
+          aria-label="Close contact form"
+          onClick={() => ref.current?.close()}
+        >
+          ×
+        </button>
       </header>
       <form className="on-contact-form" onSubmit={onSubmit}>
         {submittedEmail ? (
@@ -110,28 +124,61 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
             <span aria-hidden="true">✓</span>
             <h3 id="on-contact-success-heading">Thank you for reaching us.</h3>
             <p>
-              Your request has been received. Our team will follow up at <strong>{submittedEmail}</strong>.
+              Your request has been received. Our team will follow up at{' '}
+              <strong>{submittedEmail}</strong>.
             </p>
-            <button type="button" className="on-contact-submit" autoFocus onClick={() => ref.current?.close()}>Done</button>
+            <button
+              type="button"
+              className="on-contact-submit"
+              autoFocus
+              onClick={() => ref.current?.close()}
+            >
+              Done
+            </button>
           </div>
         ) : (
           <>
             <div className="on-contact-grid">
               <label>
                 Name
-                <input name="name" autoComplete="name" required maxLength={100} placeholder="Your name" />
+                <input
+                  name="name"
+                  autoComplete="name"
+                  required
+                  maxLength={100}
+                  placeholder="Your name"
+                />
               </label>
               <label>
                 Company
-                <input name="company" autoComplete="organization" required maxLength={160} placeholder="Company name" />
+                <input
+                  name="company"
+                  autoComplete="organization"
+                  required
+                  maxLength={160}
+                  placeholder="Company name"
+                />
               </label>
               <label>
                 Title
-                <input name="title" autoComplete="organization-title" required maxLength={100} placeholder="Your role" />
+                <input
+                  name="title"
+                  autoComplete="organization-title"
+                  required
+                  maxLength={100}
+                  placeholder="Your role"
+                />
               </label>
               <label>
                 Email
-                <input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="you@company.com" />
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  maxLength={254}
+                  placeholder="you@company.com"
+                />
               </label>
             </div>
             <label>
@@ -152,12 +199,17 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
               </label>
             </div>
             <p className="on-contact-notice">
-              Your details will be used by OpenNEXT to respond to this request. Please do not include passwords, API keys or payment details.
+              Your details will be used by OpenNEXT to respond to this request. Please do not
+              include passwords, API keys or payment details.
             </p>
-            <p className="on-contact-error" role="alert" hidden={!error}>{error}</p>
+            <p className="on-contact-error" role="alert" hidden={!error}>
+              {error}
+            </p>
             <footer>
               <button type="submit" className="on-contact-submit" disabled={busy}>
-                {busy ? 'Submitting…' : (
+                {busy ? (
+                  'Submitting…'
+                ) : (
                   <>
                     Submit request <span aria-hidden="true">↗</span>
                   </>

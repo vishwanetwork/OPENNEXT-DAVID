@@ -29,7 +29,11 @@ function read(key: string): string | null {
   }
 }
 
-export function usePersistedPreference<T>(key: string, initial: T, validate?: (value: unknown) => value is T) {
+export function usePersistedPreference<T>(
+  key: string,
+  initial: T,
+  validate?: (value: unknown) => value is T,
+) {
   const raw = useSyncExternalStore(
     subscribe,
     () => read(key),

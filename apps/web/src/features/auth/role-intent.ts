@@ -14,10 +14,13 @@ export interface RoleIntent {
 }
 
 export const allowedRole = (value: unknown): Role | '' =>
-  typeof value === 'string' && ['buyer', 'seller'].includes(value.trim().toLowerCase()) ? (value.trim().toLowerCase() as Role) : '';
+  typeof value === 'string' && ['buyer', 'seller'].includes(value.trim().toLowerCase())
+    ? (value.trim().toLowerCase() as Role)
+    : '';
 
 export const roleIntentKey = (pathname: string): string =>
-  'opennext-auth-role-intent-v1:' + (/^\/(?:terminal\/)?demo(?:\/|$)/.test(pathname || '') ? 'demo' : 'account');
+  'opennext-auth-role-intent-v1:' +
+  (/^\/(?:terminal\/)?demo(?:\/|$)/.test(pathname || '') ? 'demo' : 'account');
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -45,7 +48,9 @@ export class RoleIntentStore {
   }
   private initialize() {
     try {
-      const saved = JSON.parse(this.storage?.getItem(this.key) || 'null') as Partial<RoleIntent> | null;
+      const saved = JSON.parse(
+        this.storage?.getItem(this.key) || 'null',
+      ) as Partial<RoleIntent> | null;
       if (
         saved &&
         allowedRole(saved.role) &&
@@ -53,13 +58,23 @@ export class RoleIntentStore {
         this.now() - (saved.updatedAt as number) < 86400000 &&
         (saved.updatedAt as number) <= this.now() + 60000
       )
-        this.intent = { role: allowedRole(saved.role) as Role, queryRole: allowedRole(saved.queryRole), ownerId: typeof saved.ownerId === 'string' ? saved.ownerId : null, updatedAt: saved.updatedAt as number };
+        this.intent = {
+          role: allowedRole(saved.role) as Role,
+          queryRole: allowedRole(saved.queryRole),
+          ownerId: typeof saved.ownerId === 'string' ? saved.ownerId : null,
+          updatedAt: saved.updatedAt as number,
+        };
     } catch {
       /* ignore */
     }
     // A changed URL hint is a new CTA. The same URL must not undo a user's later selection on reload.
     if (this.queryRole && (!this.intent || this.intent.queryRole !== this.queryRole))
-      this.intent = { role: this.queryRole, queryRole: this.queryRole, ownerId: null, updatedAt: this.now() };
+      this.intent = {
+        role: this.queryRole,
+        queryRole: this.queryRole,
+        ownerId: null,
+        updatedAt: this.now(),
+      };
     this.save();
   }
   get(): RoleIntent | null {
@@ -77,7 +92,12 @@ export class RoleIntentStore {
       this.clear();
       return false;
     }
-    this.intent = { role, queryRole: this.queryRole, ownerId: user?.id || null, updatedAt: this.now() };
+    this.intent = {
+      role,
+      queryRole: this.queryRole,
+      ownerId: user?.id || null,
+      updatedAt: this.now(),
+    };
     this.save();
     return true;
   }

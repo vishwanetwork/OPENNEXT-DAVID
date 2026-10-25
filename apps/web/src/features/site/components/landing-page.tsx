@@ -12,7 +12,12 @@ import { ContactDialog } from './contact-dialog';
 import { CuratedRfqDialog } from './curated-rfq-dialog';
 import { InfoModal } from './info-modal';
 import { LandingBody } from './landing-sections';
-import { SiteActionsProvider, useWorkspaceNavigation, type InfoKind, type SiteActions } from './site-actions';
+import {
+  SiteActionsProvider,
+  useWorkspaceNavigation,
+  type InfoKind,
+  type SiteActions,
+} from './site-actions';
 
 type Overlay =
   | { type: 'info'; kind: InfoKind }
@@ -29,7 +34,8 @@ export function LandingPage() {
     () => ({
       openWorkspace,
       openContact: (options) => setOverlay({ type: 'contact', message: options?.message }),
-      openInfo: (kind) => setOverlay(kind === 'contact' ? { type: 'contact' } : { type: 'info', kind }),
+      openInfo: (kind) =>
+        setOverlay(kind === 'contact' ? { type: 'contact' } : { type: 'info', kind }),
       showCuratedDetails: (item) => {
         if (validCurated(item)) setOverlay({ type: 'curated', item });
       },
@@ -42,9 +48,24 @@ export function LandingPage() {
   return (
     <SiteActionsProvider value={actions}>
       <LandingBody />
-      {overlay?.type === 'info' ? <InfoModal kind={overlay.kind} onClose={close} onHelp={() => openWorkspace({ route: 'help' })} /> : null}
-      {overlay?.type === 'contact' ? <ContactDialog message={overlay.message} onClose={close} /> : null}
-      {overlay?.type === 'curated' ? <CuratedRfqDialog item={overlay.item} error={overlay.error} onClose={close} onOffer={actions.offerCurated} /> : null}
+      {overlay?.type === 'info' ? (
+        <InfoModal
+          kind={overlay.kind}
+          onClose={close}
+          onHelp={() => openWorkspace({ route: 'help' })}
+        />
+      ) : null}
+      {overlay?.type === 'contact' ? (
+        <ContactDialog message={overlay.message} onClose={close} />
+      ) : null}
+      {overlay?.type === 'curated' ? (
+        <CuratedRfqDialog
+          item={overlay.item}
+          error={overlay.error}
+          onClose={close}
+          onOffer={actions.offerCurated}
+        />
+      ) : null}
     </SiteActionsProvider>
   );
 }

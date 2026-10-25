@@ -20,21 +20,33 @@ interface AccountState {
 }
 let current: AccountState | null = null;
 
-const creditAmount = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && Number.isSafeInteger(Math.round(value * 100));
+const creditAmount = (value: unknown): value is number =>
+  typeof value === 'number' &&
+  Number.isFinite(value) &&
+  value >= 0 &&
+  Number.isSafeInteger(Math.round(value * 100));
 
 /** Identity of the account whose credit is loaded ('' when nobody is signed in / onboarded). */
-export function billingIdentity(user: SessionUser | null = useSessionStore.getState().user, demo = Boolean(client?.demo)): string {
+export function billingIdentity(
+  user: SessionUser | null = useSessionStore.getState().user,
+  demo = Boolean(client?.demo),
+): string {
   const workspaceId = useWorkspaceStore.getState().identity.id;
-  return user?.id && user.onboardingCompleted && workspaceId === user.id ? JSON.stringify([user.id, String(user.role || '').toLowerCase(), !!user.demo || demo]) : '';
+  return user?.id && user.onboardingCompleted && workspaceId === user.id
+    ? JSON.stringify([user.id, String(user.role || '').toLowerCase(), !!user.demo || demo])
+    : '';
 }
 
 /** Applies the merged notification list to the workspace store. */
 export function syncNotifications(marketplaceRows?: WorkspaceNotification[]) {
   const store = useWorkspaceStore.getState();
   const owner = useSessionStore.getState().user?.id;
-  const marketplace = (marketplaceRows !== undefined ? marketplaceRows : store.marketplaceNotifications) as WorkspaceNotification[];
+  const marketplace = (
+    marketplaceRows !== undefined ? marketplaceRows : store.marketplaceNotifications
+  ) as WorkspaceNotification[];
   const billing = store.billingNotifications as WorkspaceNotification[];
-  const merged = owner && store.identity.id === owner ? mergeNotifications(owner, marketplace, billing) : [];
+  const merged =
+    owner && store.identity.id === owner ? mergeNotifications(owner, marketplace, billing) : [];
   store.patch({ marketplaceNotifications: marketplace, notifications: merged });
 }
 
@@ -70,7 +82,9 @@ export function applyBillingAccount(result: unknown): BillingAccount | null {
     value.confirmed !== true ||
     value.accountId !== user.id ||
     value.currency !== 'USD' ||
-    !(['availableCredit', 'paidCredit', 'promotionalCredit'] as const).every((key) => creditAmount(value[key]))
+    !(['availableCredit', 'paidCredit', 'promotionalCredit'] as const).every((key) =>
+      creditAmount(value[key]),
+    )
   )
     throw new Error('The verified credit account response is incomplete.');
   state.confirmed = true;
@@ -80,8 +94,16 @@ export function applyBillingAccount(result: unknown): BillingAccount | null {
     promotionalCredit: value.promotionalCredit,
     billingAccountId: value.accountId,
     billingAccountConfirmed: true,
-    topupRequests: value.requests.filter((row) => row && typeof row.id === 'string' && row.accountId === user.id && (!row.ownerId || row.ownerId === user.id)),
-    billingNotifications: value.notifications.filter((row) => row && typeof row.id === 'string' && row.ownerId === user.id) as WorkspaceNotification[],
+    topupRequests: value.requests.filter(
+      (row) =>
+        row &&
+        typeof row.id === 'string' &&
+        row.accountId === user.id &&
+        (!row.ownerId || row.ownerId === user.id),
+    ),
+    billingNotifications: value.notifications.filter(
+      (row) => row && typeof row.id === 'string' && row.ownerId === user.id,
+    ) as WorkspaceNotification[],
   });
   syncNotifications();
   window.dispatchEvent?.(new CustomEvent('opennext:billing', { detail: { accountId: user.id } }));
@@ -109,7 +131,8 @@ export async function refreshBillingAccount(): Promise<BillingAccount | null> {
   return job;
 }
 
-export const hasVerifiedBillingAccount = (): boolean => Boolean(current && current.confirmed && current.identity === billingIdentity());
+export const hasVerifiedBillingAccount = (): boolean =>
+  Boolean(current && current.confirmed && current.identity === billingIdentity());
 export const invalidateBillingAccount = () => {
   current = null;
 };

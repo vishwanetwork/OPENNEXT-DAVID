@@ -8,7 +8,14 @@ import { FEE_LABEL } from '../fees';
 import { marketRows, useMarketplaceStore, type MarketSide } from '../exchange';
 import { isDemo } from '../workspace';
 import { useOpportunity } from './opportunity';
-import { PBtn, externalCommitment, externalName, externalNotice, externalQuantity, rowPrice } from './shared';
+import {
+  PBtn,
+  externalCommitment,
+  externalName,
+  externalNotice,
+  externalQuantity,
+  rowPrice,
+} from './shared';
 
 /** Supply & Demand listing table on the market page (legacy `listingTable`). */
 export function ListingTable() {
@@ -19,8 +26,19 @@ export function ListingTable() {
   const market = useMarketplaceStore();
   const { open: openOpportunity, inquire } = useOpportunity();
   const filters = { model, region, count, term, role };
-  const sides: [MarketSide, string][] = role === 'Buyer' ? [['supply', 'Supply'], ['demand', 'RFQs']] : [['demand', 'RFQs'], ['supply', 'Supply']];
-  const bySide = Object.fromEntries(sides.map(([side]) => [side, marketRows(market, filters, side, isDemo(), code)])) as Record<MarketSide, MarketRow[]>;
+  const sides: [MarketSide, string][] =
+    role === 'Buyer'
+      ? [
+          ['supply', 'Supply'],
+          ['demand', 'RFQs'],
+        ]
+      : [
+          ['demand', 'RFQs'],
+          ['supply', 'Supply'],
+        ];
+  const bySide = Object.fromEntries(
+    sides.map(([side]) => [side, marketRows(market, filters, side, isDemo(), code)]),
+  ) as Record<MarketSide, MarketRow[]>;
   const allRows = sides.flatMap(([side]) => bySide[side]);
   const hasReference = allRows.some((r) => r.referenceOnly);
   const hasExternal = allRows.some((r) => r.external);
@@ -28,7 +46,13 @@ export function ListingTable() {
     <div className="compare proc-market-listings">
       <div className="compare-title">
         <span>{model} Supply &amp; Demand</span>
-        <small>{hasExternal ? 'Marketplace & sourced requirements' : hasReference ? 'Reference listings · confirmation required' : 'Verified marketplace records'}</small>
+        <small>
+          {hasExternal
+            ? 'Marketplace & sourced requirements'
+            : hasReference
+              ? 'Reference listings · confirmation required'
+              : 'Verified marketplace records'}
+        </small>
       </div>
       {sides.map(([side, label]) => {
         const rows = bySide[side];
@@ -55,7 +79,10 @@ export function ListingTable() {
                   {rows.map((r) => {
                     const quantity = r.external ? externalQuantity(r) : r.count + ' GPU';
                     const terms = r.external ? externalCommitment(r) : r.hours + 'h · ' + r.term;
-                    const actionable = canAct && !r.referenceOnly && (!r.external || r.responseMode === 'operations');
+                    const actionable =
+                      canAct &&
+                      !r.referenceOnly &&
+                      (!r.external || r.responseMode === 'operations');
                     return (
                       <tr key={r.id}>
                         <td>
@@ -63,18 +90,42 @@ export function ListingTable() {
                           <small className="proc-sub">{r.id}</small>
                         </td>
                         <td>{r.region}</td>
-                        <td className={supply && r.price === best ? 'best' : undefined}>{rowPrice(r)}</td>
+                        <td className={supply && r.price === best ? 'best' : undefined}>
+                          {rowPrice(r)}
+                        </td>
                         <td>
                           {quantity}
                           <small className="proc-sub">{terms}</small>
                         </td>
-                        <td>{role === 'Buyer' ? (r.referenceOnly || r.external ? '—' : Number(r.biddingParties || 0)) : quantity}</td>
                         <td>
-                          <PBtn data-act="proc-listing" data-id={r.id} onClick={() => openModal('proc-listing', { id: r.id })}>Details</PBtn>
+                          {role === 'Buyer'
+                            ? r.referenceOnly || r.external
+                              ? '—'
+                              : Number(r.biddingParties || 0)
+                            : quantity}
+                        </td>
+                        <td>
+                          <PBtn
+                            data-act="proc-listing"
+                            data-id={r.id}
+                            onClick={() => openModal('proc-listing', { id: r.id })}
+                          >
+                            Details
+                          </PBtn>
                           {actionable ? (
                             <>
                               {' '}
-                              <PBtn primary data-act={r.external ? 'proc-external-inquiry' : 'proc-opportunity'} data-id={r.id} data-intent={supply ? 'buy' : 'offer'} onClick={() => (r.external ? inquire(r) : openOpportunity(r.id, supply ? 'buy' : 'offer'))}>
+                              <PBtn
+                                primary
+                                data-act={r.external ? 'proc-external-inquiry' : 'proc-opportunity'}
+                                data-id={r.id}
+                                data-intent={supply ? 'buy' : 'offer'}
+                                onClick={() =>
+                                  r.external
+                                    ? inquire(r)
+                                    : openOpportunity(r.id, supply ? 'buy' : 'offer')
+                                }
+                              >
                                 {supply ? 'Buy capacity' : 'Offer capacity'}
                               </PBtn>
                             </>
@@ -84,7 +135,9 @@ export function ListingTable() {
                     );
                   })}
                   <tr hidden={rows.length > 0}>
-                    <td colSpan={6}>No {supply ? 'published supply' : 'open RFQs'} match these filters.</td>
+                    <td colSpan={6}>
+                      No {supply ? 'published supply' : 'open RFQs'} match these filters.
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -94,8 +147,12 @@ export function ListingTable() {
       })}
       <p className="form-note proc-market-note">
         {hasExternal ? externalNotice() + ' ' : ''}
-        {hasReference ? 'Reference listings reuse the preview catalog; they are not verified inventory or executable quotes. ' : ''}
-        Bidding Parties counts unique verified buyers who requested a quote for this GPU model in the last 30 days. Listed prices are base unit prices. {FEE_LABEL} is shown separately at buyer checkout and deducted separately from seller settlement.
+        {hasReference
+          ? 'Reference listings reuse the preview catalog; they are not verified inventory or executable quotes. '
+          : ''}
+        Bidding Parties counts unique verified buyers who requested a quote for this GPU model in
+        the last 30 days. Listed prices are base unit prices. {FEE_LABEL} is shown separately at
+        buyer checkout and deducted separately from seller settlement.
       </p>
     </div>
   );

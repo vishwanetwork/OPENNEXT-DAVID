@@ -9,18 +9,47 @@ import { useTerminal } from '@/features/terminal/context';
 import { useWorkspaceStore, type ModalState } from '@/features/terminal/store';
 import { ResellResponse } from '@opennext/contracts';
 import { refreshMarketplace } from '@/features/procurement';
-import { eligibility, lifecycle, moneyOrNa, sshCommand, stampUtcFull, telemetry, timestamp } from '../lifecycle';
-import { endDemo, endExample, example, instanceView, localDemo, setExampleScenario } from '../preview';
+import {
+  eligibility,
+  lifecycle,
+  moneyOrNa,
+  sshCommand,
+  stampUtcFull,
+  telemetry,
+  timestamp,
+} from '../lifecycle';
+import {
+  endDemo,
+  endExample,
+  example,
+  instanceView,
+  localDemo,
+  setExampleScenario,
+} from '../preview';
 import { IBtn, SshLibrary, usePreviewScope, useTick } from './common';
 
 /** Adapter hook point for real termination; absent until the backend lifecycle API is connected. */
-export type InstanceLifecycleAdapter = { end: (input: { instanceId: string; confirmation: 'END' }) => Promise<{ confirmed?: boolean; instance?: Partial<Instance> & { id?: string } }> };
+export type InstanceLifecycleAdapter = {
+  end: (input: {
+    instanceId: string;
+    confirmation: 'END';
+  }) => Promise<{ confirmed?: boolean; instance?: Partial<Instance> & { id?: string } }>;
+};
 let lifecycleAdapter: InstanceLifecycleAdapter | null = null;
 export const registerInstanceLifecycle = (adapter: InstanceLifecycleAdapter | null) => {
   lifecycleAdapter = adapter;
 };
 
-const ENDED = ['end', 'ended', 'released', 'expired', 'terminated', 'completed', 'cancelled', 'canceled'];
+const ENDED = [
+  'end',
+  'ended',
+  'released',
+  'expired',
+  'terminated',
+  'completed',
+  'cancelled',
+  'canceled',
+];
 const ending = new Set<string>();
 
 const Cell = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -36,20 +65,47 @@ function useInstance(id: string | undefined, isExample: boolean) {
   const now = useTick();
   const original = isExample ? example(scope) : instances.find((row) => row.id === id);
   const i = original ? (isExample ? original : instanceView(original, scope, demo)) : undefined;
-  return { i, original, scope, demo, role, now, life: i ? lifecycle(i) : { label: 'End' as const, ended: true, running: false, connecting: false }, e: i ? eligibility(i, role) : { allowed: false, reason: 'The allocation is no longer available.' }, t: i ? telemetry(i) : { fresh: false, value: null, at: null } };
+  return {
+    i,
+    original,
+    scope,
+    demo,
+    role,
+    now,
+    life: i
+      ? lifecycle(i)
+      : { label: 'End' as const, ended: true, running: false, connecting: false },
+    e: i
+      ? eligibility(i, role)
+      : { allowed: false, reason: 'The allocation is no longer available.' },
+    t: i ? telemetry(i) : { fresh: false, value: null, at: null },
+  };
 }
 
 function OrderField({ i, isExample }: { i: Instance; isExample: boolean }) {
   const { openModal, toast } = useTerminal();
   const orders = useWorkspaceStore((s) => s.orders) as Order[];
   const idRef = i.orderId || i.purchaseOrderId;
-  const order = isExample ? { id: 'ORDER-EXAMPLE-1024' } : orders.find((o) => (idRef && o.id === idRef) || (i.id && o.instanceId === i.id));
-  const open = () => (isExample ? openModal('instance-example-order') : order ? openModal('bill-order', { id: order.id }) : toast('The purchase record is not linked to this allocation yet.'));
+  const order = isExample
+    ? { id: 'ORDER-EXAMPLE-1024' }
+    : orders.find((o) => (idRef && o.id === idRef) || (i.id && o.instanceId === i.id));
+  const open = () =>
+    isExample
+      ? openModal('instance-example-order')
+      : order
+        ? openModal('bill-order', { id: order.id })
+        : toast('The purchase record is not linked to this allocation yet.');
   return (
     <div>
       <small>ORDER</small>
       {order ? (
-        <button type="button" className="detail-link instance-order-link" data-act={isExample ? 'instance-example-order' : 'instance-order'} data-id={i.id} onClick={open}>
+        <button
+          type="button"
+          className="detail-link instance-order-link"
+          data-act={isExample ? 'instance-example-order' : 'instance-order'}
+          data-id={i.id}
+          onClick={open}
+        >
           {order.id} <span aria-hidden="true">↗</span>
         </button>
       ) : (
@@ -66,7 +122,9 @@ function ExampleOrder() {
   const subtotal = 8 * 2.3 * 48;
   return (
     <>
-      <p className="instance-example-record-note">Example only · no purchase, payment or active resource</p>
+      <p className="instance-example-record-note">
+        Example only · no purchase, payment or active resource
+      </p>
       <div className="details-grid">
         <Cell label="ORDER">ORDER-EXAMPLE-1024</Cell>
         <Cell label="RESOURCE">8 × H100 SXM</Cell>
@@ -80,14 +138,30 @@ function ExampleOrder() {
         <Cell label="PAYMENT">Not charged · example only</Cell>
       </div>
       <div className="instance-example-pricing">
-        <div><span>Illustrative capacity subtotal</span><strong>{moneyOrNa(subtotal)}</strong></div>
-        <div><span>OpenNEXT Fee 5%</span><strong>{moneyOrNa(subtotal * 0.05)}</strong></div>
-        <div><span>Illustrative total</span><strong>{moneyOrNa(subtotal * 1.05)}</strong></div>
+        <div>
+          <span>Illustrative capacity subtotal</span>
+          <strong>{moneyOrNa(subtotal)}</strong>
+        </div>
+        <div>
+          <span>OpenNEXT Fee 5%</span>
+          <strong>{moneyOrNa(subtotal * 0.05)}</strong>
+        </div>
+        <div>
+          <span>Illustrative total</span>
+          <strong>{moneyOrNa(subtotal * 1.05)}</strong>
+        </div>
       </div>
-      <p className="form-note">This record demonstrates the information linked to a purchased instance. It is not added to your real orders or Billing activity.</p>
+      <p className="form-note">
+        This record demonstrates the information linked to a purchased instance. It is not added to
+        your real orders or Billing activity.
+      </p>
       <div className="modal-footer">
-        <IBtn act="instance-example-manage" onClick={() => openModal('instance-example-manage')}>Back to instance</IBtn>
-        <IBtn act="close-modal" onClick={closeModal}>Close</IBtn>
+        <IBtn act="instance-example-manage" onClick={() => openModal('instance-example-manage')}>
+          Back to instance
+        </IBtn>
+        <IBtn act="close-modal" onClick={closeModal}>
+          Close
+        </IBtn>
       </div>
     </>
   );
@@ -119,13 +193,25 @@ function EndDialog({ id, isExample }: { id?: string; isExample: boolean }) {
         toast('Local preview instance ended. No real resource or billing was changed.');
         return;
       }
-      if (!lifecycleAdapter) throw new Error('Termination is not connected. No resource has been released. Contact operations.');
+      if (!lifecycleAdapter)
+        throw new Error(
+          'Termination is not connected. No resource has been released. Contact operations.',
+        );
       const result = await lifecycleAdapter.end({ instanceId: i.id, confirmation: 'END' });
       const finalStatus = String(result?.instance?.status || '').toLowerCase();
-      const terminal = Boolean(result?.instance?.releasedAt || result?.instance?.endedAt) || ENDED.includes(finalStatus);
-      if (result?.confirmed !== true || result.instance?.id !== i.id || !terminal) throw new Error('Termination has not been confirmed. The allocation was not marked as ended. Refresh its status or contact operations.');
+      const terminal =
+        Boolean(result?.instance?.releasedAt || result?.instance?.endedAt) ||
+        ENDED.includes(finalStatus);
+      if (result?.confirmed !== true || result.instance?.id !== i.id || !terminal)
+        throw new Error(
+          'Termination has not been confirmed. The allocation was not marked as ended. Refresh its status or contact operations.',
+        );
       const S = useWorkspaceStore.getState();
-      S.patch({ instances: (S.instances as Instance[]).map((row) => (row.id === i.id ? { ...row, ...(result.instance as Partial<Instance>) } : row)) });
+      S.patch({
+        instances: (S.instances as Instance[]).map((row) =>
+          row.id === i.id ? { ...row, ...(result.instance as Partial<Instance>) } : row,
+        ),
+      });
       closeModal();
       toast('Instance ended. The backend confirmed release.');
     } catch (err) {
@@ -139,26 +225,77 @@ function EndDialog({ id, isExample }: { id?: string; isExample: boolean }) {
   void original;
   return (
     <>
-      <p className="instance-end-warning">{life.ended ? 'This allocation is no longer active.' : local ? 'This ends only the local example or demo allocation. No real server is released.' : 'Ending an instance stops its workloads and releases the allocation. Save any required data before proceeding.'}</p>
+      <p className="instance-end-warning">
+        {life.ended
+          ? 'This allocation is no longer active.'
+          : local
+            ? 'This ends only the local example or demo allocation. No real server is released.'
+            : 'Ending an instance stops its workloads and releases the allocation. Save any required data before proceeding.'}
+      </p>
       <div className="details-grid">
-        <Cell label="RESOURCE">{i.count} × {i.model}</Cell>
+        <Cell label="RESOURCE">
+          {i.count} × {i.model}
+        </Cell>
         <Cell label="REGION">{i.region || 'Not provided'}</Cell>
-        <div><small>STATUS</small><strong data-instance-status>{life.label}</strong></div>
+        <div>
+          <small>STATUS</small>
+          <strong data-instance-status>{life.label}</strong>
+        </div>
       </div>
-      {!local && !configured ? <div className="instance-end-unavailable">Resource termination is not connected yet. No resource will be released and no billing change will be made. Contact operations to end this allocation.</div> : null}
+      {!local && !configured ? (
+        <div className="instance-end-unavailable">
+          Resource termination is not connected yet. No resource will be released and no billing
+          change will be made. Contact operations to end this allocation.
+        </div>
+      ) : null}
       {!life.ended ? (
-        <form data-form="instance-end" data-id={i.id} data-example={isExample ? 'true' : 'false'} onSubmit={submit}>
+        <form
+          data-form="instance-end"
+          data-id={i.id}
+          data-example={isExample ? 'true' : 'false'}
+          onSubmit={submit}
+        >
           <label className="instance-end-confirm">
-            <input type="checkbox" name="confirmEnd" value="yes" required disabled={!local && !configured} /> <span>I understand that this {local ? 'local preview' : 'allocation'} will end and connection access will stop.</span>
+            <input
+              type="checkbox"
+              name="confirmEnd"
+              value="yes"
+              required
+              disabled={!local && !configured}
+            />{' '}
+            <span>
+              I understand that this {local ? 'local preview' : 'allocation'} will end and
+              connection access will stop.
+            </span>
           </label>
-          <p className="form-note" data-instance-end-error role="alert">{error}</p>
+          <p className="form-note" data-instance-end-error role="alert">
+            {error}
+          </p>
           <div className="modal-footer">
-            <IBtn act={isExample ? 'instance-example-manage' : 'instance-manage'} id={i.id} onClick={() => openModal(isExample ? 'instance-example-manage' : 'instance-manage', { id: i.id })}>Cancel</IBtn>
-            <button type="submit" className="btn danger" disabled={(!local && !configured) || busy || life.ended}>END instance</button>
+            <IBtn
+              act={isExample ? 'instance-example-manage' : 'instance-manage'}
+              id={i.id}
+              onClick={() =>
+                openModal(isExample ? 'instance-example-manage' : 'instance-manage', { id: i.id })
+              }
+            >
+              Cancel
+            </IBtn>
+            <button
+              type="submit"
+              className="btn danger"
+              disabled={(!local && !configured) || busy || life.ended}
+            >
+              END instance
+            </button>
           </div>
         </form>
       ) : (
-        <div className="modal-footer"><IBtn act="close-modal" onClick={closeModal}>Close</IBtn></div>
+        <div className="modal-footer">
+          <IBtn act="close-modal" onClick={closeModal}>
+            Close
+          </IBtn>
+        </div>
       )}
     </>
   );
@@ -171,10 +308,23 @@ function ExampleConnect() {
   const life = lifecycle(example(scope));
   return (
     <>
-      <p className="form-note">{life.ended ? 'This example has ended. Reset it in Manage to explore the connection state.' : life.connecting ? 'This Spot example is reconnecting after an interruption. Access resumes only after the Running state is confirmed.' : 'This is an example instance, not an active resource. Delivered allocations show a verified SSH endpoint, port, username and SSH key instructions.'}</p>
-      <div className="instance-example-access"><span>SSH access</span><strong>{life.running ? 'Available after real delivery' : life.label}</strong></div>
+      <p className="form-note">
+        {life.ended
+          ? 'This example has ended. Reset it in Manage to explore the connection state.'
+          : life.connecting
+            ? 'This Spot example is reconnecting after an interruption. Access resumes only after the Running state is confirmed.'
+            : 'This is an example instance, not an active resource. Delivered allocations show a verified SSH endpoint, port, username and SSH key instructions.'}
+      </p>
+      <div className="instance-example-access">
+        <span>SSH access</span>
+        <strong>{life.running ? 'Available after real delivery' : life.label}</strong>
+      </div>
       <p className="form-note">No server connection is made from this example.</p>
-      <div className="modal-footer"><IBtn act="close-modal" onClick={closeModal}>Close</IBtn></div>
+      <div className="modal-footer">
+        <IBtn act="close-modal" onClick={closeModal}>
+          Close
+        </IBtn>
+      </div>
     </>
   );
 }
@@ -188,28 +338,70 @@ function ExampleManage() {
   return (
     <>
       <div className="details-grid">
-        <div><small>STATUS</small><strong data-instance-status>{life.label}</strong></div>
+        <div>
+          <small>STATUS</small>
+          <strong data-instance-status>{life.label}</strong>
+        </div>
         <Cell label="CAPACITY">8 × H100 SXM</Cell>
         <Cell label="REGION">US East</Cell>
         <Cell label="UNIT RATE">$2.30/GPU-hr</Cell>
-        <Cell label="UTILIZATION">{life.running ? '71%' : life.ended ? 'Not active' : 'Awaiting reconnection'}</Cell>
+        <Cell label="UTILIZATION">
+          {life.running ? '71%' : life.ended ? 'Not active' : 'Awaiting reconnection'}
+        </Cell>
         <OrderField i={i} isExample />
       </div>
-      <p className="form-note">Example only. These controls demonstrate the instance lifecycle without creating a purchase, connecting to a server or changing Billing.</p>
+      <p className="form-note">
+        Example only. These controls demonstrate the instance lifecycle without creating a purchase,
+        connecting to a server or changing Billing.
+      </p>
       <div className="instance-example-controls">
         {life.ended ? (
-          <IBtn act="instance-example-reset" onClick={() => setExampleScenario(scope, 'reset')}>Reset example</IBtn>
+          <IBtn act="instance-example-reset" onClick={() => setExampleScenario(scope, 'reset')}>
+            Reset example
+          </IBtn>
         ) : (
-          <IBtn act={life.connecting ? 'instance-example-recover' : 'instance-example-interrupt'} onClick={() => setExampleScenario(scope, life.connecting ? 'running' : 'interrupted')}>{life.connecting ? 'Restore connection' : 'Preview Spot interruption'}</IBtn>
+          <IBtn
+            act={life.connecting ? 'instance-example-recover' : 'instance-example-interrupt'}
+            onClick={() => setExampleScenario(scope, life.connecting ? 'running' : 'interrupted')}
+          >
+            {life.connecting ? 'Restore connection' : 'Preview Spot interruption'}
+          </IBtn>
         )}
         <span>Local example controls</span>
       </div>
       <div className="modal-footer">
-        <IBtn act="instance-access" example onClick={() => openModal('instance-access', { example: true })}>SSH keys</IBtn>
-        <IBtn act="close-modal" onClick={closeModal}>Close</IBtn>
-        <IBtn act="instance-example-connect" disabled={!life.running} onClick={() => openModal('instance-example-connect')}>Connect</IBtn>
-        <IBtn act="instance-example-resell" disabled title="Example capacity cannot be listed for resale." onClick={() => toast('Example capacity cannot be listed for resale.')}>Resell</IBtn>
-        <IBtn act="instance-example-end" disabled={life.ended} onClick={() => openModal('instance-example-end')}>END</IBtn>
+        <IBtn
+          act="instance-access"
+          example
+          onClick={() => openModal('instance-access', { example: true })}
+        >
+          SSH keys
+        </IBtn>
+        <IBtn act="close-modal" onClick={closeModal}>
+          Close
+        </IBtn>
+        <IBtn
+          act="instance-example-connect"
+          disabled={!life.running}
+          onClick={() => openModal('instance-example-connect')}
+        >
+          Connect
+        </IBtn>
+        <IBtn
+          act="instance-example-resell"
+          disabled
+          title="Example capacity cannot be listed for resale."
+          onClick={() => toast('Example capacity cannot be listed for resale.')}
+        >
+          Resell
+        </IBtn>
+        <IBtn
+          act="instance-example-end"
+          disabled={life.ended}
+          onClick={() => openModal('instance-example-end')}
+        >
+          END
+        </IBtn>
       </div>
     </>
   );
@@ -222,32 +414,93 @@ function Manage({ id }: { id?: string }) {
   if (!i) return <p>Refresh your instances and try again.</p>;
   const refresh = () => refreshMarketplace().catch((err: Error) => toast(err.message));
   const connect = () => {
-    if (!life.running) return toast(life.ended ? 'This instance has ended.' : 'Connection is unavailable until the resource is Running.');
+    if (!life.running)
+      return toast(
+        life.ended
+          ? 'This instance has ended.'
+          : 'Connection is unavailable until the resource is Running.',
+      );
     if (!i.sshHost) return toast('Verified connection details are not available yet.');
     openModal('connect', { id: i.id });
   };
   void api;
   return (
     <>
-      <p className="form-note" data-instance-live-status role="status">{e.reason}</p>
+      <p className="form-note" data-instance-live-status role="status">
+        {e.reason}
+      </p>
       <div className="details-grid">
-        <div><small>STATUS</small><strong data-instance-status>{life.label}</strong></div>
-        <Cell label="CAPACITY">{i.count} × {i.model}</Cell>
+        <div>
+          <small>STATUS</small>
+          <strong data-instance-status>{life.label}</strong>
+        </div>
+        <Cell label="CAPACITY">
+          {i.count} × {i.model}
+        </Cell>
         <Cell label="REGION">{i.region || 'Not provided'}</Cell>
         <Cell label="UNIT RATE">{moneyOrNa(i.rate)} / GPU-hour</Cell>
-        <Cell label="UTILIZATION">{life.ended ? 'Not active' : life.connecting ? 'Awaiting reconnection' : t.fresh ? (t.value as number).toFixed(1) + '%' : 'Awaiting telemetry'}</Cell>
+        <Cell label="UTILIZATION">
+          {life.ended
+            ? 'Not active'
+            : life.connecting
+              ? 'Awaiting reconnection'
+              : t.fresh
+                ? (t.value as number).toFixed(1) + '%'
+                : 'Awaiting telemetry'}
+        </Cell>
         <OrderField i={i} isExample={false} />
       </div>
       <p className="form-note">{e.reason}</p>
-      <p className="form-note">Resale is limited to authorized, independently allocatable idle GPUs within your existing service window. Active allocations are never reclaimed automatically.</p>
-      {localDemo(i, demo) ? <p className="instance-example-record-note">Demo allocation · local lifecycle changes only</p> : null}
+      <p className="form-note">
+        Resale is limited to authorized, independently allocatable idle GPUs within your existing
+        service window. Active allocations are never reclaimed automatically.
+      </p>
+      {localDemo(i, demo) ? (
+        <p className="instance-example-record-note">
+          Demo allocation · local lifecycle changes only
+        </p>
+      ) : null}
       <div className="modal-footer">
-        <IBtn act="instance-access" id={i.id} onClick={() => openModal('instance-access', { id: i.id })}>SSH keys</IBtn>
-        <IBtn act="instance-connect" id={i.id} disabled={!(life.running && i.sshHost)} onClick={connect}>Connection details</IBtn>
-        {role === 'Buyer' ? <IBtn act="instance-resell" id={i.id} disabled={!e.allowed} title={e.reason} onClick={() => openModal('instance-resell', { id: i.id })}>Resell</IBtn> : null}
-        <IBtn act="instance-refresh" id={i.id} onClick={refresh}>Refresh status</IBtn>
-        <IBtn act="instance-end" id={i.id} disabled={life.ended} onClick={() => openModal('instance-end-confirm', { id: i.id })}>END</IBtn>
-        <IBtn act="close-modal" onClick={closeModal}>Close</IBtn>
+        <IBtn
+          act="instance-access"
+          id={i.id}
+          onClick={() => openModal('instance-access', { id: i.id })}
+        >
+          SSH keys
+        </IBtn>
+        <IBtn
+          act="instance-connect"
+          id={i.id}
+          disabled={!(life.running && i.sshHost)}
+          onClick={connect}
+        >
+          Connection details
+        </IBtn>
+        {role === 'Buyer' ? (
+          <IBtn
+            act="instance-resell"
+            id={i.id}
+            disabled={!e.allowed}
+            title={e.reason}
+            onClick={() => openModal('instance-resell', { id: i.id })}
+          >
+            Resell
+          </IBtn>
+        ) : null}
+        <IBtn act="instance-refresh" id={i.id} onClick={refresh}>
+          Refresh status
+        </IBtn>
+        <IBtn
+          act="instance-end"
+          id={i.id}
+          disabled={life.ended}
+          onClick={() => openModal('instance-end-confirm', { id: i.id })}
+        >
+          END
+        </IBtn>
+        <IBtn act="close-modal" onClick={closeModal}>
+          Close
+        </IBtn>
       </div>
     </>
   );
@@ -263,7 +516,13 @@ function Resell({ id }: { id?: string }) {
     return (
       <>
         <p>{e.reason}</p>
-        <IBtn act="instance-refresh" id={i.id} onClick={() => refreshMarketplace().catch((err: Error) => toast(err.message))}>Refresh status</IBtn>
+        <IBtn
+          act="instance-refresh"
+          id={i.id}
+          onClick={() => refreshMarketplace().catch((err: Error) => toast(err.message))}
+        >
+          Refresh status
+        </IBtn>
       </>
     );
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -271,7 +530,10 @@ function Resell({ id }: { id?: string }) {
     const data = Object.fromEntries(new FormData(event.currentTarget)) as Record<string, string>;
     setBusy(true);
     try {
-      const result = await api.post(`/api/marketplace/instances/${encodeURIComponent(i.id)}/resell`, { count: Number(data.count), rate: Number(data.rate), hours: Number(data.hours) });
+      const result = await api.post(
+        `/api/marketplace/instances/${encodeURIComponent(i.id)}/resell`,
+        { count: Number(data.count), rate: Number(data.rate), hours: Number(data.hours) },
+      );
       ResellResponse.parse(result);
       closeModal();
       toast('Resale request submitted. Track it in your supply.');
@@ -285,15 +547,44 @@ function Resell({ id }: { id?: string }) {
   const maxHours = Math.max(0, Math.floor((timestamp(i.serviceEnd ?? i.end) - now) / 3600000));
   return (
     <form data-form="instance-resell" data-id={i.id} onSubmit={submit}>
-      <p className="form-note" data-instance-live-status role="status">{e.reason}</p>
-      <p className="form-note">A server-side availability and utilization check is required before listing. Your listed unit price has no markup. OpenNEXT Fee 5% is added at buyer checkout and deducted from seller proceeds, each based on the order subtotal.</p>
+      <p className="form-note" data-instance-live-status role="status">
+        {e.reason}
+      </p>
+      <p className="form-note">
+        A server-side availability and utilization check is required before listing. Your listed
+        unit price has no markup. OpenNEXT Fee 5% is added at buyer checkout and deducted from
+        seller proceeds, each based on the order subtotal.
+      </p>
       <div className="form-grid">
-        <label className="form-label">Idle GPU count<input className="field" type="number" name="count" min={1} max={i.availableResellCount || 0} step={1} required /></label>
-        <label className="form-label">Your unit price · USD / GPU-hour<input className="field" type="number" name="rate" min="0.01" step="0.01" required /></label>
-        <label className="form-label">Duration · hours<input className="field" type="number" name="hours" min={1} max={maxHours} required /></label>
+        <label className="form-label">
+          Idle GPU count
+          <input
+            className="field"
+            type="number"
+            name="count"
+            min={1}
+            max={i.availableResellCount || 0}
+            step={1}
+            required
+          />
+        </label>
+        <label className="form-label">
+          Your unit price · USD / GPU-hour
+          <input className="field" type="number" name="rate" min="0.01" step="0.01" required />
+        </label>
+        <label className="form-label">
+          Duration · hours
+          <input className="field" type="number" name="hours" min={1} max={maxHours} required />
+        </label>
       </div>
-      <p className="form-note">Pending offers pause when utilization reaches 95% or telemetry is stale.</p>
-      <div className="modal-footer"><button className="btn" disabled={busy || !e.allowed}>Submit resale request</button></div>
+      <p className="form-note">
+        Pending offers pause when utilization reaches 95% or telemetry is stale.
+      </p>
+      <div className="modal-footer">
+        <button className="btn" disabled={busy || !e.allowed}>
+          Submit resale request
+        </button>
+      </div>
     </form>
   );
 }
@@ -305,14 +596,32 @@ function Access({ id, isExample }: { id?: string; isExample: boolean }) {
   return (
     <>
       <div className="instance-access-summary">
-        <strong>{i.count} × {i.model}</strong>
+        <strong>
+          {i.count} × {i.model}
+        </strong>
         <span>{i.region || 'Region not provided'}</span>
       </div>
-      <p className="form-note instance-access-installation">{isExample ? 'This example has no server to connect to.' : 'Instance-specific key installation is not connected yet.'} Save a public key below for provisioning. Adding a key here does not install it on an existing instance.</p>
+      <p className="form-note instance-access-installation">
+        {isExample
+          ? 'This example has no server to connect to.'
+          : 'Instance-specific key installation is not connected yet.'}{' '}
+        Save a public key below for provisioning. Adding a key here does not install it on an
+        existing instance.
+      </p>
       <SshLibrary scope="instance-access" />
       <div className="modal-footer">
-        <IBtn act={isExample ? 'instance-example-manage' : 'instance-manage'} id={i.id} onClick={() => openModal(isExample ? 'instance-example-manage' : 'instance-manage', { id: i.id })}>Back to instance</IBtn>
-        <IBtn act="close-modal" onClick={closeModal}>Close</IBtn>
+        <IBtn
+          act={isExample ? 'instance-example-manage' : 'instance-manage'}
+          id={i.id}
+          onClick={() =>
+            openModal(isExample ? 'instance-example-manage' : 'instance-manage', { id: i.id })
+          }
+        >
+          Back to instance
+        </IBtn>
+        <IBtn act="close-modal" onClick={closeModal}>
+          Close
+        </IBtn>
       </div>
     </>
   );
@@ -322,13 +631,33 @@ function Connect({ id }: { id?: string }) {
   const toast = useToast();
   const { i } = useInstance(id, false);
   const command = i ? sshCommand(i) : '';
-  if (!command) return <p className="form-note">Verified connection details have not been provided by the supplier yet.</p>;
+  if (!command)
+    return (
+      <p className="form-note">
+        Verified connection details have not been provided by the supplier yet.
+      </p>
+    );
   return (
     <>
-      <p className="form-note">Use your registered key in your own SSH client. Never share private keys.</p>
+      <p className="form-note">
+        Use your registered key in your own SSH client. Never share private keys.
+      </p>
       <pre className="modal-code">{command}</pre>
       <div className="modal-footer">
-        <button type="button" className="btn" data-act="copy" data-value={command} onClick={() => navigator.clipboard?.writeText(command).then(() => toast('Copied to clipboard')).catch(() => toast('Copy is unavailable in this browser'))}>Copy SSH command</button>
+        <button
+          type="button"
+          className="btn"
+          data-act="copy"
+          data-value={command}
+          onClick={() =>
+            navigator.clipboard
+              ?.writeText(command)
+              .then(() => toast('Copied to clipboard'))
+              .catch(() => toast('Copy is unavailable in this browser'))
+          }
+        >
+          Copy SSH command
+        </button>
       </div>
     </>
   );
@@ -358,7 +687,11 @@ export const instanceModalRenderer: ModalRenderer = (modal: ModalState): ModalRe
     case 'instance-end-confirm':
       return { title: 'End this instance?', body: <EndDialog id={id} isExample={false} /> };
     case 'instance-access':
-      return { title: 'SSH access', wide: true, body: <Access id={id} isExample={modal.example === true} /> };
+      return {
+        title: 'SSH access',
+        wide: true,
+        body: <Access id={id} isExample={modal.example === true} />,
+      };
     case 'connect':
       return { title: 'Connection details', body: <Connect id={id} /> };
     default:

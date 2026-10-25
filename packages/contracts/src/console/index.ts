@@ -199,7 +199,15 @@ export const ContactLead = z
     createdAt: z.string().nullish(),
     updatedAt: z.string().nullish(),
     history: z
-      .array(z.object({ status: z.string().nullish(), at: z.string().nullish(), note: z.string().nullish() }).passthrough())
+      .array(
+        z
+          .object({
+            status: z.string().nullish(),
+            at: z.string().nullish(),
+            note: z.string().nullish(),
+          })
+          .passthrough(),
+      )
       .nullish(),
   })
   .passthrough();
@@ -207,7 +215,11 @@ export type ContactLead = z.infer<typeof ContactLead>;
 
 export const LeadsResponse = z.object({ leads: z.array(ContactLead) });
 /** `PATCH /api/admin/contacts/:id` → `{ lead }`; 409 when `updatedAt` no longer matches. */
-export const LeadUpdateRequest = z.object({ status: LeadStatus, note: z.string().max(2000), updatedAt: z.string() });
+export const LeadUpdateRequest = z.object({
+  status: LeadStatus,
+  note: z.string().max(2000),
+  updatedAt: z.string(),
+});
 export const LeadUpdateResponse = z.object({ lead: ContactLead.optional() });
 
 /* ---------- Manual credit top-ups (/api/admin/topups) ---------- */
@@ -234,7 +246,10 @@ export const TopupRequest = z
 export type TopupRequest = z.infer<typeof TopupRequest>;
 
 /** `GET /api/admin/topups` (live) / `GET /api/admin/topups?scope=demo` (test accounts). */
-export const TopupsResponse = z.object({ scope: z.string().optional(), requests: z.array(TopupRequest) });
+export const TopupsResponse = z.object({
+  scope: z.string().optional(),
+  requests: z.array(TopupRequest),
+});
 /** `POST /api/admin/topups/:id/review` (`?scope=demo` for test accounts) → `{ request }`. */
 export const TopupReviewRequest = z.object({
   decision: z.enum(['Approve', 'Reject']),

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { defaultRoute, legacyHashToPath, publicTargetRoute, resolveTarget, routeFromPath, routeTarget } from './routing';
+import {
+  defaultRoute,
+  legacyHashToPath,
+  publicTargetRoute,
+  resolveTarget,
+  routeFromPath,
+  routeTarget,
+} from './routing';
 
 describe('terminal routing', () => {
   it('maps unknown and legacy routes', () => {

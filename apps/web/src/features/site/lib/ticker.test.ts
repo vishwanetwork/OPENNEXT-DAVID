@@ -3,7 +3,13 @@ import type { TickerRecord } from '@opennext/contracts';
 import { sparkGeometry, tickerChange, validTickerRows } from './ticker';
 
 const recorded: TickerRecord = {
-  gpuModel: 'H100', country: 'Singapore', term: 'Spot', vcpu: 192, gpuMemoryGb: 80, perGpuHourly: 2.4, historical: true,
+  gpuModel: 'H100',
+  country: 'Singapore',
+  term: 'Spot',
+  vcpu: 192,
+  gpuMemoryGb: 80,
+  perGpuHourly: 2.4,
+  historical: true,
   points: [
     { date: '2026-10-18', value: 2.0 },
     { date: '2026-10-19', value: 2.1 },
@@ -18,7 +24,9 @@ describe('ticker', () => {
     expect(validTickerRows([recorded])).toHaveLength(1);
     expect(validTickerRows([{ ...recorded, historical: false }])).toHaveLength(0);
     expect(validTickerRows([{ ...recorded, term: 'On-demand' }])).toHaveLength(0);
-    expect(validTickerRows([{ ...recorded, points: [{ date: '2026-10-18', value: 2 }] }])).toHaveLength(0);
+    expect(
+      validTickerRows([{ ...recorded, points: [{ date: '2026-10-18', value: 2 }] }]),
+    ).toHaveLength(0);
   });
   it('never bridges explicit missing observations or unrecorded calendar gaps', () => {
     const geometry = sparkGeometry(recorded.points!)!;

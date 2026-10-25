@@ -9,7 +9,11 @@ import { openContact, registerTerminalModal } from '@/features/terminal/componen
 import { registerOpportunityOpener } from '@/features/terminal/components/TerminalOverlays';
 import { registerMatchesPanel } from '@/features/terminal/components/Matches';
 import { registerListingTable } from '@/features/terminal/components/MarketPage';
-import { registerIntentResumer, registerWorkspaceRefresher, useTerminal } from '@/features/terminal/context';
+import {
+  registerIntentResumer,
+  registerWorkspaceRefresher,
+  useTerminal,
+} from '@/features/terminal/context';
 import { useWorkspaceStore } from '@/features/terminal/store';
 import { money } from '@/lib/format';
 import { setBillingApi } from '@/features/billing/account';
@@ -52,8 +56,15 @@ export function ProcurementRegistrar() {
       }
       const item = findCatalogItem(intent.id);
       if (!item) return true;
-      if ((intent.intent === 'offer' && S.role !== 'Seller') || (intent.intent === 'buy' && S.role !== 'Buyer')) {
-        toast('Switch to ' + (intent.intent === 'offer' ? 'Seller' : 'Buyer') + ' from your account menu to continue with this listing.');
+      if (
+        (intent.intent === 'offer' && S.role !== 'Seller') ||
+        (intent.intent === 'buy' && S.role !== 'Buyer')
+      ) {
+        toast(
+          'Switch to ' +
+            (intent.intent === 'offer' ? 'Seller' : 'Buyer') +
+            ' from your account menu to continue with this listing.',
+        );
         return true;
       }
       if (item.kind === 'model') {
@@ -70,7 +81,9 @@ export function ProcurementRegistrar() {
               item.context || '',
               item.note || '',
               'Please confirm the exact model, access method, throughput, availability and current commercial terms. These reference rates are not an executable offer.',
-            ].filter(Boolean).join('\n'),
+            ]
+              .filter(Boolean)
+              .join('\n'),
           });
         return true;
       }
@@ -85,13 +98,34 @@ export function ProcurementRegistrar() {
           item.note || '',
           item.status || '',
           'Please confirm the exact SKU, condition, availability, warranty, shipping and current payable amount.',
-        ].filter(Boolean).join('\n');
+        ]
+          .filter(Boolean)
+          .join('\n');
         if (item.unit !== 'GPU') {
-          openContact({ message: 'I would like a quote for this complete system. Pricing is per ' + item.unit + ', not per GPU.\n' + details });
+          openContact({
+            message:
+              'I would like a quote for this complete system. Pricing is per ' +
+              item.unit +
+              ', not per GPU.\n' +
+              details,
+          });
           return true;
         }
         const minimum = Number(String(item.minimum || '1').match(/\d+/)?.[0]) || 1;
-        S.openModal('rfq-form', { prefill: { kind: 'physical_gpu', model: item.name, title: item.name + ' purchase inquiry', count: minimum, budget: item.price, term: 'Physical GPU', hours: 0, condition: item.condition || 'Confirm in supplier quote', originListingId: item.id, notes: details } });
+        S.openModal('rfq-form', {
+          prefill: {
+            kind: 'physical_gpu',
+            model: item.name,
+            title: item.name + ' purchase inquiry',
+            count: minimum,
+            budget: item.price,
+            term: 'Physical GPU',
+            hours: 0,
+            condition: item.condition || 'Confirm in supplier quote',
+            originListingId: item.id,
+            notes: details,
+          },
+        });
         return true;
       }
       const requirement = {

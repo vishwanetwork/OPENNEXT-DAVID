@@ -61,7 +61,11 @@ const GLYPHS = {
 
 export type LucideName = keyof typeof GLYPHS;
 
-export function LucideIcon({ name, size = 16, ...rest }: { name: LucideName; size?: number } & Omit<SVGProps<SVGSVGElement>, 'name'>) {
+export function LucideIcon({
+  name,
+  size = 16,
+  ...rest
+}: { name: LucideName; size?: number } & Omit<SVGProps<SVGSVGElement>, 'name'>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

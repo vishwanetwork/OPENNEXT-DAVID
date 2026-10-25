@@ -17,7 +17,13 @@ export const allowedRole = (value: unknown): PublicRole | '' =>
 
 /** `openPublicWorkspace` target → terminal route. */
 export function targetRoute(target: PublicTarget | undefined): string {
-  return target === 'models' ? 'models' : target === 'supply' ? 'supply' : target === 'rfq' ? 'rfqs' : 'market';
+  return target === 'models'
+    ? 'models'
+    : target === 'supply'
+      ? 'supply'
+      : target === 'rfq'
+        ? 'rfqs'
+        : 'market';
 }
 
 /** Implicit onboarding hint for a target when the CTA carries no explicit role. */
@@ -48,7 +54,11 @@ export function workspacePath({ route, role, listing, opportunity }: WorkspaceLi
 
 /** Deep link into the isolated demo workspace for a showcase listing. */
 export function demoOpportunityPath(id: string, intent: ListingIntent): string {
-  const params = new URLSearchParams({ role: intent === 'buy' ? 'buyer' : 'seller', opportunity: id, intent });
+  const params = new URLSearchParams({
+    role: intent === 'buy' ? 'buyer' : 'seller',
+    opportunity: id,
+    intent,
+  });
   return `/demo/market?${params}`;
 }
 
@@ -60,9 +70,14 @@ export interface RoleIntent {
 }
 
 /** Session-scoped onboarding preference shared with the terminal (never an account role change). */
-export function readRoleIntent(storage: Pick<Storage, 'getItem'> | undefined, now = Date.now()): RoleIntent | null {
+export function readRoleIntent(
+  storage: Pick<Storage, 'getItem'> | undefined,
+  now = Date.now(),
+): RoleIntent | null {
   try {
-    const saved = JSON.parse(storage?.getItem(ROLE_INTENT_KEY) || 'null') as Partial<RoleIntent> | null;
+    const saved = JSON.parse(
+      storage?.getItem(ROLE_INTENT_KEY) || 'null',
+    ) as Partial<RoleIntent> | null;
     if (
       saved &&
       allowedRole(saved.role) &&
@@ -82,9 +97,16 @@ export function readRoleIntent(storage: Pick<Storage, 'getItem'> | undefined, no
   return null;
 }
 
-export function writeRoleIntent(storage: Pick<Storage, 'setItem'> | undefined, role: PublicRole, queryRole: PublicRole | '' = '') {
+export function writeRoleIntent(
+  storage: Pick<Storage, 'setItem'> | undefined,
+  role: PublicRole,
+  queryRole: PublicRole | '' = '',
+) {
   try {
-    storage?.setItem(ROLE_INTENT_KEY, JSON.stringify({ role, queryRole, ownerId: null, updatedAt: Date.now() }));
+    storage?.setItem(
+      ROLE_INTENT_KEY,
+      JSON.stringify({ role, queryRole, ownerId: null, updatedAt: Date.now() }),
+    );
   } catch {
     /* storage unavailable */
   }

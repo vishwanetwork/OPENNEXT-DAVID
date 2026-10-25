@@ -70,13 +70,24 @@ export const BASE_REGIONS: readonly Region[] = [
   { name: 'Dubai', code: 'me-central-1', city: 'Dubai' },
 ];
 
-export const PROVIDER_NAMES: Record<string, string> = { aws: 'AWS', vultr: 'Vultr', lambda: 'Lambda', shadeform: 'Shadeform' };
+export const PROVIDER_NAMES: Record<string, string> = {
+  aws: 'AWS',
+  vultr: 'Vultr',
+  lambda: 'Lambda',
+  shadeform: 'Shadeform',
+};
 
 export const ALL_REGIONS = 'All regions';
 
 /** Regions after the history catalog has been loaded: readable names win, old names become aliases. */
-export function mergeRegions(base: readonly Region[], catalog: readonly CatalogRegion[] | undefined): Region[] {
-  const regions: Region[] = base.map((r) => ({ ...r, aliases: r.aliases ? [...r.aliases] : undefined }));
+export function mergeRegions(
+  base: readonly Region[],
+  catalog: readonly CatalogRegion[] | undefined,
+): Region[] {
+  const regions: Region[] = base.map((r) => ({
+    ...r,
+    aliases: r.aliases ? [...r.aliases] : undefined,
+  }));
   for (const entry of catalog || []) {
     const current = regions.find((x) => x.code === entry.code);
     if (current) {
@@ -89,13 +100,21 @@ export function mergeRegions(base: readonly Region[], catalog: readonly CatalogR
 }
 
 export const modelOf = (name: string | undefined): CatalogModel =>
-  CATALOG.find((m) => m.name === name) || { name: String(name ?? ''), canonical: String(name ?? ''), memory: '', network: '', seed: 0 };
+  CATALOG.find((m) => m.name === name) || {
+    name: String(name ?? ''),
+    canonical: String(name ?? ''),
+    memory: '',
+    network: '',
+    seed: 0,
+  };
 
 export const regionCode = (regions: readonly Region[], value: string): string =>
-  regions.find((r) => r.name === value || r.code === value || r.aliases?.includes(value))?.code || value;
+  regions.find((r) => r.name === value || r.code === value || r.aliases?.includes(value))?.code ||
+  value;
 
 export const regionLabel = (regions: readonly Region[], value: string | null | undefined): string =>
-  regions.find((r) => r.code === value)?.name || (value === 'unspecified' ? 'Region not specified' : String(value ?? ''));
+  regions.find((r) => r.code === value)?.name ||
+  (value === 'unspecified' ? 'Region not specified' : String(value ?? ''));
 
 export interface OfferFilters {
   model?: string;
@@ -105,17 +124,32 @@ export interface OfferFilters {
   count?: number | string | null;
 }
 
-export function matchesRecord(row: PriceRecord, filters: OfferFilters, regions: readonly Region[]): boolean {
+export function matchesRecord(
+  row: PriceRecord,
+  filters: OfferFilters,
+  regions: readonly Region[],
+): boolean {
   const model = filters.model || filters.gpuModel;
   const m = modelOf(model);
   if (filters.model && row.gpuModel !== m.canonical) return false;
-  if (['A100 80GB', 'A100 PCIe'].includes(filters.model || '') && row.gpuMemoryGb !== 80) return false;
+  if (['A100 80GB', 'A100 PCIe'].includes(filters.model || '') && row.gpuMemoryGb !== 80)
+    return false;
   if (/PCIe/i.test(filters.model || '') && !/pcie/i.test(row.formFactor || '')) return false;
   if (/SXM/i.test(filters.model || '') && !/sxm/i.test(row.formFactor || '')) return false;
   if (/NVL72/i.test(filters.model || '') && !/nvl72/i.test(row.formFactor || '')) return false;
-  if (filters.region && filters.region !== ALL_REGIONS && row.region !== regionCode(regions, filters.region)) return false;
+  if (
+    filters.region &&
+    filters.region !== ALL_REGIONS &&
+    row.region !== regionCode(regions, filters.region)
+  )
+    return false;
   if (filters.term && row.term !== filters.term) return false;
-  if (filters.count !== undefined && filters.count !== null && row.gpuCount !== Number(filters.count)) return false;
+  if (
+    filters.count !== undefined &&
+    filters.count !== null &&
+    row.gpuCount !== Number(filters.count)
+  )
+    return false;
   return true;
 }
 
@@ -156,7 +190,11 @@ export interface Offer {
   side?: string;
 }
 
-export function offersFor(records: readonly PriceRecord[], filters: OfferFilters, regions: readonly Region[]): Offer[] {
+export function offersFor(
+  records: readonly PriceRecord[],
+  filters: OfferFilters,
+  regions: readonly Region[],
+): Offer[] {
   const m = modelOf(filters.model);
   return records
     .filter((row) => matchesRecord(row, filters, regions))
@@ -164,7 +202,9 @@ export function offersFor(records: readonly PriceRecord[], filters: OfferFilters
       id: row.recordId,
       recordId: row.recordId,
       model: filters.model || row.gpuModel || '',
-      provider: (PROVIDER_NAMES[row.provider] || row.provider) + (row.underlyingProvider ? ' · ' + row.underlyingProvider : ''),
+      provider:
+        (PROVIDER_NAMES[row.provider] || row.provider) +
+        (row.underlyingProvider ? ' · ' + row.underlyingProvider : ''),
       sourceProvider: row.provider,
       region: regionLabel(regions, row.region),
       regionCode: row.region,
@@ -198,14 +238,29 @@ export function offersFor(records: readonly PriceRecord[], filters: OfferFilters
 }
 
 /** Lowest collected price for a model and term, or null when nothing was collected. */
-export function basePrice(records: readonly PriceRecord[], model: CatalogModel | undefined, term: string, regions: readonly Region[]): number | null {
-  const prices = records.filter((r) => matchesRecord(r, { model: model?.name, term }, regions)).map((r) => r.perGpuHourly);
+export function basePrice(
+  records: readonly PriceRecord[],
+  model: CatalogModel | undefined,
+  term: string,
+  regions: readonly Region[],
+): number | null {
+  const prices = records
+    .filter((r) => matchesRecord(r, { model: model?.name, term }, regions))
+    .map((r) => r.perGpuHourly);
   return prices.length ? Math.min(...prices) : null;
 }
 
 /** AWS On-demand reference for a model. */
-export function reference(records: readonly PriceRecord[], model: CatalogModel, regions: readonly Region[], meta: { fetchedAt?: string | null; status?: string | null }) {
-  const rows = records.filter((r) => r.provider === 'aws' && matchesRecord(r, { model: model.name, term: 'On-demand' }, regions));
+export function reference(
+  records: readonly PriceRecord[],
+  model: CatalogModel,
+  regions: readonly Region[],
+  meta: { fetchedAt?: string | null; status?: string | null },
+) {
+  const rows = records.filter(
+    (r) =>
+      r.provider === 'aws' && matchesRecord(r, { model: model.name, term: 'On-demand' }, regions),
+  );
   return {
     source: 'AWS public On-demand catalog',
     url: 'https://aws.amazon.com/ec2/pricing/on-demand/',
@@ -229,8 +284,16 @@ export interface MarketSelection {
 
 export type PriceMetric = 'min' | 'avg' | 'max';
 export const PRICE_METRICS: PriceMetric[] = ['max', 'avg', 'min'];
-export const METRIC_LABELS: Record<PriceMetric, string> = { min: 'Lowest price', avg: 'Average price', max: 'Highest price' };
-export const METRIC_SHORT: Record<PriceMetric, string> = { min: 'Lowest', avg: 'Average', max: 'Highest' };
+export const METRIC_LABELS: Record<PriceMetric, string> = {
+  min: 'Lowest price',
+  avg: 'Average price',
+  max: 'Highest price',
+};
+export const METRIC_SHORT: Record<PriceMetric, string> = {
+  min: 'Lowest',
+  avg: 'Average',
+  max: 'Highest',
+};
 export const METRIC_DASH: Record<PriceMetric, string> = { max: '8 4', avg: '', min: '2 4' };
 export const PERIODS = ['1D', '3D', '1W', '1M', '3M', '6M', '1Y', 'ALL'] as const;
 export const FREE_PERIODS = ['1D', '3D', '1W', '1M', '3M'] as const;
@@ -244,9 +307,13 @@ export function normalizeMetrics(values: unknown, legacy: unknown = 'avg'): Pric
 }
 
 export const metricsOf = (S: { priceMetrics?: unknown; priceMetric?: unknown }): PriceMetric[] => {
-  const selected = Array.isArray(S.priceMetrics) ? PRICE_METRICS.filter((metric) => (S.priceMetrics as unknown[]).includes(metric)) : [];
+  const selected = Array.isArray(S.priceMetrics)
+    ? PRICE_METRICS.filter((metric) => (S.priceMetrics as unknown[]).includes(metric))
+    : [];
   if (selected.length) return selected;
-  return [PRICE_METRICS.includes(S.priceMetric as PriceMetric) ? (S.priceMetric as PriceMetric) : 'avg'];
+  return [
+    PRICE_METRICS.includes(S.priceMetric as PriceMetric) ? (S.priceMetric as PriceMetric) : 'avg',
+  ];
 };
 export const primaryMetric = (S: { priceMetrics?: unknown; priceMetric?: unknown }): PriceMetric =>
   metricsOf(S).includes('avg') ? 'avg' : metricsOf(S)[0];
@@ -268,7 +335,10 @@ export function regionalHistoryQuery(S: MarketSelection, regions: readonly Regio
 }
 
 /** Query string for the legacy AWS observation history (`/api/pricing/history`). */
-export function historyQuery(filters: { model: string; region: string; term: string; period?: string; count?: number }, regions: readonly Region[]): string {
+export function historyQuery(
+  filters: { model: string; region: string; term: string; period?: string; count?: number },
+  regions: readonly Region[],
+): string {
   const q = new URLSearchParams({
     provider: 'aws',
     gpuModel: modelOf(filters.model).canonical,
@@ -296,4 +366,5 @@ export const cleanLabel = (value: unknown): string =>
     .trim();
 
 /** Region label as the Terminal shows it (cleaned of instance/zone suffixes). */
-export const regionText = (regions: readonly Region[], value: string | null | undefined): string => cleanLabel(regionLabel(regions, value));
+export const regionText = (regions: readonly Region[], value: string | null | undefined): string =>
+  cleanLabel(regionLabel(regions, value));

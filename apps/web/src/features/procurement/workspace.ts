@@ -31,7 +31,8 @@ export function normalizeRfq(r: OwnedRfq): OwnedRfq {
   if (isHardware(record)) {
     record.hours = 0;
     record.term = 'Physical GPU';
-    if (record.deliveryMethod === 'SSH / dedicated instance') record.deliveryMethod = deliveryMethod(record);
+    if (record.deliveryMethod === 'SSH / dedicated instance')
+      record.deliveryMethod = deliveryMethod(record);
   }
   record.visibility ||= 'Public requirements';
   record.shareClosingPrice ??= true;
@@ -80,7 +81,14 @@ export async function refreshMarketplace(): Promise<void> {
       if (!isDemo() && !useMarketplaceStore.getState().referenceLoaded) {
         try {
           const result = await procurementApi.referenceCatalog(api);
-          market.set({ referenceCatalog: { supplies: result.supplies || [], rfqs: result.rfqs || [], recent: result.recent || [] }, referenceLoaded: true });
+          market.set({
+            referenceCatalog: {
+              supplies: result.supplies || [],
+              rfqs: result.rfqs || [],
+              recent: result.recent || [],
+            },
+            referenceLoaded: true,
+          });
         } catch {
           /* Real marketplace data remains available if reference data is offline. */
         }
@@ -89,7 +97,10 @@ export async function refreshMarketplace(): Promise<void> {
       if (user?.onboardingCompleted) {
         const own = await procurementApi.mine(api);
         if (refreshKey() !== identity) return;
-        const result = await procurementApi.matches(api, { model: modelSnapshot, region: regionSnapshot });
+        const result = await procurementApi.matches(api, {
+          model: modelSnapshot,
+          region: regionSnapshot,
+        });
         if (refreshKey() !== identity) return;
         useWorkspaceStore.getState().patch({
           rfqs: own.rfqs.map(normalizeRfq),
@@ -107,9 +118,17 @@ export async function refreshMarketplace(): Promise<void> {
         }
         if (refreshKey() !== identity) return;
         useWorkspaceStore.getState().patch({ marketplaceAuthoritative: true });
-        market.set({ bestRows: result.rows, matchReason: result.reason, matchPrompt: result.submissionPrompt || '' });
+        market.set({
+          bestRows: result.rows,
+          matchReason: result.reason,
+          matchPrompt: result.submissionPrompt || '',
+        });
       } else {
-        market.set({ bestRows: [], matchReason: 'No matches.', matchPrompt: 'Sign in to receive same-model recommendations.' });
+        market.set({
+          bestRows: [],
+          matchReason: 'No matches.',
+          matchPrompt: 'Sign in to receive same-model recommendations.',
+        });
       }
       const recent = await procurementApi.settlements(api, 90);
       market.set({ recentRows: recent.rows });

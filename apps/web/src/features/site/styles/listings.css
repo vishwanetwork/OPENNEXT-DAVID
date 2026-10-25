@@ -32,7 +32,7 @@
   background: #fff;
   border-color: #7e8976;
 }
-.public-page .on-listing-controls button[aria-pressed="true"] {
+.public-page .on-listing-controls button[aria-pressed='true'] {
   background: #e7ece2;
 }
 .public-page .on-listing-controls svg {
@@ -510,12 +510,12 @@
   margin-top: 3px;
   opacity: 0.85;
 }
-.public-page .on-listing-sides button[aria-pressed="true"] {
+.public-page .on-listing-sides button[aria-pressed='true'] {
   background: #283d29;
   border-color: #283d29;
   color: #fff;
 }
-.public-page .on-listing-sides button:hover:not([aria-pressed="true"]) {
+.public-page .on-listing-sides button:hover:not([aria-pressed='true']) {
   background: #eaf0e2;
   color: #263b23;
 }

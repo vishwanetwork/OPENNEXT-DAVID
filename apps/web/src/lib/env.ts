@@ -10,5 +10,9 @@ export interface ServerEnv {
 
 export function serverEnv(): ServerEnv {
   const hosts = normalizeHosts(process.env);
-  return { hosts, origins: appOrigins(hosts), trustProxy: process.env.OPENNEXT_TRUST_PROXY === '1' };
+  return {
+    hosts,
+    origins: appOrigins(hosts),
+    trustProxy: process.env.OPENNEXT_TRUST_PROXY === '1',
+  };
 }

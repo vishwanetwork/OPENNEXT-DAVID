@@ -7,7 +7,10 @@ import { InstancesPage } from './components/InstancesPage';
 
 beforeEach(() => {
   window.localStorage.clear();
-  useWorkspaceStore.setState({ ...initialWorkspace(), identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' } });
+  useWorkspaceStore.setState({
+    ...initialWorkspace(),
+    identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' },
+  });
   useSessionStore.setState({ status: 'booting', user: null });
   signIn();
 });
@@ -20,10 +23,30 @@ describe('Instances page', () => {
     expect(screen.getByText('Example only · not an active resource')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
     expect(useWorkspaceStore.getState().modal?.type).toBe('instance-example-manage');
-    expect(document.querySelector('[data-instance-example-live]')?.getAttribute('data-instance-life')).toBe('Running');
+    expect(
+      document.querySelector('[data-instance-example-live]')?.getAttribute('data-instance-life'),
+    ).toBe('Running');
   });
   it('delivered allocations show live cards with region metadata and no supplier identity', () => {
-    useWorkspaceStore.getState().patch({ instances: [{ id: 'INS-1', name: 'Training run', model: 'H100', region: 'US East', count: 8, rate: 2.3, status: 'Running', serviceEnd: new Date(Date.now() + 3600000).toISOString(), provider: 'Secret Supplier Ltd', sshHost: 'gpu.example.com', sshUser: 'ubuntu' }] });
+    useWorkspaceStore
+      .getState()
+      .patch({
+        instances: [
+          {
+            id: 'INS-1',
+            name: 'Training run',
+            model: 'H100',
+            region: 'US East',
+            count: 8,
+            rate: 2.3,
+            status: 'Running',
+            serviceEnd: new Date(Date.now() + 3600000).toISOString(),
+            provider: 'Secret Supplier Ltd',
+            sshHost: 'gpu.example.com',
+            sshUser: 'ubuntu',
+          },
+        ],
+      });
     renderTerminal(<InstancesPage />);
     expect(screen.queryByLabelText('Example instance')).toBeNull();
     const card = document.querySelector('[data-instance-live="INS-1"]')!;

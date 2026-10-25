@@ -32,7 +32,8 @@ export function Modal({
     if (!node) return;
     const previous = document.activeElement as HTMLElement | null;
     requestAnimationFrame(() => {
-      if (node.isConnected && !node.contains(document.activeElement)) node.focus({ preventScroll: true });
+      if (node.isConnected && !node.contains(document.activeElement))
+        node.focus({ preventScroll: true });
     });
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -41,7 +42,9 @@ export function Modal({
         return;
       }
       if (event.key !== 'Tab') return;
-      const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((item) => item.getClientRects().length);
+      const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (item) => item.getClientRects().length,
+      );
       if (!items.length) {
         event.preventDefault();
         node.focus();
@@ -64,7 +67,10 @@ export function Modal({
     };
   }, [onClose]);
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div
         ref={dialog}
         className={['modal', wide ? 'wide' : '', className].filter(Boolean).join(' ')}

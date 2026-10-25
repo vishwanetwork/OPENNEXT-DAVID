@@ -21,11 +21,15 @@ export interface CheckoutTotals {
 export function durationHours(value: unknown): number {
   const text = String(value ?? '').trim();
   const hours = Number(text);
-  if (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(hours) || hours <= 0) throw new Error('Enter a usage duration greater than zero, with up to two decimal places.');
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(hours) || hours <= 0)
+    throw new Error('Enter a usage duration greater than zero, with up to two decimal places.');
   return hours;
 }
 
-export function checkoutTotals(row: { instanceHourly: number }, hours: unknown = 1): CheckoutTotals {
+export function checkoutTotals(
+  row: { instanceHourly: number },
+  hours: unknown = 1,
+): CheckoutTotals {
   const parsedHours = durationHours(hours);
   const hourlyCents = Math.round(row.instanceHourly * 100);
   const hundredthHours = Math.round(parsedHours * 100);
@@ -34,11 +38,38 @@ export function checkoutTotals(row: { instanceHourly: number }, hours: unknown =
   const baseCents = Math.round(durationProduct / 100);
   const feeCents = Math.round(baseCents / 20);
   const totalCents = baseCents + feeCents;
-  if (![hourlyCents, hundredthHours, durationProduct, baseCents, feeCents, totalCents].every(Number.isSafeInteger) || hourlyCents <= 0 || baseCents <= 0) throw new Error('Enter a valid duration with a payable total.');
-  return { currency: 'USD', durationHours: parsedHours, hourlyCents, baseCents, feeCents, totalCents };
+  if (
+    ![hourlyCents, hundredthHours, durationProduct, baseCents, feeCents, totalCents].every(
+      Number.isSafeInteger,
+    ) ||
+    hourlyCents <= 0 ||
+    baseCents <= 0
+  )
+    throw new Error('Enter a valid duration with a payable total.');
+  return {
+    currency: 'USD',
+    durationHours: parsedHours,
+    hourlyCents,
+    baseCents,
+    feeCents,
+    totalCents,
+  };
 }
 
-export const signature = (row: SpotRow) => JSON.stringify([row.id, row.term, row.model, row.country, row.gpuCount, row.vcpu, row.memory, row.instanceHourly, row.perGpuHourly, row.sourceKind, row.previewOnly]);
+export const signature = (row: SpotRow) =>
+  JSON.stringify([
+    row.id,
+    row.term,
+    row.model,
+    row.country,
+    row.gpuCount,
+    row.vcpu,
+    row.memory,
+    row.instanceHourly,
+    row.perGpuHourly,
+    row.sourceKind,
+    row.previewOnly,
+  ]);
 
 export type CheckoutStage = 'review' | 'payment' | 'confirm' | 'topup' | 'completed';
 
@@ -121,7 +152,12 @@ export interface CheckoutDeps {
   go: (route: string) => void;
 }
 
-export const CHECKOUT_MODALS = ['spot-review', 'spot-payment-choice', 'spot-credit-confirm', 'spot-purchase-complete'] as const;
+export const CHECKOUT_MODALS = [
+  'spot-review',
+  'spot-payment-choice',
+  'spot-credit-confirm',
+  'spot-purchase-complete',
+] as const;
 
 export class SpotCheckout {
   private draft: CheckoutDraft | null = null;
@@ -156,10 +192,22 @@ export class SpotCheckout {
     const key = this.storageKey();
     if (!draft || !key || draft.owner !== this.deps.owner() || draft.stage === 'completed') return;
     try {
-      this.deps.storage()?.setItem(
-        key,
-        JSON.stringify({ version: 2, owner: draft.owner, offerId: draft.row.id, signature: signature(draft.row), durationHours: durationHours(draft.hoursRaw), sshPublicKey: draft.sshPublicKey || '', idempotencyKey: draft.idempotencyKey, paymentSubmitted: !!draft.paymentSubmitted, createdAt: draft.createdAt }),
-      );
+      this.deps
+        .storage()
+        ?.setItem(
+          key,
+          JSON.stringify({
+            version: 2,
+            owner: draft.owner,
+            offerId: draft.row.id,
+            signature: signature(draft.row),
+            durationHours: durationHours(draft.hoursRaw),
+            sshPublicKey: draft.sshPublicKey || '',
+            idempotencyKey: draft.idempotencyKey,
+            paymentSubmitted: !!draft.paymentSubmitted,
+            createdAt: draft.createdAt,
+          }),
+        );
     } catch {
       this.deps.toast('The purchase is retained in this tab. Browser storage is unavailable.');
     }
@@ -172,18 +220,45 @@ export class SpotCheckout {
     if (this.draft?.owner === id) return this.draft;
     this.draft = null;
     try {
-      const stored = JSON.parse(this.deps.storage()?.getItem(this.storageKey()!) || 'null') as Record<string, unknown> | null;
+      const stored = JSON.parse(
+        this.deps.storage()?.getItem(this.storageKey()!) || 'null',
+      ) as Record<string, unknown> | null;
       const now = this.deps.now();
-      if (!stored || stored.version !== 2 || stored.owner !== id || !Number.isFinite(stored.createdAt) || now - Number(stored.createdAt) > CHECKOUT_TTL || Number(stored.createdAt) > now + 60000 || typeof stored.idempotencyKey !== 'string' || stored.idempotencyKey.length > 100) return null;
-      const row = this.deps.inventory().find((item) => item.id === stored.offerId && item.term === 'Spot');
+      if (
+        !stored ||
+        stored.version !== 2 ||
+        stored.owner !== id ||
+        !Number.isFinite(stored.createdAt) ||
+        now - Number(stored.createdAt) > CHECKOUT_TTL ||
+        Number(stored.createdAt) > now + 60000 ||
+        typeof stored.idempotencyKey !== 'string' ||
+        stored.idempotencyKey.length > 100
+      )
+        return null;
+      const row = this.deps
+        .inventory()
+        .find((item) => item.id === stored.offerId && item.term === 'Spot');
       if (!row) return null;
       const ssh = stored.sshPublicKey ? this.restoreSsh(String(stored.sshPublicKey)) : '';
       const hours = durationHours(stored.durationHours);
       checkoutTotals(row, hours);
       this.draft = {
-        owner: id, key: row._key, row: { ...row }, stage: 'payment', hoursRaw: String(hours), durationHours: hours, sshPublicKey: ssh, sshRaw: ssh,
-        idempotencyKey: stored.idempotencyKey, paymentSubmitted: stored.paymentSubmitted === true, createdAt: Number(stored.createdAt),
-        balanceNeedsRefresh: true, reviewRequired: stored.signature !== signature(row), message: '', busy: false, error: '',
+        owner: id,
+        key: row._key,
+        row: { ...row },
+        stage: 'payment',
+        hoursRaw: String(hours),
+        durationHours: hours,
+        sshPublicKey: ssh,
+        sshRaw: ssh,
+        idempotencyKey: stored.idempotencyKey,
+        paymentSubmitted: stored.paymentSubmitted === true,
+        createdAt: Number(stored.createdAt),
+        balanceNeedsRefresh: true,
+        reviewRequired: stored.signature !== signature(row),
+        message: '',
+        busy: false,
+        error: '',
       };
     } catch {
       this.clearStored();
@@ -202,12 +277,29 @@ export class SpotCheckout {
   }
 
   beginCheckout(row: SpotRow) {
-    if (!this.deps.owner() || this.deps.role() !== 'Buyer') return this.deps.toast('Sign in to a Buyer account before purchasing capacity.');
-    if (this.pending()?.paymentSubmitted) return this.deps.toast('A payment is awaiting confirmation. Check its order status before starting another purchase.');
+    if (!this.deps.owner() || this.deps.role() !== 'Buyer')
+      return this.deps.toast('Sign in to a Buyer account before purchasing capacity.');
+    if (this.pending()?.paymentSubmitted)
+      return this.deps.toast(
+        'A payment is awaiting confirmation. Check its order status before starting another purchase.',
+      );
     this.clearStored();
     this.draft = {
-      owner: this.deps.owner()!, key: row._key, row: { ...row }, stage: 'review', hoursRaw: '1', durationHours: 1, sshRaw: '', sshPublicKey: '',
-      idempotencyKey: this.deps.uuid(), createdAt: this.deps.now(), balanceNeedsRefresh: false, reviewRequired: false, message: '', busy: false, error: '',
+      owner: this.deps.owner()!,
+      key: row._key,
+      row: { ...row },
+      stage: 'review',
+      hoursRaw: '1',
+      durationHours: 1,
+      sshRaw: '',
+      sshPublicKey: '',
+      idempotencyKey: this.deps.uuid(),
+      createdAt: this.deps.now(),
+      balanceNeedsRefresh: false,
+      reviewRequired: false,
+      message: '',
+      busy: false,
+      error: '',
     };
     this.notify();
     this.deps.open('spot-review');
@@ -217,15 +309,21 @@ export class SpotCheckout {
   liveRow(): SpotRow {
     const draft = this.pending();
     if (!draft) throw new Error('This purchase is no longer available. Choose the offer again.');
-    const row = this.deps.inventory().find((item) => item.id === draft.row.id && item.term === 'Spot');
+    const row = this.deps
+      .inventory()
+      .find((item) => item.id === draft.row.id && item.term === 'Spot');
     if (!row) throw new Error('This Spot offer is no longer available. Choose another offer.');
-    if (draft.paymentSubmitted && (draft.reviewRequired || signature(row) !== signature(draft.row))) throw new Error('The offer changed while payment confirmation is pending. Check your order status before trying again.');
+    if (draft.paymentSubmitted && (draft.reviewRequired || signature(row) !== signature(draft.row)))
+      throw new Error(
+        'The offer changed while payment confirmation is pending. Check your order status before trying again.',
+      );
     if (signature(row) !== signature(draft.row)) {
       draft.row = { ...row };
       draft.key = row._key;
       draft.reviewRequired = true;
       draft.stage = 'review';
-      draft.message = 'This offer has changed. Review its current specifications and hourly price before continuing.';
+      draft.message =
+        'This offer has changed. Review its current specifications and hourly price before continuing.';
       this.notify();
       this.deps.open('spot-review');
       throw new Error(draft.message);
@@ -239,7 +337,10 @@ export class SpotCheckout {
   }
   insufficientCredit(draft: CheckoutDraft): boolean {
     const balance = this.availableCredit();
-    return balance !== null && Math.round(balance * 100) < checkoutTotals(draft.row, draft.hoursRaw).totalCents;
+    return (
+      balance !== null &&
+      Math.round(balance * 100) < checkoutTotals(draft.row, draft.hoursRaw).totalCents
+    );
   }
 
   private showError(message: string) {
@@ -269,11 +370,25 @@ export class SpotCheckout {
     if (!draft) throw new Error('The purchase draft is no longer available.');
     let result: CreditBalanceResult | null | undefined;
     if (typeof service.getCreditBalance === 'function') result = await service.getCreditBalance();
-    else if (typeof service.refreshBillingAccount === 'function') result = await service.refreshBillingAccount();
-    else throw Object.assign(new Error('Your available Credit could not be refreshed. Please try again.'), { code: 'CREDIT_SERVICE_UNAVAILABLE' });
-    if (this.deps.owner() !== id || this.pending() !== draft) throw new Error('Your account changed. Review the purchase again.');
+    else if (typeof service.refreshBillingAccount === 'function')
+      result = await service.refreshBillingAccount();
+    else
+      throw Object.assign(
+        new Error('Your available Credit could not be refreshed. Please try again.'),
+        { code: 'CREDIT_SERVICE_UNAVAILABLE' },
+      );
+    if (this.deps.owner() !== id || this.pending() !== draft)
+      throw new Error('Your account changed. Review the purchase again.');
     const value = Number(result?.availableCredit);
-    if (result?.confirmed !== true || result.accountId !== this.deps.userId() || result.currency !== 'USD' || result.availableCredit === null || result.availableCredit === undefined || !Number.isFinite(value) || value < 0)
+    if (
+      result?.confirmed !== true ||
+      result.accountId !== this.deps.userId() ||
+      result.currency !== 'USD' ||
+      result.availableCredit === null ||
+      result.availableCredit === undefined ||
+      !Number.isFinite(value) ||
+      value < 0
+    )
       throw new Error('The account service did not confirm your available Credit.');
     this.deps.setBalance(round(value));
     draft.balanceNeedsRefresh = false;
@@ -323,7 +438,8 @@ export class SpotCheckout {
     draft.busy = true;
     this.notify();
     try {
-      if (draft.stage !== 'payment') throw new Error('Review the purchase and choose a payment method first.');
+      if (draft.stage !== 'payment')
+        throw new Error('Review the purchase and choose a payment method first.');
       this.liveRow();
       if (draft.reviewRequired) return this.deps.open('spot-review');
       let balance = this.availableCredit();
@@ -332,7 +448,13 @@ export class SpotCheckout {
           balance = await this.refreshCredit();
         } catch (error) {
           // A known shortfall can still offer Deposit Credit; authorizing a purchase always requires a fresh, verified balance.
-          if ((error as { code?: string }).code !== 'CREDIT_SERVICE_UNAVAILABLE' || this.pending() !== draft || balance === null || !this.insufficientCredit(draft)) throw error;
+          if (
+            (error as { code?: string }).code !== 'CREDIT_SERVICE_UNAVAILABLE' ||
+            this.pending() !== draft ||
+            balance === null ||
+            !this.insufficientCredit(draft)
+          )
+            throw error;
         }
       }
       if (this.pending() !== draft) return;
@@ -358,19 +480,33 @@ export class SpotCheckout {
     draft.busy = true;
     this.notify();
     try {
-      if (draft.stage !== 'confirm') throw new Error('Confirm the purchase duration and total before authorizing payment.');
+      if (draft.stage !== 'confirm')
+        throw new Error('Confirm the purchase duration and total before authorizing payment.');
       const row = this.liveRow();
-      if (this.deps.role() !== 'Buyer') throw new Error('A Buyer account is required to purchase capacity.');
-      if (draft.reviewRequired) throw new Error('Review the updated offer before authorizing payment.');
+      if (this.deps.role() !== 'Buyer')
+        throw new Error('A Buyer account is required to purchase capacity.');
+      if (draft.reviewRequired)
+        throw new Error('Review the updated offer before authorizing payment.');
       const confirmedHours = durationHours(draft.hoursRaw);
       const confirmedSsh = draft.sshPublicKey;
       const expectedSignature = signature(row);
       const expectedPricing = checkoutTotals(row, confirmedHours);
       const confirmDetails = () => {
-        if (durationHours(draft.hoursRaw) !== confirmedHours || draft.sshPublicKey !== confirmedSsh) throw new Error('The purchase duration or SSH key changed. Review the updated purchase before paying.');
+        if (durationHours(draft.hoursRaw) !== confirmedHours || draft.sshPublicKey !== confirmedSsh)
+          throw new Error(
+            'The purchase duration or SSH key changed. Review the updated purchase before paying.',
+          );
       };
-      if (this.deps.isDemo() || row.previewOnly || row.sourceKind !== 'agent' || draft.row.previewOnly || draft.row.sourceKind !== 'agent')
-        throw new Error('This purchase flow is for testing only. No Credit was charged and no order or instance was created.');
+      if (
+        this.deps.isDemo() ||
+        row.previewOnly ||
+        row.sourceKind !== 'agent' ||
+        draft.row.previewOnly ||
+        draft.row.sourceKind !== 'agent'
+      )
+        throw new Error(
+          'This purchase flow is for testing only. No Credit was charged and no order or instance was created.',
+        );
       const balance = await this.refreshCredit();
       confirmDetails();
       if (Math.round(balance * 100) < expectedPricing.totalCents) {
@@ -379,18 +515,42 @@ export class SpotCheckout {
         return this.deps.open('spot-credit-confirm');
       }
       const service = this.deps.service();
-      if (typeof service.beginPurchase !== 'function') throw new Error('Credit payment is not connected yet. No Credit was charged and no order was created.');
+      if (typeof service.beginPurchase !== 'function')
+        throw new Error(
+          'Credit payment is not connected yet. No Credit was charged and no order was created.',
+        );
       const ssh = await this.deps.validateSsh(confirmedSsh);
       if (this.pending() !== draft || this.deps.owner() !== draft.owner) return;
       confirmDetails();
       const fresh = this.liveRow();
-      if (draft.reviewRequired || signature(fresh) !== expectedSignature) throw new Error('The offer changed during validation. Review its current price before paying.');
+      if (draft.reviewRequired || signature(fresh) !== expectedSignature)
+        throw new Error(
+          'The offer changed during validation. Review its current price before paying.',
+        );
       draft.paymentSubmitted = true;
       this.savePending();
-      const result = await service.beginPurchase({ pricingVersion: 'duration-v1', offerId: fresh.id, durationHours: expectedPricing.durationHours, expectedPricing, sshPublicKey: ssh || null, idempotencyKey: draft.idempotencyKey });
+      const result = await service.beginPurchase({
+        pricingVersion: 'duration-v1',
+        offerId: fresh.id,
+        durationHours: expectedPricing.durationHours,
+        expectedPricing,
+        sshPublicKey: ssh || null,
+        idempotencyKey: draft.idempotencyKey,
+      });
       if (this.deps.owner() !== draft.owner || this.pending() !== draft) return;
-      if (result?.confirmed !== true || result.offerId !== fresh.id || typeof result.orderId !== 'string' || !result.orderId || result.orderId.length > 200 || result.currency !== 'USD' || result.durationHours !== expectedPricing.durationHours || result.totalCents !== expectedPricing.totalCents)
-        throw new Error('The purchase total and duration have not been confirmed. Check your order status before trying again.');
+      if (
+        result?.confirmed !== true ||
+        result.offerId !== fresh.id ||
+        typeof result.orderId !== 'string' ||
+        !result.orderId ||
+        result.orderId.length > 200 ||
+        result.currency !== 'USD' ||
+        result.durationHours !== expectedPricing.durationHours ||
+        result.totalCents !== expectedPricing.totalCents
+      )
+        throw new Error(
+          'The purchase total and duration have not been confirmed. Check your order status before trying again.',
+        );
       draft.orderId = result.orderId;
       draft.stage = 'completed';
       this.clearStored();
@@ -420,7 +580,9 @@ export class SpotCheckout {
       return true;
     }
     if (draft.paymentSubmitted && ['spot-checkout-cancel', 'spot-checkout-review'].includes(act)) {
-      this.deps.toast('Payment confirmation is pending. Check your order status before changing or cancelling this purchase.');
+      this.deps.toast(
+        'Payment confirmation is pending. Check your order status before changing or cancelling this purchase.',
+      );
       return true;
     }
     switch (act) {
@@ -449,7 +611,9 @@ export class SpotCheckout {
         if (draft.stage === 'confirm' && !draft.busy) this.openTopup();
         return true;
       case 'spot-checkout-direct':
-        this.showError('Direct Pay is not connected yet. No payment was taken and no order was created.');
+        this.showError(
+          'Direct Pay is not connected yet. No payment was taken and no order was created.',
+        );
         return true;
       case 'spot-checkout-authorize':
         void this.authorizeCredit();
@@ -465,13 +629,19 @@ export class SpotCheckout {
   }
 
   /** Review form submission: validates duration and SSH key, then moves to payment choice. */
-  async reviewPurchase(data: { durationHours: unknown; sshPublicKey: unknown }): Promise<{ error: string } | null> {
+  async reviewPurchase(data: {
+    durationHours: unknown;
+    sshPublicKey: unknown;
+  }): Promise<{ error: string } | null> {
     const draft = this.pending();
     if (!draft || draft.busy) return null;
     draft.busy = true;
     this.notify();
     try {
-      if (draft.paymentSubmitted) throw new Error('Payment confirmation is pending. Check your order status before changing this purchase.');
+      if (draft.paymentSubmitted)
+        throw new Error(
+          'Payment confirmation is pending. Check your order status before changing this purchase.',
+        );
       const hours = durationHours(data.durationHours);
       const reviewedSignature = signature(this.liveRow());
       checkoutTotals(draft.row, hours);
@@ -479,9 +649,14 @@ export class SpotCheckout {
       const ssh = await this.deps.validateSsh(data.sshPublicKey);
       if (this.pending() !== draft) return null;
       const currentRow = this.liveRow();
-      if (signature(currentRow) !== reviewedSignature) throw new Error('The offer changed during validation. Review the updated price before continuing.');
-      if (durationHours(draft.hoursRaw) !== hours) throw new Error('The usage duration changed. Review the total before continuing.');
-      if (draft.durationHours !== hours || draft.sshPublicKey !== ssh) draft.idempotencyKey = this.deps.uuid();
+      if (signature(currentRow) !== reviewedSignature)
+        throw new Error(
+          'The offer changed during validation. Review the updated price before continuing.',
+        );
+      if (durationHours(draft.hoursRaw) !== hours)
+        throw new Error('The usage duration changed. Review the total before continuing.');
+      if (draft.durationHours !== hours || draft.sshPublicKey !== ssh)
+        draft.idempotencyKey = this.deps.uuid();
       draft.durationHours = hours;
       draft.hoursRaw = String(hours);
       draft.sshPublicKey = ssh;
@@ -508,7 +683,10 @@ export class SpotCheckout {
 }
 
 /** Markup helper data for the totals block (legacy `totalsMarkup`). */
-export function totalsView(row: SpotRow, hours: unknown): { total: CheckoutTotals | null; hourly: string } {
+export function totalsView(
+  row: SpotRow,
+  hours: unknown,
+): { total: CheckoutTotals | null; hourly: string } {
   let total: CheckoutTotals | null = null;
   try {
     total = checkoutTotals(row, hours);

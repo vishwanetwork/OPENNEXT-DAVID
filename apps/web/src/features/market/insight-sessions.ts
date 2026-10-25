@@ -17,7 +17,11 @@ const DEFAULT: InsightSession = { model: 'H100', term: 'Spot', metrics: ['avg'] 
 /** Index model/term/metrics remembered per account + role (legacy `sessions` map). */
 export const useInsightSessions = create<InsightSessionsState>((set, get) => ({
   map: {},
-  update: (key, patch) => set({ map: { ...get().map, [key]: { ...(get().map[key] || DEFAULT), ...patch } } }),
+  update: (key, patch) =>
+    set({ map: { ...get().map, [key]: { ...(get().map[key] || DEFAULT), ...patch } } }),
 }));
 
-export const insightSessionFor = (map: Record<string, InsightSession>, key: string): InsightSession => map[key] || DEFAULT;
+export const insightSessionFor = (
+  map: Record<string, InsightSession>,
+  key: string,
+): InsightSession => map[key] || DEFAULT;

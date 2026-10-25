@@ -41,7 +41,12 @@ export const CollectionRun = z
 export type CollectionRun = z.infer<typeof CollectionRun>;
 
 export const ProviderEndpoint = z
-  .object({ method: z.string(), url: z.string(), term: z.string().optional(), auth: z.string().optional() })
+  .object({
+    method: z.string(),
+    url: z.string(),
+    term: z.string().optional(),
+    auth: z.string().optional(),
+  })
   .passthrough();
 
 /** One registered price source as returned by `GET /api/admin/pricing/providers`. */
@@ -72,7 +77,10 @@ export const PricingProvider = z
   .passthrough();
 export type PricingProvider = z.infer<typeof PricingProvider>;
 
-export const ProvidersResponse = z.object({ providers: z.array(PricingProvider), access: AdminAccess.optional() });
+export const ProvidersResponse = z.object({
+  providers: z.array(PricingProvider),
+  access: AdminAccess.optional(),
+});
 export const RunsResponse = z.object({ runs: z.array(CollectionRun) });
 /** `PATCH /api/admin/pricing/providers/:id` */
 export const ProviderSettingsRequest = z.object({
@@ -105,6 +113,9 @@ export const AdminPriceRecord = z
 /** `GET /api/pricing/prices?provider=&limit=` */
 export const AdminPricesResponse = z.object({
   records: z.array(AdminPriceRecord).default([]),
-  meta: z.object({ message: z.string().optional(), status: z.string().optional() }).passthrough().optional(),
+  meta: z
+    .object({ message: z.string().optional(), status: z.string().optional() })
+    .passthrough()
+    .optional(),
 });
 export type AdminPricesResponse = z.infer<typeof AdminPricesResponse>;

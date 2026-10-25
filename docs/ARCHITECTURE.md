@@ -25,13 +25,13 @@ Python API; `packages/contracts` and `docs/API_CONTRACT.md` describe what the fr
 
 `src/lib/apps.ts` contains the pure routing rule and `src/proxy.ts` applies it on every request:
 
-| Request                                  | Served by                       | Link base |
-| ---------------------------------------- | ------------------------------- | --------- |
-| `opennextlab.ai/*`                       | `src/app/(site)`                | ``        |
-| `terminal.opennextlab.ai/*`              | `src/app/terminal/*`            | ``        |
-| `terminal.opennextlab.ai/demo/*`         | `src/app/terminal/*` (demo on)  | `/demo`   |
-| `admin.opennextlab.ai/*`                 | `src/app/admin/*`               | ``        |
-| local `/`, `/terminal/*`, `/admin/*`     | same route trees                | `/terminal`, `/admin` |
+| Request                              | Served by                      | Link base             |
+| ------------------------------------ | ------------------------------ | --------------------- |
+| `opennextlab.ai/*`                   | `src/app/(site)`               | ``                    |
+| `terminal.opennextlab.ai/*`          | `src/app/terminal/*`           | ``                    |
+| `terminal.opennextlab.ai/demo/*`     | `src/app/terminal/*` (demo on) | `/demo`               |
+| `admin.opennextlab.ai/*`             | `src/app/admin/*`              | ``                    |
+| local `/`, `/terminal/*`, `/admin/*` | same route trees               | `/terminal`, `/admin` |
 
 Hosts come from `SITE_HOST`, `TERMINAL_HOST`, `ADMIN_HOST` (unset locally). The proxy rewrites
 to the internal path and tags the request with `x-on-app`, `x-on-base`, `x-on-demo`; the

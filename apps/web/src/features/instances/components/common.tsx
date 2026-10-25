@@ -26,18 +26,50 @@ export function usePreviewScope() {
   const identity = useWorkspaceStore((s) => s.identity);
   const role = useWorkspaceStore((s) => s.role);
   const { demo } = useApp();
-  return { scope: previewScope(user?.id || identity.id || identity.email, role), demo: demo || Boolean(user?.demo), role };
+  return {
+    scope: previewScope(user?.id || identity.id || identity.email, role),
+    demo: demo || Boolean(user?.demo),
+    role,
+  };
 }
 
 export const StatusTagLive = ({ life }: { life: Lifecycle }) => (
-  <span className={`tag instance-status instance-status-${life.ended ? 'end' : life.connecting ? 'connecting' : 'running'}`} data-instance-status>
+  <span
+    className={`tag instance-status instance-status-${life.ended ? 'end' : life.connecting ? 'connecting' : 'running'}`}
+    data-instance-status
+  >
     {life.label}
   </span>
 );
 
-export function IBtn({ act, id = '', disabled, title, children, onClick, example }: { act: string; id?: string; disabled?: boolean; title?: string; children: ReactNode; onClick?: () => void; example?: boolean }) {
+export function IBtn({
+  act,
+  id = '',
+  disabled,
+  title,
+  children,
+  onClick,
+  example,
+}: {
+  act: string;
+  id?: string;
+  disabled?: boolean;
+  title?: string;
+  children: ReactNode;
+  onClick?: () => void;
+  example?: boolean;
+}) {
   return (
-    <button className="btn secondary small" type="button" data-act={act} data-id={id} data-example={example ? 'true' : undefined} disabled={disabled} title={title} onClick={onClick}>
+    <button
+      className="btn secondary small"
+      type="button"
+      data-act={act}
+      data-id={id}
+      data-example={example ? 'true' : undefined}
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
@@ -45,7 +77,17 @@ export function IBtn({ act, id = '', disabled, title, children, onClick, example
 
 /** SSH public-key library hook point (owned by the account profile feature). */
 let sshLibrarySlot: ((scope: 'instances' | 'instance-access') => ReactNode) | null = null;
-export function registerSshLibrary(render: ((scope: 'instances' | 'instance-access') => ReactNode) | null) {
+export function registerSshLibrary(
+  render: ((scope: 'instances' | 'instance-access') => ReactNode) | null,
+) {
   sshLibrarySlot = render;
 }
-export const SshLibrary = ({ scope }: { scope: 'instances' | 'instance-access' }) => <>{sshLibrarySlot ? sshLibrarySlot(scope) : <p className="form-note">SSH key management is temporarily unavailable.</p>}</>;
+export const SshLibrary = ({ scope }: { scope: 'instances' | 'instance-access' }) => (
+  <>
+    {sshLibrarySlot ? (
+      sshLibrarySlot(scope)
+    ) : (
+      <p className="form-note">SSH key management is temporarily unavailable.</p>
+    )}
+  </>
+);

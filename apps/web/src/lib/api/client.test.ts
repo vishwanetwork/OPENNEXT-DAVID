@@ -17,8 +17,13 @@ describe('createApiClient', () => {
     expect(init.body).toBe('{"a":1}');
   });
   it('surfaces backend error envelopes as ApiError', async () => {
-    const api = createApiClient({ fetch: async () => json(409, { error: 'Duplicate submission.' }) });
-    await expect(api.post('/api/marketplace/rfqs', {})).rejects.toMatchObject({ status: 409, message: 'Duplicate submission.' });
+    const api = createApiClient({
+      fetch: async () => json(409, { error: 'Duplicate submission.' }),
+    });
+    await expect(api.post('/api/marketplace/rfqs', {})).rejects.toMatchObject({
+      status: 409,
+      message: 'Duplicate submission.',
+    });
   });
   it('refuses non-API paths', async () => {
     const api = createApiClient({ fetch: async () => json(200, {}) });
@@ -39,7 +44,10 @@ describe('demo sandbox rules', () => {
   it('rejects blocked demo calls locally without a network request', async () => {
     const fetchMock = vi.fn();
     const api = createApiClient({ demo: true, fetch: fetchMock });
-    await expect(api.get('/api/admin/marketplace')).rejects.toMatchObject({ status: 403, code: 'DEMO_ACTION_UNAVAILABLE' });
+    await expect(api.get('/api/admin/marketplace')).rejects.toMatchObject({
+      status: 403,
+      code: 'DEMO_ACTION_UNAVAILABLE',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

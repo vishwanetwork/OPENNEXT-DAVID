@@ -14,7 +14,12 @@ export async function getServerSession(host: string): Promise<SessionUser | null
     const cookie = (await cookies()).toString();
     const forwarded = (await headers()).get('x-forwarded-proto') || 'http';
     const response = await fetch(`${API_ORIGIN}/api/auth/session`, {
-      headers: { cookie, 'x-forwarded-host': host, 'x-forwarded-proto': forwarded, accept: 'application/json' },
+      headers: {
+        cookie,
+        'x-forwarded-host': host,
+        'x-forwarded-proto': forwarded,
+        accept: 'application/json',
+      },
       cache: 'no-store',
       signal: AbortSignal.timeout(3000),
     });

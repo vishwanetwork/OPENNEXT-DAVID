@@ -74,7 +74,10 @@ export const PublicMarketResponse = z.object({
   rfqs: z.array(MarketplaceListing).default([]),
   supplies: z.array(MarketplaceListing).default([]),
   featured: z
-    .object({ rfqs: z.array(MarketplaceListing).default([]), supplies: z.array(MarketplaceListing).default([]) })
+    .object({
+      rfqs: z.array(MarketplaceListing).default([]),
+      supplies: z.array(MarketplaceListing).default([]),
+    })
     .default({ rfqs: [], supplies: [] }),
   updatedAt: z.string().optional(),
 });
@@ -112,7 +115,10 @@ export const TickerRecord = z
   .passthrough();
 export type TickerRecord = z.infer<typeof TickerRecord>;
 
-export const TickerResponse = z.object({ records: z.array(z.unknown()).default([]), meta: z.unknown().optional() });
+export const TickerResponse = z.object({
+  records: z.array(z.unknown()).default([]),
+  meta: z.unknown().optional(),
+});
 
 /* ---------- POST /api/contact ---------- */
 

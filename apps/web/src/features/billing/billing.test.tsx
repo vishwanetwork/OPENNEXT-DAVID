@@ -7,7 +7,10 @@ import { BillingPage } from './components/BillingPage';
 import { useBillingUi } from './ui-store';
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ ...initialWorkspace(), identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' } });
+  useWorkspaceStore.setState({
+    ...initialWorkspace(),
+    identity: { name: 'Ada', email: 'ada@example.com', id: 'u1' },
+  });
   useSessionStore.setState({ status: 'booting', user: null });
   useBillingUi.setState({ sample: false, hidden: [], chart: 'bars' });
   signIn();
@@ -34,7 +37,9 @@ describe('Billing page', () => {
     expect(screen.getByRole('heading', { name: 'Earnings & payouts' })).toBeInTheDocument();
     expect(screen.getByText('$42.00')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Payouts' })).toBeInTheDocument();
-    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toContain('Commission paid');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toContain(
+      'Commission paid',
+    );
     expect(screen.getByText('No earnings history yet')).toBeInTheDocument();
   });
 });

@@ -292,7 +292,7 @@ a {
   border-color: #e9dfc5;
   color: #8a7442;
 }
-.modal input[type="checkbox"] {
+.modal input[type='checkbox'] {
   accent-color: #456c4e;
 }
 .modal-code {

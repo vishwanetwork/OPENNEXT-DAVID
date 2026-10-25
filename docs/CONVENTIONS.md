@@ -82,17 +82,17 @@ intentionally left out, open questions for the backend team.
 Pages under `src/app/terminal/<route>` wrap their content in `TerminalPage` (sign-in / onboarding
 gate) and import what they need from `@/features/terminal`:
 
-| Need | Use |
-| --- | --- |
-| Legacy `S` state | `useWorkspaceStore` (fields match `S`; `patch()` / `setExtra()` for feature-specific data), `findOffer` |
-| Legacy `go()` | `useGo()` (role rules + pending route), `useTerminal().route` |
-| Legacy `open()` / modals | `useOpenModal()`, `useCloseModal()`; register your modal types with `registerTerminalModal(modal => ModalRender | null)`; `ModalShell` for the frame |
-| Legacy `toast()` | `useToast()` |
-| Legacy `pageHead()` / `badge()` / `button()` | `PageHeading`, `StatusTag`, `TButton`, `EmptyState` |
-| Workspace refresh loop (30 s) | `registerWorkspaceRefresher(async () => …)` in a `useEffect`; call `refreshWorkspace()` after writes |
-| Listing / opportunity intents from the site | `registerIntentResumer(fn)`; pending intents live in `pendingListing` / `pendingOpportunity` |
-| Hook points the shell exposes | `registerOpportunityOpener`, `registerContactOpener`, `registerHeaderBell`, `registerMatchesPanel`, `registerListingTable` |
-| Market data | `@/features/market`: `usePrices`, `useRegions`, `useRegionalHistory`, `offersFor`, `RegionalHistoryChart`, `InsightIndex`, `listModelQuotes` |
+| Need                                         | Use                                                                                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Legacy `S` state                             | `useWorkspaceStore` (fields match `S`; `patch()` / `setExtra()` for feature-specific data), `findOffer`                                      |
+| Legacy `go()`                                | `useGo()` (role rules + pending route), `useTerminal().route`                                                                                |
+| Legacy `open()` / modals                     | `useOpenModal()`, `useCloseModal()`; register your modal types with `registerTerminalModal(modal => ModalRender                              | null)`; `ModalShell` for the frame |
+| Legacy `toast()`                             | `useToast()`                                                                                                                                 |
+| Legacy `pageHead()` / `badge()` / `button()` | `PageHeading`, `StatusTag`, `TButton`, `EmptyState`                                                                                          |
+| Workspace refresh loop (30 s)                | `registerWorkspaceRefresher(async () => …)` in a `useEffect`; call `refreshWorkspace()` after writes                                         |
+| Listing / opportunity intents from the site  | `registerIntentResumer(fn)`; pending intents live in `pendingListing` / `pendingOpportunity`                                                 |
+| Hook points the shell exposes                | `registerOpportunityOpener`, `registerContactOpener`, `registerHeaderBell`, `registerMatchesPanel`, `registerListingTable`                   |
+| Market data                                  | `@/features/market`: `usePrices`, `useRegions`, `useRegionalHistory`, `offersFor`, `RegionalHistoryChart`, `InsightIndex`, `listModelQuotes` |
 
 Replace a stub page by editing `src/app/terminal/<route>/page.tsx`; keep the `TerminalPage` wrapper.
 Demo mode needs nothing special: `useApi()` already routes sandboxed calls to `/api/demo/*`.

@@ -12,13 +12,19 @@ export interface RequirementRow {
 export function requirementRows(item: CuratedRfq): RequirementRow[] {
   const fallback = [
     { label: 'Location', value: item.region },
-    { label: 'Hardware', value: Array.isArray(item.modelOptions) ? item.modelOptions.join(' / ') : item.model },
+    {
+      label: 'Hardware',
+      value: Array.isArray(item.modelOptions) ? item.modelOptions.join(' / ') : item.model,
+    },
     { label: 'Quantity', value: item.quantityLabel },
     { label: 'Rental term', value: item.termLabel },
     { label: 'Deployment', value: item.deliveryLabel },
     { label: 'Payment', value: item.paymentTerms },
   ];
-  const rows = Array.isArray(item.specifications) && item.specifications.length ? item.specifications : fallback;
+  const rows =
+    Array.isArray(item.specifications) && item.specifications.length
+      ? item.specifications
+      : fallback;
   const seen = new Set<string>();
   return rows
     .filter((row) => {
@@ -50,6 +56,9 @@ export function offerMessage(item: CuratedRfq): string {
     'My available capacity, delivery date and proposed commercial terms:',
     '',
   ]
-    .filter((value, index, all) => value || index === 1 || index === all.length - 3 || index === all.length - 1)
+    .filter(
+      (value, index, all) =>
+        value || index === 1 || index === all.length - 3 || index === all.length - 1,
+    )
     .join('\n');
 }

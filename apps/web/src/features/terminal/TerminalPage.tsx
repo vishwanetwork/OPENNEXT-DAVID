@@ -47,8 +47,16 @@ export function TerminalPage({ children }: { children: ReactNode }) {
   if (!user) {
     if (demo) return <main className="terminal preview-terminal" aria-busy="true" />;
     const requestedMode = params.get('auth') === 'signup' ? 'signup' : 'signin';
-    return <AuthView initialMode={requestedMode} onLogin={verifiedLogin} onBack={back} onMode={(mode) => router.replace(mode === 'signup' ? '?auth=signup' : '?')} />;
+    return (
+      <AuthView
+        initialMode={requestedMode}
+        onLogin={verifiedLogin}
+        onBack={back}
+        onMode={(mode) => router.replace(mode === 'signup' ? '?auth=signup' : '?')}
+      />
+    );
   }
-  if (!user.onboardingCompleted) return <OnboardingView user={user} onComplete={verifiedLogin} onBack={back} />;
+  if (!user.onboardingCompleted)
+    return <OnboardingView user={user} onComplete={verifiedLogin} onBack={back} />;
   return <>{children}</>;
 }

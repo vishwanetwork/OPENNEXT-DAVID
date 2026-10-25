@@ -3,7 +3,12 @@ import { RoleIntentStore, allowedRole, roleIntentKey } from './role-intent';
 
 const memory = () => {
   const map = new Map<string, string>();
-  return { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v), removeItem: (k: string) => void map.delete(k), map };
+  return {
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    map,
+  };
 };
 
 describe('role intent', () => {
@@ -26,9 +31,15 @@ describe('role intent', () => {
   });
   it('expires after 24 hours and ignores future timestamps', () => {
     const storage = memory();
-    storage.setItem('k', JSON.stringify({ role: 'buyer', queryRole: '', ownerId: null, updatedAt: 0 }));
+    storage.setItem(
+      'k',
+      JSON.stringify({ role: 'buyer', queryRole: '', ownerId: null, updatedAt: 0 }),
+    );
     expect(new RoleIntentStore('k', '', storage, () => 86400001).get()).toBeNull();
-    storage.setItem('k', JSON.stringify({ role: 'buyer', queryRole: '', ownerId: null, updatedAt: 10_000_000 }));
+    storage.setItem(
+      'k',
+      JSON.stringify({ role: 'buyer', queryRole: '', ownerId: null, updatedAt: 10_000_000 }),
+    );
     expect(new RoleIntentStore('k', '', storage, () => 1000).get()).toBeNull();
   });
   it('drops the hint for completed accounts and for a different owner', () => {

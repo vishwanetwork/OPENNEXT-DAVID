@@ -39,7 +39,11 @@ export type Resolution =
   | { kind: 'redirect'; location: string; permanent: boolean }
   | { kind: 'not-found' };
 
-export const APP_SEGMENT: Record<AppKind, string> = { site: '', terminal: '/terminal', admin: '/admin' };
+export const APP_SEGMENT: Record<AppKind, string> = {
+  site: '',
+  terminal: '/terminal',
+  admin: '/admin',
+};
 
 export function normalizeHost(raw: string | null | undefined): string {
   return String(raw || '')
@@ -62,7 +66,7 @@ const stripTrailing = (pathname: string) =>
 
 function serve(app: AppKind, base: string, rest: string, demo = false): Resolution {
   const path = rest === '' || rest === '/' ? '' : stripTrailing(rest);
-  return { kind: 'serve', app, base, internalPath: (APP_SEGMENT[app] + path) || '/', demo };
+  return { kind: 'serve', app, base, internalPath: APP_SEGMENT[app] + path || '/', demo };
 }
 
 function matchPrefix(pathname: string, prefix: string): string | null {
@@ -71,7 +75,11 @@ function matchPrefix(pathname: string, prefix: string): string | null {
   return null;
 }
 
-export function resolveRequest(hostHeader: string, pathname: string, hosts: HostConfig): Resolution {
+export function resolveRequest(
+  hostHeader: string,
+  pathname: string,
+  hosts: HostConfig,
+): Resolution {
   const host = normalizeHost(hostHeader);
   const onAdmin = Boolean(hosts.admin) && host === hosts.admin;
   const onTerminal = Boolean(hosts.terminal) && host === hosts.terminal;
@@ -106,7 +114,11 @@ export function resolveRequest(hostHeader: string, pathname: string, hosts: Host
   const terminal = matchPrefix(pathname, '/terminal');
   if (terminal !== null) {
     if (split && hosts.terminal)
-      return { kind: 'redirect', location: `https://${hosts.terminal}${terminal}`, permanent: true };
+      return {
+        kind: 'redirect',
+        location: `https://${hosts.terminal}${terminal}`,
+        permanent: true,
+      };
     if (split) return { kind: 'not-found' };
     const demo = matchPrefix(terminal, '/demo');
     if (demo !== null) return serve('terminal', '/terminal/demo', demo, true);
@@ -115,7 +127,11 @@ export function resolveRequest(hostHeader: string, pathname: string, hosts: Host
   const demo = matchPrefix(pathname, '/demo');
   if (demo !== null) {
     if (split && hosts.terminal)
-      return { kind: 'redirect', location: `https://${hosts.terminal}/demo${demo === '/' ? '/' : demo}`, permanent: true };
+      return {
+        kind: 'redirect',
+        location: `https://${hosts.terminal}/demo${demo === '/' ? '/' : demo}`,
+        permanent: true,
+      };
     if (split) return { kind: 'not-found' };
     return serve('terminal', '/demo', demo, true);
   }

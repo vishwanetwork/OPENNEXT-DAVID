@@ -1,13 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { boundsFor, emptySelected, filteredRows, inventoryState, normalizeInjected, normalizeRow, optionsFor, paginate, GROUPS, FALLBACK_ROWS } from './inventory';
+import {
+  boundsFor,
+  emptySelected,
+  filteredRows,
+  inventoryState,
+  normalizeInjected,
+  normalizeRow,
+  optionsFor,
+  paginate,
+  GROUPS,
+  FALLBACK_ROWS,
+} from './inventory';
 
-const fixture = { id: 'offer-one', model: 'H100 SXM', country: 'Singapore', gpuCount: 8, vcpu: 192, memory: 80, perGpuHourly: 1.8, term: 'Spot' };
+const fixture = {
+  id: 'offer-one',
+  model: 'H100 SXM',
+  country: 'Singapore',
+  gpuCount: 8,
+  vcpu: 192,
+  memory: 80,
+  perGpuHourly: 1.8,
+  term: 'Spot',
+};
 
 describe('Spot inventory', () => {
   it('fallback inventory is exclusive to an active Demo session', () => {
-    expect(inventoryState({ injected: null, agentRows: [], demoActive: false }).rows.length).toBe(0);
-    expect(inventoryState({ injected: null, agentRows: [], demoActive: true }).rows.length).toBe(54);
-    expect(FALLBACK_ROWS.every((row) => row.previewOnly && row.sourceKind === 'fixture')).toBe(true);
+    expect(inventoryState({ injected: null, agentRows: [], demoActive: false }).rows.length).toBe(
+      0,
+    );
+    expect(inventoryState({ injected: null, agentRows: [], demoActive: true }).rows.length).toBe(
+      54,
+    );
+    expect(FALLBACK_ROWS.every((row) => row.previewOnly && row.sourceKind === 'fixture')).toBe(
+      true,
+    );
   });
   it('normalizes rows, derives instance hourly from the explicit node GPU count and drops observations', () => {
     const row = normalizeRow(fixture, 0, 'agent')!;
@@ -17,14 +43,27 @@ describe('Spot inventory', () => {
     expect(normalizeRow({ ...fixture, gpuCount: undefined }, 0, 'agent')).toBeNull();
     expect(normalizeRow({ ...fixture, perGpuHourly: 0 }, 0, 'agent')).toBeNull();
     expect(normalizeInjected([fixture])[0].sourceKind).toBe('preview');
-    expect(normalizeInjected([{ ...fixture, agentStatus: 'Succeeded' }])[0].sourceKind).toBe('agent');
+    expect(normalizeInjected([{ ...fixture, agentStatus: 'Succeeded' }])[0].sourceKind).toBe(
+      'agent',
+    );
   });
   it('price bounds follow the term and attribute filters but never the price filter itself', () => {
-    const rows = normalizeInjected([fixture, { ...fixture, id: 'two', perGpuHourly: 2.4, country: 'Germany' }, { ...fixture, id: 'three', term: 'Reserved', perGpuHourly: 9 }]);
-    const state = { term: 'Spot' as const, selected: emptySelected(), maxPrice: 2, sort: 'recent' as const };
+    const rows = normalizeInjected([
+      fixture,
+      { ...fixture, id: 'two', perGpuHourly: 2.4, country: 'Germany' },
+      { ...fixture, id: 'three', term: 'Reserved', perGpuHourly: 9 },
+    ]);
+    const state = {
+      term: 'Spot' as const,
+      selected: emptySelected(),
+      maxPrice: 2,
+      sort: 'recent' as const,
+    };
     expect(boundsFor(rows, state)).toMatchObject({ min: 1.8, max: 2.4 });
     expect(filteredRows(rows, state).map((row) => row.id)).toEqual(['offer-one']);
-    expect(filteredRows(rows, { ...state, maxPrice: null, sort: 'price-desc' }).map((row) => row.id)).toEqual(['two', 'offer-one']);
+    expect(
+      filteredRows(rows, { ...state, maxPrice: null, sort: 'price-desc' }).map((row) => row.id),
+    ).toEqual(['two', 'offer-one']);
     expect(optionsFor(GROUPS[1], rows, state)).toEqual(['Germany', 'Singapore']);
   });
   it('pages twelve rows at a time and clamps the page index', () => {

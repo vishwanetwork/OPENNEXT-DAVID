@@ -7,7 +7,12 @@
  */
 import { create } from 'zustand';
 import type { SessionUser } from '@opennext/contracts';
-import { ALL_REGIONS, normalizeMetrics, type Offer, type PriceMetric } from '@/features/market/catalog';
+import {
+  ALL_REGIONS,
+  normalizeMetrics,
+  type Offer,
+  type PriceMetric,
+} from '@/features/market/catalog';
 import type { WorkspaceRole } from './routing';
 
 export const PREFERENCE_KEY = 'opennext-terminal-v4';
@@ -96,7 +101,10 @@ export interface WorkspaceData {
 
 export interface WorkspaceActions {
   applySession: (user: SessionUser | null) => void;
-  setFilter: (type: 'model' | 'region' | 'term' | 'count' | 'priceMetric', value: string | number) => void;
+  setFilter: (
+    type: 'model' | 'region' | 'term' | 'count' | 'priceMetric',
+    value: string | number,
+  ) => void;
   setPriceMetrics: (metrics: unknown) => void;
   setPeriod: (period: string) => void;
   toggleSeries: (index: number, seriesCount: number) => void;
@@ -120,8 +128,23 @@ export interface WorkspaceActions {
 export type WorkspaceStore = WorkspaceData & WorkspaceActions;
 
 const SESSION_COLLECTIONS: (keyof WorkspaceData)[] = [
-  'cart', 'saved', 'rfqs', 'instances', 'listings', 'orders', 'notifications', 'marketplaceNotifications', 'billingNotifications',
-  'topupRequests', 'responses', 'ledger', 'payouts', 'paymentSessions', 'keys', 'agentMessages', 'selected',
+  'cart',
+  'saved',
+  'rfqs',
+  'instances',
+  'listings',
+  'orders',
+  'notifications',
+  'marketplaceNotifications',
+  'billingNotifications',
+  'topupRequests',
+  'responses',
+  'ledger',
+  'payouts',
+  'paymentSessions',
+  'keys',
+  'agentMessages',
+  'selected',
 ];
 
 export const initialWorkspace = (): WorkspaceData => ({
@@ -178,18 +201,25 @@ export const initialWorkspace = (): WorkspaceData => ({
   extra: {},
 });
 
-const sessionKey = (user: SessionUser | null | undefined) => JSON.stringify([user?.id || null, String(user?.role || '').toLowerCase(), !!user?.demo]);
+const sessionKey = (user: SessionUser | null | undefined) =>
+  JSON.stringify([user?.id || null, String(user?.role || '').toLowerCase(), !!user?.demo]);
 let currentSessionKey = sessionKey(null);
 
 /** Reads the persisted display preferences (client only). */
-export function readPreferences(storage: Pick<Storage, 'getItem'> | null): Partial<Pick<WorkspaceData, 'model' | 'region' | 'priceMetric' | 'priceMetrics'>> {
+export function readPreferences(
+  storage: Pick<Storage, 'getItem'> | null,
+): Partial<Pick<WorkspaceData, 'model' | 'region' | 'priceMetric' | 'priceMetrics'>> {
   let stored: Record_ = {};
   try {
     stored = JSON.parse(storage?.getItem(PREFERENCE_KEY) || '{}') as Record_;
   } catch {
     stored = {};
   }
-  const out: Record_ = Object.fromEntries(['model', 'region', 'priceMetric', 'priceMetrics'].filter((k) => k in stored).map((k) => [k, stored[k]]));
+  const out: Record_ = Object.fromEntries(
+    ['model', 'region', 'priceMetric', 'priceMetrics']
+      .filter((k) => k in stored)
+      .map((k) => [k, stored[k]]),
+  );
   const priceMetrics = normalizeMetrics(out.priceMetrics, out.priceMetric);
   return {
     ...(typeof out.model === 'string' ? { model: out.model } : {}),
@@ -201,7 +231,15 @@ export function readPreferences(storage: Pick<Storage, 'getItem'> | null): Parti
 
 function persistPreferences(state: WorkspaceData) {
   try {
-    window.localStorage.setItem(PREFERENCE_KEY, JSON.stringify({ model: state.model, region: state.region, priceMetric: state.priceMetric, priceMetrics: state.priceMetrics }));
+    window.localStorage.setItem(
+      PREFERENCE_KEY,
+      JSON.stringify({
+        model: state.model,
+        region: state.region,
+        priceMetric: state.priceMetric,
+        priceMetrics: state.priceMetrics,
+      }),
+    );
   } catch {
     /* storage unavailable */
   }
@@ -242,9 +280,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const confirmed = get().billingAccountConfirmed && !('billingAccountConfirmed' in reset);
     set({
       ...reset,
-      identity: { name: user.name || '', email: user.email || '', id: user.id, company: user.company || '' },
+      identity: {
+        name: user.name || '',
+        email: user.email || '',
+        id: user.id,
+        company: user.company || '',
+      },
       role: String(user.role).toLowerCase() === 'seller' ? 'Seller' : 'Buyer',
-      ...(confirmed ? {} : { promotionalCredit, paidCredit, balance: paidCredit + promotionalCredit }),
+      ...(confirmed
+        ? {}
+        : { promotionalCredit, paidCredit, balance: paidCredit + promotionalCredit }),
     });
   },
   setFilter: (type, value) => {
@@ -259,14 +304,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
   setPriceMetrics: (metrics) => {
     const priceMetrics = normalizeMetrics(metrics);
-    set({ priceMetrics, priceMetric: priceMetrics.includes('avg') ? 'avg' : priceMetrics[0], hiddenSeries: [] });
+    set({
+      priceMetrics,
+      priceMetric: priceMetrics.includes('avg') ? 'avg' : priceMetrics[0],
+      hiddenSeries: [],
+    });
     persistPreferences(get());
   },
   setPeriod: (period) => set({ period, hiddenSeries: [] }),
   toggleSeries: (index, seriesCount) => {
     const hidden = get().hiddenSeries;
     if (hidden.includes(index)) set({ hiddenSeries: hidden.filter((x) => x !== index) });
-    else if (hidden.length < Math.max(0, seriesCount - 1)) set({ hiddenSeries: [...hidden, index] });
+    else if (hidden.length < Math.max(0, seriesCount - 1))
+      set({ hiddenSeries: [...hidden, index] });
   },
   setMenu: (menu) => set({ menu, userOpen: menu ? false : get().userOpen }),
   setUserOpen: (userOpen) => set({ userOpen, menu: null }),
@@ -286,7 +336,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ cart: [...cart, offer] });
     return true;
   },
-  removeFrom: (type, id) => set({ [type]: get()[type].filter((x) => x.id !== id), selected: get().selected.filter((x) => x !== id) }),
+  removeFrom: (type, id) =>
+    set({
+      [type]: get()[type].filter((x) => x.id !== id),
+      selected: get().selected.filter((x) => x !== id),
+    }),
   setSelected: (selected) => set({ selected }),
   indexOffers: (offers) => {
     const offerIndex = { ...get().offerIndex };
@@ -303,7 +357,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 }));
 
 /** Find an offer by id across the index, cart, saved and a list of current offers. */
-export function findOffer(state: Pick<WorkspaceData, 'offerIndex' | 'cart' | 'saved'>, id: string | undefined, current: Offer[] = []): Offer | undefined {
+export function findOffer(
+  state: Pick<WorkspaceData, 'offerIndex' | 'cart' | 'saved'>,
+  id: string | undefined,
+  current: Offer[] = [],
+): Offer | undefined {
   if (!id) return undefined;
-  return state.offerIndex[id] || state.cart.find((o) => o.id === id) || state.saved.find((o) => o.id === id) || current.find((o) => o.id === id);
+  return (
+    state.offerIndex[id] ||
+    state.cart.find((o) => o.id === id) ||
+    state.saved.find((o) => o.id === id) ||
+    current.find((o) => o.id === id)
+  );
 }

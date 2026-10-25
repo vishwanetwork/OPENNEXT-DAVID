@@ -37,33 +37,54 @@ export const PricesMeta = z
   .passthrough();
 export type PricesMeta = z.infer<typeof PricesMeta>;
 
-export const PricesResponse = z.object({ records: z.array(PriceRecord).default([]), meta: PricesMeta.default({}) }).passthrough();
+export const PricesResponse = z
+  .object({ records: z.array(PriceRecord).default([]), meta: PricesMeta.default({}) })
+  .passthrough();
 export type PricesResponse = z.infer<typeof PricesResponse>;
 
-export const CatalogRegion = z.object({ code: z.string(), name: z.string(), city: str }).passthrough();
+export const CatalogRegion = z
+  .object({ code: z.string(), name: z.string(), city: str })
+  .passthrough();
 export type CatalogRegion = z.infer<typeof CatalogRegion>;
 
 /** `GET /api/pricing/history-catalog` */
 export const HistoryCatalog = z
   .object({
     regions: z.array(CatalogRegion).default([]),
-    specifications: z.array(z.object({ gpuModel: str, regions: z.array(z.string()).optional() }).passthrough()).optional(),
+    specifications: z
+      .array(z.object({ gpuModel: str, regions: z.array(z.string()).optional() }).passthrough())
+      .optional(),
   })
   .passthrough();
 export type HistoryCatalog = z.infer<typeof HistoryCatalog>;
 
 /** `GET /api/pricing/history` (AWS observation series). */
-export const HistoryPoint = z.object({ time: z.string(), value: z.number(), instanceHourly: num }).passthrough();
+export const HistoryPoint = z
+  .object({ time: z.string(), value: z.number(), instanceHourly: num })
+  .passthrough();
 export const HistorySeries = z
-  .object({ recordId: z.string(), region: z.string(), gpuCount: z.number().optional(), points: z.array(HistoryPoint).default([]) })
+  .object({
+    recordId: z.string(),
+    region: z.string(),
+    gpuCount: z.number().optional(),
+    points: z.array(HistoryPoint).default([]),
+  })
   .passthrough();
 export const HistoryResponse = z
-  .object({ series: z.array(HistorySeries).default([]), meta: z.object({ status: str, message: str, stale: z.boolean().optional() }).passthrough().default({}) })
+  .object({
+    series: z.array(HistorySeries).default([]),
+    meta: z
+      .object({ status: str, message: str, stale: z.boolean().optional() })
+      .passthrough()
+      .default({}),
+  })
   .passthrough();
 export type HistoryResponse = z.infer<typeof HistoryResponse>;
 
 /** `GET /api/pricing/regional-history` — one bucketed series per region/configuration. */
-export const RegionalPoint = z.object({ time: z.string(), min: num, avg: num, max: num, value: num }).passthrough();
+export const RegionalPoint = z
+  .object({ time: z.string(), min: num, avg: num, max: num, value: num })
+  .passthrough();
 export type RegionalPoint = z.infer<typeof RegionalPoint>;
 export const RegionalSeries = z
   .object({
@@ -106,7 +127,9 @@ export const RegionalHistoryResponse = z
 export type RegionalHistoryResponse = z.infer<typeof RegionalHistoryResponse>;
 
 /** `GET /api/news` */
-export const NewsArticle = z.object({ title: z.string(), url: str, source: str, publishedAt: str, date: str }).passthrough();
+export const NewsArticle = z
+  .object({ title: z.string(), url: str, source: str, publishedAt: str, date: str })
+  .passthrough();
 export type NewsArticle = z.infer<typeof NewsArticle>;
 export const NewsResponse = z
   .object({

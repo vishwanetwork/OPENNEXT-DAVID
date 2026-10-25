@@ -9,13 +9,26 @@ import { useTerminal } from '@/features/terminal/context';
 import { openContact } from '@/features/terminal/components/TerminalModal';
 import { useWorkspaceStore } from '@/features/terminal/store';
 import { procurementApi } from '../api';
-import { deliveryMethod, findRow, isHardware, isModel, kindOf, tokenTotal, useMarketplaceStore } from '../exchange';
+import {
+  deliveryMethod,
+  findRow,
+  isHardware,
+  isModel,
+  kindOf,
+  tokenTotal,
+  useMarketplaceStore,
+} from '../exchange';
 import { refreshMarketplace } from '../workspace';
 import { canInquire, externalCommitment, externalQuantity, rowPrice } from './shared';
 
 export const findMarketRow = (id: string | null | undefined): MarketRow | null => {
   const S = useWorkspaceStore.getState();
-  return findRow(useMarketplaceStore.getState(), id, [...S.cart, ...S.saved] as unknown as { id: string; side?: string; kind?: string; originSupply?: unknown }[]);
+  return findRow(useMarketplaceStore.getState(), id, [...S.cart, ...S.saved] as unknown as {
+    id: string;
+    side?: string;
+    kind?: string;
+    originSupply?: unknown;
+  }[]);
 };
 
 /** Opens the operations contact form for a sourced (external) row. */
@@ -26,19 +39,27 @@ export function inquireExternal(item: MarketRow | null, role: string, toast: (m:
   }
   const supply = item.side === 'supply';
   if (!canInquire(role, item)) {
-    toast(supply ? 'Use a Buyer account to request this sourced capacity.' : 'Use a Seller account to offer capacity for this requirement.');
+    toast(
+      supply
+        ? 'Use a Buyer account to request this sourced capacity.'
+        : 'Use a Seller account to offer capacity for this requirement.',
+    );
     return;
   }
   useWorkspaceStore.getState().closeModal();
   openContact({
     message: [
-      supply ? 'I would like to request a quote for this sourced offer.' : 'I would like to offer capacity for this sourced requirement.',
+      supply
+        ? 'I would like to request a quote for this sourced offer.'
+        : 'I would like to offer capacity for this sourced requirement.',
       (supply ? 'OpenNEXT offer: ' : 'OpenNEXT requirement: ') + item.id,
       'GPU model: ' + item.model,
       'Region: ' + item.region,
       'Quantity: ' + externalQuantity(item),
       externalCommitment(item),
-      (supply ? 'Listed price: ' : 'Buyer target: ') + rowPrice(item) + (item.price == null ? '' : ' / GPU-hour'),
+      (supply ? 'Listed price: ' : 'Buyer target: ') +
+        rowPrice(item) +
+        (item.price == null ? '' : ' / GPU-hour'),
       'Please confirm availability and commercial terms with operations.',
     ].join('\n'),
   });
@@ -52,7 +73,13 @@ export function requirementFromRow(item: MarketRow, rfqs: OwnedRfq[]): OwnedRfq 
   return {
     ...(item as unknown as OwnedRfq),
     kind,
-    budget: isModel(item) ? tokenTotal({ inputMillion: item.count || 10, outputMillion: 2 }, item.price, item.outputPrice || 0) : item.price,
+    budget: isModel(item)
+      ? tokenTotal(
+          { inputMillion: item.count || 10, outputMillion: 2 },
+          item.price,
+          item.outputPrice || 0,
+        )
+      : item.price,
     inputMillion: item.inputMillion ?? item.count ?? 10,
     outputMillion: item.outputMillion ?? 2,
     title: item.title,
@@ -77,7 +104,9 @@ export function prefillFromRow(item: MarketRow): Record<string, unknown> {
     originSupply: item.id,
     selectedSupplier: item.provider,
     sku: item.sku,
-    budget: isModel(item) ? tokenTotal({ inputMillion, outputMillion }, item.price, item.outputPrice || 0) : item.price,
+    budget: isModel(item)
+      ? tokenTotal({ inputMillion, outputMillion }, item.price, item.outputPrice || 0)
+      : item.price,
     inputMillion,
     outputMillion,
     days: item.days || 30,
@@ -145,8 +174,15 @@ export function useOpportunity() {
         return;
       }
       const user = useSessionStore.getState().user;
-      if (user && ((intent === 'offer' && S.role !== 'Seller') || (intent === 'buy' && S.role !== 'Buyer'))) {
-        toast(intent === 'offer' ? 'Use a verified Seller account to offer capacity.' : 'Use a Buyer account to request this capacity.');
+      if (
+        user &&
+        ((intent === 'offer' && S.role !== 'Seller') || (intent === 'buy' && S.role !== 'Buyer'))
+      ) {
+        toast(
+          intent === 'offer'
+            ? 'Use a verified Seller account to offer capacity.'
+            : 'Use a Buyer account to request this capacity.',
+        );
         return;
       }
       S.patch({ pendingOpportunity: { id, intent } });
@@ -164,6 +200,9 @@ export function useOpportunity() {
     },
     [api, toast, go],
   );
-  const inquire = useCallback((row: MarketRow | null) => inquireExternal(row, useWorkspaceStore.getState().role, toast), [toast]);
+  const inquire = useCallback(
+    (row: MarketRow | null) => inquireExternal(row, useWorkspaceStore.getState().role, toast),
+    [toast],
+  );
   return { open, inquire };
 }
