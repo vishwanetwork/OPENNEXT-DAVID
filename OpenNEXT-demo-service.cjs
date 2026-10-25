@@ -6,6 +6,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createDemoData} = require('./OpenNEXT-demo-fixtures.cjs');
+const {createTopupService, createTopupRouter} = require('./OpenNEXT-topup-service.cjs');
 
 const COOKIE = 'opennext_demo_session';
 const PREFIX = '/api/demo';
@@ -158,6 +159,8 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
         const auth = {authenticate: async request => sessionFor(request) === session ? userFor(session) : null,
           checkCsrf: (request, user) => sameOrigin(request) && equal(request.headers['x-csrf-token'], user?.csrfToken)};
         session.route = createMarketplaceRouter(session.marketplace, {auth, security: null, env: {}});
+        session.topups = createTopupService({dataDir: directory, now, demo: true});
+        session.topupRoute = createTopupRouter(session.topups, {auth});
         sessions.set(key, session);
         setCookie(res, value, ttl);
         return session;
@@ -203,7 +206,13 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
           send(res, 200, {user: userFor(session), demo: true, reward: endpoint === '/auth/onboarding' ? {amount: 100, currency: 'USD', withdrawable: false, grantedAt: session.user.welcomeCreditGrantedAt} : null});
           return true;
         }
-        // Demo sessions never receive admin, webhook, payment or infrastructure authority.
+        // Manual Demo credit requests are isolated to this expiring workspace.
+        // They never call a payment provider or grant production account credit.
+        if (endpoint === '/billing/account' || /^\/billing\/topups(?:\/|$)/.test(endpoint)) {
+          const billingUrl = new URL(url.href); billingUrl.pathname = '/api' + endpoint;
+          if (await session.topupRoute(req, res, billingUrl)) return true;
+        }
+        // Demo sessions never receive admin, webhook, payment-provider or infrastructure authority.
         if (/^\/(?:admin|internal|billing|contact|auth)(?:\/|$)/.test(endpoint) || /\/(?:agent|resell|connect|ssh)(?:\/|$)/.test(endpoint)) {
           throw fail(403, 'This action is not available in Demo. No payment, infrastructure connection or real transaction has been made.');
         }
@@ -317,6 +326,44 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
       }
     });
   }
+  function consoleTopups() {
+    return trackAdmin(async () => {
+      requireAdminWorkspaceService(); await prune(); const requests = [];
+      for (const session of sessions.values()) {
+        if (session.removed || session.expiresAt <= now()) continue;
+        session.active++;
+        try {
+          const records = await session.topups.list();
+          if (!session.removed && session.expiresAt > now()) requests.push(...records.filter(record => record.accountId === session.user.id).map(record => consoleRecord(record, session)));
+        } finally {
+          session.active--;
+          if (session.expiresAt <= now() && !session.removed) await expire(session);
+          else if (session.removed) await removeWorkspace(session);
+        }
+      }
+      return requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    });
+  }
+  function decideConsoleTopup(id, input, operator = 'Demo operations') {
+    return trackAdmin(async () => {
+      requireAdminWorkspaceService(); await prune();
+      if (!/^DEMO-[a-f0-9-]{36}$/.test(String(input?.workspaceId || ''))) throw fail(400, 'Select a valid Demo workspace.');
+      const session = [...sessions.values()].find(value => value.workspaceId === input.workspaceId && !value.removed && value.expiresAt > now());
+      if (!session) throw fail(404, 'This Demo workspace has expired or is unavailable. Start a new Demo to continue testing.');
+      session.active++;
+      try {
+        await session.topups.get(userFor(session), id);
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired.');
+        const record = await session.topups.review(id, input, operator);
+        if (session.removed || session.expiresAt <= now()) throw fail(404, 'This Demo workspace has expired.');
+        return consoleRecord(record, session);
+      } finally {
+        session.active--;
+        if (session.expiresAt <= now() && !session.removed) await expire(session);
+        else if (session.removed) await removeWorkspace(session);
+      }
+    });
+  }
   const timer = setInterval(() => {prune().catch(() => {});}, 60000);
   timer.unref?.();
   async function close() {
@@ -330,7 +377,7 @@ function createDemoService({enabled = true, secureCookies = process.env.NODE_ENV
     }
     starts.clear(); showcaseCache = null;
   }
-  return {handle, close, enabled: !!enabled, consoleSnapshot, decideConsoleKyb, decideConsoleRfq};
+  return {handle, close, enabled: !!enabled, consoleSnapshot, decideConsoleKyb, decideConsoleRfq, consoleTopups, decideConsoleTopup};
 }
 
 module.exports = {createDemoService};

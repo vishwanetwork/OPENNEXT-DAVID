@@ -693,3 +693,7 @@
 .onx-spot-payment-options button:disabled{opacity:.5;cursor:wait}
 .onx-spot-resume{margin-top:15px}
 .onx-spot-market-actions{display:flex;align-items:center;justify-content:flex-end;gap:18px;flex-wrap:wrap}.onx-spot-post-rfq{white-space:nowrap}@media(max-width:700px){.onx-spot-market-actions{justify-content:flex-start;gap:12px}.onx-spot-market-actions .onx-spot-tabs{margin:0}.onx-spot-post-rfq{font-size:12px}}
+@media(min-width:821px){
+  .onx-spot-market-head{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px}
+  .onx-spot-market-actions{grid-column:2;grid-row:1;justify-self:center;justify-content:center;flex-wrap:nowrap}
+}

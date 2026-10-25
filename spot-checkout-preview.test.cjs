@@ -107,9 +107,10 @@ test('Spot listing and safe checkout',async t=>{
     assert.doesNotMatch(html,/data-act="spot-checkout-authorize"|Authorize metered Spot usage|No fixed rental duration|Provisioning and billing begin/);
     assert.equal(env.storage.size,0);deposit(env);
     assert.equal(env.ctx.S.modal.type,'pay-start');assert.equal(env.ctx.S.balance,0);assert.equal(env.storage.size,1);
-    assert.match(env.payments.modal(env.ctx,'pay-start').body,/Back to purchase/);
+    assert.doesNotMatch(env.payments.modal(env.ctx,'pay-start').body,/Back to purchase/);
     env.api.resumeCheckout(env.ctx);assert.equal(env.ctx.S.modal.type,'spot-payment-choice');assert.equal(env.h.pending(env.ctx).sshPublicKey,publicKey);assert.equal(env.h.pending(env.ctx).durationHours,12.5);
-    await env.h.chooseCredit(env.ctx);assert.equal(env.ctx.S.modal.type,'spot-payment-choice');assert.match(env.ctx.messages.at(-1),/Credit confirmation is not connected/);
+    await env.h.chooseCredit(env.ctx);assert.equal(env.ctx.S.modal.type,'spot-credit-confirm');assert.match(env.api.modal(env.ctx,'spot-credit-confirm').body,/Deposit Credit/);
+    assert.doesNotMatch(env.api.modal(env.ctx,'spot-credit-confirm').body,/Return to your purchase|Credit confirmation is not connected/);
     assert.equal(env.ctx.S.balance,0);assert.equal(env.ctx.S.orders.length,0);
   });
   await t.test('top-up return updates balance only from authoritative account response, never auto-buys',async()=>{
@@ -219,10 +220,22 @@ test('Spot listing and safe checkout',async t=>{
       assert.equal(env.api.hasPending(env.ctx),false);assert.equal(env.ctx.S.orders.length,0);
     }
   });
-  await t.test('all top-up steps retain Back to purchase and provider link does not auto-redirect',async()=>{
+  await t.test('top-up steps never show Back to purchase before an approved purchase-linked request',async()=>{
     const env=setup();await toPayment(env);env.h.openTopup(env.ctx);env.ctx.S.paymentDraft={amount:100,checkoutUrl:'https://checkout.example.test/session',idempotencyKey:'topup'};
-    for(const type of ['pay-start','payment-method','payment-provider'])assert.match(env.payments.modal(env.ctx,type).body,/Back to purchase/);
+    for(const type of ['pay-start','payment-method','payment-provider'])assert.doesNotMatch(env.payments.modal(env.ctx,type).body,/Back to purchase/);
     const provider=env.payments.modal(env.ctx,'payment-provider').body;assert.match(provider,/target="_blank" rel="noopener noreferrer"/);assert.equal(env.ctx.S.balance,100);
+    const purchaseReference=env.api.purchaseReference(env.ctx);
+    const request={id:'TOPUP-12345678-1234-1234-1234-123456789012',accountId:'buyer-one',amount:100,status:'Pending',purchaseReference};
+    env.ctx.S.topupRequests=[request];
+    assert.doesNotMatch(env.payments.modal(env.ctx,'payment-topup-status',{id:request.id}).body,/Back to purchase/);
+    request.status='Approved';assert.match(env.payments.modal(env.ctx,'payment-topup-status',{id:request.id}).body,/Back to purchase/);
+    request.purchaseReference='another-purchase';assert.doesNotMatch(env.payments.modal(env.ctx,'payment-topup-status',{id:request.id}).body,/Back to purchase/);
+    delete request.purchaseReference;assert.doesNotMatch(env.payments.modal(env.ctx,'payment-topup-status',{id:request.id}).body,/Back to purchase/);
+  });
+  await t.test('top-up return can refresh from the verified billing account service',async()=>{
+    const env=setup();env.ctx.S.balance=0;await toPayment(env,publicKey,'2');await env.h.chooseCredit(env.ctx);deposit(env);env.api.resumeCheckout(env.ctx);
+    let refreshes=0;env.sandbox.OpenNEXTExchange={refreshBillingAccount:async()=>{refreshes++;return wallet();}};
+    await env.h.chooseCredit(env.ctx);assert.equal(refreshes,1);assert.equal(env.ctx.S.balance,100);assert.equal(env.ctx.S.modal.type,'spot-credit-confirm');assert.equal(env.ctx.S.orders.length,0);
   });
   await t.test('normal Credit authorization retains the same idempotency key through uncertain result and reload',async()=>{
     let savedKey;const env=setup({rows:[agent],demo:false,service:{getCreditBalance:async()=>wallet(),beginPurchase:async payload=>{savedKey=payload.idempotencyKey;return {confirmed:false};}}});
@@ -266,7 +279,8 @@ test('Spot listing and safe checkout',async t=>{
   await t.test('top-up does not dispatch a stale account or replaced form draft',async()=>{
     for(const mode of ['identity','draft','form']){
       const env=setup();let calls=0;env.sandbox.OpenNEXTAuth={request:async()=>{calls++;return {checkoutUrl:'https://checkout.example.test'};}};
-      env.ctx.S.paymentDraft={amount:100,idempotencyKey:'topup'};const f=form('payment-method');env.payments.submit(env.ctx,f,{method:'credit_card'});
+      const amountForm=form('payment-amount');env.payments.submit(env.ctx,amountForm,{preset:'100'});
+      const f=form('payment-method');env.payments.submit(env.ctx,f,{method:'credit_card'});
       if(mode==='identity')env.ctx.S.user.id='changed';if(mode==='draft')env.ctx.S.paymentDraft={amount:500,idempotencyKey:'new'};if(mode==='form')f.isConnected=false;
       await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,0);
     }

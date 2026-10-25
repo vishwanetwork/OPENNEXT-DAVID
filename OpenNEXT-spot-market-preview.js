@@ -354,26 +354,35 @@
   async function refreshCredit(ctx){
     const draft=pending(ctx),id=owner(ctx),service=scope.OpenNEXTSpotCheckout;
     if(!draft)throw new Error('The purchase draft is no longer available.');
-    if(typeof service?.getCreditBalance!=='function')throw new Error('Credit confirmation is not connected yet. No credit has been added or charged.');
-    const result=await service.getCreditBalance();
+    let result;
+    if(typeof service?.getCreditBalance==='function')result=await service.getCreditBalance();
+    else if(typeof scope.OpenNEXTExchange?.refreshBillingAccount==='function')result=await scope.OpenNEXTExchange.refreshBillingAccount(ctx.S);
+    else throw Object.assign(new Error('Your available Credit could not be refreshed. Please try again.'),{code:'CREDIT_SERVICE_UNAVAILABLE'});
     if(owner(ctx)!==id||pending(ctx)!==draft)throw new Error('Your account changed. Review the purchase again.');
     const value=Number(result?.availableCredit);
     if(result?.confirmed!==true||result.accountId!==ctx.S.user?.id||result.currency!=='USD'||result.availableCredit===null||result.availableCredit===undefined||!Number.isFinite(value)||value<0)throw new Error('The account service did not confirm your available Credit.');
     ctx.S.balance=round(value);draft.balanceNeedsRefresh=false;return ctx.S.balance;
   }
-  function openTopup(ctx){const draft=pending(ctx);if(!draft)return;draft.stage='topup';draft.balanceNeedsRefresh=true;draft.message='Add credit, then return to choose how to pay. A top-up does not automatically purchase this capacity.';savePending(ctx);ctx.open('pay-start',{spotCheckout:true});}
+  function openTopup(ctx){const draft=pending(ctx);if(!draft)return;draft.stage='topup';draft.balanceNeedsRefresh=true;draft.message='';savePending(ctx);ctx.open('pay-start',{spotCheckout:true});}
   function resumeCheckout(ctx){
     const draft=pending(ctx);if(!draft){ctx.toast('There is no saved Spot purchase in this account.');return false;}
     try{liveRow(ctx);}catch(error){showError(ctx,error.message);return true;}
     if(draft.reviewRequired){draft.stage='review';ctx.open('spot-review');return true;}
-    draft.stage='payment';draft.message=draft.balanceNeedsRefresh?'Return to your purchase. Credit is refreshed from the account service before it can be used.':'';ctx.open('spot-payment-choice');return true;
+    draft.stage='payment';draft.message='';ctx.open('spot-payment-choice');return true;
   }
   async function chooseCredit(ctx){
     const draft=pending(ctx);if(!draft||draft.busy)return;draft.busy=true;
     try{
       if(draft.stage!=='payment')throw new Error('Review the purchase and choose a payment method first.');
       const row=liveRow(ctx);if(draft.reviewRequired){ctx.open('spot-review');return;}
-      const balance=draft.balanceNeedsRefresh?await refreshCredit(ctx):availableCredit(ctx);
+      let balance=availableCredit(ctx);
+      if(draft.balanceNeedsRefresh){
+        try{balance=await refreshCredit(ctx);}catch(error){
+          // A known shortfall can still offer Deposit Credit; authorizing a
+          // purchase always requires a fresh, verified account balance.
+          if(error.code!=='CREDIT_SERVICE_UNAVAILABLE'||pending(ctx)!==draft||balance===null||!insufficientCredit(ctx,draft))throw error;
+        }
+      }
       if(pending(ctx)!==draft)return;const fresh=liveRow(ctx);if(draft.reviewRequired){ctx.open('spot-review');return;}
       if(balance===null)throw new Error('Your available Credit has not been confirmed.');
       checkoutTotals(fresh,draft.hoursRaw);
@@ -588,5 +597,5 @@
     });
   }
 
-  scope.OpenNEXTSpotMarket = {render, bind, setInventory, modal, action, submit, hasPending, resumeCheckout, testHelpers:{state,normalizeRow,durationHours,checkoutTotals,signature,pending,beginCheckout,liveRow,validateSsh,refreshCredit,openTopup,chooseCredit,authorizeCredit,reviewPurchase,offerFor,tableView,cardView,inventoryState}};
+  scope.OpenNEXTSpotMarket = {render, bind, setInventory, modal, action, submit, hasPending, resumeCheckout, purchaseReference:ctx=>pending(ctx)?.idempotencyKey||null, testHelpers:{state,normalizeRow,durationHours,checkoutTotals,signature,pending,beginCheckout,liveRow,validateSsh,refreshCredit,openTopup,chooseCredit,authorizeCredit,reviewPurchase,offerFor,tableView,cardView,inventoryState}};
 })(typeof window !== 'undefined' ? window : globalThis);

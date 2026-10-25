@@ -160,8 +160,8 @@ test('malformed server receipts remain Recorded rather than falsely acknowledged
   const s=setup(snapshot({rfqs:[{...rental,submission:{...received,receivedAt:'invalid'}}]}));await s.load();await s.click('details',rental.id);const html=s.dialogs.at(-1).innerHTML;assert.match(html,/Recorded; receipt unavailable/);assert.doesNotMatch(html,/>Received<\/strong>/);s.api.destroy();
 });
 
-test('Console navigation exposes a dedicated Demo submissions page',()=>{
-  const admin=fs.readFileSync(path.join(__dirname,'..','OpenNEXT-admin.js'),'utf8');assert.match(admin,/demoSubmissions:'Demo submissions'/);assert.match(admin,/demoSubmissions:\(\)=>window\.OpenNEXTConsoleMarketplace\.render\('rfqs',\{scope:'demo'\}\)/);
+test('Console removes Demo submissions navigation without removing isolated test services',()=>{
+  const admin=fs.readFileSync(path.join(__dirname,'..','OpenNEXT-admin.js'),'utf8');assert.doesNotMatch(admin,/demoSubmissions|Demo submissions/);assert.match(admin,/topups:'Top-up Requests'/);assert.match(admin,/topups:\(\)=>window\.OpenNEXTConsoleTopups\.render\(\)/);
 });
 
 const externalRfq={

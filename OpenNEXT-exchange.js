@@ -6,6 +6,51 @@
   let market = {rfqs:[],supplies:[],featured:{rfqs:[],supplies:[]}}, bestRows=[], recentRows=[], matchReason='', matchPrompt='', loaded=false, error='';
   let refreshJob=null,refreshIdentity=null,cacheIdentity='';
   let referenceCatalog = {supplies:[],rfqs:[],recent:[]}, referenceLoaded = false;
+  const billingStates=new WeakMap();
+  const billingIdentity=S=>{const user=scope.OpenNEXTAuth?.getUser?.();return user?.id&&user.onboardingCompleted&&S?.user?.id===user.id?JSON.stringify([user.id,String(user.role||'').toLowerCase(),!!user.demo||!!scope.OpenNEXTDemo?.active]):'';};
+  const creditAmount=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&Number.isSafeInteger(Math.round(value*100));
+  function mergeNotifications(S,marketplaceRows){
+    const owner=scope.OpenNEXTAuth?.getUser?.()?.id;
+    if(!S)return [];
+    if(marketplaceRows!==undefined)S.marketplaceNotifications=Array.isArray(marketplaceRows)?marketplaceRows:[];
+    else if(!Array.isArray(S.marketplaceNotifications))S.marketplaceNotifications=(Array.isArray(S.notifications)?S.notifications:[]).filter(row=>!row.topupId);
+    const rows=new Map();
+    for(const row of [...S.marketplaceNotifications,...(S.billingNotifications||[])])if(owner&&S.user?.id===owner&&row?.ownerId===owner&&typeof row.id==='string')rows.set(row.id,row);
+    S.notifications=[...rows.values()].sort((a,b)=>(Date.parse(b.created||b.createdAt)||0)-(Date.parse(a.created||a.createdAt)||0));
+    return S.notifications;
+  }
+  function billingState(S){
+    if(!S)return null;
+    const identity=billingIdentity(S);let current=billingStates.get(S);
+    if(!current||current.identity!==identity){
+      const user=identity?scope.OpenNEXTAuth.getUser():null;
+      current={identity,pending:null,confirmed:false};billingStates.set(S,current);
+      S.billingAccountId=null;S.billingAccountConfirmed=false;S.topupRequests=[];S.billingNotifications=[];
+      S.paidCredit=creditAmount(user?.fundedCredit)?user.fundedCredit:0;S.promotionalCredit=creditAmount(user?.promotionalCredit)?user.promotionalCredit:0;S.balance=S.paidCredit+S.promotionalCredit;
+      mergeNotifications(S);
+    }
+    return current;
+  }
+  function applyBillingAccount(S,result){
+    const current=billingState(S),user=scope.OpenNEXTAuth?.getUser?.();
+    if(!current?.identity)return null;
+    if(result?.confirmed!==true||result.accountId!==user.id||result.currency!=='USD'||!['availableCredit','paidCredit','promotionalCredit'].every(key=>creditAmount(result[key]))||!Array.isArray(result.requests)||!Array.isArray(result.notifications))throw Error('The verified credit account response is incomplete.');
+    S.balance=result.availableCredit;S.paidCredit=result.paidCredit;S.promotionalCredit=result.promotionalCredit;S.billingAccountId=result.accountId;S.billingAccountConfirmed=true;current.confirmed=true;
+    S.topupRequests=result.requests.filter(row=>row&&typeof row.id==='string'&&row.accountId===user.id&&(!row.ownerId||row.ownerId===user.id));
+    S.billingNotifications=result.notifications.filter(row=>row&&typeof row.id==='string'&&row.ownerId===user.id);
+    mergeNotifications(S);
+    scope.dispatchEvent?.(new CustomEvent('opennext:billing',{detail:{accountId:user.id}}));
+    return result;
+  }
+  async function refreshBillingAccount(S=state){
+    const current=billingState(S);if(!current?.identity)return null;
+    if(current.pending)return current.pending;
+    const identity=current.identity;
+    const job=(async()=>{try{const result=await api('/api/billing/account');if(billingStates.get(S)!==current||billingIdentity(S)!==identity)return null;return applyBillingAccount(S,result);}finally{if(billingStates.get(S)===current)current.pending=null;}})();
+    current.pending=job;return job;
+  }
+  function hasVerifiedBillingAccount(S){return !!S&&billingStates.get(S)?.confirmed===true&&billingStates.get(S)?.identity===billingIdentity(S);}
+  function invalidateBillingAccount(S){if(S)billingStates.delete(S);}
   const refreshKey=S=>JSON.stringify([scope.OpenNEXTAuth?.getUser?.()?.id||null,scope.OpenNEXTAuth?.getUser?.()?.role||null,S?.model||'',S?.region||'']);
   async function api(path, method='GET', body) {
     const user=scope.OpenNEXTAuth?.getUser?.();
@@ -25,7 +70,7 @@
         try {const result=await api('/api/marketplace/reference-catalog');referenceCatalog={supplies:result.supplies||[],rfqs:result.rfqs||[],recent:result.recent||[]};referenceLoaded=true;} catch { /* Real marketplace data remains available if reference data is offline. */ }
       }
       const user=userSnapshot;
-      if(user?.onboardingCompleted&&S){const own=await api('/api/marketplace/me');if(refreshKey(S)!==identity)return null;const result=await api('/api/marketplace/matches?'+new URLSearchParams({model:modelSnapshot,region:regionSnapshot}));if(refreshKey(S)!==identity)return null;for(const field of ['rfqs','listings','review','responses','orders','notifications','instances'])S[field]=own[field];S.marketplaceAuthoritative=true;bestRows=result.rows;matchReason=result.reason;matchPrompt=result.submissionPrompt||'';}
+      if(user?.onboardingCompleted&&S){const own=await api('/api/marketplace/me');if(refreshKey(S)!==identity)return null;const result=await api('/api/marketplace/matches?'+new URLSearchParams({model:modelSnapshot,region:regionSnapshot}));if(refreshKey(S)!==identity)return null;for(const field of ['rfqs','listings','review','responses','orders','instances'])S[field]=own[field];mergeNotifications(S,own.notifications);try{await refreshBillingAccount(S);}catch{/* Retain the last verified credit account while billing is unavailable. */}if(refreshKey(S)!==identity)return null;S.marketplaceAuthoritative=true;bestRows=result.rows;matchReason=result.reason;matchPrompt=result.submissionPrompt||'';}
       else {bestRows=[];matchReason='No matches.';matchPrompt='Sign in to receive same-model recommendations.';}
       recentRows=(await api('/api/marketplace/settlements?days=90')).rows;
       return market;
@@ -174,7 +219,7 @@ function regionCountry(value){
     S.ledger.unshift({id:paymentId,paymentReference:paymentId,orderId:order.id,type:'Capacity purchase',amount:-order.total,date:at,createdAt:at,role:S.role,side:'buy',status:'Completed',test:true});
     notify(S,'Seller','Payment confirmed',`${order.id} is funded. Prepare delivery.`,{supplier:order.provider,orderId:order.id});return true;
   }
-  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,status,regionMatches,recordRegionMatches,featured:()=>market.featured,best,recent};
+  const exposed={init,getState,uid,round,listPublic,get:find,matches:marketRows,sampleQuotes,notify,accept,reject,pay,regionCode,regionCountry,kindOf,unitLabel,deliveryMethod,totalFor,tokenTotal,api,refresh,refreshBillingAccount,applyBillingAccount,mergeNotifications,hasVerifiedBillingAccount,invalidateBillingAccount,status,regionMatches,recordRegionMatches,featured:()=>market.featured,best,recent};
   scope.OpenNEXTExchange=exposed;
   if(typeof module!=='undefined')module.exports=exposed;
 })(typeof window!=='undefined'?window:globalThis);

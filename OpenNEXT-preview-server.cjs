@@ -14,6 +14,7 @@ const {createOAuthAdapter} = require('./OpenNEXT-oauth-adapter.cjs');
 const {createRfqNotifier} = require('./OpenNEXT-rfq-notifier.cjs');
 const {createMarketplaceService, createMarketplaceRouter} = require('./OpenNEXT-marketplace-service.cjs');
 const {createPaymentRouter} = require('./OpenNEXT-payment-api.cjs');
+const {createTopupService, createTopupRouter} = require('./OpenNEXT-topup-service.cjs');
 const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
 const {listCuratedRfqs} = require('./OpenNEXT-curated-rfqs.cjs');
 const {createReferenceCatalog} = require('./OpenNEXT-reference-catalog.cjs');
@@ -46,6 +47,7 @@ const files = new Set([
   'OpenNEXT-admin-console.html', 'OpenNEXT-admin.js', 'OpenNEXT-admin.css',
   'OpenNEXT-provider-console.js', 'OpenNEXT-provider-console.css', 'OpenNEXT-provider-logos.js',
   'OpenNEXT-contact.js', 'OpenNEXT-contact.css', 'OpenNEXT-console-leads.js', 'OpenNEXT-console-leads.css',
+  'OpenNEXT-console-topups.js', 'OpenNEXT-console-topups.css',
   'OpenNEXT-exchange.js', 'OpenNEXT-procurement.js', 'OpenNEXT-procurement.css', 'OpenNEXT-billing.js', 'OpenNEXT-billing.css',
 ]);
 const types = {
@@ -61,7 +63,7 @@ const types = {
 const SITE_HOST = (process.env.SITE_HOST || '').toLowerCase();
 const TERMINAL_HOST = (process.env.TERMINAL_HOST || '').toLowerCase();
 const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
-const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace');
+const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace') || name.startsWith('OpenNEXT-console-topups');
 // These pure renderers contain no Console access or data and are shared by both UIs.
 const sharedInterfaceFile = name => ['OpenNEXT-rfq-details.js','OpenNEXT-rfq-details.css'].includes(name);
 
@@ -94,11 +96,13 @@ function createAppServer(options = {}) {
   const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter, externalService:external, onRfqSubmitted:rfqNotifier.rfqSubmitted});
   const marketplaceRoute = createMarketplaceRouter(marketplace, {auth, security:pricingRoute.security, env:options.env || process.env});
   const paymentRoute = createPaymentRouter({auth, checkoutAdapter:options.checkoutAdapter, allowedOrigins:options.checkoutOrigins});
+  const topups = options.topupService || createTopupService({dataDir:privateDataDir});
+  const topupRoute = createTopupRouter(topups, {auth, security:pricingRoute.security, demoService:demo});
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:demo\/|auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:demo\/marketplace(?:\/|\?|$)|marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
+    if (!['GET', 'HEAD'].includes(req.method) && !/^\/api\/(?:demo\/|auth\/|marketplace\/|billing\/|internal\/marketplace\/|admin\/(?:demo\/marketplace(?:\/|\?|$)|marketplace(?:\/|\?|$)|pricing\/|contacts(?:\/|\?|$)|topups(?:\/|\?|$))|contact(?:\?|$))/.test(String(req.url))) {
       res.writeHead(405, {Allow: 'GET, HEAD'});
       res.end('Method not allowed');
       return;
@@ -198,6 +202,7 @@ function createAppServer(options = {}) {
     }
     if (await auth.handle(req, res, new URL(req.url, 'http://localhost'))) return;
     if (await marketplaceRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
+    if (await topupRoute(req, res, new URL(req.url, 'http://localhost'), {onTerminal:restrictAdmin})) return;
     if (await paymentRoute(req, res, new URL(req.url, 'http://localhost'))) return;
     
     if (ADMIN_HOST && SITE_HOST) {
@@ -270,6 +275,7 @@ function createAppServer(options = {}) {
   server.contacts = contacts;
   server.auth = auth;
   server.marketplace = marketplace;
+  server.topups = topups;
   server.externalMarketplace = external;
   server.news = news;
   server.on('close', () => {Promise.resolve(news.close?.()).catch(() => {});});

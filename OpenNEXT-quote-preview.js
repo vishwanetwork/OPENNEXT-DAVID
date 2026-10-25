@@ -31,7 +31,7 @@
   }
   function notices(){
     const unique=new Map();
-    for(const n of accountRows('notifications'))if(typeof n.id==='string')unique.set(n.id,{id:n.id,title:n.subject||n.title||'Workspace update',message:n.message||'',createdAt:n.created||n.createdAt||'',read:!!n.read||cache.readIds.has(n.id),orderId:n.orderId,rfqId:n.rfqId});
+    for(const n of accountRows('notifications'))if(typeof n.id==='string')unique.set(n.id,{id:n.id,title:n.subject||n.title||'Workspace update',message:n.message||'',createdAt:n.created||n.createdAt||'',read:!!n.read||cache.readIds.has(n.id),orderId:n.orderId,rfqId:n.rfqId,topupId:n.topupId});
     return [...unique.values()].sort((a,b)=>(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0));
   }
   function quoteRequests(){return accountRows('rfqs').filter(r=>['On-demand','Reserved'].includes(r.term)&&(r.requestKind==='quote_request'||String(r.notes||'').includes(MARKER))).sort((a,b)=>(Date.parse(b.createdAt||b.created)||0)-(Date.parse(a.createdAt||a.created)||0));}
@@ -73,7 +73,8 @@
         const result=await scope.OpenNEXTExchange.api('/api/marketplace/me');
         if(ownerKey()!==owner||cache.generation!==generation||cache.ctx?.S?.user?.id!==user()?.id)return;
         if(!Array.isArray(result.notifications)||!Array.isArray(result.rfqs))throw Error('The account response was incomplete. Refresh to try again.');
-        cache.ctx.S.notifications=result.notifications.filter(n=>n.ownerId===user().id);
+        if(scope.OpenNEXTExchange.mergeNotifications)scope.OpenNEXTExchange.mergeNotifications(cache.ctx.S,result.notifications);
+        else cache.ctx.S.notifications=result.notifications.filter(n=>n.ownerId===user().id);
         cache.ctx.S.rfqs=result.rfqs.filter(r=>r.ownerId===user().id);
         cache.ready=true;cache.error='';cache.lastLoaded=Date.now();
       }catch(error){if(ownerKey()===owner&&cache.generation===generation)cache.error=error.message||'Account updates are temporarily unavailable.';}
@@ -112,7 +113,8 @@
     if(act==='notification'){
       const n=notices().find(row=>row.id===button.dataset.qpId);if(!n)return;
       markRead([n.id]);cache.panel=false;updateViews();
-      if(n.orderId){if(accountRows('orders').some(o=>o.id===n.orderId))ctx.open('bill-order',{id:n.orderId});else ctx.go('billing');}
+      if(n.topupId)ctx.open('payment-topup-status',{id:n.topupId});
+      else if(n.orderId){if(accountRows('orders').some(o=>o.id===n.orderId))ctx.open('bill-order',{id:n.orderId});else ctx.go('billing');}
       else if(n.rfqId&&accountRows('rfqs').some(r=>r.id===n.rfqId))ctx.open('proc-request-details',{id:n.rfqId});
       else{cache.page=Math.floor(notices().findIndex(row=>row.id===n.id)/20);ctx.go('notifications');}
     }
@@ -130,6 +132,7 @@
       document.addEventListener('keydown',event=>{if(event.key==='Escape'&&cache.panel){event.preventDefault();event.stopPropagation();cache.panel=false;updateViews();document.querySelector('[data-qp-action="bell"]')?.focus();}},true);
       scope.addEventListener('opennext:authchange',()=>{sync();updateViews();});
       scope.addEventListener('opennext:marketplace',()=>{sync();updateViews();});
+      scope.addEventListener('opennext:billing',()=>{sync();updateViews();});
       scope.addEventListener('focus',()=>{if(!document.hidden)refresh();});
       setInterval(()=>{if(!document.hidden&&document.querySelector('[data-qp-bell-shell]'))refresh();},30000);
     }
