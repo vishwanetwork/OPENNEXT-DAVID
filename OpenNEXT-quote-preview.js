@@ -34,7 +34,7 @@
     for(const n of accountRows('notifications'))if(typeof n.id==='string')unique.set(n.id,{id:n.id,title:n.subject||n.title||'Workspace update',message:n.message||'',createdAt:n.created||n.createdAt||'',read:!!n.read||cache.readIds.has(n.id),orderId:n.orderId,rfqId:n.rfqId});
     return [...unique.values()].sort((a,b)=>(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0));
   }
-  function quoteRequests(){return accountRows('rfqs').filter(r=>['On-demand','Reserved'].includes(r.term)&&String(r.notes||'').includes(MARKER)).sort((a,b)=>(Date.parse(b.createdAt||b.created)||0)-(Date.parse(a.createdAt||a.created)||0));}
+  function quoteRequests(){return accountRows('rfqs').filter(r=>['On-demand','Reserved'].includes(r.term)&&(r.requestKind==='quote_request'||String(r.notes||'').includes(MARKER))).sort((a,b)=>(Date.parse(b.createdAt||b.created)||0)-(Date.parse(a.createdAt||a.created)||0));}
   function empty(){return `<div class="qp-empty"><div class="qp-empty-icon">${bellIcon}</div><h3>No notifications yet</h3><p>Quote, review, payment and delivery updates will appear here.</p></div>`;}
   function notificationRows(rows){return rows.map(n=>`<button type="button" class="qp-notification ${n.read?'':'qp-unread'}" data-qp-action="notification" data-qp-id="${esc(n.id)}"><span class="qp-read-dot" aria-label="${n.read?'Read':'Unread'}"></span><span><strong>${esc(n.title)}</strong><span class="qp-notification-copy">${esc(n.message)}</span><time datetime="${esc(n.createdAt)}">${esc(date(n.createdAt))}</time></span></button>`).join('');}
   function errorNotice(){return cache.error?`<p class="qp-service-error" role="status">${esc(cache.error)} <button type="button" class="qp-text-button" data-qp-action="refresh">Retry</button></p>`:'';}
@@ -85,11 +85,12 @@
     if(!offer||!['On-demand','Reserved'].includes(offer.term))throw Error('Choose an On-demand or Reserved resource to request a quote.');
     const model=bounded(offer.model,100);if(!model)throw Error('The selected resource has no model. Refresh the market.');
     const countries=scope.OpenNEXTCountries?.list||[],aliases={UAE:'AE',UK:'GB',USA:'US','Hong Kong':'HK','South Korea':'KR'};
-    const raw=bounded(offer.country,120),lookup=aliases[raw]||raw;
+    const raw=bounded(offer.country,100),lookup=aliases[raw]||raw;
     const country=countries.find(c=>c.code===lookup||c.name===lookup)?.name||'';
-    const gpu=Number(offer.gpuCount),price=Number(offer.perGpuHourly),positive=value=>value!=null&&value!==''&&Number.isFinite(Number(value))&&Number(value)>0?String(Number(value)):'To confirm';
-    const notes=[MARKER,'Selected listing reference: '+(bounded(offer.id,180)||'Not supplied'),'Selected model: '+model,'Selected country / region: '+raw,'Market terms: '+offer.term,'GPUs per node: '+positive(offer.gpuCount),'vCPU per node: '+positive(offer.vcpu),'Memory per GPU (GB): '+positive(offer.memory),'Reference USD / GPU-hour: '+positive(offer.perGpuHourly),'Reference USD / node-hour: '+positive(offer.instanceHourly),'Request the GPU quantity and rental duration specified in this form.','Prices and availability must be confirmed in the supplier quote.','Additional workload or delivery requirements:'].join('\n');
-    return {kind:'gpu_rental',model,region:country,title:(offer.term+' quote · '+model).slice(0,140),project:'',term:offer.term,count:Number.isInteger(gpu)&&gpu>0&&gpu<=4096?gpu:8,budget:Number.isFinite(price)&&price>0?price:'',notes,visibility:'Public requirements',shareClosingPrice:false};
+    const positive=(value,max,integer=false,min=0.000001)=>{const number=Number(value);return value!=null&&value!==''&&Number.isFinite(number)&&number>=min&&number<=max&&(!integer||Number.isInteger(number))?number:null;};
+    const gpu=positive(offer.gpuCount,4096,true,1),vcpu=positive(offer.vcpu,65536,true,1),memory=positive(offer.memory,65536,false,0.01),price=positive(offer.perGpuHourly,1000000);
+    const selectedOffer={id:bounded(offer.id,160),model,country:raw,term:offer.term,gpuCount:gpu,vcpu,memory,perGpuHourly:price,instanceHourly:positive(offer.instanceHourly,1000000000)};
+    return {kind:'gpu_rental',requestKind:'quote_request',model,region:country,term:offer.term,count:gpu||8,vcpu:vcpu??'',memory:memory??'',budget:price??'',notes:'',selectedOffer,visibility:'Public requirements',shareClosingPrice:false};
   }
   function open(ctx,offer){
     sync(ctx);const u=user();
@@ -107,12 +108,12 @@
     if(act==='refresh'){await refresh(true);return;}
     if(act==='mute'){cache.muted=!cache.muted;preferences();updateViews();return;}
     if(act==='read-all'){markRead();return;}
-    if(act==='request'){const row=quoteRequests().find(r=>r.id===button.dataset.qpId);if(row)ctx.open('rfq',{id:row.id});else ctx.toast?.('Refresh your RFQs to load this request.');return;}
+    if(act==='request'){const row=quoteRequests().find(r=>r.id===button.dataset.qpId);if(row)ctx.open('proc-request-details',{id:row.id});else ctx.toast?.('Refresh your RFQs to load this request.');return;}
     if(act==='notification'){
       const n=notices().find(row=>row.id===button.dataset.qpId);if(!n)return;
       markRead([n.id]);cache.panel=false;updateViews();
       if(n.orderId){if(accountRows('orders').some(o=>o.id===n.orderId))ctx.open('bill-order',{id:n.orderId});else ctx.go('billing');}
-      else if(n.rfqId&&accountRows('rfqs').some(r=>r.id===n.rfqId))ctx.open('rfq',{id:n.rfqId});
+      else if(n.rfqId&&accountRows('rfqs').some(r=>r.id===n.rfqId))ctx.open('proc-request-details',{id:n.rfqId});
       else{cache.page=Math.floor(notices().findIndex(row=>row.id===n.id)/20);ctx.go('notifications');}
     }
   }

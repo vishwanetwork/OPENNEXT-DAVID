@@ -39,8 +39,8 @@ function savedRfq(overrides={}){
 }
 function submissionHtml(f){return f.P.modal(f.c,f.S.modal.type,f.S.modal).body;}
 
-test('a saved RFQ displays the server-issued operations receipt without inserting a browser record',async()=>{
-  const f=fixture(),calls=[],el=form('proc-rfq');
+test('a saved RFQ retains the server-issued receipt and confirms submission without leaving the current page',async()=>{
+  const f=fixture({route:'market'}),calls=[],el=form('proc-rfq');
   f.X.api=async(...args)=>{calls.push(args);return {rfq:savedRfq()};};
   assert.equal(f.P.submit(f.c,el,rfqInput()),true);
   assert.equal(el.button.disabled,true);
@@ -54,14 +54,17 @@ test('a saved RFQ displays the server-issued operations receipt without insertin
   assert.equal(f.S.modal.type,'proc-submission');
   assert.equal(f.S.modal.id,'RFQ-SERVER-001');
   assert.equal(f.S.modal.receipt.receiptId,'RCPT-SERVER-001');
-  assert.equal(f.S.route,'rfqs');
+  assert.equal(f.S.route,'market');
   assert.equal(f.S.rfqs.length,0);
   assert.equal(f.effects.refresh,1);
   assert.equal(f.effects.persist,1);
   assert.equal(el.button.disabled,false);
-  assert.match(submissionHtml(f),/available in the OpenNEXT operations inbox/);
-  assert.match(submissionHtml(f),/Operations must approve it before it becomes a Live RFQ/);
-  assert.match(submissionHtml(f),/no order has been placed/);
+  assert.match(submissionHtml(f),/Your request has been submitted successfully/);
+  assert.match(submissionHtml(f),/remains Reviewing until operations approves publication/);
+  assert.match(submissionHtml(f),/Our sales team may also contact you by email/);
+  assert.match(submissionHtml(f),/data-act="proc-submission-view"[^>]*>RFQs & Quote<\/button>/);
+  assert.match(submissionHtml(f),/data-act="close-modal"[^>]*>OK<\/button>/);
+  assert.doesNotMatch(submissionHtml(f),/order (?:created|confirmed|placed)|email (?:sent|delivered)/i);
 });
 
 test('repeated submit clicks on one pending form create only one request',async()=>{
@@ -155,8 +158,9 @@ test('a record without a confirmed receipt does not claim Console synchronizatio
   await flush();
   assert.equal(f.S.modal.type,'proc-submission');
   assert.equal(f.S.modal.receipt,null);
-  assert.match(submissionHtml(f),/Console receipt has not been confirmed/);
-  assert.doesNotMatch(submissionHtml(f),/available in the OpenNEXT operations inbox/);
+  assert.match(submissionHtml(f),/Operations receipt is not yet confirmed/);
+  assert.doesNotMatch(submissionHtml(f),/has been submitted successfully|available in the OpenNEXT operations inbox/);
+  assert.equal(f.P.modal(f.c,f.S.modal.type,f.S.modal).title,'Request saved');
   assert.match(f.messages.at(-1),/Operations receipt has not been confirmed/);
 });
 
@@ -167,7 +171,9 @@ test('malformed or unreceived receipt metadata never counts as a Console acknowl
     f.P.submit(f.c,form('proc-rfq'),rfqInput());
     await flush();
     assert.equal(f.S.modal.receipt,null);
-    assert.match(submissionHtml(f),/Console receipt has not been confirmed/);
+    assert.match(submissionHtml(f),/Operations receipt is not yet confirmed/);
+    assert.doesNotMatch(submissionHtml(f),/has been submitted successfully/);
+    assert.equal(f.P.modal(f.c,f.S.modal.type,f.S.modal).title,'Request saved');
   }
 });
 
@@ -199,16 +205,17 @@ test('saved RFQ and supply details retain the server receipt and its approval di
   assert.match(html,/Agent installation must be completed/);
 });
 
-test('Demo receipt confirmation explicitly remains inside the isolated test workspace',async()=>{
-  const f=fixture();
+test('Demo receipt scope remains isolated in submission state, feedback and record details',async()=>{
+  const f=fixture({route:'market'});
   f.win.OpenNEXTDemo={active:true};
   f.X.api=async()=>({rfq:savedRfq()});
   f.P.submit(f.c,form('proc-rfq'),rfqInput());
   await flush();
   assert.equal(f.S.modal.demo,true);
-  assert.match(submissionHtml(f),/only to your isolated test workspace/);
-  assert.match(submissionHtml(f),/not a production submission/);
-  assert.match(submissionHtml(f),/Console under Demo submissions/);
+  assert.equal(f.S.modal.receipt.receiptId,'RCPT-SERVER-001');
+  assert.equal(f.S.route,'market');
+  assert.equal(f.S.rfqs.length,0);
+  assert.match(submissionHtml(f),/Your request has been submitted successfully/);
   assert.doesNotMatch(submissionHtml(f),/available in the OpenNEXT operations inbox/);
   assert.match(f.messages.at(-1),/isolated Demo workspace/);
   f.S.rfqs.push(savedRfq());

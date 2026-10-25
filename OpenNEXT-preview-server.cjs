@@ -42,6 +42,7 @@ const files = new Set([
   'OpenNEXT-demo.js', 'OpenNEXT-demo.css',
   'OpenNEXT-countries.js', 'OpenNEXT-instances.js', 'OpenNEXT-instances.css', 'OpenNEXT-payments.js',
   'OpenNEXT-console-marketplace.js', 'OpenNEXT-console-marketplace.css',
+  'OpenNEXT-rfq-details.js', 'OpenNEXT-rfq-details.css',
   'OpenNEXT-admin-console.html', 'OpenNEXT-admin.js', 'OpenNEXT-admin.css',
   'OpenNEXT-provider-console.js', 'OpenNEXT-provider-console.css', 'OpenNEXT-provider-logos.js',
   'OpenNEXT-contact.js', 'OpenNEXT-contact.css', 'OpenNEXT-console-leads.js', 'OpenNEXT-console-leads.css',
@@ -61,6 +62,8 @@ const SITE_HOST = (process.env.SITE_HOST || '').toLowerCase();
 const TERMINAL_HOST = (process.env.TERMINAL_HOST || '').toLowerCase();
 const ADMIN_HOST = (process.env.ADMIN_HOST || '').toLowerCase();
 const adminFile = name => name.startsWith('admin/') || name.startsWith('OpenNEXT-admin') || name.startsWith('OpenNEXT-provider-console') || name.startsWith('OpenNEXT-provider-logos') || name.startsWith('OpenNEXT-console-leads') || name.startsWith('OpenNEXT-console-marketplace');
+// These pure renderers contain no Console access or data and are shared by both UIs.
+const sharedInterfaceFile = name => ['OpenNEXT-rfq-details.js','OpenNEXT-rfq-details.css'].includes(name);
 
 async function readDemoAdminBody(req) {
   const fail = (status, message) => Object.assign(new Error(message), {status});
@@ -244,7 +247,7 @@ function createAppServer(options = {}) {
       '/admin/': 'admin/index.html',
     };
     const name = aliases[pathname] || pathname.slice(1);
-    if (!files.has(name) || (restrictAdmin && adminFile(name)) || (onAdmin && !adminFile(name))) {
+    if (!files.has(name) || (restrictAdmin && adminFile(name)) || (onAdmin && !adminFile(name) && !sharedInterfaceFile(name))) {
       res.writeHead(404);
       res.end('Not found');
       return;

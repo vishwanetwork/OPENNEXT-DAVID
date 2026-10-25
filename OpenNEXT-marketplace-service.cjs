@@ -54,12 +54,24 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
       log(db,'Unaccepted quote requires explicit fee-policy refresh','Fee policy update',quote.id);
     }
   }
-  const submissionFields={rfqs:['kind','type','model','name','region','count','hours','term','title','project','notes','budget','start','quoteDeadline','originSupply','urgency','visibility','shareClosingPrice','network','storage','image','sla','deliveryMethod','shippingAddress','condition','incoterms','warranty','sku','accessPolicy','inputMillion','outputMillion','days','tps'],supplies:['kind','type','model','name','region','count','hours','term','title','notes','netPrice','rate','serviceStart','start','serviceEnd','sshHost','sshUser','sshPort']};
+  const submissionFields={rfqs:['kind','type','model','name','region','count','hours','term','title','project','notes','budget','start','quoteDeadline','originSupply','urgency','visibility','shareClosingPrice','network','storage','image','sla','deliveryMethod','shippingAddress','condition','incoterms','warranty','sku','accessPolicy','inputMillion','outputMillion','days','tps','requestKind','vcpu','memory','selectedOffer'],supplies:['kind','type','model','name','region','count','hours','term','title','notes','netPrice','rate','serviceStart','start','serviceEnd','sshHost','sshUser','sshPort']};
+  function selectedOfferReference(value){
+    if(value==null)return null;
+    if(typeof value!=='object'||Array.isArray(value))throw fail(400,'Select a valid resource reference.');
+    const reference={id:text(value.id,160,true),model:text(value.model,100,true),country:text(value.country,100,true),term:text(value.term,40,true)};
+    if(!['On-demand','Reserved'].includes(reference.term))throw fail(400,'Quote requests support On-demand or Reserved resources.');
+    for(const [key,min,max,integer]of [['gpuCount',1,65536,true],['vcpu',1,1048576,true],['memory',0.001,1048576,false],['perGpuHourly',0.000001,1e9,false],['instanceHourly',0.000001,1e12,false]]){
+      if(value[key]!=null&&value[key]!=='')reference[key]=number(value[key],min,max,integer);
+    }
+    // This snapshot describes the buyer's selection only. Availability and a
+    // payable price must come from an independently verified supplier quote.
+    return reference;
+  }
   function submissionRequest(db,user,input,collection){
     if(input.clientSubmissionId==null)return null;
     const requestId=text(input.clientSubmissionId,128,true);
     if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(requestId))throw fail(400,'Use a valid client submission identifier between 8 and 128 characters.');
-    const payload={};for(const field of submissionFields[collection])if(Object.hasOwn(input,field))payload[field]=input[field];
+    const payload={};for(const field of submissionFields[collection])if(Object.hasOwn(input,field))payload[field]=field==='selectedOffer'?selectedOfferReference(input[field]):input[field];
     const hash=crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
     const prior=db.submissionRequests.find(r=>r.ownerId===user.id&&r.collection===collection&&r.requestId===requestId);
     if(prior){
@@ -93,7 +105,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     return [...select(db.rfqs.filter(row=>liveRfq(row)&&row.visibility!=='Private RFQ'),'demand'),...select(db.supplies.filter(liveSupply),'supply')];
   }
   function featuredMaterial(db,row,side){
-    const fields=['id','ownerId','kind','model','title','name','region','count','hours','term','notes','budget','netPrice','buyerPrice','markupPercent','start','serviceStart','serviceEnd','quoteDeadline','urgency','visibility','network','storage','image','sla','deliveryMethod','condition','incoterms','warranty','resaleOf'];
+    const fields=['id','ownerId','kind','model','title','name','region','count','hours','term','notes','budget','netPrice','buyerPrice','markupPercent','start','serviceStart','serviceEnd','quoteDeadline','urgency','visibility','network','storage','image','sla','deliveryMethod','condition','incoterms','warranty','resaleOf','requestKind','vcpu','memory'];
     const material={side,provider:side==='supply'?(kybFor(db,row.ownerId)?.company||'Verified supplier'):'Verified buyer'};
     for(const field of fields)material[field]=row[field]??null;
     return material;
@@ -165,7 +177,16 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     if(Date.parse(deadline)>Date.parse(start))throw fail(400,'Quotes must be due before the service starts.');
     const originSupply=input.originSupply?db.supplies.find(s=>s.id===input.originSupply&&liveSupply(s)):null;
     if(input.originSupply&&!originSupply)throw fail(409,'The selected supply is no longer available.');
-    const r={...previous,...spec,id:previous?.id||uid('RFQ'),ownerId:user.id,ownerEmail:user.email,ownerName:user.name||'',title:text(input.title,140,true),project:text(input.project,120,true),notes:text(input.notes,4000,true),budget:number(input.budget,0.000001,1e9),start,quoteDeadline:deadline,urgency:input.urgency==='High urgency'?'High urgency':'Standard',visibility:originSupply?'Private RFQ':input.visibility==='Private RFQ'?'Private RFQ':'Public requirements',originSupply:originSupply?.id||null,shareClosingPrice:input.shareClosingPrice===true,status:'Reviewing',reviewStatus:'Reviewing',reviewRevision:(previous?.reviewRevision||0)+1,reviewSubmittedAt:timestamp(),reviewedAt:null,reviewedBy:null,reviewReason:'',createdAt:previous?.createdAt||timestamp(),updatedAt:timestamp(),submission:receiveSubmission(previous),serverRecord:true,audit:[...(previous?.audit||[]),{at:timestamp(),event:previous?'Requirement updated; operations review required':'Requirement submitted for operations review'}]};
+    const requestKind=input.requestKind??previous?.requestKind??'rfq';
+    if(!['rfq','quote_request'].includes(requestKind))throw fail(400,'Choose a valid request type.');
+    if(requestKind==='quote_request'&&(spec.kind!=='gpu_rental'||!['On-demand','Reserved'].includes(spec.term)))throw fail(400,'Quote requests support On-demand or Reserved GPU rental.');
+    const requiredHardware=spec.kind==='gpu_rental'&&input.requestKind!=null;
+    const vcpu=input.vcpu==null||input.vcpu===''?null:number(input.vcpu,1,65536,true),memory=input.memory==null||input.memory===''?null:number(input.memory,0.01,65536);
+    if(requiredHardware&&(vcpu===null||memory===null))throw fail(400,'Enter the required vCPU and memory capacity.');
+    const selectedOffer=selectedOfferReference(input.selectedOffer);
+    if(selectedOffer&&requestKind!=='quote_request')throw fail(400,'A selected resource reference belongs to a quote request.');
+    const r={...previous,...spec,id:previous?.id||uid('RFQ'),ownerId:user.id,ownerEmail:user.email,ownerName:user.name||'',title:text(input.title||`${spec.model} · ${spec.term} ${requestKind==='quote_request'?'quote request':'RFQ'}`,140,true),project:text(input.project,120),notes:text(input.notes,4000),requestKind,vcpu,memory,selectedOffer,budget:number(input.budget,0.000001,1e9),start,quoteDeadline:deadline,urgency:input.urgency==='High urgency'?'High urgency':'Standard',visibility:originSupply?'Private RFQ':input.visibility==='Private RFQ'?'Private RFQ':'Public requirements',originSupply:originSupply?.id||null,shareClosingPrice:input.shareClosingPrice===true,status:'Reviewing',reviewStatus:'Reviewing',reviewRevision:(previous?.reviewRevision||0)+1,reviewSubmittedAt:timestamp(),reviewedAt:null,reviewedBy:null,reviewReason:'',createdAt:previous?.createdAt||timestamp(),updatedAt:timestamp(),submission:receiveSubmission(previous),serverRecord:true,audit:[...(previous?.audit||[]),{at:timestamp(),event:previous?'Requirement updated; operations review required':'Requirement submitted for operations review'}]};
+    r.maximumQuotePrice=transactionAmounts({kind:spec.kind,rate:r.budget,count:r.count,hours:r.hours}).subtotal;
     for(const name of ['network','storage','image','sla','deliveryMethod','shippingAddress','condition','incoterms','warranty','sku','accessPolicy'])r[name]=text(input[name],600);
     if(spec.kind==='model_capacity'){r.inputMillion=number(input.inputMillion||0,0,1e9);r.outputMillion=number(input.outputMillion||0,0,1e9);r.days=number(input.days,1,1095,true);r.tps=input.tps==null||input.tps===''?null:number(input.tps,1,1e9,true);if(r.inputMillion+r.outputMillion<=0)throw fail(400,'Enter a positive token volume.');}
     r.provenance=provenance(r,previous?.provenance);

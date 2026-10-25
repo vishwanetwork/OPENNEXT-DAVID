@@ -239,6 +239,19 @@
   color: var(--sa-muted);
   font-size: 10px;
 }
+.onx-sa-filter-scope {
+  margin: 0 0 10px;
+  color: var(--sa-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.onx-sa-check input[type="radio"] { accent-color: #3b6549; }
+.onx-sa-panel-model {
+  display: block;
+  margin-top: 4px;
+  color: var(--sa-muted);
+  font-size: 11px;
+}
 
 .onx-sa-panels {
   display: grid;

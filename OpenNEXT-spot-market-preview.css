@@ -669,6 +669,9 @@
 .onx-spot-purchase .onx-spot-checkout-summary{margin:22px 0;padding:11px 0;border-color:#e1e7e2}
 .onx-spot-purchase .onx-spot-checkout-summary p{font-size:13px;min-height:32px;margin:0}
 .onx-spot-purchase .onx-spot-checkout-summary strong{font-size:13px}
+.onx-spot-purchase .onx-spot-checkout-summary p>span>small{display:block;margin:3px 0 7px;font-size:11px;color:#7b877e}
+.onx-spot-duration{margin:20px 0 0}
+.onx-spot-duration input{display:block;width:100%;margin-top:9px;font-size:15px;font-variant-numeric:tabular-nums}
 .onx-spot-purchase .onx-spot-checkout-total strong{font-size:17px}
 .onx-spot-purchase .onx-spot-checkout-total small{font-size:11px;font-weight:400;color:#7b877e}
 .onx-spot-purchase .form-label{display:block;font-size:12px}
@@ -681,5 +684,12 @@
 .onx-spot-payment-options>button:hover{background:#f4f8f4;border-color:#9db7a3}
 .onx-spot-payment-options strong{display:block;font-size:14px;font-weight:600}
 .onx-spot-payment-options small{display:block;margin-top:6px;font-size:12px;color:#7f8a82}
+.onx-spot-payment-options .onx-spot-credit-available{font-size:15px;font-weight:600;color:#30563e}
+.onx-spot-credit-balance{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:#f3f7f3;border:1px solid #dbe4dc;border-radius:7px;color:#30563e;font-size:16px;font-weight:600}
+.onx-spot-credit-balance strong{font-size:20px;font-variant-numeric:tabular-nums}
+.onx-spot-credit-balance.is-insufficient{background:#fff4f2;border-color:#edc8c2;color:#a33b2d}
+.onx-spot-payment-options .onx-spot-credit-available.is-insufficient,.onx-spot-credit-shortfall{color:#a33b2d}
+.onx-spot-credit-shortfall{font-size:12px;line-height:1.6;margin:9px 0}
 .onx-spot-payment-options button:disabled{opacity:.5;cursor:wait}
 .onx-spot-resume{margin-top:15px}
+.onx-spot-market-actions{display:flex;align-items:center;justify-content:flex-end;gap:18px;flex-wrap:wrap}.onx-spot-post-rfq{white-space:nowrap}@media(max-width:700px){.onx-spot-market-actions{justify-content:flex-start;gap:12px}.onx-spot-market-actions .onx-spot-tabs{margin:0}.onx-spot-post-rfq{font-size:12px}}

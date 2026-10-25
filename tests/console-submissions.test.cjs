@@ -7,7 +7,7 @@ const vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'..','OpenNEXT-console-marketplace.js'),'utf8');
 const snapshot=(extra={})=>({rfqs:[],supplies:[],kyb:[],featured:[],generatedAt:'2026-10-18T03:00:00.000Z',...extra});
 const received={receiptId:'RCPT-123',source:'terminal',status:'Received',receivedAt:'2026-10-18T02:00:00.000Z',updatedAt:'2026-10-18T02:30:00.000Z',revision:2};
-const rental={id:'RFQ-RENTAL',ownerId:'user-1',ownerEmail:'buyer@example.test',ownerName:'Buyer One',company:'Example Company',kind:'gpu_rental',model:'H200',region:'Singapore',title:'Training cluster',project:'Research',count:8,hours:72,term:'On-demand',budget:2.15,status:'Open',createdAt:'2026-10-18T02:00:00.000Z',updatedAt:'2026-10-18T02:30:00.000Z',submission:received,requestId:'REQ-client-1',notes:'Dedicated bare metal',network:'Full NVSwitch',storage:'30 TB NVMe',image:'Ubuntu',sla:'99.9%',shareClosingPrice:true,visibility:'Public requirements'};
+const rental={id:'RFQ-RENTAL',ownerId:'user-1',ownerEmail:'buyer@example.test',ownerName:'Buyer One',company:'Example Company',kind:'gpu_rental',model:'H200',region:'Singapore',title:'Training cluster',project:'Research',vcpu:128,memory:141,count:8,hours:72,term:'On-demand',budget:2.15,status:'Open',createdAt:'2026-10-18T02:00:00.000Z',updatedAt:'2026-10-18T02:30:00.000Z',submission:received,requestId:'REQ-client-1',notes:'Dedicated bare metal',network:'Full NVSwitch',storage:'30 TB NVMe',image:'Ubuntu',sla:'99.9%',shareClosingPrice:true,visibility:'Public requirements'};
 const model={id:'RFQ-MODEL',ownerEmail:'model@example.test',kind:'model_capacity',model:'Model A',region:'Germany',title:'Model workload',inputMillion:4,outputMillion:2,days:30,tps:100,budget:34,status:'Quoted',count:0,hours:0,notes:'Authorized API access'};
 const hardware={id:'RFQ-HARDWARE',ownerEmail:'hardware@example.test',kind:'physical_gpu',model:'H100 PCIe',region:'Japan',title:'Hardware purchase',count:2,hours:0,budget:39500,status:'Open',condition:'New',shippingAddress:'Business address',incoterms:'DAP',warranty:'12 months'};
 
@@ -29,19 +29,21 @@ function setup(initial=snapshot()){
   const document=new Element();document.hidden=false;document.activeElement=new Element();document.querySelector=selector=>selector==='.on-marketplace-console'?root:null;document.createElement=()=>new Element();document.body={append:el=>dialogs.push(el)};
   const window=new Element();let next=initial,id=0;
   const context={window,document,AbortController,console,URL,FormData:class{constructor(form){return Object.entries(form.formValues||{});}},setInterval:(fn,ms)=>{timers.set(++id,{fn,ms});return id;},clearInterval:key=>timers.delete(key),fetch:async(url,options)=>{requests.push({url,options});if(typeof next==='function')return next(url,options);if(next instanceof Error)throw next;return {ok:!next.error,status:next.status||200,json:async()=>next};}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','OpenNEXT-rfq-details.js'),'utf8'),context);
   vm.runInNewContext(source,context);
   const api=window.OpenNEXTConsoleMarketplace;
   const action=(name,id,workspace)=>({closest:selector=>selector==='[data-market-action]'?{dataset:{marketAction:name,id,workspace}}:null});
   return {api,root,nodes,counts,document,window,requests,timers,dialogs,load:async(selected='rfqs',options={})=>{api.render(selected,options);api.mount();await api.refresh();},setNext:value=>{next=value;},table:()=>nodes.get('.market-console-table').innerHTML,click:(name,id,workspace)=>root.emit('click',{target:action(name,id,workspace)}),tab:name=>root.emit('click',{target:{closest:selector=>selector==='[data-market-tab]'?{dataset:{marketTab:name}}:null}}),filter:(selector,value,event='change')=>{const el=nodes.get(selector);el.value=value;el.emit(event);},tick:async()=>{for(const timer of timers.values())timer.fn();await api.refresh();}};
 }
 
-test('Console lists production submissions with independent receipts and market-aware units',async()=>{
+test('Console lists RFQs by email, model and hardware with all commercial details in the modal',async()=>{
   const s=setup(snapshot({rfqs:[rental,model,hardware]}));await s.load();
   const html=s.table();
-  assert.match(html,/8 GPUs/);assert.match(html,/72 hours/);assert.match(html,/USD \/ GPU-hour/);
-  assert.match(html,/4M input \/ 2M output tokens/);assert.match(html,/30 days/);assert.match(html,/USD total request/);
-  assert.match(html,/One-time hardware purchase/);assert.match(html,/\$39,500\.00/);
-  assert.match(html,/RCPT-123/);assert.match(html,/Received/);assert.match(html,/Receipt not available/);assert.match(html,/Recorded/);
+  for(const label of ['Email','Model','vCPU','Memory','Request type','Details'])assert.match(html,new RegExp('<th>'+label+'</th>'));
+  assert.match(html,/buyer@example.test/);assert.match(html,/H200/);assert.match(html,/>128</);assert.match(html,/141 GB \/ GPU/);assert.match(html,/On-demand/);
+  assert.doesNotMatch(html,/72 hours|\$39,500\.00|RCPT-123/);
+  await s.click('details',rental.id);const detail=s.dialogs.at(-1).innerHTML;
+  assert.match(detail,/RCPT-123/);assert.match(detail,/Received/);assert.match(detail,/Maximum Quote Price/);assert.match(detail,/\$1,238\.40/);
   assert.equal(s.nodes.get('.market-console-results').textContent,'3 of 3 records');assert.equal(s.counts[0].textContent,'3');
   assert.match(s.nodes.get('.market-console-sync').textContent,/Last synced/);assert.equal(s.requests[0].options.credentials,'same-origin');assert.equal(s.requests[0].options.cache,'no-store');
   assert.doesNotMatch(html,/0 GPU|0 hours|Preview buyer/);s.api.destroy();
@@ -65,7 +67,8 @@ test('market, state and account search filters work together with accurate count
 test('details include full requirements, receipt revision and account while escaping customer content',async()=>{
   const s=setup(snapshot({rfqs:[{...rental,notes:'<script>alert(1)</script>'}]}));await s.load();s.click('details',rental.id);
   const html=s.dialogs.at(-1).innerHTML;
-  for(const text of ['Account ID','user-1','Company','Example Company','Receipt revision','RCPT-123','REQ-client-1','Full NVSwitch','30 TB NVMe','Ubuntu','99.9%','Share closing price'])assert.ok(html.includes(text),text);
+  for(const text of ['Account ID','user-1','Company','Example Company','Receipt revision','RCPT-123','REQ-client-1','Full NVSwitch','30 TB NVMe','Ubuntu','99.9%','Share the awarded price'])assert.ok(html.includes(text),text);
+  assert.match(html,/class="rfq-request-details"/);assert.ok(html.indexOf('data-rfq-field="vcpu"')<html.indexOf('data-rfq-field="count"'));
   assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.doesNotMatch(html,/name="decision"/);s.api.destroy();
 });
 
@@ -154,7 +157,7 @@ test('Demo KYB approval carries exact workspace ID only to the test API',async()
 });
 
 test('malformed server receipts remain Recorded rather than falsely acknowledged',async()=>{
-  const s=setup(snapshot({rfqs:[{...rental,submission:{...received,receivedAt:'invalid'}}]}));await s.load();assert.match(s.table(),/>Recorded</);assert.match(s.table(),/Receipt not available/);assert.doesNotMatch(s.table(),/>Received</);s.api.destroy();
+  const s=setup(snapshot({rfqs:[{...rental,submission:{...received,receivedAt:'invalid'}}]}));await s.load();await s.click('details',rental.id);const html=s.dialogs.at(-1).innerHTML;assert.match(html,/Recorded; receipt unavailable/);assert.doesNotMatch(html,/>Received<\/strong>/);s.api.destroy();
 });
 
 test('Console navigation exposes a dedicated Demo submissions page',()=>{
@@ -174,12 +177,12 @@ const externalRfq={
   audit:[{event:'Approved',at:'2026-10-18T15:30:00Z',actor:'User-confirmed approval',reason:'Approved batch'}]
 };
 
-test('Source columns distinguish first-party and external records without fake accounts or durations',async()=>{
+test('Source labels distinguish first-party and external records without fake accounts or durations',async()=>{
   const s=setup(snapshot({rfqs:[rental,externalRfq],supplies:[{...externalRfq,id:'EXT-supply-1',budget:undefined,netPrice:2.3}]}));await s.load();
-  assert.match(s.table(),/<th>Source<\/th>/);assert.match(s.table(),/OpenNEXT Terminal/);assert.match(s.table(),/Packet\.ai/);
+  assert.match(s.table(),/<th>Email<\/th>/);assert.match(s.table(),/OpenNEXT Terminal/);assert.match(s.table(),/Packet\.ai/);
   assert.match(s.table(),/First-party submission/);assert.match(s.table(),/External · operations handled/);
-  assert.match(s.table(),/64–128 nodes · 512\+ GPUs · 8 GPUs \/ node/);assert.match(s.table(),/12–24 months/);
-  assert.match(s.table(),/Imported/);assert.match(s.table(),/no OpenNEXT account assigned/);
+  await s.click('details',externalRfq.id);const html=s.dialogs.at(-1).innerHTML;assert.match(html,/64–128 nodes · 512\+ GPUs · 8 GPUs \/ node/);assert.match(html,/12–24 months/);assert.match(html,/Imported/);
+  assert.match(s.table(),/No OpenNEXT account assigned/);
   s.filter('[data-market-source]','external:packet');assert.doesNotMatch(s.table(),/RFQ-RENTAL|buyer@example\.test|Account email unavailable|hours|undefined|\[object Object\]/);
   assert.equal(s.nodes.get('.market-console-results').textContent,'1 of 2 records');
   await s.tab('supplies');assert.match(s.table(),/<th>Source<\/th>/);assert.match(s.table(),/Packet\.ai/);assert.match(s.table(),/\$2\.30/);
@@ -262,5 +265,7 @@ test('Demo source remains isolated and cannot call external review even with for
 
 test('External quantities and month options preserve source values and do not fabricate absent capacity',async()=>{
   const s=setup(snapshot({rfqs:[{...externalRfq,quantity:{nodes:128,gpusPerNode:8,totalGpusMin:1024,sourceMinimum:true},rentalMonths:{min:6,options:[6,12]}},{...externalRfq,id:'EXT-unspecified',quantity:null,rentalMonths:null}]}));await s.load();
-  assert.match(s.table(),/128 nodes · 1,024\+ GPUs · 8 GPUs \/ node/);assert.match(s.table(),/6 \/ 12 months/);assert.match(s.table(),/Quantity not provided/);assert.match(s.table(),/Rental duration not provided/);assert.doesNotMatch(s.table(),/undefined|NaN|0 hours|Not provided hours|\[object Object\]/);s.api.destroy();
+  await s.click('details',externalRfq.id);let html=s.dialogs.at(-1).innerHTML;
+  assert.match(html,/128 nodes · 1,024\+ GPUs · 8 GPUs \/ node/);assert.match(html,/6 \/ 12 months/);
+  await s.click('details','EXT-unspecified');html=s.dialogs.at(-1).innerHTML;assert.match(html,/Quantity not provided/);assert.match(html,/Rental duration not provided/);assert.doesNotMatch(html+s.table(),/undefined|NaN|0 hours|Not provided hours|\[object Object\]/);s.api.destroy();
 });

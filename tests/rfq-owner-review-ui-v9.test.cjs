@@ -23,7 +23,7 @@ const tableBody = html => html.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
 test('Reviewing RFQ row and detail retain an explicit not-public review state', () => {
   const f = fixture([requirement()]), page = tableBody(f.P.page(f.c)), html = detail(f);
   assert.match(page, /<span class="tag">Reviewing<\/span>/);
-  assert.match(page, /data-act="view-rfq" data-id="RFQ-REVIEW-1"/);
+  assert.match(page, /data-act="proc-request-details" data-id="RFQ-REVIEW-1"/);
   assert.match(html, /class="callout proc-reviewing"/);
   assert.match(html, /Operations is reviewing your RFQ/);
   assert.match(html, /not visible in the public market yet/);

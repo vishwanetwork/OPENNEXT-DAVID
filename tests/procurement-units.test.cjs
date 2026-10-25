@@ -58,7 +58,8 @@ test('real UI cannot fabricate payment, delivery, instance activation or seller 
 test('new RFQ has country selector and blank customer specifications',()=>{
  const f=fixture(),html=f.P.modal(f.c,'rfq-form',{}).body;
  assert.match(html,/select[^>]+name="region"/);assert.match(html,/United States/);
- for(const field of ['title','project','network','storage','image','sla'])assert.match(html,new RegExp('name="'+field+'"[^>]*value=""'));
+ for(const field of ['title','project'])assert.doesNotMatch(html,new RegExp('name="'+field+'"'));
+ for(const field of ['vcpu','memory','network','storage','image','sla'])assert.match(html,new RegExp('name="'+field+'"[^>]*value=""'));
  assert.doesNotMatch(html,/Nova|vishwalab|400 Gb\/s|1 TB NVMe|Ubuntu 24/);
 });
 test('budget slider uses the selected GPU observed range and preserves manual entry',()=>{

@@ -39,7 +39,7 @@ async function setup(t) {
   return {request, calls};
 }
 
-test('standalone console retains all dependencies and never serves them on public hosts', async t => {
+test('standalone console retains dependencies while only pure shared renderers are public', async t => {
   const {request} = await setup(t);
   const admin = await request('/', {host: 'admin.test'});
   assert.equal(admin.status, 200);
@@ -47,7 +47,8 @@ test('standalone console retains all dependencies and never serves them on publi
   for (const match of admin.text.matchAll(/(?:src|href)="([^"]+)"/g)) {
     const asset = new URL(match[1], 'https://admin.test/').pathname;
     assert.equal((await request(asset, {host: 'admin.test'})).status, 200, asset);
-    for (const host of ['site.test', 'terminal.test']) assert.equal((await request(asset, {host})).status, 404, host + asset);
+    const shared=['/OpenNEXT-rfq-details.js','/OpenNEXT-rfq-details.css'].includes(asset);
+    for (const host of ['site.test', 'terminal.test']) assert.equal((await request(asset, {host})).status, shared?200:404, host + asset);
   }
   for (const asset of ['/OpenNEXT-contact.js', '/OpenNEXT-exchange.js', '/OpenNEXT-procurement.js', '/OpenNEXT-billing.js', '/OpenNEXT-capacity-chart.js']) {
     assert.equal((await request(asset, {host: 'terminal.test'})).status, 200, asset);

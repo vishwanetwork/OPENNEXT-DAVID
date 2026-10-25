@@ -6,6 +6,16 @@
   const returnToPurchase=c=>Boolean(root.OpenNEXTSpotMarket?.hasPending?.(c));
   const purchaseBack=c=>returnToPurchase(c)?'<button class="btn secondary" type="button" data-act="spot-checkout-resume">Back to purchase</button>':'';
   function safeCheckoutUrl(value){const url=new URL(value);if(url.protocol!=='https:'||url.username||url.password)throw Error('Invalid payment checkout URL.');return url.href;}
+  function selectCustomAmount(event){
+    const input=event.target;
+    if(input?.name!=='custom')return;
+    const form=input.closest?.('form[data-form="payment-amount"]');
+    if(!form)return;
+    const other=form.querySelector('input[name="preset"][value="other"]');
+    if(other)other.checked=true;
+  }
+  root.document?.addEventListener?.('input',selectCustomAmount);
+  root.document?.addEventListener?.('change',selectCustomAmount);
   function modal(c,type,extra={}){
     if(type==='pay-start'||type==='topup'){
       const amount=Number(c.S.paymentDraft?.amount)||100,other=![100,500,1000].includes(amount);
@@ -26,7 +36,7 @@
     if(form.dataset.form==='payment-amount'){
       const amount=Number(data.preset==='other'?data.custom:data.preset);
       if(!Number.isFinite(amount)||amount<1||amount>100000||Math.abs(amount*100-Math.round(amount*100))>0.000001){c.toast('Enter an amount from $1.00 to $100,000.00 with no more than two decimal places.');return true;}
-      c.S.paymentDraft={amount,orderId:form.dataset.orderId||null,idempotencyKey:root.crypto.randomUUID()};c.open('payment-method');return true;
+      c.S.paymentDraft={amount:Math.round(amount*100)/100,orderId:form.dataset.orderId||null,idempotencyKey:root.crypto.randomUUID()};c.open('payment-method');return true;
     }
     if(form.dataset.form!=='payment-method')return false;
     const b=form.querySelector('button[type="submit"],button:not([type])'),error=form.querySelector('.payment-error'),draft=c.S.paymentDraft;

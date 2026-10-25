@@ -40,8 +40,9 @@
     term: 'All',
     showFilters: typeof scope.innerWidth !== 'number' || scope.innerWidth > 650,
     selected: {model: [], country: [], vcpu: [], memory: []},
-    search: {model: '', country: ''},
-    openGroups: ['model'],
+    tradeModel: null,
+    search: {model: '', tradeModel: '', country: ''},
+    openGroups: ['model', 'tradeModel'],
     groupingStepCents: 10,
     activityShow: ACTIVITY_SHOW_OPTIONS[0],
     range: '7D',
@@ -239,10 +240,25 @@
     return [...values].sort(group.numeric ? (a, b) => Number(a) - Number(b) : (a, b) => a.localeCompare(b));
   }
   function optionCount(group, value, rows) {
-    return attributeFiltered(rows, group.key).filter(row => String(row[group.key]) === String(value)).length;
+    return attributeFiltered(rows, group.key, {...state.selected, model: []}).filter(row => String(row[group.key]) === String(value)).length;
   }
   function selectedCount() {
-    return GROUPS.reduce((total, group) => total + state.selected[group.key].length, 0);
+    return GROUPS.reduce((total, group) => total + (group.key === 'model' && !state.panels.includes('index') ? 0 : state.selected[group.key].length), 0) +
+      (state.tradeModel && state.panels.some(panel => panel !== 'index') ? 1 : 0);
+  }
+  function tradeModels(rows) {
+    return [...new Set(rows.map(row => row.model).filter(Boolean).map(String))].sort((a, b) => a.localeCompare(b));
+  }
+  function synchronizeTradeModel(rows) {
+    const models = tradeModels(rows);
+    if (!models.includes(state.tradeModel)) {
+      state.tradeModel = models.find(model => model === 'H100 SXM') || models.find(model => model === 'H100') || models[0] || null;
+    }
+    return models;
+  }
+  function tradeFiltered(rows) {
+    if (!state.tradeModel) return [];
+    return attributeFiltered(rows, null, {...state.selected, model: [state.tradeModel]});
   }
   function recentWindow(rows, now = Date.now(), days = 7) {
     if (days === null || days === 'ALL') return rows.filter(row => row.settledAtTime <= now);
@@ -312,18 +328,31 @@
     const query = state.search[group.key] || '';
     const options = optionsFor(group, rows);
     const matching = options.filter(value => value.toLowerCase().includes(query.toLowerCase()));
+    const label = group.key === 'model' ? 'Index models' : group.label;
     return '<details class="onx-sa-filter-group" data-sa-group="' + group.key + '" ' + (state.openGroups.includes(group.key) ? 'open' : '') + '>' +
-      '<summary>' + esc(group.label) + '<span>' + (selected.length ? selected.length + ' selected' : 'All') + '</span>' + icon('chevron-down') + '</summary>' +
+      '<summary>' + esc(label) + '<span>' + (selected.length ? selected.length + ' selected' : 'All') + '</span>' + icon('chevron-down') + '</summary>' +
       '<div class="onx-sa-filter-options">' +
+      (group.key === 'model' ? '<p class="onx-sa-filter-scope">Index only · Multiple selections</p>' : '') +
       (group.searchable ? '<label class="onx-sa-search">' + icon('search') + '<span class="onx-sa-sr-only">Search ' + esc(group.label) + '</span><input type="search" data-sa-search="' + group.key + '" value="' + esc(query) + '" placeholder="Search ' + esc(group.label.toLowerCase()) + '"></label>' : '') +
       '<label class="onx-sa-check"><input type="checkbox" data-sa-all="' + group.key + '" ' + (selected.length ? '' : 'checked') + '><span>All</span><small>' + termFiltered(rows).length + '</small></label>' +
       options.map(value => '<label class="onx-sa-check" data-sa-option-row="' + esc(value.toLowerCase()) + '" ' + (query && !value.toLowerCase().includes(query.toLowerCase()) ? 'hidden' : '') + '><input type="checkbox" data-sa-option="' + group.key + '" value="' + esc(value) + '" ' + (selected.includes(value) ? 'checked' : '') + '><span>' + esc(value) + (group.suffix || '') + '</span><small>' + optionCount(group, value, rows) + '</small></label>').join('') +
       '<p class="onx-sa-no-options" ' + (matching.length ? 'hidden' : '') + '>No options found.</p></div></details>';
   }
+  function tradeModelFilter(ctx, rows) {
+    const esc = ctx.esc;
+    const models = tradeModels(rows);
+    const query = state.search.tradeModel.trim().toLowerCase();
+    return '<details class="onx-sa-filter-group" data-sa-group="tradeModel" ' + (state.openGroups.includes('tradeModel') ? 'open' : '') + '>' +
+      '<summary>Trade model<span>' + (state.tradeModel ? '1 selected' : 'No models') + '</span>' + icon('chevron-down') + '</summary>' +
+      '<div class="onx-sa-filter-options"><p class="onx-sa-filter-scope">Analytics &amp; Activities · Select one model</p>' +
+      '<label class="onx-sa-search">' + icon('search') + '<span class="onx-sa-sr-only">Search trade models</span><input type="search" data-sa-search="tradeModel" value="' + esc(state.search.tradeModel) + '" placeholder="Search models"></label>' +
+      '<div role="radiogroup" aria-label="Analytics and Activities model">' + models.map(model => '<label class="onx-sa-check" data-sa-option-row="' + esc(model.toLowerCase()) + '" ' + (query && !model.toLowerCase().includes(query) ? 'hidden' : '') + '><input type="radio" name="insight-trade-model" data-sa-trade-model value="' + esc(model) + '" ' + (state.tradeModel === model ? 'checked' : '') + '><span>' + esc(model) + '</span></label>').join('') + '</div>' +
+      '<p class="onx-sa-no-options" ' + (models.some(model => model.toLowerCase().includes(query)) ? 'hidden' : '') + '>No options found.</p></div></details>';
+  }
 
   function analyticsPanel(ctx, rows) {
     const stats = priceBands(rows, state.groupingStepCents);
-    return '<section class="onx-sa-panel onx-sa-analytics" aria-labelledby="onx-sa-analytics-title"><header class="onx-sa-panel-head"><h2 id="onx-sa-analytics-title">Analytics</h2><span class="onx-sa-price-unit">USD / GPU-hour</span></header>' +
+    return '<section class="onx-sa-panel onx-sa-analytics" aria-labelledby="onx-sa-analytics-title"><header class="onx-sa-panel-head"><div><h2 id="onx-sa-analytics-title">Analytics</h2><span class="onx-sa-panel-model">' + ctx.esc(state.tradeModel || 'No model available') + '</span></div><span class="onx-sa-price-unit">USD / GPU-hour</span></header>' +
       '<div class="onx-sa-metrics"><div><small>COMPLETED TRADES</small><strong>' + integer(stats.trades) + '</strong></div><div><small>TRADED GPUs</small><strong>' + integer(stats.totalGpus) + '</strong></div><div><small>GPU-WEIGHTED AVG.</small><strong>' + (stats.weightedAverageCents === null ? '—' : usdCents(stats.weightedAverageCents)) + '</strong></div></div>' +
       '<div class="onx-sa-band-toolbar"><span>Band size</span><div role="group" aria-label="Executed price band size">' + GROUPING_STEPS.map(step => '<button type="button" data-sa-step="' + step + '" class="' + (state.groupingStepCents === step ? 'active' : '') + '" aria-pressed="' + (state.groupingStepCents === step) + '">' + stepLabel(step) + '</button>').join('') + '</div><span class="onx-sa-concentration">Largest band · ' + (stats.topShare * 100).toFixed(1) + '% of GPUs</span></div>' +
       '<div class="onx-sa-band-head" aria-hidden="true"><span>Executed band</span><span>GPU concentration</span><span>Trades</span><span>GPUs</span></div>' +
@@ -336,7 +365,7 @@
   function activitiesPanel(ctx, matchingRows) {
     const esc = ctx.esc;
     const latest = latestMatching(matchingRows, state.activityShow);
-    return '<section class="onx-sa-panel onx-sa-activities" aria-labelledby="onx-sa-activities-title"><header class="onx-sa-panel-head"><h2 id="onx-sa-activities-title">Activities</h2><label class="onx-sa-show-control"><span>Show</span><select data-sa-show aria-label="Show activities">' + ACTIVITY_SHOW_OPTIONS.map(limit => '<option value="' + limit + '" ' + (state.activityShow === limit ? 'selected' : '') + '>' + limit + '</option>').join('') + '</select></label></header>' +
+    return '<section class="onx-sa-panel onx-sa-activities" aria-labelledby="onx-sa-activities-title"><header class="onx-sa-panel-head"><div><h2 id="onx-sa-activities-title">Activities</h2><span class="onx-sa-panel-model">' + esc(state.tradeModel || 'No model available') + '</span></div><label class="onx-sa-show-control"><span>Show</span><select data-sa-show aria-label="Show activities">' + ACTIVITY_SHOW_OPTIONS.map(limit => '<option value="' + limit + '" ' + (state.activityShow === limit ? 'selected' : '') + '>' + limit + '</option>').join('') + '</select></label></header>' +
       '<div class="onx-sa-activity-head" aria-hidden="true"><span>Price</span><span>Model / Country</span><span>Capacity / Term</span><span>Time / Order ID</span></div>' +
       '<div class="onx-sa-activity-list">' + (latest.length ? latest.map(row => '<article class="onx-sa-activity-row"><div class="onx-sa-activity-price"><strong>' + usdCents(row.priceCents) + '</strong><small>USD/GPU-hour</small></div><div><strong>' + esc(row.model) + '</strong><small>' + esc(row.country) + '</small></div><div><strong>' + integer(row.gpuCount) + ' GPU' + (row.gpuCount === 1 ? '' : 's') + '</strong><small>' + esc(row.term) + (row.vcpu === null ? '' : ' · ' + integer(row.vcpu) + ' vCPU') + (row.memory === null ? '' : ' · ' + row.memory + ' GB/GPU') + '</small></div><div><time datetime="' + esc(row.settledAt) + '">' + esc(formatTime(row.settledAtTime)) + '</time><code>' + esc(row.id) + '</code></div></article>').join('') : '<div class="onx-sa-empty"><strong>No completed activities match</strong><span>Adjust the filters or choose another market term.</span></div>') + '</div>' +
       '<footer class="onx-sa-panel-foot"><span>Showing ' + latest.length + ' of ' + matchingRows.length + ' in the selected range</span><button type="button" class="text-link" data-sa-history>Request older activity</button></footer></section>';
@@ -374,7 +403,8 @@
     const rows = settlementRows().filter(row => row.settledAtTime <= now);
     const filterRows = rows.concat(indexFilterRows(ctx));
     pruneSelections(filterRows);
-    const matching = attributeFiltered(rows);
+    synchronizeTradeModel(filterRows);
+    const matching = tradeFiltered(rows);
     const options = insightOptions();
     const windowed = recentWindow(matching, now, options.days);
     const visiblePanels = PANELS.filter(panel => state.panels.includes(panel));
@@ -384,7 +414,10 @@
       '<header class="onx-sa-page-head"><div><h1>Market Insight</h1><p>Market indexes, executed-price analytics and anonymized GPU capacity activity.</p></div>' + (ctx.S?.role === 'Buyer' ? '<button type="button" class="btn onx-sa-list-supply" data-nav="market">Browse GPU Market</button>' : '<button type="button" class="btn onx-sa-list-supply" data-act="new-supply">' + icon('plus') + 'List my supply</button>') + '</header>' +
       '<div class="onx-sa-termbar"><div class="onx-sa-tabs" role="tablist" aria-label="Market term">' + TERMS.map(term => '<button type="button" role="tab" data-sa-term="' + term + '" aria-selected="' + (state.term === term) + '" class="' + (state.term === term ? 'active' : '') + '">' + (term === 'All' ? 'All terms' : term) + '</button>').join('') + '</div></div>' +
       '<div class="onx-sa-toolbar"><button type="button" class="btn secondary small" data-sa-toggle-filters aria-expanded="' + state.showFilters + '">' + icon('sliders-horizontal') + 'Filters' + (selectedCount() ? ' · ' + selectedCount() : '') + '</button>' + panelControls() + rangeControls() + '</div>' +
-      '<div class="onx-sa-layout ' + (state.showFilters ? '' : 'filters-hidden') + '"><aside class="onx-sa-filters" ' + (state.showFilters ? '' : 'hidden') + ' aria-label="Market insight filters"><div class="onx-sa-filter-head"><strong>Filter market data</strong><button type="button" data-sa-clear>Clear</button></div>' + GROUPS.map(group => filterGroup(ctx, group, filterRows)).join('') + '</aside><div class="' + panelClasses + '" data-visible-count="' + visiblePanels.length + '">' + panels + '</div></div>' +
+      '<div class="onx-sa-layout ' + (state.showFilters ? '' : 'filters-hidden') + '"><aside class="onx-sa-filters" ' + (state.showFilters ? '' : 'hidden') + ' aria-label="Market insight filters"><div class="onx-sa-filter-head"><strong>Filter market data</strong><button type="button" data-sa-clear>Clear</button></div>' +
+      (visiblePanels.includes('index') ? filterGroup(ctx, GROUPS[0], filterRows) : '') +
+      (visiblePanels.some(panel => panel !== 'index') ? tradeModelFilter(ctx, filterRows) : '') +
+      GROUPS.slice(1).map(group => filterGroup(ctx, group, filterRows)).join('') + '</aside><div class="' + panelClasses + '" data-visible-count="' + visiblePanels.length + '">' + panels + '</div></div>' +
       historyModal() + '</section>';
   }
 
@@ -438,6 +471,11 @@
         }
         state.activityShow = limit;
         refresh(ctx, '[data-sa-show]');
+      } else if (target.hasAttribute('data-sa-trade-model')) {
+        const available = tradeModels(settlementRows().concat(indexFilterRows(ctx)));
+        if (!target.checked || !available.includes(target.value)) return;
+        state.tradeModel = target.value;
+        refresh(ctx, '[data-sa-trade-model][value="' + selectorEscape(target.value) + '"]');
       } else if (target.dataset.saOption) {
         const key = target.dataset.saOption;
         const current = state.selected[key];
@@ -486,7 +524,7 @@
       } else if (button.hasAttribute('data-sa-clear')) {
         state.term = 'All';
         state.selected = {model: [], country: [], vcpu: [], memory: []};
-        state.search = {model: '', country: ''};
+        state.search = {model: '', tradeModel: '', country: ''};
         refresh(ctx, '[data-sa-clear]');
       } else if (button.hasAttribute('data-sa-history')) {
         state.modal = 'history';

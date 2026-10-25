@@ -1,7 +1,6 @@
 (function (scope) {
   'use strict';
 
-  const FEE_RATE = 0.05;
   const PAGE_SIZE = 12;
   const TERMS = ['Spot', 'On-demand', 'Reserved'];
   const GROUPS = [
@@ -275,13 +274,25 @@
   const CHECKOUT_TTL=2*60*60*1000;
   let inputBound=false;
   function owner(ctx){const user=ctx.S?.user;return user?.id&&ctx.S.auth!==false?(scope.OpenNEXTDemo?.active||user.demo?'demo:':'account:')+user.id+':'+ctx.S.role:null;}
-  function checkoutTotals(row){const baseCents=Math.round(row.instanceHourly*100),feeCents=Math.round(baseCents*FEE_RATE);return {currency:'USD',unit:'node-hour',baseCents,feeCents,totalCents:baseCents+feeCents};}
+  function durationHours(value){
+    const text=String(value??'').trim(),hours=Number(text);
+    if(!/^\d+(?:\.\d{1,2})?$/.test(text)||!Number.isFinite(hours)||hours<=0)throw new Error('Enter a usage duration greater than zero, with up to two decimal places.');
+    return hours;
+  }
+  function checkoutTotals(row,hours=1){
+    hours=durationHours(hours);
+    const hourlyCents=Math.round(row.instanceHourly*100),hundredthHours=Math.round(hours*100),durationProduct=hourlyCents*hundredthHours;
+    // Integer hundredth-hours preserve half-cent rounding; one twentieth is the aggregate 5% fee.
+    const baseCents=Math.round(durationProduct/100),feeCents=Math.round(baseCents/20),totalCents=baseCents+feeCents;
+    if(![hourlyCents,hundredthHours,durationProduct,baseCents,feeCents,totalCents].every(Number.isSafeInteger)||hourlyCents<=0||baseCents<=0)throw new Error('Enter a valid duration with a payable total.');
+    return {currency:'USD',durationHours:hours,hourlyCents,baseCents,feeCents,totalCents};
+  }
   function signature(row){return JSON.stringify([row.id,row.term,row.model,row.country,row.gpuCount,row.vcpu,row.memory,row.instanceHourly,row.perGpuHourly,row.sourceKind,row.previewOnly]);}
   function storageKey(ctx){const id=owner(ctx);return id?CHECKOUT_STORAGE+encodeURIComponent(id):null;}
   function clearStored(ctx){try{const key=storageKey(ctx);if(key)scope.sessionStorage?.removeItem(key);}catch{}}
   function savePending(ctx){
     const draft=state.checkout,key=storageKey(ctx);if(!draft||!key||draft.owner!==owner(ctx)||draft.stage==='completed')return;
-    try{scope.sessionStorage?.setItem(key,JSON.stringify({version:1,owner:draft.owner,offerId:draft.row.id,signature:signature(draft.row),sshPublicKey:draft.sshPublicKey||'',idempotencyKey:draft.idempotencyKey,createdAt:draft.createdAt}));}catch{ctx.toast('The purchase is retained in this tab. Browser storage is unavailable.');}
+    try{scope.sessionStorage?.setItem(key,JSON.stringify({version:2,owner:draft.owner,offerId:draft.row.id,signature:signature(draft.row),durationHours:durationHours(draft.hoursRaw),sshPublicKey:draft.sshPublicKey||'',idempotencyKey:draft.idempotencyKey,paymentSubmitted:!!draft.paymentSubmitted,createdAt:draft.createdAt}));}catch{ctx.toast('The purchase is retained in this tab. Browser storage is unavailable.');}
   }
   function pending(ctx){
     const id=owner(ctx);if(!id)return null;
@@ -289,38 +300,49 @@
     state.checkout=null;
     try{
       const stored=JSON.parse(scope.sessionStorage?.getItem(storageKey(ctx))||'null');
-      if(!stored||stored.version!==1||stored.owner!==id||!Number.isFinite(stored.createdAt)||Date.now()-stored.createdAt>CHECKOUT_TTL||stored.createdAt>Date.now()+60000||typeof stored.idempotencyKey!=='string'||stored.idempotencyKey.length>100)return null;
+      if(!stored||stored.version!==2||stored.owner!==id||!Number.isFinite(stored.createdAt)||Date.now()-stored.createdAt>CHECKOUT_TTL||stored.createdAt>Date.now()+60000||typeof stored.idempotencyKey!=='string'||stored.idempotencyKey.length>100)return null;
       const row=inventoryState().rows.find(item=>item.id===stored.offerId&&item.term==='Spot');if(!row)return null;
       const validator=scope.OpenNEXTAccountProfile?.validatePublicKey;
       const ssh=stored.sshPublicKey&&validator?validator(stored.sshPublicKey).publicKey:'';
-      state.checkout={owner:id,key:row._key,row:{...row},stage:'payment',sshPublicKey:ssh,sshRaw:ssh,idempotencyKey:stored.idempotencyKey,createdAt:stored.createdAt,balanceNeedsRefresh:true,reviewRequired:stored.signature!==signature(row),message:'',busy:false};
+      const hours=durationHours(stored.durationHours);checkoutTotals(row,hours);
+      state.checkout={owner:id,key:row._key,row:{...row},stage:'payment',hoursRaw:String(hours),durationHours:hours,sshPublicKey:ssh,sshRaw:ssh,idempotencyKey:stored.idempotencyKey,paymentSubmitted:stored.paymentSubmitted===true,createdAt:stored.createdAt,balanceNeedsRefresh:true,reviewRequired:stored.signature!==signature(row),message:'',busy:false};
     }catch{clearStored(ctx);}
     return state.checkout;
   }
   function hasPending(ctx){const draft=pending(ctx);return Boolean(draft&&draft.stage!=='completed');}
   function beginCheckout(ctx,row){
     if(!owner(ctx)||ctx.S.role!=='Buyer'){ctx.toast('Sign in to a Buyer account before purchasing capacity.');return;}
-    clearStored(ctx);state.checkout={owner:owner(ctx),key:row._key,row:{...row},stage:'review',sshRaw:'',sshPublicKey:'',idempotencyKey:scope.crypto.randomUUID(),createdAt:Date.now(),balanceNeedsRefresh:false,reviewRequired:false,message:'',busy:false};
+    if(pending(ctx)?.paymentSubmitted){ctx.toast('A payment is awaiting confirmation. Check its order status before starting another purchase.');return;}
+    clearStored(ctx);state.checkout={owner:owner(ctx),key:row._key,row:{...row},stage:'review',hoursRaw:'1',durationHours:1,sshRaw:'',sshPublicKey:'',idempotencyKey:scope.crypto.randomUUID(),createdAt:Date.now(),balanceNeedsRefresh:false,reviewRequired:false,message:'',busy:false};
     ctx.open('spot-review');
   }
   function liveRow(ctx){
     const draft=pending(ctx);if(!draft)throw new Error('This purchase is no longer available. Choose the offer again.');
     const row=inventoryState().rows.find(item=>item.id===draft.row.id&&item.term==='Spot');
     if(!row)throw new Error('This Spot offer is no longer available. Choose another offer.');
+    if(draft.paymentSubmitted&&(draft.reviewRequired||signature(row)!==signature(draft.row)))throw new Error('The offer changed while payment confirmation is pending. Check your order status before trying again.');
     if(signature(row)!==signature(draft.row)){
       draft.row={...row};draft.key=row._key;draft.reviewRequired=true;draft.stage='review';draft.message='This offer has changed. Review its current specifications and hourly price before continuing.';ctx.open('spot-review');throw new Error(draft.message);
     }
     return row;
   }
-  function hourlySummary(ctx,row){const total=checkoutTotals(row);return '<div class="onx-spot-purchase-resource"><h3>'+ctx.esc(row.model)+' · '+ctx.esc(row.country)+'</h3><p>'+row.gpuCount+' GPUs · '+(row.memory===null?'Memory to confirm':ctx.esc(row.memory)+' GB / GPU')+' · '+(row.vcpu===null?'vCPU to confirm':ctx.esc(row.vcpu)+' vCPU')+'</p></div><div class="onx-spot-checkout-summary"><p><span>/ hour</span><strong>'+usd(total.baseCents/100)+'</strong></p><p><span>OpenNEXT Fee 5%</span><strong>'+usd(total.feeCents/100)+' / hour</strong></p><p class="onx-spot-checkout-total"><span>Total</span><strong>'+usd(total.totalCents/100)+' <small>/ hour</small></strong></p></div>';}
+  function totalsMarkup(row,hours){
+    let total;try{total=checkoutTotals(row,hours);}catch{}
+    return '<p><span>/ hour</span><strong>'+usd(row.instanceHourly)+'</strong></p><p><span>Compute / hour'+(total?'<small>'+total.durationHours+' '+(total.durationHours===1?'hour':'hours')+' × '+usd(total.hourlyCents/100)+' / hour</small>':'')+'</span><strong data-spot-compute>'+(total?usd(total.baseCents/100):'—')+'</strong></p><p><span>OpenNEXT Fee 5%</span><strong data-spot-fee>'+(total?usd(total.feeCents/100):'—')+'</strong></p><p class="onx-spot-checkout-total"><span>Total</span><strong data-spot-total>'+(total?usd(total.totalCents/100):'—')+'</strong></p>';
+  }
+  function hourlySummary(ctx,row,draft,editable=false){
+    return '<div class="onx-spot-purchase-resource"><h3>'+ctx.esc(row.model)+' · '+ctx.esc(row.country)+'</h3><p>'+row.gpuCount+' GPUs · '+(row.memory===null?'Memory to confirm':ctx.esc(row.memory)+' GB / GPU')+' · '+(row.vcpu===null?'vCPU to confirm':ctx.esc(row.vcpu)+' vCPU')+'</p></div>'+(editable?'<label class="form-label onx-spot-duration">Usage duration <span class="muted">(hours)</span><input class="field" type="number" name="durationHours" data-spot-hours min="0.01" step="0.01" inputmode="decimal" required value="'+ctx.esc(draft.hoursRaw)+'" placeholder="Enter hours"></label>':'')+'<div class="onx-spot-checkout-summary" data-spot-checkout-totals aria-live="polite">'+totalsMarkup(row,draft.hoursRaw)+'</div>';
+  }
   function availableCredit(ctx){const value=Number(ctx.S.balance);return Number.isFinite(value)&&value>=0?value:null;}
+  function insufficientCredit(ctx,draft){const balance=availableCredit(ctx);return balance!==null&&Math.round(balance*100)<checkoutTotals(draft.row,draft.hoursRaw).totalCents;}
+  function creditMarkup(ctx,draft){const credit=availableCredit(ctx),short=insufficientCredit(ctx,draft);return '<div class="onx-spot-credit-balance'+(short?' is-insufficient':'')+'"><span>Available Credit</span><strong>'+(credit===null?'—':usd(credit))+'</strong></div>'+(short?'<p class="onx-spot-credit-shortfall">Insufficient Credit. Add credit to complete this purchase.</p>':'');}
   function modal(ctx,type){
     if(!['spot-review','spot-payment-choice','spot-credit-confirm','spot-purchase-complete'].includes(type))return null;
     const draft=pending(ctx);if(!draft)return {title:'Purchase unavailable',body:'<p class="form-note">Choose an available Spot offer to start a purchase.</p>'};
-    const row=draft.row,total=checkoutTotals(row),credit=availableCredit(ctx),notice=draft.message?'<p class="onx-spot-purchase-note" role="status">'+ctx.esc(draft.message)+'</p>':'';
-    if(type==='spot-review')return {title:'Review Spot purchase',body:'<form data-form="spot-checkout-review" class="onx-spot-purchase" novalidate>'+hourlySummary(ctx,row)+'<p class="form-note">Starts immediately after payment confirmation.</p>'+notice+'<label class="form-label">SSH Public Key <span class="muted">(optional)</span><textarea class="field" name="sshPublicKey" data-spot-ssh rows="4" maxlength="16384" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste your SSH public key">'+ctx.esc(draft.sshRaw||'')+'</textarea></label><p class="form-note">Add your SSH public key now to access your instance as soon as it is ready, or set it up later in Instances.</p><p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-cancel">Cancel</button><button type="submit" class="btn">Proceed to payment</button></div></form>'};
-    if(type==='spot-payment-choice')return {title:'Choose payment',body:'<div class="onx-spot-purchase">'+hourlySummary(ctx,row)+'<p class="form-note">This is an hourly rate, not a prepaid duration or deposit. Charges are based on actual metered usage.</p>'+notice+'<div class="onx-spot-payment-options"><button type="button" data-act="spot-checkout-credit" '+(draft.busy?'disabled':'')+'><span><strong>Pay by Credit</strong><small>Available: '+(credit===null?'—':usd(credit))+'</small></span><span aria-hidden="true">→</span></button><button type="button" data-act="spot-checkout-direct"><span><strong>Direct Pay</strong><small>Pay with a payment provider</small></span><span aria-hidden="true">→</span></button></div><p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-review">Back to review</button></div></div>'};
-    if(type==='spot-credit-confirm')return {title:'Confirm Credit payment',body:'<div class="onx-spot-purchase">'+hourlySummary(ctx,row)+'<p class="form-note">Available Credit: '+(credit===null?'—':usd(credit))+'. Authorize metered Spot usage at the hourly rate above. No fixed rental duration or prepaid deposit is selected.</p><p class="form-note">Spot capacity can be interrupted. Provisioning and billing begin only after the backend confirms your order.</p>'+notice+'<p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-payment">Back</button><button type="button" class="btn" data-act="spot-checkout-authorize" '+(draft.busy?'disabled':'')+'>Confirm Credit payment</button></div></div>'};
+    const row=draft.row,credit=availableCredit(ctx),notice=draft.message?'<p class="onx-spot-purchase-note" role="status">'+ctx.esc(draft.message)+'</p>':'';
+    if(type==='spot-review')return {title:'Review Spot purchase',body:'<form data-form="spot-checkout-review" class="onx-spot-purchase" novalidate>'+hourlySummary(ctx,row,draft,true)+notice+'<label class="form-label">SSH Public Key <span class="muted">(optional)</span><textarea class="field" name="sshPublicKey" data-spot-ssh rows="4" maxlength="16384" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste your SSH public key">'+ctx.esc(draft.sshRaw||'')+'</textarea></label><p class="form-note">Add your SSH public key now to access your instance as soon as it is ready, or set it up later in Instances.</p><p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-cancel">Cancel</button><button type="submit" class="btn">Proceed to payment</button></div></form>'};
+    if(type==='spot-payment-choice')return {title:'Choose payment',body:'<div class="onx-spot-purchase">'+hourlySummary(ctx,row,draft)+notice+'<div class="onx-spot-payment-options"><button type="button" data-act="spot-checkout-credit" '+(draft.busy?'disabled':'')+'><span><strong>Pay by Credit</strong><small class="onx-spot-credit-available'+(insufficientCredit(ctx,draft)?' is-insufficient':'')+'">Available Credit: '+(credit===null?'—':usd(credit))+'</small></span><span aria-hidden="true">→</span></button><button type="button" data-act="spot-checkout-direct"><span><strong>Direct Pay</strong><small>Pay with a payment provider</small></span><span aria-hidden="true">→</span></button></div><p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-review">Back to review</button></div></div>'};
+    if(type==='spot-credit-confirm')return {title:'Confirm Credit payment',body:'<div class="onx-spot-purchase">'+hourlySummary(ctx,row,draft)+creditMarkup(ctx,draft)+notice+'<p class="onx-spot-purchase-error" data-spot-checkout-error role="alert"></p><div class="modal-footer"><button type="button" class="btn secondary" data-act="spot-checkout-payment">Back</button><button type="button" class="btn" data-act="'+(insufficientCredit(ctx,draft)?'spot-checkout-deposit':'spot-checkout-authorize')+'" '+(draft.busy?'disabled':'')+'>'+(insufficientCredit(ctx,draft)?'Deposit Credit':'Confirm Credit payment')+'</button></div></div>'};
     return {title:'Purchase confirmed',body:'<div class="onx-spot-purchase"><p>Your order was confirmed by OpenNEXT.</p><p class="form-note">Order '+ctx.esc(draft.orderId||'')+'. Provisioning updates will appear in Instances.</p><div class="modal-footer"><button type="button" class="btn" data-act="spot-checkout-instances">View Instances</button></div></div>'};
   }
   function showError(ctx,message){const node=scope.document?.querySelector('[data-spot-checkout-error]');if(node)node.textContent=message;ctx.toast(message);}
@@ -354,32 +376,39 @@
       const balance=draft.balanceNeedsRefresh?await refreshCredit(ctx):availableCredit(ctx);
       if(pending(ctx)!==draft)return;const fresh=liveRow(ctx);if(draft.reviewRequired){ctx.open('spot-review');return;}
       if(balance===null)throw new Error('Your available Credit has not been confirmed.');
-      if(Math.round(balance*100)<checkoutTotals(fresh).totalCents){openTopup(ctx);return;}
+      checkoutTotals(fresh,draft.hoursRaw);
       draft.stage='confirm';draft.message='';ctx.open('spot-credit-confirm');
-    }catch(error){showError(ctx,error.message);}finally{draft.busy=false;scope.document?.querySelectorAll('[data-act="spot-checkout-credit"],[data-act="spot-checkout-authorize"]').forEach(button=>button.disabled=false);}
+    }catch(error){showError(ctx,error.message);}finally{draft.busy=false;scope.document?.querySelectorAll('[data-act="spot-checkout-credit"],[data-act="spot-checkout-authorize"],[data-act="spot-checkout-deposit"]').forEach(button=>button.disabled=false);}
   }
   async function authorizeCredit(ctx){
     const draft=pending(ctx);if(!draft||draft.busy)return;draft.busy=true;
     const button=scope.document?.querySelector('[data-act="spot-checkout-authorize"]');if(button)button.disabled=true;
     try{
-      if(draft.stage!=='confirm')throw new Error('Confirm the hourly purchase details before authorizing payment.');
+      if(draft.stage!=='confirm')throw new Error('Confirm the purchase duration and total before authorizing payment.');
       const row=liveRow(ctx);if(ctx.S.role!=='Buyer')throw new Error('A Buyer account is required to purchase capacity.');if(draft.reviewRequired)throw new Error('Review the updated offer before authorizing payment.');
+      const confirmedHours=durationHours(draft.hoursRaw),confirmedSsh=draft.sshPublicKey,expectedSignature=signature(row),expectedPricing=checkoutTotals(row,confirmedHours);
+      const confirmDetails=()=>{if(durationHours(draft.hoursRaw)!==confirmedHours||draft.sshPublicKey!==confirmedSsh)throw new Error('The purchase duration or SSH key changed. Review the updated purchase before paying.');};
       if(scope.OpenNEXTDemo?.active||ctx.S.user?.demo||row.previewOnly||row.sourceKind!=='agent'||draft.row.previewOnly||draft.row.sourceKind!=='agent')throw new Error('This purchase flow is for testing only. No Credit was charged and no order or instance was created.');
       const balance=await refreshCredit(ctx);
-      if(Math.round(balance*100)<checkoutTotals(row).totalCents){openTopup(ctx);return;}
-      if(typeof scope.OpenNEXTSpotCheckout?.beginMeteredPurchase!=='function')throw new Error('Credit payment is not connected yet. No Credit was charged and no order was created.');
-      const expectedSignature=signature(draft.row),ssh=await validateSsh(draft.sshPublicKey);
+      confirmDetails();
+      if(Math.round(balance*100)<expectedPricing.totalCents){draft.busy=false;ctx.open('spot-credit-confirm');return;}
+      if(typeof scope.OpenNEXTSpotCheckout?.beginPurchase!=='function')throw new Error('Credit payment is not connected yet. No Credit was charged and no order was created.');
+      const ssh=await validateSsh(confirmedSsh);
       if(pending(ctx)!==draft||owner(ctx)!==draft.owner)return;
+      confirmDetails();
       const fresh=liveRow(ctx);if(draft.reviewRequired||signature(fresh)!==expectedSignature)throw new Error('The offer changed during validation. Review its current price before paying.');
-      // The backend must authorize the session, lock the current offer/rate, apply
-      // idempotency, check funds, provision and meter. No client ledger changes.
+      // The backend must authorize the session, lock the offer, independently
+      // calculate the duration subtotal and 5% fee, check funds and apply idempotency.
+      // This duration-based contract must not fall back to the old metered adapter.
       // getCreditBalance() -> {confirmed:true,accountId,currency:'USD',availableCredit}
-      // beginMeteredPurchase({offerId,expectedHourly,sshPublicKey,idempotencyKey})
-      // -> {confirmed:true,offerId,orderId}. No assumed duration is submitted.
-      savePending(ctx);
-      const result=await scope.OpenNEXTSpotCheckout.beginMeteredPurchase({offerId:fresh.id,expectedHourly:checkoutTotals(fresh),sshPublicKey:ssh||null,idempotencyKey:draft.idempotencyKey});
+      // beginPurchase({pricingVersion:'duration-v1',offerId,durationHours,
+      //   expectedPricing:{currency,hourlyCents,baseCents,feeCents,totalCents,durationHours},
+      //   sshPublicKey,idempotencyKey}) -> {confirmed:true,offerId,orderId,
+      //   currency:'USD',durationHours,totalCents}. No client ledger changes.
+      draft.paymentSubmitted=true;savePending(ctx);
+      const result=await scope.OpenNEXTSpotCheckout.beginPurchase({pricingVersion:'duration-v1',offerId:fresh.id,durationHours:expectedPricing.durationHours,expectedPricing,sshPublicKey:ssh||null,idempotencyKey:draft.idempotencyKey});
       if(owner(ctx)!==draft.owner||pending(ctx)!==draft)return;
-      if(result?.confirmed!==true||result.offerId!==fresh.id||typeof result.orderId!=='string'||!result.orderId||result.orderId.length>200)throw new Error('The purchase has not been confirmed. Check your order status before trying again.');
+      if(result?.confirmed!==true||result.offerId!==fresh.id||typeof result.orderId!=='string'||!result.orderId||result.orderId.length>200||result.currency!=='USD'||result.durationHours!==expectedPricing.durationHours||result.totalCents!==expectedPricing.totalCents)throw new Error('The purchase total and duration have not been confirmed. Check your order status before trying again.');
       draft.orderId=result.orderId;draft.stage='completed';clearStored(ctx);ctx.open('spot-purchase-complete');
     }catch(error){showError(ctx,error.message);}finally{draft.busy=false;if(button?.isConnected)button.disabled=false;}
   }
@@ -388,10 +417,13 @@
     const draft=pending(ctx);
     if(act==='spot-checkout-resume'){resumeCheckout(ctx);return true;}
     if(!draft){ctx.toast('Choose a Spot offer to start a purchase.');return true;}
+    if(draft.busy){ctx.toast('Please wait for the current payment step to finish.');return true;}
+    if(draft.paymentSubmitted&&['spot-checkout-cancel','spot-checkout-review'].includes(act)){ctx.toast('Payment confirmation is pending. Check your order status before changing or cancelling this purchase.');return true;}
     if(act==='spot-checkout-cancel'){clearStored(ctx);state.checkout=null;ctx.S.modal=null;ctx.render();return true;}
     if(act==='spot-checkout-review'){draft.stage='review';draft.message='';ctx.open('spot-review');return true;}
     if(act==='spot-checkout-payment'){draft.stage='payment';draft.message='';ctx.open('spot-payment-choice');return true;}
     if(act==='spot-checkout-credit'){chooseCredit(ctx);return true;}
+    if(act==='spot-checkout-deposit'){if(draft.stage==='confirm'&&!draft.busy)openTopup(ctx);return true;}
     if(act==='spot-checkout-direct'){showError(ctx,'Direct Pay is not connected yet. No payment was taken and no order was created.');return true;}
     if(act==='spot-checkout-authorize'){authorizeCredit(ctx);return true;}
     if(act==='spot-checkout-instances'){state.checkout=null;ctx.go('instances');return true;}
@@ -399,7 +431,16 @@
   }
   async function reviewPurchase(ctx,form,data){
     const draft=pending(ctx),button=form.querySelector('[type="submit"]');if(!draft||draft.busy)return;draft.busy=true;if(button)button.disabled=true;
-    try{const reviewedSignature=signature(liveRow(ctx)),ssh=await validateSsh(data.sshPublicKey);if(pending(ctx)!==draft)return;const currentRow=liveRow(ctx);if(signature(currentRow)!==reviewedSignature)throw new Error('The offer changed during validation. Review the updated price before continuing.');draft.sshPublicKey=ssh;draft.sshRaw=ssh;draft.reviewRequired=false;draft.message='';draft.stage='payment';draft.busy=false;ctx.open('spot-payment-choice');}
+    try{
+      if(draft.paymentSubmitted)throw new Error('Payment confirmation is pending. Check your order status before changing this purchase.');
+      const hours=durationHours(data.durationHours),reviewedSignature=signature(liveRow(ctx));checkoutTotals(draft.row,hours);
+      draft.hoursRaw=String(data.durationHours);const ssh=await validateSsh(data.sshPublicKey);
+      if(pending(ctx)!==draft)return;
+      const currentRow=liveRow(ctx);if(signature(currentRow)!==reviewedSignature)throw new Error('The offer changed during validation. Review the updated price before continuing.');
+      if(durationHours(draft.hoursRaw)!==hours)throw new Error('The usage duration changed. Review the total before continuing.');
+      if(draft.durationHours!==hours||draft.sshPublicKey!==ssh)draft.idempotencyKey=scope.crypto.randomUUID();
+      draft.durationHours=hours;draft.hoursRaw=String(hours);draft.sshPublicKey=ssh;draft.sshRaw=ssh;draft.reviewRequired=false;draft.message='';draft.stage='payment';draft.busy=false;ctx.open('spot-payment-choice');
+    }
     catch(error){const node=form.querySelector('[data-spot-checkout-error]');if(node&&form.isConnected)node.textContent=error.message;ctx.toast(error.message);}
     finally{draft.busy=false;if(button?.isConnected)button.disabled=false;}
   }
@@ -419,7 +460,7 @@
     const rangeEnd = Math.min(start + PAGE_SIZE, filtered.length);
     const esc = ctx.esc;
     return '<section class="onx-spot-market" data-spot-market data-source-kind="' + inventory.kind + '">' +
-      '<div class="onx-spot-market-head"><div><span class="eyebrow">AI CAPACITY MARKET</span><h1>GPU Market</h1></div><div class="onx-spot-tabs" role="tablist" aria-label="GPU market terms">' + TERMS.map(term => '<button type="button" role="tab" data-spot-term="' + term + '" aria-selected="' + (state.term === term) + '" class="' + (state.term === term ? 'active' : '') + '">' + term + '</button>').join('') + '</div></div>' +
+      '<div class="onx-spot-market-head"><div><span class="eyebrow">AI CAPACITY MARKET</span><h1>GPU Market</h1></div><div class="onx-spot-market-actions"><div class="onx-spot-tabs" role="tablist" aria-label="GPU market terms">' + TERMS.map(term => '<button type="button" role="tab" data-spot-term="' + term + '" aria-selected="' + (state.term === term) + '" class="' + (state.term === term ? 'active' : '') + '">' + term + '</button>').join('') + '</div><button type="button" class="btn small onx-spot-post-rfq" data-act="new-rfq">Post RFQ</button></div></div>' +
       '<div class="onx-spot-toolbar"><button type="button" class="btn secondary small" data-spot-toggle-filters aria-expanded="' + state.showFilters + '">' + icon('sliders-horizontal') + 'Filters' + (selectedCount() ? ' · ' + selectedCount() : '') + '</button><span class="onx-spot-result-count" role="status">' + filtered.length + ' offer' + (filtered.length === 1 ? '' : 's') + ' · ' + esc(state.term) + '</span><select class="field" data-spot-sort aria-label="Sort offers">' + SORTS.map(([value, label]) => '<option value="' + value + '" ' + (state.sort === value ? 'selected' : '') + '>' + label + '</option>').join('') + '</select><div class="onx-spot-view"><button type="button" class="icon-btn ' + (state.view === 'list' ? 'selected' : '') + '" data-spot-view="list" aria-label="List view" aria-pressed="' + (state.view === 'list') + '">' + icon('list') + '</button><button type="button" class="icon-btn ' + (state.view === 'cards' ? 'selected' : '') + '" data-spot-view="cards" aria-label="Card view" aria-pressed="' + (state.view === 'cards') + '">' + icon('layout-grid') + '</button></div></div>' +
       '<div class="onx-spot-layout ' + (state.showFilters ? '' : 'filters-hidden') + '"><aside class="onx-spot-filters" ' + (state.showFilters ? '' : 'hidden') + ' aria-label="Offer filters"><div class="onx-spot-filter-head"><strong>Filter offers</strong><button type="button" data-spot-reset>Reset</button></div>' + GROUPS.slice(0, 2).map(group => filterGroup(ctx, group, allRows)).join('') + priceFilter(ctx, allRows) + GROUPS.slice(2).map(group => filterGroup(ctx, group, allRows)).join('') + '</aside><section class="onx-spot-results" aria-label="' + esc(state.term) + ' GPU offers">' + (state.view === 'list' ? tableView(ctx, visible) : cardView(ctx, visible)) + '<footer class="onx-spot-pagination"><span>' + rangeStart + '–' + rangeEnd + ' of ' + filtered.length + ' offers</span><div><button type="button" class="icon-btn" data-spot-page="-1" aria-label="Previous page" ' + (state.page === 0 ? 'disabled' : '') + '>' + icon('chevron-left') + '</button><span>' + (state.page + 1) + ' / ' + pages + '</span><button type="button" class="icon-btn" data-spot-page="1" aria-label="Next page" ' + (state.page >= pages - 1 ? 'disabled' : '') + '>' + icon('chevron-right') + '</button></div></footer></section></div>' +
       (hasPending(ctx)&&!ctx.S.modal?'<button type="button" class="btn secondary small onx-spot-resume" data-act="spot-checkout-resume">Continue purchase</button>':'') + '</section>';
@@ -432,7 +473,16 @@
   }
   function bind(ctx) {
     lastContext = ctx;
-    if(!inputBound){inputBound=true;scope.document.addEventListener('input',event=>{if(event.target.matches('[data-spot-ssh]')){const draft=lastContext&&pending(lastContext);if(draft)draft.sshRaw=event.target.value;}},true);}
+    if(!inputBound){inputBound=true;scope.document.addEventListener('input',event=>{
+      const draft=lastContext&&pending(lastContext);if(!draft)return;
+      if(event.target.matches('[data-spot-ssh]'))draft.sshRaw=event.target.value;
+      if(event.target.matches('[data-spot-hours]')){
+        draft.hoursRaw=event.target.value;
+        const form=event.target.closest('form'),summary=form?.querySelector('[data-spot-checkout-totals]');
+        if(summary)summary.innerHTML=totalsMarkup(draft.row,draft.hoursRaw);
+        const error=form?.querySelector('[data-spot-checkout-error]');if(error)error.textContent='';
+      }
+    },true);}
     const root = document.querySelector('[data-spot-market]');
     if (!root || root.dataset.spotBound === 'true') return;
     root.dataset.spotBound = 'true';
@@ -538,5 +588,5 @@
     });
   }
 
-  scope.OpenNEXTSpotMarket = {render, bind, setInventory, modal, action, submit, hasPending, resumeCheckout, testHelpers:{state,normalizeRow,checkoutTotals,signature,pending,beginCheckout,liveRow,validateSsh,refreshCredit,openTopup,chooseCredit,authorizeCredit,reviewPurchase,offerFor,tableView,cardView,inventoryState}};
+  scope.OpenNEXTSpotMarket = {render, bind, setInventory, modal, action, submit, hasPending, resumeCheckout, testHelpers:{state,normalizeRow,durationHours,checkoutTotals,signature,pending,beginCheckout,liveRow,validateSsh,refreshCredit,openTopup,chooseCredit,authorizeCredit,reviewPurchase,offerFor,tableView,cardView,inventoryState}};
 })(typeof window !== 'undefined' ? window : globalThis);
