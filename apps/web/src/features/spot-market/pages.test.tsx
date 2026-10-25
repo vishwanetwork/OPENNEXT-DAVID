@@ -3,7 +3,7 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderTerminal, signIn, jsonResponse } from '@/test/render';
 import { useWorkspaceStore } from '@/terminal-kit';
 import { useSpotMarketStore } from './store';
-import { SpotMarketPage } from './components/SpotMarketPage';
+import { SpotMarketPage } from './components/spot-market-page';
 import { SpotCheckoutProvider } from './hooks';
 import { SellerActivitiesPage, normalizeSettlement, useSellerStore } from '@/features/seller';
 import { NotificationsPage } from '@/features/quotes';
@@ -26,15 +26,13 @@ vi.stubGlobal(
 describe('Spot market page', () => {
   it('shows Demo inventory as a table with the legacy column order and Buy Now actions', async () => {
     signIn({ demo: true });
-    useWorkspaceStore
-      .getState()
-      .applySession({
-        id: 'u1',
-        email: 'ada@example.com',
-        role: 'buyer',
-        onboardingCompleted: true,
-        demo: true,
-      } as never);
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+      demo: true,
+    } as never);
     renderTerminal(
       <SpotCheckoutProvider>
         <SpotMarketPage />
@@ -81,14 +79,12 @@ describe('Spot market page', () => {
 describe('Market Insight page', () => {
   it('renders all three panels, range buttons and twenty activities by default', () => {
     signIn({ role: 'seller' });
-    useWorkspaceStore
-      .getState()
-      .applySession({
-        id: 'u1',
-        email: 'ada@example.com',
-        role: 'seller',
-        onboardingCompleted: true,
-      } as never);
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'seller',
+      onboardingCompleted: true,
+    } as never);
     const rows = Array.from(
       { length: 125 },
       (_, i) =>
@@ -131,14 +127,12 @@ describe('Market Insight page', () => {
 describe('Notifications and profile pages', () => {
   it('notifications page shows the empty state and disabled read-all', () => {
     signIn();
-    useWorkspaceStore
-      .getState()
-      .applySession({
-        id: 'u1',
-        email: 'ada@example.com',
-        role: 'buyer',
-        onboardingCompleted: true,
-      } as never);
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
     renderTerminal(<NotificationsPage />);
     expect(screen.getByText('No notifications yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mark all as read' })).toBeDisabled();
@@ -146,14 +140,12 @@ describe('Notifications and profile pages', () => {
   });
   it('profile shows verified identity for real accounts and hides it in Demo', () => {
     signIn({ provider: 'google' } as never);
-    useWorkspaceStore
-      .getState()
-      .applySession({
-        id: 'u1',
-        email: 'ada@example.com',
-        role: 'buyer',
-        onboardingCompleted: true,
-      } as never);
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
     const real = renderTerminal(<ProfilePage />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Ada Lovelace');
     expect(screen.getByText('Google')).toBeInTheDocument();

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Arrow } from './icons';
+import { Arrow } from '@/components/icons';
 import { useSiteActions } from './site-actions';
 import type { PublicRole, PublicTarget } from '../lib/workspace-links';
 

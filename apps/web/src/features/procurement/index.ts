@@ -7,11 +7,11 @@ import './procurement.css';
 
 export { procurementModals } from './components/modals';
 export { ProcurementIntentResumer } from './components/intent';
-export { ListingTable } from './components/ListingTable';
-export { MatchesPanel } from './components/MatchesPanel';
-export { RfqPage } from './components/RfqPage';
-export { SupplyPage, SupplyDemand, SupplyExtra } from './components/SupplyPage';
-export { NotificationsPanel } from './components/Notifications';
+export { ListingTable } from './components/listing-table';
+export { MatchesPanel } from './components/matches-panel';
+export { RfqPage } from './components/rfq-page';
+export { SupplyPage, SupplyDemand, SupplyExtra } from './components/supply-page';
+export { NotificationsPanel } from './components/notifications';
 export { useOpportunity } from './components/opportunity';
 export { useMarketplaceView, useFindMarketRow } from './market-view';
 export { normalizeRfq, useOwnedRfqs } from './records';

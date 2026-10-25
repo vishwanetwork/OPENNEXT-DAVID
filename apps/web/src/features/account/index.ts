@@ -3,8 +3,8 @@
  * OpenNEXT-account-profile-preview.js). `validatePublicKey` / `fingerprint` are shared with
  * the Spot checkout and the instances feature.
  */
-export { ProfilePage } from './components/ProfilePage';
-export { SshKeyLibrary, SshKeyList, type SshLibraryScope } from './components/SshKeyLibrary';
+export { ProfilePage } from './components/profile-page';
+export { SshKeyLibrary, SshKeyList, type SshLibraryScope } from './components/ssh-key-library';
 export { accountModals } from './components/modals';
 export { useAccountRef, useKeyLibrary, useAccountService } from './hooks';
 export {

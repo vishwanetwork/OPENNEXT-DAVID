@@ -83,7 +83,9 @@ export async function loadKeys(deps: KeyLibraryDeps, { force = false } = {}): Pr
         const result = await service.listSshKeys();
         if (!Array.isArray(result?.keys) || result.keys.length > MAX_KEYS)
           throw new Error('The account service returned an invalid key list.');
-        keys = await Promise.all(result.keys.map((row: unknown) => normalizeKey(row, deps.runtime)));
+        keys = await Promise.all(
+          result.keys.map((row: unknown) => normalizeKey(row, deps.runtime)),
+        );
       }
       if (deps.account().key === account.key) set({ keys });
     } catch (error) {

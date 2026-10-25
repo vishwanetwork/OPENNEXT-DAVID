@@ -13,6 +13,6 @@ export {
   type Role,
   type RoleIntent,
 } from './role-intent';
-export { AuthView, fieldError, type AuthMode } from './components/AuthView';
-export { OnboardingView } from './components/OnboardingView';
-export { AuthShell } from './components/AuthShell';
+export { AuthView, fieldError, type AuthMode } from './components/auth-view';
+export { OnboardingView } from './components/onboarding-view';
+export { AuthShell } from './components/auth-shell';

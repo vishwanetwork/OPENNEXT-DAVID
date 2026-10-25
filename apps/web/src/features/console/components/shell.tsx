@@ -5,9 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/providers/app-context';
 import { useToast } from '@/components/ui/toast';
-import { CONSOLE_LOGO_PATH, Icon } from '../icons';
+import { CONSOLE_LOGO_PATH, ConsoleIcon as Icon } from '@/components/icons';
 import { CONSOLE_PAGES, HIDDEN_PAGES, pageFromPath, pagePath, type ConsolePage } from '../pages';
 import { useConsoleStore } from '../store';
+import { detailPage, useDetailRequestStore, type DetailRequest } from '../detail-request';
 import { initials } from '../helpers';
 import { OverlayProvider, useOverlay } from './overlay';
 import { LegacyHashRedirect } from './legacy-hash-redirect';
@@ -117,7 +118,7 @@ function Topbar({ page }: { page: string }) {
   const { crossHref } = useApp();
   const nav = useConsoleNav();
   const [menu, setMenu] = useState<'' | 'user' | 'notifications'>('');
-  const { drawerRequest } = useShellActions();
+  const { drawerRequest } = { drawerRequest: useDetailRequest() };
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -240,41 +241,17 @@ function Topbar({ page }: { page: string }) {
   );
 }
 
-/**
- * Cross-page detail requests (the notification popover and overview queue open user / order /
- * instance drawers that are rendered by their pages). Pages register openers; the shell calls them.
- */
-export type DetailRequest = { kind: 'user' | 'order' | 'instance'; id: string };
-const openers = new Map<string, (id: string) => void>();
-export function registerDetailOpener(kind: DetailRequest['kind'], open: (id: string) => void) {
-  openers.set(kind, open);
-  return () => {
-    if (openers.get(kind) === open) openers.delete(kind);
-  };
-}
-function useShellActions() {
-  const nav = useConsoleNav();
-  return {
-    drawerRequest: ({ kind, id }: DetailRequest) => {
-      const open = openers.get(kind);
-      if (open) open(id);
-      else {
-        pendingDetail = { kind, id };
-        nav(kind === 'user' ? 'users' : kind === 'order' ? 'orders' : 'instances');
-      }
-    },
-  };
-}
-let pendingDetail: DetailRequest | null = null;
-/** Called by a page after registering its opener to honour a request made before it mounted. */
-export function consumePendingDetail(kind: DetailRequest['kind']): string | null {
-  if (pendingDetail?.kind !== kind) return null;
-  const id = pendingDetail.id;
-  pendingDetail = null;
-  return id;
-}
+/** Opens a user / order / instance drawer on its page (see ../detail-request.ts). */
 export function useDetailRequest() {
-  return useShellActions().drawerRequest;
+  const nav = useConsoleNav();
+  const request = useDetailRequestStore((s) => s.request);
+  return useCallback(
+    (next: DetailRequest) => {
+      request(next);
+      nav(detailPage(next.kind));
+    },
+    [nav, request],
+  );
 }
 
 function StorageWarning() {
@@ -303,7 +280,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 function ShellLayout({ children }: { children: ReactNode }) {
   const page = useCurrentPage();
   return (
-    <div id="admin-app">
+    <div id="admin-app" className="app-console">
       <Hydrate />
       <StorageWarning />
       <LegacyHashRedirect />

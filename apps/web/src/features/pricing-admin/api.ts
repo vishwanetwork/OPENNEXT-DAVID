@@ -1,5 +1,5 @@
 import {
-  AdminPricesResponse,
+  PricesResponse,
   CollectionRun,
   ProvidersResponse,
   RunsResponse,
@@ -28,7 +28,7 @@ export const pricingAdminApi = {
   credential: (api: ApiClient, id: string, credential: string) =>
     api.post(BASE + 'providers/' + encodeURIComponent(id) + '/credential', { credential }),
   prices: async (api: ApiClient, id: string, signal?: AbortSignal) =>
-    AdminPricesResponse.parse(
+    PricesResponse.parse(
       await api.get('/api/pricing/prices?provider=' + encodeURIComponent(id) + '&limit=100', {
         signal,
       }),

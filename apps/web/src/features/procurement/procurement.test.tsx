@@ -3,8 +3,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { jsonResponse, renderTerminal, signIn } from '@/test/render';
 import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
 import { useSessionStore } from '@/lib/session-store';
-import { RfqPage } from './components/RfqPage';
-import { SupplyPage } from './components/SupplyPage';
+import { RfqPage } from './components/rfq-page';
+import { SupplyPage } from './components/supply-page';
 import { RfqForm } from './components/forms';
 import { rfqStatus, receiptFor } from './components/shared';
 

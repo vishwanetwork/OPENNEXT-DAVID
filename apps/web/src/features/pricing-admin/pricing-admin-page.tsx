@@ -533,7 +533,7 @@ function ProviderDetail({
           />
         </label>
         <div className="pc-dialog-actions">
-          <button className="pc-primary" disabled={!access.mutable}>
+          <button type="submit" className="pc-primary" disabled={!access.mutable}>
             Save settings
           </button>
           <button
@@ -568,7 +568,7 @@ function ProviderDetail({
               onChange={(e) => setCredential(e.target.value)}
             />
           </label>
-          <button className="pc-primary" disabled={!access.mutable}>
+          <button type="submit" className="pc-primary" disabled={!access.mutable}>
             Save to server memory
           </button>
         </form>

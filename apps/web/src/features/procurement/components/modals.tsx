@@ -1,6 +1,12 @@
 'use client';
 
-import type { MarketRow, Order, OwnedRfq, SettlementRow, SupplierResponse } from '@opennext/contracts';
+import type {
+  MarketRow,
+  Order,
+  OwnedRfq,
+  SettlementRow,
+  SupplierResponse,
+} from '@opennext/contracts';
 import type { Offer } from '@/features/market';
 import {
   ModalFrame,
@@ -103,13 +109,20 @@ const offerPrefill = (o: Offer): RfqPrefill => ({
 const REVIEW_LOCKED = ['Reviewing', 'Approved', 'Rejected'];
 
 /** One component renders every procurement modal (legacy `OpenNEXTProcurement.modal`). */
-function ProcurementModal({ modal, close }: { modal: ModalOf<ProcurementModalType>; close: () => void }) {
+function ProcurementModal({
+  modal,
+  close,
+}: {
+  modal: ModalOf<ProcurementModalType>;
+  close: () => void;
+}) {
   const workspace = useWorkspaceData();
   const rfqs = useOwnedRfqs();
   const currentModel = useWorkspaceStore((s) => s.model);
   const find = useFindMarketRow();
   const id = 'id' in modal ? modal.id : undefined;
-  const requirement = 'requirement' in modal ? (modal.requirement as OwnedRfq | undefined) : undefined;
+  const requirement =
+    'requirement' in modal ? (modal.requirement as OwnedRfq | undefined) : undefined;
   const r = requirement || rfqs.find((x) => x.id === id);
   const q = 'quoteId' in modal ? r?.quotes?.find((x) => x.id === modal.quoteId) : undefined;
   const reviewStatus = workspace.review.status;
@@ -138,7 +151,11 @@ function ProcurementModal({ modal, close }: { modal: ModalOf<ProcurementModalTyp
       );
     case 'review':
       return (
-        <ModalFrame title={reviewTitle(reviewStatus)} wide={!REVIEW_LOCKED.includes(reviewStatus)} close={close}>
+        <ModalFrame
+          title={reviewTitle(reviewStatus)}
+          wide={!REVIEW_LOCKED.includes(reviewStatus)}
+          close={close}
+        >
           <ReviewDialog />
         </ModalFrame>
       );
@@ -149,7 +166,11 @@ function ProcurementModal({ modal, close }: { modal: ModalOf<ProcurementModalTyp
           <SupplyDialog />
         </ModalFrame>
       ) : (
-        <ModalFrame title={reviewTitle(reviewStatus)} wide={!REVIEW_LOCKED.includes(reviewStatus)} close={close}>
+        <ModalFrame
+          title={reviewTitle(reviewStatus)}
+          wide={!REVIEW_LOCKED.includes(reviewStatus)}
+          close={close}
+        >
           <SupplyDialog />
         </ModalFrame>
       );
@@ -232,7 +253,8 @@ function ProcurementModal({ modal, close }: { modal: ModalOf<ProcurementModalTyp
       );
     }
     case 'respond': {
-      const req = (r as OwnedRfq | undefined) || (find(id) as unknown as OwnedRfq | null) || undefined;
+      const req =
+        (r as OwnedRfq | undefined) || (find(id) as unknown as OwnedRfq | null) || undefined;
       const external = req && (req as unknown as MarketRow).external;
       return (
         <ModalFrame

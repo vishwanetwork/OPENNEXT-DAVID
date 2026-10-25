@@ -34,7 +34,15 @@ export function useMarketplaceView(): MarketplaceView {
       loaded: publicMarket.isSuccess,
       error: publicMarket.error?.message || '',
     };
-  }, [identity, publicMarket.data, publicMarket.isSuccess, publicMarket.error, matches.data, settlements.data, reference.data]);
+  }, [
+    identity,
+    publicMarket.data,
+    publicMarket.isSuccess,
+    publicMarket.error,
+    matches.data,
+    settlements.data,
+    reference.data,
+  ]);
 }
 
 /** Resolves a market row by id, including supply items saved to the cart / saved list. */
@@ -44,7 +52,12 @@ export function useFindMarketRow() {
   const saved = useWorkspaceStore((s) => s.saved);
   return useCallback(
     (id: string | null | undefined): MarketRow | null =>
-      findRow(view, id, [...cart, ...saved] as unknown as { id: string; side?: string; kind?: string; originSupply?: unknown }[]),
+      findRow(view, id, [...cart, ...saved] as unknown as {
+        id: string;
+        side?: string;
+        kind?: string;
+        originSupply?: unknown;
+      }[]),
     [view, cart, saved],
   );
 }

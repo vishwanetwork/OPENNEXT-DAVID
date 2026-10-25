@@ -3,11 +3,7 @@
  * public market, matches, settlements and reference catalog live in `useMarketplaceStore`
  * (see workspace.ts) and are passed in explicitly.
  */
-import type {
-  MarketRow,
-  ReferenceCatalogResponse,
-  SettlementRow,
-} from '@opennext/contracts';
+import type { MarketRow, ReferenceCatalogResponse, SettlementRow } from '@opennext/contracts';
 import { ALL_REGIONS } from '@/features/market';
 import { countryList, findCountry } from './countries';
 

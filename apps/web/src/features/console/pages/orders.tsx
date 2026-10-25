@@ -2,24 +2,23 @@
 
 import { useEffect } from 'react';
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { matchesQuery, money, omit } from '../helpers';
 import { Btn, Empty, Head, Note, SearchBox, Status } from '../components/forms';
 import { useConsoleDialogs } from '../dialogs/use-dialogs';
-import { consumePendingDetail, registerDetailOpener } from '../components/shell';
+import { useDetailRequestStore } from '../detail-request';
 import { usePageTools } from './use-page-tools';
 
 export function OrdersPage() {
   const db = useConsoleStore((s) => s.db);
   const dialogs = useConsoleDialogs();
   const { search, setSearch, refresh, exportRows } = usePageTools('orders');
+  const pending = useDetailRequestStore((s) => s.pending);
+  const consume = useDetailRequestStore((s) => s.consume);
   useEffect(() => {
-    const open = (id: string) => dialogs.orderDetail(id);
-    const unregister = registerDetailOpener('order', open);
-    const pending = consumePendingDetail('order');
-    if (pending) open(pending);
-    return unregister;
-  }, [dialogs]);
+    const id = pending?.kind === 'order' ? consume('order') : null;
+    if (id) dialogs.orderDetail(id);
+  }, [pending, consume, dialogs]);
   const list = db.orders.filter((x) => matchesQuery(x, search));
   const stats: [string, string | number, string][] = [
     [

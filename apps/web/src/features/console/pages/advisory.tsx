@@ -1,7 +1,7 @@
 'use client';
 
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { matchesQuery } from '../helpers';
 import { Badge, Btn, Empty, Head, Note, SearchBox, Status } from '../components/forms';
 import { useConsoleDialogs } from '../dialogs/use-dialogs';

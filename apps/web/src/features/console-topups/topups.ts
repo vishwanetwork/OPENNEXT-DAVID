@@ -1,4 +1,4 @@
-import { TopupReviewResponse, TopupsResponse, type TopupRequest } from '@opennext/contracts';
+import { TopupReviewResponse, TopupsResponse, type CreditTopup } from '@opennext/contracts';
 import type { ApiClient } from '@/lib/api/client';
 
 export type TopupScope = 'production' | 'demo';
@@ -14,7 +14,7 @@ export const topupStamp = (value: unknown): string =>
     ? new Date(String(value)).toLocaleString('en-GB', { timeZone: 'UTC' })
     : 'Not provided';
 
-export const topupAmount = (row: TopupRequest): string => {
+export const topupAmount = (row: CreditTopup): string => {
   const value = Number.isSafeInteger(row.amountCents)
     ? Number(row.amountCents) / 100
     : Number(row.amount);
@@ -23,7 +23,7 @@ export const topupAmount = (row: TopupRequest): string => {
     : 'Not provided';
 };
 
-export const topupLabel = (row: TopupRequest): string =>
+export const topupLabel = (row: CreditTopup): string =>
   row.status === 'Approved'
     ? 'Solved'
     : row.status === 'Rejected'
@@ -32,14 +32,14 @@ export const topupLabel = (row: TopupRequest): string =>
         ? 'Pending'
         : 'Unknown';
 
-export const topupToken = (row: TopupRequest): string => row.id + '|' + (row.workspaceId || '');
-export const pendingRow = (row: TopupRequest | undefined): boolean =>
+export const topupToken = (row: CreditTopup): string => row.id + '|' + (row.workspaceId || '');
+export const pendingRow = (row: CreditTopup | undefined): boolean =>
   row?.status === 'Pending' && !row.solved;
 
 export const topupEndpoint = (suffix = '', scope: TopupScope = 'production') =>
   '/api/admin/topups' + suffix + (scope === 'demo' ? '?scope=demo' : '');
 
-export function filterTopups(rows: TopupRequest[], query: string, filter: string): TopupRequest[] {
+export function filterTopups(rows: CreditTopup[], query: string, filter: string): CreditTopup[] {
   const q = query.toLowerCase();
   return rows.filter(
     (row) =>
@@ -60,7 +60,7 @@ export function filterTopups(rows: TopupRequest[], query: string, filter: string
 /** Fails closed when the server answers for a different account scope. */
 export function assertScope(
   scope: TopupScope,
-  result: { scope?: string; requests: TopupRequest[] },
+  result: { scope?: string; requests: CreditTopup[] },
 ): void {
   const wrong =
     scope === 'demo'
@@ -70,26 +70,3 @@ export function assertScope(
         result.requests.some((row) => row.workspaceId || row.demo === true);
   if (wrong) throw new Error('The server returned records for a different account scope.');
 }
-
-export const topupsApi = {
-  list: async (api: ApiClient, scope: TopupScope, signal?: AbortSignal) => {
-    const parsed = TopupsResponse.safeParse(await api.get(topupEndpoint('', scope), { signal }));
-    if (!parsed.success) throw new Error('The server returned an invalid top-up request list.');
-    assertScope(scope, parsed.data);
-    return parsed.data.requests;
-  },
-  review: async (
-    api: ApiClient,
-    scope: TopupScope,
-    id: string,
-    body: {
-      decision: 'Approve' | 'Reject';
-      reason: string;
-      fundsVerified?: true;
-      workspaceId?: string;
-    },
-  ) =>
-    TopupReviewResponse.parse(
-      await api.post(topupEndpoint('/' + encodeURIComponent(id) + '/review', scope), body),
-    ),
-};

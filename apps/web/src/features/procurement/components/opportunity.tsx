@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import type { MarketRow, OwnedRfq } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
+import { useApiErrorToast } from '@/components/hooks/use-api-error-toast';
 import { useSessionStore } from '@/lib/session-store';
 import {
   useInvalidateWorkspace,
@@ -97,6 +98,7 @@ export function prefillFromRow(item: MarketRow): Record<string, unknown> {
 export function useOpportunity() {
   const api = useApi();
   const toast = useToast();
+  const toastError = useApiErrorToast();
   const { go, openModal } = useTerminal();
   const { openContact } = useTerminalSlots();
   const find = useFindMarketRow();
@@ -198,10 +200,10 @@ export function useOpportunity() {
           .quoteInterest(api, id)
           .then(() => invalidate())
           .then(() => resume())
-          .catch((error: Error) => toast(error.message));
+          .catch(toastError);
       } else resume();
     },
-    [api, toast, go, openModal, find, inquire, invalidate, resume],
+    [api, toast, toastError, go, openModal, find, inquire, invalidate, resume],
   );
   return { open, inquire, resume };
 }

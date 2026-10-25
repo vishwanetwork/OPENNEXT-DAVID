@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, type ComponentType, type ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { Dialog } from '@/components/ui/dialog';
 
 /**
  * Terminal modal registry — typed, static and assembled once in the composition root.
@@ -47,10 +48,7 @@ export function composeModals(...maps: ModalComponents[]): ModalComponents {
   return out as ModalComponents;
 }
 
-const FOCUSABLE =
-  'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])';
-
-/** Generic dialog frame (`.overlay > .modal`) with focus trap, Escape and focus restore. */
+/** Generic dialog frame (`.overlay > .modal`) on the shared dialog behaviour. */
 export function ModalShell({
   title,
   eyebrow = 'OPENNEXT WORKSPACE',
@@ -64,83 +62,31 @@ export function ModalShell({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialog = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const node = dialog.current;
-    if (!node) return;
-    const previous = document.activeElement as HTMLElement | null;
-    requestAnimationFrame(() => {
-      if (node.isConnected && !node.contains(document.activeElement))
-        node.focus({ preventScroll: true });
-    });
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const items = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-        (item) => item.getClientRects().length,
-      );
-      if (!items.length) {
-        event.preventDefault();
-        node.focus();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === node)) {
-        event.preventDefault();
-        last.focus();
-      } else if (
-        !event.shiftKey &&
-        (document.activeElement === last || document.activeElement === node)
-      ) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    node.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      node.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
-    };
-  }, [onClose]);
   return (
-    <div
-      className="overlay"
-      data-dismiss="modal"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    <Dialog
+      onClose={onClose}
+      overlayClassName="overlay"
+      overlayProps={{ 'data-dismiss': 'modal' }}
+      className={`modal ${wide ? 'wide' : ''}`}
+      label={typeof title === 'string' ? title : undefined}
     >
-      <section
-        ref={dialog}
-        className={`modal ${wide ? 'wide' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label={typeof title === 'string' ? title : undefined}
-        tabIndex={-1}
-      >
-        <header className="modal-head">
-          <div>
-            <span className="eyebrow muted">{eyebrow}</span>
-            <h2>{title}</h2>
-          </div>
-          <button
-            type="button"
-            className="icon-btn"
-            data-act="close-modal"
-            aria-label="Close dialog"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </header>
-        <div className="modal-body">{children}</div>
-      </section>
-    </div>
+      <header className="modal-head">
+        <div>
+          <span className="eyebrow muted">{eyebrow}</span>
+          <h2>{title}</h2>
+        </div>
+        <button
+          type="button"
+          className="icon-btn"
+          data-act="close-modal"
+          aria-label="Close dialog"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </header>
+      <div className="modal-body">{children}</div>
+    </Dialog>
   );
 }
 

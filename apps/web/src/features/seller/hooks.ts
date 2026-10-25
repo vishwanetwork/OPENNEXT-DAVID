@@ -4,7 +4,13 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
 import { useIsDemo, useSettlements as useSettlementTape } from '@/terminal-kit';
-import { buildCatalog, countryFor, marketApi, marketKeys, useHistoryCatalog } from '@/features/market';
+import {
+  buildCatalog,
+  countryFor,
+  marketApi,
+  marketKeys,
+  useHistoryCatalog,
+} from '@/features/market';
 import {
   buildDemoSettlements,
   marketplaceSettlements,

@@ -88,6 +88,7 @@ export default defineConfig([
         },
       ],
       'max-lines': ['warn', { max: 300, skipBlankLines: true, skipComments: true }],
+      'react/button-has-type': 'error',
     },
   },
   {

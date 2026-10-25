@@ -13,7 +13,7 @@ import {
   type Listing,
 } from '../lib/listings';
 import { demoOpportunityPath, type ListingIntent, type PublicTarget } from '../lib/workspace-links';
-import { ListingIcon } from './icons';
+import { ListingIcon } from '@/components/icons';
 import { useSiteActions } from './site-actions';
 
 const tokenMoney = (value: unknown) =>

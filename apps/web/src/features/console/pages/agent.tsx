@@ -3,7 +3,7 @@
 import type { FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { VERIFY_COMMAND } from '../reference-data';
 import { Badge, Btn, Field, Head, Note, formValues } from '../components/forms';
 import { useConsoleDialogs } from '../dialogs/use-dialogs';

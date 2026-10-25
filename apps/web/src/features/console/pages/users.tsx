@@ -2,11 +2,11 @@
 
 import { useEffect } from 'react';
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { matchesQuery } from '../helpers';
 import { Badge, Btn, Empty, Head, Note, SearchBox, Status } from '../components/forms';
 import { useConsoleDialogs } from '../dialogs/use-dialogs';
-import { consumePendingDetail, registerDetailOpener } from '../components/shell';
+import { useDetailRequestStore } from '../detail-request';
 import { usePageTools } from './use-page-tools';
 
 export function UsersPage() {
@@ -15,13 +15,12 @@ export function UsersPage() {
   const setUi = useConsoleStore((s) => s.setUi);
   const dialogs = useConsoleDialogs();
   const { search, setSearch, exportRows } = usePageTools('users');
+  const pending = useDetailRequestStore((s) => s.pending);
+  const consume = useDetailRequestStore((s) => s.consume);
   useEffect(() => {
-    const open = (id: string) => dialogs.userDetail(id);
-    const unregister = registerDetailOpener('user', open);
-    const pending = consumePendingDetail('user');
-    if (pending) open(pending);
-    return unregister;
-  }, [dialogs]);
+    const id = pending?.kind === 'user' ? consume('user') : null;
+    if (id) dialogs.userDetail(id);
+  }, [pending, consume, dialogs]);
   const list = db.users.filter(
     (x) =>
       (tab === 'All accounts' ||

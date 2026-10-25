@@ -15,7 +15,6 @@ import {
   filterKyb,
   filterRecords,
   isExternal,
-  marketplaceApi,
   money,
   number,
   present,
@@ -29,6 +28,7 @@ import {
   type InboxScope,
   type InboxTab,
 } from './marketplace';
+import { marketplaceApi } from './api';
 import {
   ExternalReviewForm,
   FeaturedDialogBody,

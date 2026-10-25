@@ -4,7 +4,13 @@ import { useCallback } from 'react';
 import { money } from '@/lib/format';
 import { findCatalogItem, getModelQuote } from '@/data';
 import { useToast } from '@/components/ui/toast';
-import { useIntentResume, useTerminalSlots, useWorkspaceData, useWorkspaceStore, type IntentResumer } from '@/terminal-kit';
+import {
+  useIntentResume,
+  useTerminalSlots,
+  useWorkspaceData,
+  useWorkspaceStore,
+  type IntentResumer,
+} from '@/terminal-kit';
 import { useOpportunity } from './opportunity';
 
 const tokenMoney = (value: unknown) =>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { NativeDialog } from '@/components/ui/dialog';
 import { useApi } from '@/components/providers/api-context';
 import { ApiError } from '@/lib/api/client';
 import { submitContact } from '../api';
@@ -10,49 +11,13 @@ export interface ContactDialogProps {
   onClose: () => void;
 }
 
-function useNativeDialog(onClose: () => void) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    const trigger = document.activeElement as HTMLElement | null;
-    if (!dialog.open) dialog.showModal();
-    const close = () => onClose();
-    dialog.addEventListener('close', close);
-    return () => {
-      dialog.removeEventListener('close', close);
-      if (dialog.open) dialog.close();
-      if (trigger?.isConnected) trigger.focus();
-    };
-  }, [onClose]);
-  return ref;
-}
-
-/** Outside-click check for a native `<dialog>` (clicks on the backdrop land on the element itself). */
-function outside(event: React.MouseEvent<HTMLDialogElement>) {
-  const dialog = event.currentTarget;
-  if (event.target !== dialog) return false;
-  const box = dialog.getBoundingClientRect();
-  return (
-    event.clientX < box.left ||
-    event.clientX > box.right ||
-    event.clientY < box.top ||
-    event.clientY > box.bottom
-  );
-}
-
 /** Contact Us form (legacy OpenNEXT-contact.js): `POST /api/contact` with an idempotent submission id. */
 export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
   const api = useApi();
-  const ref = useNativeDialog(onClose);
   const [submissionId] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
-  useEffect(() => {
-    ref.current?.querySelector('input')?.focus();
-  }, [ref]);
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -87,18 +52,12 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
   }
 
   return (
-    <dialog
-      ref={ref}
+    <NativeDialog
       className={`on-contact-dialog${submittedEmail ? ' is-submitted' : ''}`}
-      aria-labelledby={submittedEmail ? 'on-contact-success-heading' : 'on-contact-heading'}
-      aria-describedby={submittedEmail ? undefined : 'on-contact-intro'}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') event.stopPropagation();
-      }}
-      onClick={(event) => {
-        event.stopPropagation();
-        if (outside(event)) event.currentTarget.close();
-      }}
+      labelledBy={submittedEmail ? 'on-contact-success-heading' : 'on-contact-heading'}
+      describedBy={submittedEmail ? undefined : 'on-contact-intro'}
+      onClose={onClose}
+      initialFocus="input"
     >
       <header>
         {submittedEmail ? null : (
@@ -113,7 +72,7 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
           type="button"
           className="on-contact-close"
           aria-label="Close contact form"
-          onClick={() => ref.current?.close()}
+          onClick={onClose}
         >
           ×
         </button>
@@ -127,12 +86,7 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
               Your request has been received. Our team will follow up at{' '}
               <strong>{submittedEmail}</strong>.
             </p>
-            <button
-              type="button"
-              className="on-contact-submit"
-              autoFocus
-              onClick={() => ref.current?.close()}
-            >
+            <button type="button" className="on-contact-submit" autoFocus onClick={onClose}>
               Done
             </button>
           </div>
@@ -219,6 +173,6 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
           </>
         )}
       </form>
-    </dialog>
+    </NativeDialog>
   );
 }

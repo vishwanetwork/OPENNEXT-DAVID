@@ -9,9 +9,9 @@ export {
   useNews,
 } from './hooks';
 export * from './regional-history';
-export { RegionalHistoryChart, type PriceHoverDetail } from './RegionalHistoryChart';
+export { RegionalHistoryChart, type PriceHoverDetail } from './regional-history-chart';
 export { useHistoryChoices, choiceStateFor } from './history-choices';
-export { NewsSection } from './NewsSection';
-export { InsightIndex } from './InsightIndex';
+export { NewsSection } from './news-section';
+export { InsightIndex } from './insight-index-view';
 export * as insightIndex from './insight-index';
 export { buildCatalog, countryFor } from './insight-index';

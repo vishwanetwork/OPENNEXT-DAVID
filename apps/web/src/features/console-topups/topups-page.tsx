@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import type { TopupRequest } from '@opennext/contracts';
+import type { CreditTopup } from '@opennext/contracts';
 import { ApiError } from '@/lib/api/client';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
@@ -15,9 +15,9 @@ import {
   topupLabel,
   topupStamp,
   topupToken,
-  topupsApi,
   type TopupScope,
 } from './topups';
+import { topupsApi } from './api';
 import './console-topups.css';
 
 type Dialog =
@@ -46,7 +46,7 @@ export function ConsoleTopupsPage() {
   });
   const blocked = isAccessError(topups.error);
   const loaded = topups.isSuccess && !blocked;
-  const rows: TopupRequest[] = blocked ? [] : (topups.data ?? []);
+  const rows: CreditTopup[] = blocked ? [] : (topups.data ?? []);
   const shownNotice = topups.error
     ? {
         text:
@@ -296,7 +296,7 @@ export function ConsoleTopupsPage() {
           onStart={() => setReviewing(true)}
           onEnd={() => setReviewing(false)}
           onDecided={(request, decision) => {
-            queryClient.setQueryData<TopupRequest[]>(key, (current) =>
+            queryClient.setQueryData<CreditTopup[]>(key, (current) =>
               (current || []).map((row) =>
                 topupToken(row) === reviewOpen.token ? { ...row, ...request } : row,
               ),
@@ -342,13 +342,13 @@ function ReviewDialog({
   onAccessLost,
 }: {
   dialog: Extract<Dialog, { kind: 'review' }>;
-  rows: TopupRequest[];
+  rows: CreditTopup[];
   currentScope: TopupScope;
   reviewing: boolean;
   onClose: () => void;
   onStart: () => void;
   onEnd: () => void;
-  onDecided: (request: TopupRequest, decision: 'Approve' | 'Reject') => void;
+  onDecided: (request: CreditTopup, decision: 'Approve' | 'Reject') => void;
   onFailed: (message: string, conflict: boolean) => string;
   onAccessLost: () => void;
 }) {

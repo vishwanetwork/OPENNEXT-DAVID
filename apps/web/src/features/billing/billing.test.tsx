@@ -3,7 +3,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { renderTerminal, signIn } from '@/test/render';
 import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
 import { useSessionStore } from '@/lib/session-store';
-import { BillingPage } from './components/BillingPage';
+import { BillingPage } from './components/billing-page';
 import { useBillingUi } from './ui-store';
 
 beforeEach(() => {

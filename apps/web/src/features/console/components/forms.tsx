@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { statusTone } from '../helpers';
 
 export function Field({
@@ -156,7 +156,13 @@ export function Btn({
   form?: string;
 }) {
   return (
-    <button type={type} className={className} onClick={onClick} disabled={disabled} form={form}>
+    <button
+      type={type === 'submit' ? 'submit' : 'button'}
+      className={className}
+      onClick={onClick}
+      disabled={disabled}
+      form={form}
+    >
       {children}
     </button>
   );

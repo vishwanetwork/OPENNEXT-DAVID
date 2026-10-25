@@ -17,9 +17,15 @@ export async function getServerSession(host: string): Promise<SessionUser | null
       headers: {
         cookie: (await cookies()).toString(),
         accept: 'application/json',
-        ...(forwarded['x-forwarded-host'] ? { 'x-forwarded-host': forwarded['x-forwarded-host'] } : {}),
-        ...(forwarded['x-forwarded-proto'] ? { 'x-forwarded-proto': forwarded['x-forwarded-proto'] } : {}),
-        ...(forwarded['x-forwarded-for'] ? { 'x-forwarded-for': forwarded['x-forwarded-for'] } : {}),
+        ...(forwarded['x-forwarded-host']
+          ? { 'x-forwarded-host': forwarded['x-forwarded-host'] }
+          : {}),
+        ...(forwarded['x-forwarded-proto']
+          ? { 'x-forwarded-proto': forwarded['x-forwarded-proto'] }
+          : {}),
+        ...(forwarded['x-forwarded-for']
+          ? { 'x-forwarded-for': forwarded['x-forwarded-for'] }
+          : {}),
       },
       cache: 'no-store',
       signal: AbortSignal.timeout(3000),

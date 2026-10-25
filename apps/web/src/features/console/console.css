@@ -1,23 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@500;600;650;700;750;800&display=swap');
-:root {
-  --blue: #2563eb;
-  --blue-soft: #eef4ff;
-  --ink: #172134;
-  --muted: #7a8597;
-  --line: #e5eaf0;
-  --bg: #f6f8fb;
-  --green: #17866b;
-  --red: #c34d4d;
-  --orange: #b47b21;
-  --sidebar: 226px;
-}
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
   font:
-    13px/1.5 'DM Sans',
+    13px/1.5 var(--font-dm-sans), 'DM Sans',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
@@ -104,7 +91,7 @@ p {
 h1,
 h2,
 h3 {
-  font-family: Manrope, 'DM Sans', sans-serif;
+  font-family: Manrope, var(--font-dm-sans), 'DM Sans', sans-serif;
   font-weight: 750;
   letter-spacing: -0.025em;
 }
@@ -504,7 +491,7 @@ h3 {
   color: #92a5c2;
 }
 .stat-value {
-  font-family: Manrope, sans-serif;
+  font-family: var(--font-manrope), Manrope, sans-serif;
   font-size: 27px;
   font-weight: 750;
   letter-spacing: -0.6px;
@@ -577,7 +564,7 @@ h3 {
 .dataset strong {
   display: block;
   font:
-    750 21px/1.3 Manrope,
+    750 21px/1.3 var(--font-manrope), Manrope,
     sans-serif;
   margin: 6px 0;
 }
@@ -1477,7 +1464,7 @@ td small {
   }
 }
 @media (max-width: 1100px) {
-  :root {
+  .app-console {
     --sidebar: 196px;
   }
   .brand {
@@ -1510,7 +1497,7 @@ td small {
   }
 }
 @media (max-width: 760px) {
-  :root {
+  .app-console {
     --sidebar: 64px;
   }
   .brand {

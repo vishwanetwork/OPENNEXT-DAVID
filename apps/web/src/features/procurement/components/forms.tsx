@@ -5,7 +5,13 @@ import type { OwnedRfq, OwnedSupply, RfqRequest, SupplyRequest } from '@opennext
 import { money } from '@/lib/format';
 import { useToast } from '@/components/ui/toast';
 import { ALL_REGIONS, offersFor, usePrices, useRegions } from '@/features/market';
-import { useInvalidateWorkspace, useIsDemo, useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
+import {
+  useInvalidateWorkspace,
+  useIsDemo,
+  useTerminal,
+  useWorkspaceData,
+  useWorkspaceStore,
+} from '@/terminal-kit';
 import { procurementApi } from '../api';
 import { countryList } from './../countries';
 import { FEE_LABEL, maximumQuotePrice } from '../fees';

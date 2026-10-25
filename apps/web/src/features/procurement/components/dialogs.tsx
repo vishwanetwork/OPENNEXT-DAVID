@@ -50,7 +50,10 @@ export function ReviewDialog() {
   const r = useWorkspaceData().review as KybReview & { step: number };
   const revising = useProcurementUi((s) => s.revisingKyb);
   const setRevising = useProcurementUi((s) => s.setRevisingKyb);
-  if (['Reviewing', 'Approved', 'Rejected'].includes(r.status) && !(revising && r.status === 'Rejected'))
+  if (
+    ['Reviewing', 'Approved', 'Rejected'].includes(r.status) &&
+    !(revising && r.status === 'Rejected')
+  )
     return (
       <>
         <Tag className={r.status === 'Reviewing' ? 'proc-reviewing' : ''}>{r.status}</Tag>
@@ -72,10 +75,7 @@ export function ReviewDialog() {
               : r.reason || 'Review the submission and provide the requested evidence.'}
         </p>
         {r.status === 'Rejected' ? (
-          <PBtn
-            data-act="proc-kyb-revise"
-            onClick={() => setRevising(true)}
-          >
+          <PBtn data-act="proc-kyb-revise" onClick={() => setRevising(true)}>
             Revise submission
           </PBtn>
         ) : null}

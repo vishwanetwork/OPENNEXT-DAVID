@@ -1,23 +1,33 @@
 import { z } from 'zod';
+import { num, numberOrString, str } from '../_shared';
 
-const num = z.number().nullable().optional();
-const str = z.string().nullable().optional();
+export const TOPUP_STATUSES = ['Pending', 'Approved', 'Rejected'] as const;
+export type TopupStatus = (typeof TOPUP_STATUSES)[number];
+export const TOPUP_METHODS = ['credit_card', 'paypal'] as const;
 
-/** Manual credit top-up request (`/api/billing/topups`, reviewed in the console). */
+/**
+ * Manual credit top-up request (`/api/billing/topups`; reviewed in the console at
+ * `/api/admin/topups`, where `email`, `workspaceId` and `demo` are also present).
+ */
 export const CreditTopup = z
   .object({
     id: z.string(),
-    accountId: z.string(),
+    accountId: str,
     ownerId: str,
-    amount: z.number(),
-    amountCents: z.number().optional(),
+    email: str,
+    amount: numberOrString.nullish(),
+    amountCents: z.number().nullish(),
     currency: str,
-    method: z.string(),
-    status: z.enum(['Pending', 'Approved', 'Rejected']).or(z.string()),
+    method: str,
+    /** One of TOPUP_STATUSES; unknown values are shown verbatim. */
+    status: z.string(),
     purchaseReference: str,
     reason: str,
+    solved: z.boolean().nullish(),
     createdAt: str,
     reviewedAt: str,
+    workspaceId: str,
+    demo: z.boolean().nullish(),
   })
   .passthrough();
 export type CreditTopup = z.infer<typeof CreditTopup>;
@@ -52,7 +62,6 @@ export const BillingAccount = z
   .passthrough();
 export type BillingAccount = z.infer<typeof BillingAccount>;
 
-export const TOPUP_METHODS = ['credit_card', 'paypal'] as const;
 export const CreditTopupCreateRequest = z.object({
   amount: z.number().min(1).max(100000),
   method: z.enum(TOPUP_METHODS),
@@ -108,3 +117,47 @@ export const Payout = z
   })
   .passthrough();
 export type Payout = z.infer<typeof Payout>;
+
+/* ---------- Spot purchase by Credit (contract expected by the terminal Spot market) ---------- */
+
+/** Pricing the client computed and the backend must recompute independently before charging. */
+export const SpotCheckoutPricing = z.object({
+  currency: z.literal('USD'),
+  durationHours: z.number().positive(),
+  hourlyCents: z.number().int().positive(),
+  baseCents: z.number().int().positive(),
+  feeCents: z.number().int().nonnegative(),
+  totalCents: z.number().int().positive(),
+});
+export type SpotCheckoutPricing = z.infer<typeof SpotCheckoutPricing>;
+
+/** `beginPurchase` request. Idempotent on `idempotencyKey`; never falls back to metered billing. */
+export const SpotPurchaseRequest = z.object({
+  pricingVersion: z.literal('duration-v1'),
+  offerId: z.string().min(1).max(160),
+  durationHours: z.number().positive(),
+  expectedPricing: SpotCheckoutPricing,
+  sshPublicKey: z.string().max(16384).nullable(),
+  idempotencyKey: z.string().min(12).max(100),
+});
+export type SpotPurchaseRequest = z.infer<typeof SpotPurchaseRequest>;
+
+/** `beginPurchase` response: the client accepts only an exact confirmation of offer, duration and total. */
+export const SpotPurchaseResponse = z.object({
+  confirmed: z.literal(true),
+  offerId: z.string(),
+  orderId: z.string().min(1).max(200),
+  currency: z.literal('USD'),
+  durationHours: z.number(),
+  totalCents: z.number().int(),
+});
+export type SpotPurchaseResponse = z.infer<typeof SpotPurchaseResponse>;
+
+/** Verified available Credit (also satisfied by `GET /api/billing/account`). */
+export const CreditBalance = z.object({
+  confirmed: z.literal(true),
+  accountId: z.string(),
+  currency: z.literal('USD'),
+  availableCredit: z.number().nonnegative(),
+});
+export type CreditBalance = z.infer<typeof CreditBalance>;

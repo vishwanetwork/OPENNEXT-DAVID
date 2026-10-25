@@ -28,7 +28,7 @@ describe('top-up helpers', () => {
   it('formats amounts, labels and filters', () => {
     expect(topupAmount(rows[0])).toBe('$100.50');
     expect(topupAmount(rows[1])).toBe('$25.00');
-    expect(topupAmount({ id: 'x', amount: 'nope' })).toBe('Not provided');
+    expect(topupAmount({ id: 'x', status: 'Pending', amount: 'nope' })).toBe('Not provided');
     expect(topupLabel(rows[1])).toBe('Solved');
     expect(pendingRow(rows[0])).toBe(true);
     expect(pendingRow({ ...rows[0], solved: true })).toBe(false);
@@ -40,11 +40,16 @@ describe('top-up helpers', () => {
       /different account scope/,
     );
     expect(() =>
-      assertScope('production', { requests: [{ id: 'x', workspaceId: 'ws' }] }),
+      assertScope('production', { requests: [{ id: 'x', status: 'Pending', workspaceId: 'ws' }] }),
     ).toThrow();
-    expect(() => assertScope('demo', { scope: 'demo', requests: [{ id: 'x' }] })).toThrow();
     expect(() =>
-      assertScope('demo', { scope: 'demo', requests: [{ id: 'x', workspaceId: 'ws' }] }),
+      assertScope('demo', { scope: 'demo', requests: [{ id: 'x', status: 'Pending' }] }),
+    ).toThrow();
+    expect(() =>
+      assertScope('demo', {
+        scope: 'demo',
+        requests: [{ id: 'x', status: 'Pending', workspaceId: 'ws' }],
+      }),
     ).not.toThrow();
   });
 });

@@ -6,7 +6,7 @@ export const SessionUser = z.object({
   email: z.string(),
   name: z.string().nullish(),
   company: z.string().nullish(),
-  role: z.enum(['buyer', 'seller']).or(z.string()),
+  role: z.enum(['buyer', 'seller']),
   onboardingCompleted: z.boolean(),
   promotionalCredit: z.number().default(0),
   promotionalCreditGranted: z.number().default(0),

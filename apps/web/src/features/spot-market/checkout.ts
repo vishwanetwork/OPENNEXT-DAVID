@@ -179,22 +179,20 @@ export class SpotCheckout {
     const key = this.storageKey();
     if (!draft || !key || draft.owner !== this.deps.owner() || draft.stage === 'completed') return;
     try {
-      this.deps
-        .storage()
-        ?.setItem(
-          key,
-          JSON.stringify({
-            version: 2,
-            owner: draft.owner,
-            offerId: draft.row.id,
-            signature: signature(draft.row),
-            durationHours: durationHours(draft.hoursRaw),
-            sshPublicKey: draft.sshPublicKey || '',
-            idempotencyKey: draft.idempotencyKey,
-            paymentSubmitted: !!draft.paymentSubmitted,
-            createdAt: draft.createdAt,
-          }),
-        );
+      this.deps.storage()?.setItem(
+        key,
+        JSON.stringify({
+          version: 2,
+          owner: draft.owner,
+          offerId: draft.row.id,
+          signature: signature(draft.row),
+          durationHours: durationHours(draft.hoursRaw),
+          sshPublicKey: draft.sshPublicKey || '',
+          idempotencyKey: draft.idempotencyKey,
+          paymentSubmitted: !!draft.paymentSubmitted,
+          createdAt: draft.createdAt,
+        }),
+      );
     } catch {
       this.deps.toast('The purchase is retained in this tab. Browser storage is unavailable.');
     }

@@ -50,7 +50,7 @@ export function PBtn({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { primary?: boolean; children: ReactNode }) {
   return (
     <button
-      type={type}
+      type={type === 'submit' ? 'submit' : 'button'}
       className={`btn ${primary ? '' : 'secondary'} small ${className}`.trim()}
       {...rest}
     >

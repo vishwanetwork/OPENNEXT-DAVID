@@ -1,7 +1,7 @@
 'use client';
 
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { matchesQuery } from '../helpers';
 import { Btn, Empty, Head, Note, SearchBox } from '../components/forms';
 import { usePageTools } from './use-page-tools';

@@ -6,7 +6,8 @@ import type { ContactLead } from '@opennext/contracts';
 import { ApiError } from '@/lib/api/client';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
-import { LEAD_STATUSES, POLL_MS, filterLeads, leadTime, leadsApi } from './leads';
+import { leadsApi } from './api';
+import { LEAD_STATUSES, POLL_MS, filterLeads, leadTime } from './leads';
 import './console-leads.css';
 
 type Dialog = { kind: 'details'; id: string; version: string } | { kind: 'login' };

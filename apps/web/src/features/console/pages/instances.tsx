@@ -2,11 +2,12 @@
 
 import { useEffect } from 'react';
 import { useConsoleStore } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { matchesQuery } from '../helpers';
 import { Btn, Empty, Head, Note, SearchBox, Status } from '../components/forms';
 import { useConsoleDialogs } from '../dialogs/use-dialogs';
-import { consumePendingDetail, registerDetailOpener, useConsoleNav } from '../components/shell';
+import { useConsoleNav } from '../components/shell';
+import { useDetailRequestStore } from '../detail-request';
 import { usePageTools } from './use-page-tools';
 
 export function InstancesPage() {
@@ -16,13 +17,12 @@ export function InstancesPage() {
   const dialogs = useConsoleDialogs();
   const nav = useConsoleNav();
   const { search, setSearch, refresh } = usePageTools('instances');
+  const pending = useDetailRequestStore((s) => s.pending);
+  const consume = useDetailRequestStore((s) => s.consume);
   useEffect(() => {
-    const open = (id: string) => dialogs.instanceDetail(id);
-    const unregister = registerDetailOpener('instance', open);
-    const pending = consumePendingDetail('instance');
-    if (pending) open(pending);
-    return unregister;
-  }, [dialogs]);
+    const id = pending?.kind === 'instance' ? consume('instance') : null;
+    if (id) dialogs.instanceDetail(id);
+  }, [pending, consume, dialogs]);
   const list = db.instances.filter(
     (x) => (tab === 'All instances' || x.source === tab) && matchesQuery(x, search),
   );

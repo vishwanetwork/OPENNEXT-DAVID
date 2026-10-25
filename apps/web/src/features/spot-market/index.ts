@@ -3,8 +3,8 @@
  * Credit purchase checkout (legacy OpenNEXT-spot-market-preview.js). The composition root
  * mounts <SpotCheckoutProvider>, `spotCheckoutModals` and `useSpotPurchaseContext()`.
  */
-export { SpotMarketPage } from './components/SpotMarketPage';
-export { spotCheckoutModals } from './components/CheckoutModals';
+export { SpotMarketPage } from './components/spot-market-page';
+export { spotCheckoutModals } from './components/checkout-modals';
 export {
   SpotCheckoutProvider,
   usePublicMarket,

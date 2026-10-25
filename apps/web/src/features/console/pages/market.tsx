@@ -3,7 +3,7 @@
 import type { FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConsoleStore, defaultMarketFilters } from '../store';
-import { Icon } from '../icons';
+import { ConsoleIcon as Icon } from '@/components/icons';
 import { money, matchesQuery, stamp, parseCsv } from '../helpers';
 import {
   DATASET_BY_LABEL,

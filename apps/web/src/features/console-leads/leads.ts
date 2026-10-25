@@ -1,10 +1,4 @@
-import {
-  LeadsResponse,
-  LeadUpdateResponse,
-  type ContactLead,
-  type LeadStatus,
-} from '@opennext/contracts';
-import type { ApiClient } from '@/lib/api/client';
+import type { ContactLead, LeadStatus } from '@opennext/contracts';
 
 export const LEAD_STATUSES: LeadStatus[] = ['New', 'Contacted', 'Qualified', 'Closed'];
 export const POLL_MS = 15000;
@@ -35,21 +29,3 @@ export function filterLeads(leads: ContactLead[], query: string, filter: string)
         .includes(q),
   );
 }
-
-export const leadsApi = {
-  list: async (api: ApiClient, signal?: AbortSignal) => {
-    const data = await api.get('/api/admin/contacts', { signal });
-    const parsed = LeadsResponse.safeParse(data);
-    if (!parsed.success)
-      throw new Error('The server returned an invalid contact request list. Please refresh.');
-    return parsed.data.leads;
-  },
-  update: async (
-    api: ApiClient,
-    id: string,
-    body: { status: string; note: string; updatedAt: string },
-  ) =>
-    LeadUpdateResponse.parse(
-      await api.patch('/api/admin/contacts/' + encodeURIComponent(id), body),
-    ),
-};

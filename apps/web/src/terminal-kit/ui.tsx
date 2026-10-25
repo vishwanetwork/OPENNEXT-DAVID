@@ -48,7 +48,7 @@ export function Button({
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { cls?: string; children: ReactNode }) {
   return (
-    <button type={type} className={`btn ${cls}`} {...rest}>
+    <button type={type === 'submit' ? 'submit' : 'button'} className={`btn ${cls}`} {...rest}>
       <span className="btn-label">{children}</span>
     </button>
   );

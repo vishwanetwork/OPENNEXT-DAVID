@@ -3,12 +3,12 @@ import { screen, fireEvent } from '@testing-library/react';
 import { jsonResponse, renderTerminal, signIn } from '@/test/render';
 import { useSessionStore } from '@/lib/session-store';
 import { initialWorkspace, useWorkspaceStore } from '@/terminal-kit';
-import { TerminalPage } from './TerminalPage';
-import { HelpPage } from './components/HelpPage';
-import { ModelsPage } from './components/ModelsPage';
-import { CollectionPage } from './components/CollectionPage';
-import { TerminalHeader } from './components/TerminalHeader';
-import { MarketPage } from './components/MarketPage';
+import { TerminalPage } from './terminal-page';
+import { HelpPage } from './components/help-page';
+import { ModelsPage } from './components/models-page';
+import { CollectionPage } from './components/collection-page';
+import { TerminalHeader } from './components/terminal-header';
+import { MarketPage } from './components/market-page';
 import { TerminalModal, terminalModals } from './components/modals';
 
 beforeEach(() => {

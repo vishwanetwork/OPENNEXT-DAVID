@@ -18,9 +18,9 @@ import {
   type ModalType,
 } from '@/terminal-kit';
 import { getModelQuote, listModelQuotes } from '@/data';
-import { Comparison } from './Comparison';
-import { useCurrentOffers } from './MarketPage';
-import { ModelRateSummary } from './ModelsPage';
+import { Comparison } from './comparison';
+import { useCurrentOffers } from './market-page';
+import { ModelRateSummary } from './models-page';
 
 declare module '@/terminal-kit/modal' {
   interface TerminalModalMap {
@@ -74,7 +74,8 @@ const HistoryAccessModal: ModalComponent<'history-access'> = ({ close }) => {
           onClick={() => {
             close();
             openContact({
-              message: 'I would like access to more than 3 months of ' + model + ' GPU price history.',
+              message:
+                'I would like access to more than 3 months of ' + model + ' GPU price history.',
             });
           }}
         >
@@ -89,9 +90,9 @@ const SourcesModal: ModalComponent<'sources'> = ({ close }) => (
   <ModalFrame title="GPU pricing methodology" close={close}>
     <h3 style={{ fontSize: 14 }}>Three comparable price types</h3>
     <div className="callout">
-      The chart compares Spot, On-demand and Reserved prices of one reference offering: the same
-      GPU configuration from the same supplier in the same region. Prices from different suppliers
-      are never mixed into one comparison.
+      The chart compares Spot, On-demand and Reserved prices of one reference offering: the same GPU
+      configuration from the same supplier in the same region. Prices from different suppliers are
+      never mixed into one comparison.
     </div>
     <p className="form-note">
       Among the offerings that match the selected GPU model, GPU count and region scope, the
@@ -227,7 +228,12 @@ const DetailModal: ModalComponent<'detail'> = ({ modal, close }) => {
         >
           + Quote cart
         </Button>
-        <Button cls="" data-act="quote" data-id={o.id} onClick={() => openModal('rfq-form', { offer: o })}>
+        <Button
+          cls=""
+          data-act="quote"
+          data-id={o.id}
+          onClick={() => openModal('rfq-form', { offer: o })}
+        >
           Request quote
         </Button>
       </div>
@@ -249,7 +255,9 @@ const CompareModal: ModalComponent<'compare'> = ({ close }) => {
         model={state.model}
         full
         onSave={(x) => toast(state.toggleSaved(x) ? 'Capacity saved' : 'Removed from saved')}
-        onCart={(x) => toast(state.addToCart(x) ? 'Added to quote cart' : 'Already in your quote cart')}
+        onCart={(x) =>
+          toast(state.addToCart(x) ? 'Added to quote cart' : 'Already in your quote cart')
+        }
         onDetail={(x) => openModal('detail', { offer: x })}
       />
       <div className="modal-footer">

@@ -1,15 +1,8 @@
 'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import { Icon } from '../icons';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { ConsoleIcon as Icon } from '@/components/icons';
+import { Dialog } from '@/components/ui/dialog';
 
 export interface OverlaySpec {
   title: ReactNode;
@@ -44,18 +37,6 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
     }),
     [close],
   );
-  useEffect(() => {
-    if (!state) return;
-    document.body.style.overflow = 'hidden';
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = '';
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [state, close]);
   const spec = state?.spec;
   const label = spec?.label ?? (typeof spec?.title === 'string' ? spec.title : undefined);
   return (
@@ -63,30 +44,25 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       {children}
       <div id="overlay-root">
         {state && spec ? (
-          <div
-            className={state.kind === 'modal' ? 'modal-backdrop' : 'drawer-backdrop'}
-            onMouseDown={(event) => event.target === event.currentTarget && close()}
+          <Dialog
+            onClose={close}
+            overlayClassName={state.kind === 'modal' ? 'modal-backdrop' : 'drawer-backdrop'}
+            className={state.kind === 'modal' ? `modal ${spec.wide ? 'wide' : ''}` : 'drawer'}
+            label={label}
           >
-            <section
-              className={state.kind === 'modal' ? `modal ${spec.wide ? 'wide' : ''}` : 'drawer'}
-              role="dialog"
-              aria-modal="true"
-              aria-label={label}
-            >
-              <div className="modal-head">
-                <div>
-                  <div className="eyebrow">OPENNEXT OPERATIONS</div>
-                  <h2>{spec.title}</h2>
-                  {spec.subtitle ? <p>{spec.subtitle}</p> : null}
-                </div>
-                <button type="button" className="icon-button" onClick={close} aria-label="Close">
-                  <Icon name="close" />
-                </button>
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow">OPENNEXT OPERATIONS</div>
+                <h2>{spec.title}</h2>
+                {spec.subtitle ? <p>{spec.subtitle}</p> : null}
               </div>
-              <div className="modal-body">{spec.body}</div>
-              {spec.footer ? <div className="modal-footer">{spec.footer}</div> : null}
-            </section>
-          </div>
+              <button type="button" className="icon-button" onClick={close} aria-label="Close">
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="modal-body">{spec.body}</div>
+            {spec.footer ? <div className="modal-footer">{spec.footer}</div> : null}
+          </Dialog>
         ) : null}
       </div>
     </OverlayContext.Provider>

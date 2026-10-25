@@ -10,7 +10,7 @@ import {
   type Listing,
   type MarketSide,
 } from '../lib/listings';
-import { ListingIcon } from './icons';
+import { ListingIcon } from '@/components/icons';
 import { ListingCard } from './listing-card';
 import { useSiteActions } from './site-actions';
 

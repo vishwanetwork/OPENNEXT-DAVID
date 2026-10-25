@@ -34,6 +34,7 @@ export const useProcurementUi = create<ProcurementUi>((set, get) => ({
   revisingKyb: false,
   setSettlementDays: (settlementDays) => set({ settlementDays }),
   setRfqFilter: (rfqFilter) => set({ rfqFilter }),
-  markRead: (ids) => set({ readNotificationIds: [...new Set([...get().readNotificationIds, ...ids])] }),
+  markRead: (ids) =>
+    set({ readNotificationIds: [...new Set([...get().readNotificationIds, ...ids])] }),
   setRevisingKyb: (revisingKyb) => set({ revisingKyb }),
 }));

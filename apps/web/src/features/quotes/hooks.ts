@@ -60,31 +60,32 @@ export function useQuoteNotifications() {
     () => (sameAccount ? accountRows(rfqs, 'rfqs', user?.id, owner) : []),
     [rfqs, owner, sameAccount, user?.id],
   );
-  const refresh = useCallback(async (force = false) => {
-    const state = useQuoteStore.getState();
-    if (!state.owner) return;
-    if (state.pending) return state.pending;
-    if (!force && Date.now() - state.lastLoaded < 15000) return;
-    const job = (async () => {
-      try {
-        await invalidate();
-        if (useQuoteStore.getState().owner === state.owner)
-          useQuoteStore.getState().patch({ ready: true, error: '', lastLoaded: Date.now() });
-      } catch (error) {
-        if (useQuoteStore.getState().owner === state.owner)
-          useQuoteStore
-            .getState()
-            .patch({
+  const refresh = useCallback(
+    async (force = false) => {
+      const state = useQuoteStore.getState();
+      if (!state.owner) return;
+      if (state.pending) return state.pending;
+      if (!force && Date.now() - state.lastLoaded < 15000) return;
+      const job = (async () => {
+        try {
+          await invalidate();
+          if (useQuoteStore.getState().owner === state.owner)
+            useQuoteStore.getState().patch({ ready: true, error: '', lastLoaded: Date.now() });
+        } catch (error) {
+          if (useQuoteStore.getState().owner === state.owner)
+            useQuoteStore.getState().patch({
               error: (error as Error).message || 'Account updates are temporarily unavailable.',
             });
-      } finally {
-        if (useQuoteStore.getState().owner === state.owner)
-          useQuoteStore.getState().patch({ pending: null });
-      }
-    })();
-    state.patch({ pending: job });
-    return job;
-  }, [invalidate]);
+        } finally {
+          if (useQuoteStore.getState().owner === state.owner)
+            useQuoteStore.getState().patch({ pending: null });
+        }
+      })();
+      state.patch({ pending: job });
+      return job;
+    },
+    [invalidate],
+  );
   return { owner, rows, requests, ownedOrders, ownedRfqs, store, refresh };
 }
 
