@@ -53,7 +53,7 @@ describe('billing analytics', () => {
     expect(ledgerAmount('buyer', entry({ type: 'Commission', amount: -5 }))).toBe(5);
   });
   it('excludes credit, payout and pending transactions and splits purchases by market term', () => {
-    const S = data({
+    const summary = data({
       ledger: [
         entry({ id: 'a', orderId: 'O1', amount: -40 }),
         entry({ id: 'b', type: 'Credit top-up', amount: 500 }),
@@ -63,14 +63,14 @@ describe('billing analytics', () => {
       ],
       orders: [order({ id: 'O1', term: 'Spot' }), order({ id: 'O2', term: 'On-demand' })],
     });
-    const a = analytics(S);
+    const a = analytics(summary);
     expect(a.sums.purchase).toBe(50);
     expect(a.sums.spot).toBe(40);
     expect(a.sums.demand).toBe(10);
     expect(a.rows).toHaveLength(31);
   });
   it('seller pending settlement excludes unpaid, completed and buy-side orders and uses net proceeds', () => {
-    const S = data({
+    const summary = data({
       role: 'seller',
       orders: [
         order({
@@ -109,14 +109,14 @@ describe('billing analytics', () => {
         order({ id: 'p4', side: 'buy', paymentStatus: 'Paid', status: 'Active', total: 20 }),
       ],
     });
-    const cards = metrics(S, analytics(S));
+    const cards = metrics(summary, analytics(summary));
     expect(cards.find((c) => c.label === 'Pending settlement')?.value).toBe(95);
     expect(cards.find((c) => c.label === 'OpenNEXT Fee 5%')?.value).toBe(-3.5);
-    expect(orderAmount(S.orders[0])).toBe(95);
-    expect(orderAmount(S.orders[3])).toBe(20);
+    expect(orderAmount(summary.orders[0])).toBe(95);
+    expect(orderAmount(summary.orders[3])).toBe(20);
   });
   it('activity rows include unpaid orders without ledger entries and sort newest first', () => {
-    const S = data({
+    const summary = data({
       ledger: [entry({ id: 'a', orderId: 'O1', createdAt: '2026-10-05T10:00:00Z' })],
       orders: [
         order({
@@ -129,7 +129,7 @@ describe('billing analytics', () => {
         }),
       ],
     });
-    expect(activityRows(S).map((r) => [r.id, r.isOrder, r.displayAmount])).toEqual([
+    expect(activityRows(summary).map((r) => [r.id, r.isOrder, r.displayAmount])).toEqual([
       ['O2', true, -30],
       ['a', false, -10],
     ]);

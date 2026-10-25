@@ -18,15 +18,10 @@ import {
 } from '@/terminal-kit';
 
 /**
- * The one render helper for component tests: app + API + toast providers, optional terminal
- * providers with explicit slots, and a `next/navigation` mock shared by every suite.
+ * The one render helper for component tests: app + API + toast providers and optional terminal
+ * providers with explicit slots. The `next/navigation` mock lives in `vitest.setup.ts` so it
+ * applies to every suite regardless of import order.
  */
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
-  usePathname: () => '/terminal/market',
-  useSearchParams: () => new URLSearchParams(),
-  redirect: vi.fn(),
-}));
 
 const ORIGINS = { site: '', terminal: '/terminal', admin: '/admin' };
 

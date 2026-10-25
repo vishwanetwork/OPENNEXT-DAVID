@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'refactor/**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Format
+        run: npx prettier --check "apps/**/*.{ts,tsx,css,md}" "packages/**/*.{ts,tsx,md}" "docs/**/*.md"
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test (web, with coverage thresholds)
+        run: pnpm --filter @opennext/web exec vitest run --coverage
+      - name: Test (contracts)
+        run: pnpm --filter @opennext/contracts test
+      - name: Legacy API tests
+        run: pnpm test:legacy
+      - name: Build
+        run: pnpm --filter @opennext/web build
+        env:
+          SITE_HOST: opennextlab.ai
+          TERMINAL_HOST: terminal.opennextlab.ai
+          ADMIN_HOST: admin.opennextlab.ai

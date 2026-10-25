@@ -56,7 +56,7 @@ const data = (over: Partial<RegionalHistoryResponse> = {}): RegionalHistoryRespo
   ],
   ...over,
 });
-const S = {
+const selection = {
   model: 'H100',
   count: 8,
   region: 'All regions',
@@ -69,22 +69,22 @@ const S = {
 describe('selection', () => {
   it('selects the first three eligible series once and ignores fractional GPUs', () => {
     const state = emptyChoice();
-    const result = reconcileSelection(S, data(), state);
+    const result = reconcileSelection(selection, data(), state);
     expect(result.selected.map((s) => s.id)).toEqual(['a', 'b', 'c']);
     expect(result.changed).toBe(true);
     expect(state.initialized).toBe(false);
     expect(result.known.some((s) => s.id === 'frac')).toBe(false);
-    const again = reconcileSelection(S, data(), { ...result.state, selected: ['b'] });
+    const again = reconcileSelection(selection, data(), { ...result.state, selected: ['b'] });
     expect(again.selected.map((s) => s.id)).toEqual(['b']);
     expect(again.changed).toBe(false);
   });
   it('keeps a series that only reports the requested metric as value', () => {
-    expect(valueOf({ time: 't', value: 2.95 }, S, { metric: 'avg' })).toBe(2.95);
-    expect(valueOf({ time: 't', value: 2.95 }, S, { metric: 'min' })).toBeNull();
-    expect(valueOf({ time: 't', avg: null, value: 2.95 }, S, { metric: 'avg' })).toBeNull();
+    expect(valueOf({ time: 't', value: 2.95 }, selection, { metric: 'avg' })).toBe(2.95);
+    expect(valueOf({ time: 't', value: 2.95 }, selection, { metric: 'min' })).toBeNull();
+    expect(valueOf({ time: 't', avg: null, value: 2.95 }, selection, { metric: 'avg' })).toBeNull();
   });
   it('labels duplicate region/configuration pairs as numbered series without machine codes', () => {
-    const { known } = reconcileSelection(S, data(), emptyChoice());
+    const { known } = reconcileSelection(selection, data(), emptyChoice());
     const b = known.find((s) => s.id === 'b')!;
     const c = known.find((s) => s.id === 'c')!;
     expect(presentation(b, known, data(), BASE_REGIONS)).toEqual({
@@ -101,14 +101,14 @@ describe('selection', () => {
 
 describe('summary and geometry', () => {
   it('summarises the first selected series with observations', () => {
-    const info = summary(S, data(), emptyChoice(), BASE_REGIONS)!;
+    const info = summary(selection, data(), emptyChoice(), BASE_REGIONS)!;
     expect(info.latest).toBe(2.6);
     expect(info.change).toBeCloseTo(4, 0);
     expect(info.points).toBe(2);
     expect(info.region).toBe('US East');
   });
   it('breaks lines across gaps and draws one curve per metric', () => {
-    const multi = { ...S, priceMetrics: ['max' as const, 'min' as const] };
+    const multi = { ...selection, priceMetrics: ['max' as const, 'min' as const] };
     const result = reconcileSelection(multi, data(), emptyChoice());
     const geo = geometry(multi, data(), result, BASE_REGIONS, 900)!;
     expect(geo.series.filter((s) => s.id === 'a').map((s) => s.metric)).toEqual(['max', 'min']);
