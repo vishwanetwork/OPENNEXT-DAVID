@@ -253,7 +253,7 @@ export function useInvalidateWorkspace() {
 export function useRunServer() {
   const invalidate = useInvalidateWorkspace();
   return useCallback(
-    async <T,>(work: () => Promise<T>): Promise<T> => {
+    async <T>(work: () => Promise<T>): Promise<T> => {
       const result = await work();
       await invalidate();
       return result;

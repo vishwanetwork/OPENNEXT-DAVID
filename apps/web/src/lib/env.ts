@@ -38,8 +38,7 @@ export function backendHeaders(
   fallbackHost: string,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
-  const entries =
-    incoming instanceof Headers ? [...incoming.entries()] : Object.entries(incoming);
+  const entries = incoming instanceof Headers ? [...incoming.entries()] : Object.entries(incoming);
   for (const [key, value] of entries) {
     const name = key.toLowerCase();
     if (HOP_BY_HOP.has(name)) continue;

@@ -42,7 +42,13 @@ export const testQueryClient = () =>
 
 export function renderWithProviders(
   ui: ReactNode,
-  { app = 'terminal', base, demo = false, queryClient, ...options }: RenderWithProvidersOptions = {},
+  {
+    app = 'terminal',
+    base,
+    demo = false,
+    queryClient,
+    ...options
+  }: RenderWithProvidersOptions = {},
 ) {
   const resolvedBase = base ?? (app === 'site' ? '' : `/${app}`);
   const client = queryClient ?? testQueryClient();
@@ -66,12 +72,19 @@ export interface RenderTerminalOptions extends RenderWithProvidersOptions {
 /** Seeds server records the way the backend would return them for the current session. */
 export function seedAccount(
   client: QueryClient,
-  { workspace, billing, demo = false }: { workspace?: Partial<WorkspaceResponse>; billing?: Partial<BillingAccount>; demo?: boolean },
+  {
+    workspace,
+    billing,
+    demo = false,
+  }: { workspace?: Partial<WorkspaceResponse>; billing?: Partial<BillingAccount>; demo?: boolean },
 ) {
   const user = useSessionStore.getState().user;
   const identity = accountIdentity(user, demo);
   if (workspace)
-    client.setQueryData(queryKeys.account.workspace(identity), { ...EMPTY_WORKSPACE, ...workspace });
+    client.setQueryData(queryKeys.account.workspace(identity), {
+      ...EMPTY_WORKSPACE,
+      ...workspace,
+    });
   if (billing)
     client.setQueryData(queryKeys.account.billing(identity), {
       confirmed: true,

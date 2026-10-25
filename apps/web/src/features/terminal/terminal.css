@@ -2067,10 +2067,9 @@ textarea.field {
 
 /* A persistent market entry precedes product-specific filters. */
 .filters {
-  grid-template-columns: 152px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(
-      0,
-      0.75fr
-    ) 150px;
+  grid-template-columns:
+    152px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 0.75fr)
+    150px;
 }
 .market-switch-button {
   width: 100%;
@@ -2364,10 +2363,9 @@ textarea.field {
 }
 @media (max-width: 1300px) {
   .filters {
-    grid-template-columns: 145px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(
-        0,
-        0.75fr
-      ) 132px;
+    grid-template-columns:
+      145px minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 0.75fr)
+      132px;
   }
   .model-market-filters {
     grid-template-columns: 145px minmax(0, 1fr);

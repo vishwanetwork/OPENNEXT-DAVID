@@ -1,5 +1,4 @@
-import { TopupReviewResponse, TopupsResponse, type CreditTopup } from '@opennext/contracts';
-import type { ApiClient } from '@/lib/api/client';
+import { type CreditTopup } from '@opennext/contracts';
 
 export type TopupScope = 'production' | 'demo';
 export const POLL_MS = 15000;

@@ -2,11 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import type { SessionUser } from '@opennext/contracts';
-import {
-  EMPTY_SLOTS,
-  composeModals,
-  type TerminalSlots,
-} from '@/terminal-kit';
+import { EMPTY_SLOTS, composeModals, type TerminalSlots } from '@/terminal-kit';
 import { TerminalShell, terminalModals } from '@/features/terminal';
 import {
   ListingTable,
@@ -40,9 +36,7 @@ const MODALS = composeModals(
   accountModals,
 );
 
-function useTerminalSlotsComposition(
-  openContact: TerminalSlots['openContact'],
-): TerminalSlots {
+function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']): TerminalSlots {
   const { open: openOpportunity } = useOpportunity();
   const purchaseContext = useSpotPurchaseContext();
   return useMemo<TerminalSlots>(
@@ -89,7 +83,9 @@ export function TerminalApp({
       }
     >
       {children}
-      {contact ? <ContactDialog message={contact.message} onClose={() => setContact(null)} /> : null}
+      {contact ? (
+        <ContactDialog message={contact.message} onClose={() => setContact(null)} />
+      ) : null}
     </TerminalShell>
   );
 }

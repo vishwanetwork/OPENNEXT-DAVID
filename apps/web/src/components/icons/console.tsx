@@ -40,7 +40,13 @@ const PATHS: Record<string, string> = {
 export type ConsoleIconName = keyof typeof PATHS | string;
 
 /** Stroke icons from the legacy console (`.icon`). Unknown names fall back to the overview grid. */
-export function ConsoleIcon({ name, className = 'icon' }: { name: ConsoleIconName; className?: string }) {
+export function ConsoleIcon({
+  name,
+  className = 'icon',
+}: {
+  name: ConsoleIconName;
+  className?: string;
+}) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
       <path d={PATHS[name] || PATHS.overview} />

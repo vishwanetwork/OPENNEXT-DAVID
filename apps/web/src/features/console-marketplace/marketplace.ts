@@ -4,7 +4,6 @@ import {
   type KybRecord,
   type MarketRecord,
 } from '@opennext/contracts';
-import type { ApiClient } from '@/lib/api/client';
 
 export type InboxScope = 'production' | 'demo';
 export type InboxTab = 'rfqs' | 'supplies' | 'kyb' | 'featured';

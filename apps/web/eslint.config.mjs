@@ -96,6 +96,14 @@ export default defineConfig([
     rules: { 'no-restricted-imports': 'off' },
   },
   {
+    // Hard ceiling: no source module may grow past 500 lines. 300 stays a warning (see
+    // docs/CONVENTIONS.md "Module size"). Fixture data and the spot checkout state machine
+    // (a single cohesive class, split tracked in docs/ARCHITECTURE_REVIEW.md) are exempt.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/data/**', 'src/features/spot-market/checkout.ts'],
+    rules: { 'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }] },
+  },
+  {
     files: ['src/**/*.test.{ts,tsx}', 'src/test/**/*'],
     rules: { 'boundaries/entry-point': 'off', 'boundaries/element-types': 'off', 'max-lines': 'off' },
   },

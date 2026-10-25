@@ -18,4 +18,3 @@ export const ShowcaseResponse = z.object({
   updatedAt: z.string().optional(),
 });
 export type ShowcaseResponse = z.infer<typeof ShowcaseResponse>;
-

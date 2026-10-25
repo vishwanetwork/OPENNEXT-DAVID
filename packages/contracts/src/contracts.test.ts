@@ -84,7 +84,9 @@ describe('billing', () => {
       ],
     });
     expect(account.requests[0].status).toBe('Pending');
-    expect(CreditTopup.parse({ id: 'TOPUP-x', status: 'Approved', email: 'a@b.c' }).email).toBe('a@b.c');
+    expect(CreditTopup.parse({ id: 'TOPUP-x', status: 'Approved', email: 'a@b.c' }).email).toBe(
+      'a@b.c',
+    );
   });
 });
 

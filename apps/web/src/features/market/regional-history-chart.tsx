@@ -24,19 +24,15 @@ import {
   emptyChoice,
   geometry,
   metricText,
-  moneyShort,
   nearestPoint,
-  presentation,
-  regionName,
   selection,
   selectionKey,
-  seriesDots,
-  seriesPath,
   timeLabel,
   type HistorySelection,
-  type PlotPoint,
   type PlotSeries,
 } from './regional-history';
+import { PricePlot, SeriesTable, type HoverState } from './price-plot';
+import { RegionPicker } from './region-picker';
 import './history-chart.css';
 
 export { choiceStateFor } from './history-choices';
@@ -95,9 +91,7 @@ export function RegionalHistoryChart({
   );
   const metrics = metricsOf(S);
   const metric = primaryMetric(S);
-  const [hover, setHover] = useState<{ series: PlotSeries; point: PlotPoint; left: number } | null>(
-    null,
-  );
+  const [hover, setHover] = useState<HoverState | null>(null);
   const [activeFocus, setActiveFocus] = useState<{ id: string | null; metric: PriceMetric | null }>(
     { id: null, metric: null },
   );
@@ -169,7 +163,6 @@ export function RegionalHistoryChart({
     ).values(),
   ];
   const term = data.term || S.term || 'Spot';
-  const query = state.query.trim().toLowerCase();
 
   const controls = (
     <div className="history-controls">
@@ -194,142 +187,6 @@ export function RegionalHistoryChart({
       </span>
     </div>
   );
-  let visibleGroups = 0;
-  const picker = (
-    <div className="history-selection">
-      <button
-        ref={toggleRef}
-        type="button"
-        className="btn secondary small"
-        data-region-toggle
-        aria-expanded={state.open}
-        onClick={() => update({ open: !state.open })}
-      >
-        Compare regions <span className="history-count">{state.selected.length} selected</span>⌄
-      </button>
-      <span>
-        All {regionsList.length} regions available · Hover or focus a legend to isolate prices
-      </span>
-      {state.open ? (
-        <section
-          className="history-picker"
-          aria-label="Choose regions for price comparison"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              e.stopPropagation();
-              update({ open: false });
-              toggleRef.current?.focus();
-            }
-          }}
-        >
-          <div className="history-picker-head">
-            <strong>Compare global prices</strong>
-            <button
-              type="button"
-              data-region-toggle
-              aria-label="Close region picker"
-              onClick={() => {
-                update({ open: false });
-                toggleRef.current?.focus();
-              }}
-            >
-              ×
-            </button>
-          </div>
-          <input
-            ref={searchRef}
-            type="search"
-            data-region-search
-            aria-label="Search regions"
-            placeholder="Search region or configuration…"
-            value={state.query}
-            onChange={(e) => update({ query: e.target.value })}
-          />
-          <div className="history-picker-actions">
-            <button
-              type="button"
-              data-region-all
-              onClick={() => update({ selected: result.known.map((s) => s.id), initialized: true })}
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              data-region-clear
-              onClick={() => update({ selected: [], initialized: true })}
-            >
-              Clear
-            </button>
-            <span>{state.selected.length} selected · No limit</span>
-          </div>
-          <div className="history-options">
-            {regionsList.map((region) => {
-              const rows = result.known.filter((s) => s.region === region.code);
-              const name = regionName(
-                { name: (region as { city?: string }).city || region.name, region: region.code },
-                data,
-                regions,
-              );
-              const text = [
-                name,
-                ...rows.map((s) => presentation(s, result.known, data, regions).label),
-              ]
-                .join(' ')
-                .toLowerCase();
-              const hidden = !text.includes(query);
-              if (!hidden) visibleGroups++;
-              return (
-                <div
-                  key={region.code}
-                  className="history-region-group"
-                  data-history-search-text={text}
-                  hidden={hidden}
-                >
-                  <div className="history-region-name">{name}</div>
-                  {rows.length ? (
-                    rows.map((s) => {
-                      const display = presentation(s, result.known, data, regions);
-                      return (
-                        <label key={s.id} className="history-zone-row">
-                          <input
-                            type="checkbox"
-                            aria-label={display.label}
-                            data-region-id={s.id}
-                            checked={state.selected.includes(s.id)}
-                            onChange={(e) =>
-                              update({
-                                selected: e.target.checked
-                                  ? [...new Set([...state.selected, s.id])]
-                                  : state.selected.filter((v) => v !== s.id),
-                                initialized: true,
-                              })
-                            }
-                          />
-                          <span>{display.description || display.name}</span>
-                        </label>
-                      );
-                    })
-                  ) : (
-                    <div className="history-region-empty">
-                      No recorded prices for this configuration
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="history-picker-empty" hidden={visibleGroups > 0}>
-            No matching regions.
-          </div>
-          <div className="history-picker-notice">
-            Different hardware configurations remain separate. Missing prices are never estimated.
-          </div>
-        </section>
-      ) : null}
-    </div>
-  );
-
   if (!geo) {
     const title = state.selected.length
       ? 'No recorded prices for the selected regions'
@@ -344,7 +201,16 @@ export function RegionalHistoryChart({
     return (
       <div ref={host}>
         {controls}
-        {picker}
+        <RegionPicker
+          state={state}
+          result={result}
+          regionsList={regionsList}
+          data={data}
+          regions={regions}
+          update={update}
+          toggleRef={toggleRef}
+          searchRef={searchRef}
+        />
         <div className="aws-history-empty">
           <h3>{title}</h3>
           <p>{note}</p>
@@ -362,7 +228,16 @@ export function RegionalHistoryChart({
   return (
     <div ref={host} onPointerLeave={onLeave}>
       {controls}
-      {picker}
+      <RegionPicker
+        state={state}
+        result={result}
+        regionsList={regionsList}
+        data={data}
+        regions={regions}
+        update={update}
+        toggleRef={toggleRef}
+        searchRef={searchRef}
+      />
       <div className="history-legend" aria-label="Price curve legend">
         {legendSeries.map((s) => (
           <button
@@ -432,112 +307,7 @@ export function RegionalHistoryChart({
           {geo.series.length} curves · {metricText(S)} price
         </span>
       </div>
-      <div className="history-plot regional-price-plot">
-        <svg
-          viewBox={`0 0 ${geo.w} ${geo.h}`}
-          role="img"
-          aria-label={`${S.model} regional ${metricText(S).toLowerCase()} prices`}
-          onPointerMove={onMove}
-        >
-          {geo.grid.map((g, i) => (
-            <g key={i}>
-              <line
-                x1={geo.left}
-                x2={geo.w - geo.right}
-                y1={g.y}
-                y2={g.y}
-                stroke="#e3ebe5"
-                strokeDasharray="4 7"
-              />
-              <text x={geo.w - geo.right + 10} y={g.y + 4} className="history-axis">
-                {g.label}
-              </text>
-            </g>
-          ))}
-          {geo.series.map((s) => {
-            const style = lineStyle(s);
-            return (
-              <g
-                key={s.id + s.metric}
-                data-region-line={s.id}
-                data-price-metric={s.metric}
-                style={{ opacity: style.opacity }}
-              >
-                <path
-                  d={seriesPath(s, geo.gap)}
-                  fill="none"
-                  stroke={s.color}
-                  strokeWidth={style.strokeWidth}
-                  strokeDasharray={s.dash}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-                {seriesDots(s, geo.gap).map((p) => (
-                  <circle key={p.timestamp} cx={p.x} cy={p.y} r="3" fill={s.color} />
-                ))}
-              </g>
-            );
-          })}
-          {geo.ticks.map((time, i) => (
-            <text
-              key={time}
-              className="history-axis"
-              x={
-                geo.series.length && geo.from === geo.to
-                  ? (geo.left + geo.w - geo.right) / 2
-                  : geo.left +
-                    ((time - geo.from) / (geo.to - geo.from || 1)) * (geo.w - geo.left - geo.right)
-              }
-              y={geo.h - 12}
-              textAnchor={i === 0 ? 'start' : i === geo.ticks.length - 1 ? 'end' : 'middle'}
-            >
-              {dateLabel(time)}
-            </text>
-          ))}
-          <g className="history-hover" visibility={hover ? 'visible' : 'hidden'}>
-            <line
-              y1={geo.top}
-              y2={geo.h - geo.bottom}
-              x1={hover?.point.x ?? 0}
-              x2={hover?.point.x ?? 0}
-              stroke="#8aa48f"
-              strokeDasharray="3 5"
-            />
-            <circle
-              r="4"
-              fill="white"
-              strokeWidth="2"
-              cx={hover?.point.x ?? 0}
-              cy={hover?.point.y ?? 0}
-              stroke={hover?.series.color}
-            />
-          </g>
-        </svg>
-        <div
-          className="history-tooltip"
-          hidden={!hover}
-          style={hover ? { left: hover.left + 'px', top: '12px' } : undefined}
-        >
-          {hover ? (
-            <>
-              <strong>
-                {moneyShort(hover.point.value)} <small>/ GPU-hour</small>
-              </strong>
-              <span>
-                {hover.series.display.name} · {METRIC_SHORT[hover.series.metric]}
-              </span>
-              {hover.series.display.description ? (
-                <span>{hover.series.display.description}</span>
-              ) : null}
-              <div>
-                Low {moneyShort(hover.point.min)} · Average {moneyShort(hover.point.avg)} · High{' '}
-                {moneyShort(hover.point.max)}
-              </div>
-              <time>{timeLabel(hover.point.time, geo.daily)}</time>
-            </>
-          ) : null}
-        </div>
-      </div>
+      <PricePlot S={S} geo={geo} hover={hover} lineStyle={lineStyle} onMove={onMove} />
       <div className="history-footnote">
         <span>Actual {metricText(S).toLowerCase()} observations · Missing dates remain gaps</span>
         <span>{snapshot}</span>
@@ -550,55 +320,7 @@ export function RegionalHistoryChart({
           capacity.
         </p>
       </details>
-      <details className="history-comparison regional-table">
-        <summary>View {geo.series.length} regional price series</summary>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>REGION / CONFIGURATION</th>
-                {metrics.length > 1 ? <th>METRIC</th> : null}
-                <th>LAST {metrics.length === 1 ? METRIC_SHORT[metric].toUpperCase() : 'PRICE'}</th>
-                <th>PERIOD CHANGE</th>
-                <th>RECORDED RANGE</th>
-                <th>OBSERVATIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {geo.series.map((s) => {
-                const first = s.points[0];
-                const last = s.points[s.points.length - 1];
-                const change =
-                  s.points.length > 1 && first.value > 0
-                    ? (last.value / first.value - 1) * 100
-                    : null;
-                return (
-                  <tr key={s.id + s.metric}>
-                    <td>
-                      <i style={{ background: s.color }} />
-                      <strong>{s.display.name}</strong>
-                      {s.display.description ? <small>{s.display.description}</small> : null}
-                    </td>
-                    {metrics.length > 1 ? <td>{METRIC_SHORT[s.metric]}</td> : null}
-                    <td>
-                      {moneyShort(last.value)}
-                      <small>{dateLabel(last.time)}</small>
-                    </td>
-                    <td>
-                      {change === null ? '—' : (change >= 0 ? '+' : '') + change.toFixed(2) + '%'}
-                    </td>
-                    <td>
-                      {moneyShort(Math.min(...s.points.map((p) => p.value)))} –{' '}
-                      {moneyShort(Math.max(...s.points.map((p) => p.value)))}
-                    </td>
-                    <td>{s.points.length}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </details>
+      <SeriesTable geo={geo} metrics={metrics} metric={metric} />
     </div>
   );
 }

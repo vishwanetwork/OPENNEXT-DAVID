@@ -53,7 +53,10 @@ async function forward(request: Request): Promise<Response> {
           }),
           {
             status: 502,
-            headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-store',
+            },
           },
         ),
       );

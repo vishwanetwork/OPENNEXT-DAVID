@@ -185,7 +185,6 @@ export type InstancesResponse = z.infer<typeof InstancesResponse>;
 
 /* ---------- Shared shapes ---------- */
 
-
 /** Fee policy fields written by the server on quotes, orders and supply rows (5 % each side). */
 export const FeeFields = z.object({
   feePolicyVersion: str,
@@ -260,7 +259,6 @@ export const MarketRow = MarketplaceListing.extend({
 }).passthrough();
 export type MarketRow = z.infer<typeof MarketRow>;
 
-
 /* ---------- GET /api/marketplace/reference-catalog ---------- */
 export const ReferenceCatalogResponse = z
   .object({
@@ -308,9 +306,7 @@ export const SettlementRow = z
   })
   .passthrough();
 export type SettlementRow = z.infer<typeof SettlementRow>;
-export const SettlementsResponse = z
-  .object({ rows: lenientArray(SettlementRow) })
-  .passthrough();
+export const SettlementsResponse = z.object({ rows: lenientArray(SettlementRow) }).passthrough();
 export type SettlementsResponse = z.infer<typeof SettlementsResponse>;
 
 /* ---------- Owner records (`/api/marketplace/me`) ---------- */
@@ -658,4 +654,3 @@ export const ResellRequest = z.object({
 export type ResellRequest = z.infer<typeof ResellRequest>;
 export const ResellResponse = z.object({ supply: OwnedSupply }).passthrough();
 export type ResellResponse = z.infer<typeof ResellResponse>;
-

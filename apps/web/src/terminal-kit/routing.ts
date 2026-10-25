@@ -43,7 +43,8 @@ export function resolveTarget(
 }
 
 /** Default landing route on the terminal host when none is requested. */
-export const defaultRoute = (role: Role): TerminalRoute => (role === 'seller' ? 'supply' : 'market');
+export const defaultRoute = (role: Role): TerminalRoute =>
+  role === 'seller' ? 'supply' : 'market';
 
 /** Maps a legacy `#terminal/<route>` (or `#`) hash to a path. Returns null when the hash is not a terminal hash. */
 export function legacyHashToPath(hash: string): string | null {

@@ -15,7 +15,7 @@ import {
 export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
   const state = useWorkspaceStore();
   const toast = useToast();
-  const { openModal, go } = useTerminal();
+  const { openModal } = useTerminal();
   const items = state[type];
   const name = type === 'cart' ? 'Quote Cart' : 'Saved Capacity';
   const compareSelected = () => {

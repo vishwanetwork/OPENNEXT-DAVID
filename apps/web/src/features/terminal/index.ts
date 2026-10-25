@@ -10,5 +10,6 @@ export { ModelsPage, ModelRateSummary, tokenMoney, tokenVolume } from './compone
 export { CollectionPage } from './components/collection-page';
 export { SettingsPage } from './components/settings-page';
 export { HelpPage } from './components/help-page';
-export { Filters, MarketSwitcher } from './components/filters';
+export { Filters } from './components/filters';
+export { MarketSwitcher } from './components/market-switcher';
 export { TerminalHeader } from './components/terminal-header';

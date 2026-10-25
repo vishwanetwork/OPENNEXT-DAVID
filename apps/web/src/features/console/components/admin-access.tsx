@@ -2,9 +2,9 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { AdminSessionOk } from '@opennext/contracts';
 import { ApiError } from '@/lib/api/client';
 import { useApi } from '@/components/providers/api-context';
+import { adminApi } from '../api';
 
 /** True when a request failed because the administrator session is missing or expired. */
 export const isAccessError = (error: unknown): boolean =>
@@ -18,8 +18,7 @@ export function useAdminLogin(onConnected?: () => void | Promise<void>) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (token: string) =>
-      AdminSessionOk.parse(await api.post('/api/admin/pricing/session', { token })),
+    mutationFn: (token: string) => adminApi.login(api, token),
     onSuccess: async () => {
       await queryClient.invalidateQueries();
       await onConnected?.();

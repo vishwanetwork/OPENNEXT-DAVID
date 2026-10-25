@@ -297,10 +297,9 @@
   cursor: not-allowed;
 }
 .filters {
-  grid-template-columns: 140px minmax(140px, 1fr) minmax(150px, 1.1fr) minmax(205px, 1fr) minmax(
-      150px,
-      0.9fr
-    ) minmax(110px, 0.6fr) auto;
+  grid-template-columns:
+    140px minmax(140px, 1fr) minmax(150px, 1.1fr) minmax(205px, 1fr) minmax(150px, 0.9fr)
+    minmax(110px, 0.6fr) auto;
 }
 .filter[data-type='priceMetric'] {
   gap: 8px;

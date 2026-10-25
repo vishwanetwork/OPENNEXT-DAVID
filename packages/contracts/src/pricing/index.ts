@@ -124,7 +124,6 @@ export const RegionalHistoryResponse = z
   .passthrough();
 export type RegionalHistoryResponse = z.infer<typeof RegionalHistoryResponse>;
 
-
 /* ---------- GET /api/pricing/ticker?period=1W ---------- */
 
 export const TickerPoint = z.object({
@@ -162,4 +161,3 @@ export const TickerResponse = z.object({
   meta: z.record(z.unknown()).optional(),
 });
 export type TickerResponse = z.infer<typeof TickerResponse>;
-

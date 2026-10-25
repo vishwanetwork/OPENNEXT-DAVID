@@ -64,7 +64,11 @@ describe('workspace store', () => {
     useWorkspaceStore.getState().addToCart(offer('c'));
     useWorkspaceStore.getState().patch({ afterReview: 'supply-form' });
     s.applySession(user({ id: 'u2', role: 'seller', promotionalCredit: 0 }));
-    expect(useWorkspaceStore.getState()).toMatchObject({ role: 'seller', cart: [], afterReview: null });
+    expect(useWorkspaceStore.getState()).toMatchObject({
+      role: 'seller',
+      cart: [],
+      afterReview: null,
+    });
     s.applySession(null);
     expect(useWorkspaceStore.getState().identity).toEqual({ name: '', email: '' });
   });

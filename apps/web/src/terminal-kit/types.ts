@@ -5,7 +5,8 @@ export type Role = 'buyer' | 'seller';
 export const ROLES: readonly Role[] = ['buyer', 'seller'];
 export const asRole = (value: unknown): Role =>
   String(value ?? '').toLowerCase() === 'seller' ? 'seller' : 'buyer';
-export const roleLabel = (role: Role): 'Buyer' | 'Seller' => (role === 'seller' ? 'Seller' : 'Buyer');
+export const roleLabel = (role: Role): 'Buyer' | 'Seller' =>
+  role === 'seller' ? 'Seller' : 'Buyer';
 export const roleOf = (user: Pick<SessionUser, 'role'> | null | undefined): Role =>
   asRole(user?.role);
 

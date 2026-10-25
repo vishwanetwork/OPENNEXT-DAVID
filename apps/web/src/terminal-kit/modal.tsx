@@ -32,9 +32,10 @@ export type ModalComponent<K extends ModalType = ModalType> = ComponentType<Moda
 export type ModalComponents = { [K in ModalType]?: ModalComponent<K> };
 
 /** Payload argument of `openModal`: optional when every field of the payload is optional. */
-export type ModalArgs<K extends ModalType> = Record<string, never> extends TerminalModalMap[K]
-  ? [payload?: TerminalModalMap[K]]
-  : [payload: TerminalModalMap[K]];
+export type ModalArgs<K extends ModalType> =
+  Record<string, never> extends TerminalModalMap[K]
+    ? [payload?: TerminalModalMap[K]]
+    : [payload: TerminalModalMap[K]];
 
 /** Merges feature modal maps; throws on a duplicated modal type so shadowing cannot happen silently. */
 export function composeModals(...maps: ModalComponents[]): ModalComponents {

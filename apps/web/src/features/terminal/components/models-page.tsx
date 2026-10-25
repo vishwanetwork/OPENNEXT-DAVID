@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { listModelQuotes, type ModelQuote } from '@/data/model-quotes';
 import { Button, EmptyState, PageHeading, useTerminal, useToast } from '@/terminal-kit';
-import { MarketSwitcher } from './filters';
+import { MarketSwitcher } from './market-switcher';
 
 export const tokenMoney = (value: unknown): string =>
   Number.isFinite(Number(value))

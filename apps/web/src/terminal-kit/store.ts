@@ -6,12 +6,7 @@
  */
 import { create } from 'zustand';
 import type { SessionUser } from '@opennext/contracts';
-import {
-  ALL_REGIONS,
-  normalizeMetrics,
-  type Offer,
-  type PriceMetric,
-} from '@/features/market';
+import { ALL_REGIONS, normalizeMetrics, type Offer, type PriceMetric } from '@/features/market';
 import type { ModalArgs, ModalState, ModalType } from './modal';
 import {
   asRole,
@@ -134,7 +129,9 @@ const sessionReset = (): Partial<WorkspaceUiState> => ({
 export const sessionKey = (user: SessionUser | null | undefined) =>
   JSON.stringify([user?.id || null, asRole(user?.role), !!user?.demo]);
 
-type StoredPreferences = Partial<Pick<WorkspaceUiState, 'model' | 'region' | 'priceMetric' | 'priceMetrics'>>;
+type StoredPreferences = Partial<
+  Pick<WorkspaceUiState, 'model' | 'region' | 'priceMetric' | 'priceMetrics'>
+>;
 
 /** Reads the persisted display preferences (client only). */
 export function readPreferences(storage: Pick<Storage, 'getItem'> | null): StoredPreferences {

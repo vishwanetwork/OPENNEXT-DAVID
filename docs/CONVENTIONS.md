@@ -62,6 +62,18 @@ charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`
     smoke test per page.
 13. **Lint and typecheck clean** (`pnpm lint`, `pnpm typecheck`) before finishing.
 
+## Module size
+
+`max-lines` warns at 300 lines and fails at 500 (blank lines and comments excluded). A file that
+grows past 300 is a prompt to split by responsibility, not to compress. The usual seams are:
+
+- a page keeps its data hooks and layout; tables, toolbars and cells move to sibling components
+  (`inbox-page.tsx` → `inbox-tables.tsx`, `inbox-toolbar.tsx`, `inbox-cells.tsx`);
+- dialogs live one domain per file (`billing/components/{order-modal,payment-flow}.tsx`);
+- pure logic leaves the component (`console/pages/market-data.ts`, `market/regional-history.ts`).
+
+Exempt from the hard limit: `src/data/**` (static fixtures) and the spot checkout state machine.
+
 ## Legacy sources
 
 The minified originals are in `legacy/`. Make pretty-printed copies for reading (never edit

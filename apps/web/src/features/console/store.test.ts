@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEY, loadDb, migrateIdentity } from './store';
 import { initialDb } from './reference-data';
-import { filteredOffers, importOffers } from './pages/market';
+import { filteredOffers, importOffers } from './pages/market-data';
 import { defaultMarketFilters } from './store';
 import { legacyHashToPath, pagePath } from './pages';
 import { toCsv } from './helpers';
