@@ -23,6 +23,7 @@ export {
   type ParsedPublicKey,
   type SshKeyRecord,
   type AccountRef,
+  type KeyRuntime,
 } from './ssh-keys';
 export {
   loadKeys,

@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto';
-import type { KeyRuntime } from '@/features/account/ssh-keys';
+import type { KeyRuntime } from '@/features/account';
 
 /** jsdom typed arrays are foreign to Node's WebCrypto; copy them into Node buffers first. */
 export const sshTestRuntime: KeyRuntime = {
