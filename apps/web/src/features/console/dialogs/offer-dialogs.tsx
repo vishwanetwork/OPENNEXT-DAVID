@@ -74,7 +74,9 @@ export function buildOfferDialogs(
   }
 
   function specDetail(index: number) {
-    const [model, memory] = MODEL_SPECS[index];
+    const spec = MODEL_SPECS[index];
+    if (!spec) return;
+    const [model, memory] = spec;
     overlay.modal({
       title: `${model} specifications`,
       subtitle: 'Hardware reference used for allocation matching.',

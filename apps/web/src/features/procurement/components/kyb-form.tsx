@@ -17,11 +17,11 @@ export function KybForm() {
     const data = formData(event);
     void run(async () => {
       await procurementApi.submitKyb(api, {
-        company: data.company,
-        registration: data.registration,
-        country: data.country,
-        evidence: data.evidence,
-        rights: data.rights,
+        company: data.company ?? '',
+        registration: data.registration ?? '',
+        country: data.country ?? '',
+        evidence: data.evidence ?? '',
+        rights: data.rights ?? '',
         eligibility: !!data.eligibility,
         rightsConfirmed: !!data.rightsConfirmed,
       });

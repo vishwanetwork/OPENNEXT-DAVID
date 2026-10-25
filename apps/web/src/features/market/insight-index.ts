@@ -294,7 +294,7 @@ function exactMetadata(
         .map(Number),
     ),
   ];
-  return { vcpu: counts.length === 1 ? counts[0] : null };
+  return { vcpu: counts.length === 1 ? (counts[0] ?? null) : null };
 }
 
 export interface FilteredInsight {

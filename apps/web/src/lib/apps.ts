@@ -54,11 +54,9 @@ export const APP_SEGMENT: Record<AppKind, string> = {
 };
 
 export function normalizeHost(raw: string | null | undefined): string {
-  return String(raw || '')
-    .split(',')[0]
-    .split(':')[0]
-    .trim()
-    .toLowerCase();
+  const [first = ''] = String(raw || '').split(',');
+  const [host = ''] = first.split(':');
+  return host.trim().toLowerCase();
 }
 
 export function normalizeHosts(env: Record<string, string | undefined>): HostConfig {

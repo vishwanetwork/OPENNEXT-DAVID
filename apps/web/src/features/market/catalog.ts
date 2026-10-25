@@ -323,7 +323,8 @@ export const metricsOf = (selection: {
 export const primaryMetric = (selection: {
   priceMetrics?: unknown;
   priceMetric?: unknown;
-}): PriceMetric => (metricsOf(selection).includes('avg') ? 'avg' : metricsOf(selection)[0]);
+}): PriceMetric =>
+  metricsOf(selection).includes('avg') ? 'avg' : (metricsOf(selection)[0] ?? 'avg');
 
 /** Query string for `/api/pricing/regional-history` (the chart the Terminal shows). */
 export function regionalHistoryQuery(

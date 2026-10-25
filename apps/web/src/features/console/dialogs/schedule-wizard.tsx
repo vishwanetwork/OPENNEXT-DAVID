@@ -78,13 +78,13 @@ export function buildScheduleWizard(ctx: DialogContext) {
         if (model) next.model = model[0];
         if (/h100/i.test(text)) next.model = 'H100 SXM';
         const count = text.match(/(\d+)\s*(?:h100|h200|b200|b300|gpus?)/i);
-        if (count) next.count = +count[1];
+        if (count) next.count = Number(count[1]);
         const cap = text.match(/\$(\d+(?:\.\d+)?)/);
-        if (cap) next.budget = +cap[1];
+        if (cap) next.budget = Number(cap[1]);
         const region = REGIONS.find((r) => text.toLowerCase().includes(r.toLowerCase()));
         if (region) next.region = region;
         const interval = text.match(/every\s+(\d+)\s+min/i);
-        if (interval) next.interval = +interval[1];
+        if (interval) next.interval = Number(interval[1]);
         next.name = `${next.model} capacity evaluation`;
         next.step = 2;
         store.getState().setUi({ scheduleDraft: next });

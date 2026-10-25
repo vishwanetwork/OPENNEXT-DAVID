@@ -33,11 +33,11 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
     }
     void run(async () => {
       await procurementApi.submitQuote(api, req.id, {
-        supplyId: data.supplyId,
-        rate: data.rate,
-        delivery: data.delivery,
+        supplyId: data.supplyId ?? '',
+        rate: data.rate ?? '',
+        delivery: data.delivery ?? '',
         validUntil: new Date(data.validUntil + 'Z').toISOString(),
-        notes: data.notes,
+        notes: data.notes ?? '',
       });
       useWorkspaceStore.getState().closeModal();
       toast('Your quote has been submitted to the buyer.');
@@ -64,7 +64,7 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
       <div className="form-grid">
         <div>
           <label className="form-label">Verified supply</label>
-          <select className="field" name="supplyId" required defaultValue={choices[0].id}>
+          <select className="field" name="supplyId" required defaultValue={choices[0]?.id}>
             {choices.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.model} · {s.count} GPU · {s.id}

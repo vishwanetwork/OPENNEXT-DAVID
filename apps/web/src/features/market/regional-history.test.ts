@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import type { RegionalHistoryResponse } from '@opennext/contracts';
 import { BASE_REGIONS } from './catalog';
 import {
@@ -112,9 +113,10 @@ describe('summary and geometry', () => {
     const result = reconcileSelection(multi, data(), emptyChoice());
     const geo = geometry(multi, data(), result, BASE_REGIONS, 900)!;
     expect(geo.series.filter((s) => s.id === 'a').map((s) => s.metric)).toEqual(['max', 'min']);
+    const primary = at(geo.series, 0);
     const gapped = {
-      ...geo.series[0],
-      points: geo.series[0].points.map((p, i) => ({
+      ...primary,
+      points: primary.points.map((p, i) => ({
         ...p,
         timestamp: p.timestamp + (i ? 10 * 3600_000 : 0),
       })),

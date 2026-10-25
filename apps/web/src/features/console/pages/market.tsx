@@ -104,7 +104,7 @@ export function MarketPage() {
     }
     setUi({
       market: {
-        dataset: DATASET_BY_LABEL[get('dataset')],
+        dataset: DATASET_BY_LABEL[get('dataset')] ?? 'current',
         provider: get('provider'),
         model: get('model'),
         count: get('count'),

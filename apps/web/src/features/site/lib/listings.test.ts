@@ -121,7 +121,7 @@ describe('rowsFor', () => {
     });
   });
   it('supplier indications precede unmatched official references in the model catalog', () => {
-    expect(MODEL_LISTINGS[0].priceKind).toBe('supplier_quote');
+    expect(MODEL_LISTINGS[0]?.priceKind).toBe('supplier_quote');
     expect(MODEL_LISTINGS.some((item) => item.priceKind === 'public_api_reference')).toBe(true);
     expect(MODEL_LISTINGS.filter((item) => item.id === 'model-gemini-lite')).toHaveLength(1);
   });

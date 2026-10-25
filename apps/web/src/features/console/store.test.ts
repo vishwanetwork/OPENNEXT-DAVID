@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import { STORAGE_KEY, loadDb, migrateIdentity } from './store';
 import { initialDb } from './reference-data';
 import { filteredOffers, importOffers } from './pages/market-data';
@@ -34,19 +35,19 @@ describe('browser-local operations dataset', () => {
     const storage = memory();
     const db = initialDb();
     db.profile = { ...db.profile, name: 'Richard Chen', email: 'richard@opennext.ai' };
-    db.users[1] = { ...db.users[1], name: 'Nova', email: 'nova@vishwalab.com' };
-    db.audit[0] = { ...db.audit[0], actor: 'Richard' };
-    db.orders[0].stage = 3;
+    db.users[1] = { ...at(db.users, 1), name: 'Nova', email: 'nova@vishwalab.com' };
+    db.audit[0] = { ...at(db.audit, 0), actor: 'Richard' };
+    at(db.orders, 0).stage = 3;
     storage.setItem(STORAGE_KEY, JSON.stringify(db));
     const loaded = loadDb(storage);
     expect(loaded.profile).toMatchObject({ name: 'Administrator', email: '' });
     expect(loaded.users[1]).toMatchObject({
       name: 'Administrator',
       email: '',
-      review: db.users[1].review,
+      review: db.users[1]?.review,
     });
-    expect(loaded.audit[0].actor).toBe('Operations');
-    expect(loaded.orders[0].stage).toBe(3);
+    expect(loaded.audit[0]?.actor).toBe('Operations');
+    expect(loaded.orders[0]?.stage).toBe(3);
     expect(JSON.parse(storage.map.get(STORAGE_KEY)!).profile.name).toBe('Administrator');
   });
   it('reports whether a migration happened', () => {
@@ -94,7 +95,7 @@ describe('market filters and CSV import', () => {
       rate: 2.63,
       source: 'Operator CSV import',
     });
-    expect(db.datasets[0].count).toBe(37);
+    expect(db.datasets[0]?.count).toBe(37);
   });
   it('exports CSV with quoted values', () => {
     expect(toCsv([{ a: 'x"y', b: 1 }])).toBe('a,b\n"x""y","1"');

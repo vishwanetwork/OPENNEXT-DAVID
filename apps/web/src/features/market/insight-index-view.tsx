@@ -106,9 +106,11 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
       count: 'market-insight',
       region: 'insight:' + JSON.stringify(options.selected),
       term,
-      period: INSIGHT_PERIODS[options.range],
+      period: INSIGHT_PERIODS[options.range] ?? '',
       priceMetrics: session.metrics.slice(),
-      priceMetric: session.metrics.includes('avg') ? ('avg' as const) : session.metrics[0],
+      priceMetric: session.metrics.includes('avg')
+        ? ('avg' as const)
+        : (session.metrics[0] ?? 'avg'),
     };
     return <RegionalHistoryChart selection={privateState} data={filtered.data} regions={regions} />;
   };

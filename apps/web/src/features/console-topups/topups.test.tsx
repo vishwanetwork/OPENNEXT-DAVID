@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { CreditTopup } from '@opennext/contracts';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderConsole, mockFetch, json } from '@/test/render';
 import { assertScope, filterTopups, pendingRow, topupAmount, topupLabel } from './topups';
 import { ConsoleTopupsPage } from './topups-page';
 
-const rows = [
+const rows: [CreditTopup, CreditTopup] = [
   {
     id: 'TOP-1',
     email: 'buyer@example.com',

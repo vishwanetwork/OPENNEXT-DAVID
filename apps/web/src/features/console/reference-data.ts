@@ -34,21 +34,24 @@ export const DEFAULT_PROMPT =
 export const VERIFY_COMMAND =
   'nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv';
 
-const seedOffers: Offer[] = Array.from({ length: 36 }, (_, i) => ({
-  id: `OFR-${4101 + i}`,
-  provider: PROVIDERS[i % 6],
-  model: MODEL_SPECS[i % 12][0],
-  memory: MODEL_SPECS[i % 12][1],
-  count: [8, 4, 8, 16, 1, 8][i % 6],
-  region: REGIONS[(i + Math.floor(i / 6)) % 6],
-  terms: ['Spot', 'On-demand', 'Reserved'][i % 3],
-  rate: +(MODEL_SPECS[i % 12][2] * (0.89 + (i % 5) * 0.065)).toFixed(3),
-  score: 5 + (i % 6),
-  availability: i % 7 === 0 ? 'Scheduled' : 'Available',
-  source: 'Imported',
-  updated: 'Oct 12, 09:42',
-  record: 'Current offer',
-}));
+const seedOffers: Offer[] = Array.from({ length: 36 }, (_, i) => {
+  const [model = '', memory = 0, baseRate = 0] = MODEL_SPECS[i % 12] ?? [];
+  return {
+    id: `OFR-${4101 + i}`,
+    provider: PROVIDERS[i % 6] ?? '',
+    model,
+    memory,
+    count: [8, 4, 8, 16, 1, 8][i % 6] ?? 0,
+    region: REGIONS[(i + Math.floor(i / 6)) % 6] ?? '',
+    terms: ['Spot', 'On-demand', 'Reserved'][i % 3] ?? '',
+    rate: +(baseRate * (0.89 + (i % 5) * 0.065)).toFixed(3),
+    score: 5 + (i % 6),
+    availability: i % 7 === 0 ? 'Scheduled' : 'Available',
+    source: 'Imported',
+    updated: 'Oct 12, 09:42',
+    record: 'Current offer',
+  };
+});
 
 export function initialDb(): ConsoleDb {
   return structuredClone({

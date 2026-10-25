@@ -5,7 +5,11 @@
 
 export const DAY_MS = 86400000;
 export const ACTIVITY_LIMIT = 100;
-export const ACTIVITY_SHOW_OPTIONS = Object.freeze([20, 50, ACTIVITY_LIMIT]);
+export const ACTIVITY_SHOW_OPTIONS = Object.freeze<[number, number, number]>([
+  20,
+  50,
+  ACTIVITY_LIMIT,
+]);
 export const TERMS = ['All', 'Spot', 'On-demand', 'Reserved'] as const;
 export type InsightTerm = (typeof TERMS)[number];
 export const PANELS = ['index', 'analytics', 'activities'] as const;
@@ -16,7 +20,7 @@ export interface RangeSpec {
   days: number | null;
   gated: boolean;
 }
-export const RANGES: RangeSpec[] = [
+export const RANGES = [
   { key: '24H', label: '24H', days: 1, gated: false },
   { key: '3D', label: '3D', days: 3, gated: false },
   { key: '7D', label: '7D', days: 7, gated: false },
@@ -25,7 +29,7 @@ export const RANGES: RangeSpec[] = [
   { key: '6M', label: '6M', days: 180, gated: true },
   { key: '1Y', label: '1Y', days: 365, gated: true },
   { key: 'ALL', label: 'ALL', days: null, gated: true },
-];
+] as const satisfies readonly RangeSpec[];
 export const GROUPING_STEPS = [100, 10, 1] as const;
 export type GroupingStep = (typeof GROUPING_STEPS)[number];
 export interface GroupSpec {
@@ -35,12 +39,12 @@ export interface GroupSpec {
   numeric?: boolean;
   suffix?: string;
 }
-export const GROUPS: GroupSpec[] = [
+export const GROUPS = [
   { key: 'model', label: 'Model', searchable: true },
   { key: 'country', label: 'Country', searchable: true },
   { key: 'vcpu', label: 'vCPU', numeric: true },
   { key: 'memory', label: 'Memory', numeric: true, suffix: ' GB' },
-];
+] as const satisfies readonly GroupSpec[];
 export type GroupKey = GroupSpec['key'];
 export type Selected = Record<GroupKey, string[]>;
 export const emptySelected = (): Selected => ({ model: [], country: [], vcpu: [], memory: [] });
@@ -64,7 +68,8 @@ const DEMO_COUNTRIES = [
 ];
 const DEMO_COUNTS = [1, 2, 4, 8, 8, 16, 32];
 const DEMO_TERMS = ['Spot', 'Spot', 'Spot', 'On-demand', 'Spot', 'Reserved', 'On-demand'] as const;
-const TERM_BPS: Record<string, number> = { Spot: 10000, 'On-demand': 11800, Reserved: 8600 };
+type DemoTerm = (typeof DEMO_TERMS)[number];
+const TERM_BPS: Record<DemoTerm, number> = { Spot: 10000, 'On-demand': 11800, Reserved: 8600 };
 const PRICE_WAVE_BPS = [-650, -420, -250, -100, 0, 120, 260, 410, 580, 330, 170, -180];
 
 export const positive = (value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0;
@@ -159,10 +164,10 @@ export function normalizeSettlement(
 
 function demoPriceCents(
   profile: (typeof DEMO_PROFILES)[number],
-  term: string,
+  term: DemoTerm,
   index: number,
 ): number {
-  const wave = 10000 + PRICE_WAVE_BPS[index % PRICE_WAVE_BPS.length];
+  const wave = 10000 + (PRICE_WAVE_BPS[index % PRICE_WAVE_BPS.length] ?? 0);
   return Math.max(1, Math.round((profile.baseCents * TERM_BPS[term] * wave) / 100000000));
 }
 
@@ -171,6 +176,7 @@ export function buildDemoSettlements(now = Date.now()): Settlement[] {
   for (let index = 0; index < 168; index += 1) {
     const profile = DEMO_PROFILES[(index * 3 + Math.floor(index / 11)) % DEMO_PROFILES.length];
     const term = DEMO_TERMS[(index * 5 + Math.floor(index / 9)) % DEMO_TERMS.length];
+    if (!profile || !term) continue;
     const hoursAgo = 0.25 + index * 0.97;
     rows.push(
       normalizeSettlement(
@@ -194,6 +200,7 @@ export function buildDemoSettlements(now = Date.now()): Settlement[] {
   for (let index = 0; index < 24; index += 1) {
     const profile = DEMO_PROFILES[(index * 2 + 1) % DEMO_PROFILES.length];
     const term = DEMO_TERMS[(index + 2) % DEMO_TERMS.length];
+    if (!profile || !term) continue;
     rows.push(
       normalizeSettlement(
         {

@@ -60,13 +60,13 @@ export function useDialogBehavior(
       const last = items[items.length - 1];
       if (event.shiftKey && (document.activeElement === first || document.activeElement === node)) {
         event.preventDefault();
-        last.focus();
+        last?.focus();
       } else if (
         !event.shiftKey &&
         (document.activeElement === last || document.activeElement === node)
       ) {
         event.preventDefault();
-        first.focus();
+        first?.focus();
       }
     };
     node.addEventListener('keydown', onKey);

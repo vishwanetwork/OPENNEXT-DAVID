@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { at } from '@/test/at';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Providers } from '@/components/providers/providers';
 import { LandingPage } from './landing-page';
@@ -110,7 +111,7 @@ describe('landing page', () => {
       JSON.parse(window.sessionStorage.getItem('opennext-auth-role-intent-v1:account') || '{}')
         .role,
     ).toBe('seller');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open Terminal' })[0]);
+    fireEvent.click(at(screen.getAllByRole('button', { name: 'Open Terminal' }), 0));
     expect(assign).toHaveBeenLastCalledWith('https://terminal.opennextlab.ai/market?role=seller');
   });
   it('supply and demand selectors remain a centered two-button group without side copy', () => {
@@ -125,7 +126,7 @@ describe('landing page', () => {
     HTMLDialogElement.prototype.showModal = vi.fn();
     HTMLDialogElement.prototype.close = vi.fn();
     renderLanding();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Contact Us' })[0]);
+    fireEvent.click(at(screen.getAllByRole('button', { name: 'Contact Us' }), 0));
     expect(screen.getByText("Let's talk capacity.")).toBeInTheDocument();
     expect(document.querySelector('input[name="website"]')).toHaveAttribute('tabindex', '-1');
   });

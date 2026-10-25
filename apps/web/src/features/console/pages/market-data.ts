@@ -41,7 +41,13 @@ export function importOffers(
     for (const line of lines) {
       const vals = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
       const x = Object.fromEntries(headers.map((h, i) => [h, vals[i]]));
-      if (!x.provider || !x.model || !x.region || !(+x.rate > 0) || !(+x.count > 0)) {
+      if (
+        !x.provider ||
+        !x.model ||
+        !x.region ||
+        !(x.rate && +x.rate > 0) ||
+        !(x.count && +x.count > 0)
+      ) {
         skipped++;
         continue;
       }
@@ -52,7 +58,7 @@ export function importOffers(
         memory: MODEL_SPECS.find((s) => s[0] === x.model)?.[1] || 80,
         count: +x.count,
         region: x.region,
-        terms: x.terms,
+        terms: x.terms ?? '',
         rate: +x.rate,
         score: 8,
         availability: 'Available',

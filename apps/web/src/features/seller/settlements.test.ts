@@ -83,7 +83,7 @@ describe('settlements', () => {
     for (const limit of [20, 50, 100]) expect(latestMatching(normalized, limit).length).toBe(limit);
     for (const malformed of [0, 19, 37, 101, Infinity, 'bad', null])
       expect(latestMatching(normalized, malformed).length).toBe(100);
-    expect(latestMatching(normalized, 20)[0].id).toBe('ORD-0');
+    expect(latestMatching(normalized, 20)[0]?.id).toBe('ORD-0');
     expect(buildDemoSettlements().length).toBe(192);
     expect(synchronizeTradeModel(normalized, null)).toBe('H100 SXM');
     expect(synchronizeTradeModel(normalized, 'H100 SXM')).toBe('H100 SXM');

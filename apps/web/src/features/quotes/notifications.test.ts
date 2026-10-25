@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import {
   accountRows,
   notices,
@@ -66,8 +67,8 @@ describe('notifications', () => {
     ];
     const list = quoteRequests(accountRows(rfqs, 'rfqs', 'u1', owner));
     expect(list.map((r) => r.id)).toEqual(['R3', 'R1']);
-    expect(visibleStatus(list[0])).toBe('Approved · Private RFQ');
-    expect(visibleStatus(list[1])).toBe('Live RFQ');
+    expect(visibleStatus(at(list, 0))).toBe('Approved · Private RFQ');
+    expect(visibleStatus(at(list, 1))).toBe('Live RFQ');
     expect(visibleStatus({ status: 'Reviewing' })).toBe('Reviewing');
   });
   it('prefill maps an offer to RFQ fields, bounds numbers and resolves country codes', () => {

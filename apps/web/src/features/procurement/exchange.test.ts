@@ -192,7 +192,7 @@ describe('notifications', () => {
       ],
     );
     expect(rows.map((r) => r.id)).toEqual(['c', 'a']);
-    expect(rows[1].topupId).toBe('T');
+    expect(rows[1]?.topupId).toBe('T');
     expect(mergeNotifications(undefined, [{ id: 'a', ownerId: 'u1' }], [])).toEqual([]);
   });
 });

@@ -68,6 +68,7 @@ export function useImportDialog(onImported: (key: DatasetId) => void) {
       }
       const dataset = String(f.get('dataset'));
       const key = DATASET_BY_LABEL[dataset];
+      if (!key) return;
       let result: ReturnType<typeof importOffers> = { error: '' };
       useConsoleStore.getState().mutate((db) => {
         result = importOffers(db, key, text);

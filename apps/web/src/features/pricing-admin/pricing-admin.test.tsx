@@ -5,7 +5,7 @@ import { renderConsole, mockFetch, json } from '@/test/render';
 import { filterProviders, providerMetrics, providerState } from './api';
 import { PricingAdminPage } from './pricing-admin-page';
 
-const providers: PricingProvider[] = [
+const providers: [PricingProvider, PricingProvider, PricingProvider] = [
   {
     id: 'aws',
     name: 'AWS',

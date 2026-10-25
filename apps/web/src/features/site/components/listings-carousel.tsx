@@ -64,7 +64,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
   const rendered = useMemo(() => groups(side), [groups, side]);
   const names = [copy.rental, copy.models, copy.physical];
   const activeItems: Listing[] = rendered[tab] || [];
-  const activeCards = rotate(activeItems, offsets[tab]);
+  const activeCards = rotate(activeItems, offsets[tab] ?? 0);
 
   const readVisible = useCallback(() => {
     if (!component.current) return 5;
@@ -102,7 +102,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
         if (direction > 0)
           setOffsets((current) => current.map((value, i) => (i === panel ? value + 1 : value)));
         if (manual) {
-          const next = rotate(items, offsets[panel] + direction);
+          const next = rotate(items, (offsets[panel] ?? 0) + direction);
           const title = next[0] && 'name' in next[0] ? next[0].name : '';
           setAnnouncement(
             items.length
@@ -141,7 +141,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
     const observer = node
       ? new IntersectionObserver(
           (entries) => {
-            inView.current = entries[0].isIntersecting;
+            inView.current = entries[0]?.isIntersecting ?? false;
           },
           { threshold: 0.15 },
         )
@@ -218,7 +218,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
 
   const disabled = activeItems.length <= visible;
   const start = activeItems.length
-    ? ((offsets[tab] % activeItems.length) + activeItems.length) % activeItems.length
+    ? (((offsets[tab] ?? 0) % activeItems.length) + activeItems.length) % activeItems.length
     : 0;
 
   return (
@@ -277,7 +277,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
               finishAll();
               setTab(i);
               const items = rendered[i] || [];
-              const first = rotate(items, offsets[i])[0];
+              const first = rotate(items, offsets[i] ?? 0)[0];
               setAnnouncement(
                 items.length
                   ? `Showing ${Math.min(visible, items.length)} listings, starting with ${first && 'name' in first ? first.name : ''}.`
@@ -328,7 +328,7 @@ export function ListingsCarousel({ copy }: { copy: ListingsCopy }) {
       </div>
       <div className="public-listing-panels" ref={viewport}>
         {rendered.map((items, i) => {
-          const cards = rotate(items, offsets[i]);
+          const cards = rotate(items, offsets[i] ?? 0);
           const columns = Math.min(visible, Math.max(1, cards.length));
           return (
             <div

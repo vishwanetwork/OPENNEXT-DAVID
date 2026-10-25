@@ -28,16 +28,16 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
     const fields = Object.fromEntries(new FormData(form)) as Record<string, string>;
     try {
       const result = await submitContact(api, {
-        name: fields.name,
-        company: fields.company,
-        title: fields.title,
-        email: fields.email,
-        message: fields.message,
+        name: fields.name ?? '',
+        company: fields.company ?? '',
+        title: fields.title ?? '',
+        email: fields.email ?? '',
+        message: fields.message ?? '',
         website: fields.website,
         submissionId,
       });
       if (!result.id) throw new Error('Your request was not saved. Please try again.');
-      setSubmittedEmail(fields.email);
+      setSubmittedEmail(fields.email ?? '');
     } catch (failure) {
       const apiError = failure instanceof ApiError ? failure : null;
       setError(

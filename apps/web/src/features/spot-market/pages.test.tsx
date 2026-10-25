@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { at } from '@/test/at';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderTerminal, signIn, jsonResponse } from '@/test/render';
 import { useWorkspaceStore } from '@/terminal-kit';
@@ -71,7 +72,7 @@ describe('Spot market page', () => {
       </SpotCheckoutProvider>,
       { demo: true },
     );
-    fireEvent.click(screen.getAllByRole('button', { name: /^Buy Now/ })[0]);
+    fireEvent.click(at(screen.getAllByRole('button', { name: /^Buy Now/ }), 0));
     expect(useWorkspaceStore.getState().modal?.type).toBe('spot-review');
   });
 });

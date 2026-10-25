@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderConsole, mockFetch, json } from '@/test/render';
 import { ConsoleShell } from './components/shell';
@@ -41,7 +42,7 @@ describe('console shell', () => {
       </ConsoleShell>,
     );
     const before = useConsoleStore.getState().db.audit.length;
-    fireEvent.click(screen.getAllByText('Pause')[0]);
+    fireEvent.click(at(screen.getAllByText('Pause'), 0));
     const { db } = useConsoleStore.getState();
     expect(db.schedules.find((s) => s.id === 'SCH-101')?.status).toBe('Paused');
     expect(db.audit.length).toBe(before + 1);

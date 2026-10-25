@@ -191,7 +191,7 @@ export function MarketPage() {
               <div className="market-name">
                 <h2>{state.model}</h2>
                 <p>
-                  {m.memory} GB · {state.region} ·{' '}
+                  {m?.memory} GB · {state.region} ·{' '}
                   {Number(state.count) === 0 ? 'Fractional GPU' : state.count + ' GPU'}
                 </p>
               </div>

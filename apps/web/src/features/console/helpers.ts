@@ -52,7 +52,7 @@ export const matchesQuery = (record: object, query: string): boolean =>
   !query || Object.values(record).join(' ').toLowerCase().includes(query.toLowerCase());
 
 export function toCsv(rows: Record<string, unknown>[]): string {
-  const keys = Object.keys(rows[0]);
+  const keys = Object.keys(rows[0] ?? {});
   return [
     keys.join(','),
     ...rows.map((x) => keys.map((k) => `"${String(x[k] ?? '').replaceAll('"', '""')}"`).join(',')),

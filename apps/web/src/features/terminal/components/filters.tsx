@@ -43,7 +43,7 @@ export function Filters({ onRefresh }: { onRefresh: () => void }) {
   }, [menu, state]);
   const metricSummary =
     state.priceMetrics.length === 1
-      ? METRIC_LABELS[state.priceMetrics[0]]
+      ? METRIC_LABELS[state.priceMetrics[0] ?? 'avg']
       : state.priceMetrics.length + ' selected';
   const rows: [FilterType, string, string | number][] = [
     ['model', 'GPU', state.model],

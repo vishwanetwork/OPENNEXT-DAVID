@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "noUncheckedIndexedAccess": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],

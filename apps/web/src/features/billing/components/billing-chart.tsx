@@ -36,7 +36,7 @@ export function BillingChart({ billing, a }: { billing: BillingData; a: Analytic
     bottom = 35,
     inner = w - left - right,
     ch = h - top - bottom;
-  const bounds = a.rows.map((r) => {
+  const bounds = a.rows.map((r): [number, number] => {
     const values = visible.map(([key]) => num(r[key]));
     return ui.chart === 'bars'
       ? [
@@ -201,7 +201,7 @@ export function BillingChart({ billing, a }: { billing: BillingData; a: Analytic
               ))}
           {indexes.map((i) => (
             <text key={i} x={left + step * (i + 0.5)} y={h - 10} textAnchor="middle">
-              {new Date(a.rows[i].day).toLocaleDateString('en-GB', {
+              {new Date(a.rows[i]?.day ?? '').toLocaleDateString('en-GB', {
                 day: '2-digit',
                 month: 'short',
                 timeZone: 'UTC',

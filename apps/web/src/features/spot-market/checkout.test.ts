@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import { webcrypto, generateKeyPairSync } from 'node:crypto';
 import { sshTestRuntime as runtime } from '@/test/ssh-runtime';
 import {
@@ -135,7 +136,7 @@ function setup({
   };
   const engine = new SpotCheckout(deps);
   engine.restoreSsh = (value) => validatePublicKey(value, runtime).publicKey;
-  const row = inventory[0];
+  const row = at(inventory, 0);
   if (begin) engine.beginCheckout(row);
   return {
     engine,
@@ -550,7 +551,7 @@ describe('Spot checkout safety', () => {
     expect(second.engine.pending()?.durationHours).toBe(3.25);
     second.ctx.userId = 'different-account';
     expect(second.engine.hasPending()).toBe(false);
-    const [key, value] = [...first.storage][0];
+    const [key, value] = at([...first.storage], 0);
     const saved = JSON.parse(value) as Record<string, unknown>;
     for (const override of [
       { version: 1 },

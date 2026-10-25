@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { at } from '@/test/at';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { jsonResponse, renderTerminal, signIn } from '@/test/render';
 import { useWorkspaceStore, initialWorkspace } from '@/terminal-kit';
@@ -176,11 +177,11 @@ describe('RFQ form', () => {
     fireEvent.click(submit);
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(useWorkspaceStore.getState().modal).toBeNull();
-    expect(String(calls[0].body.clientSubmissionId)).toMatch(/.{8,}/);
-    expect(calls[0].body.start).toMatch(/Z$/);
+    expect(String(at(calls, 0).body.clientSubmissionId)).toMatch(/.{8,}/);
+    expect(at(calls, 0).body.start).toMatch(/Z$/);
     fireEvent.click(submit);
     await waitFor(() => expect(calls).toHaveLength(2));
-    expect(calls[1].body.clientSubmissionId).toBe(calls[0].body.clientSubmissionId);
+    expect(at(calls, 1).body.clientSubmissionId).toBe(at(calls, 0).body.clientSubmissionId);
     await waitFor(() => expect(useWorkspaceStore.getState().modal?.type).toBe('proc-submission'));
     expect(useWorkspaceStore.getState().modal).toMatchObject({
       id: 'RFQ-9',

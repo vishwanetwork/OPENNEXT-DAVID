@@ -68,9 +68,9 @@ describe('offersFor', () => {
       { model: 'H100' },
       BASE_REGIONS,
     );
-    expect(offer.provider).toBe('AWS · Nebius');
-    expect(offer.region).toBe('US East');
-    expect(offer.price).toBe(2.5);
+    expect(offer?.provider).toBe('AWS · Nebius');
+    expect(offer?.region).toBe('US East');
+    expect(offer?.price).toBe(2.5);
   });
 });
 

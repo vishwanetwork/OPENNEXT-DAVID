@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import {
   boundsFor,
   emptySelected,
@@ -42,8 +43,8 @@ describe('Spot inventory', () => {
     expect(normalizeRow({ ...fixture, referenceOnly: true }, 0, 'agent')).toBeNull();
     expect(normalizeRow({ ...fixture, gpuCount: undefined }, 0, 'agent')).toBeNull();
     expect(normalizeRow({ ...fixture, perGpuHourly: 0 }, 0, 'agent')).toBeNull();
-    expect(normalizeInjected([fixture])[0].sourceKind).toBe('preview');
-    expect(normalizeInjected([{ ...fixture, agentStatus: 'Succeeded' }])[0].sourceKind).toBe(
+    expect(normalizeInjected([fixture])[0]?.sourceKind).toBe('preview');
+    expect(normalizeInjected([{ ...fixture, agentStatus: 'Succeeded' }])[0]?.sourceKind).toBe(
       'agent',
     );
   });
@@ -64,7 +65,7 @@ describe('Spot inventory', () => {
     expect(
       filteredRows(rows, { ...state, maxPrice: null, sort: 'price-desc' }).map((row) => row.id),
     ).toEqual(['two', 'offer-one']);
-    expect(optionsFor(GROUPS[1], rows, state)).toEqual(['Germany', 'Singapore']);
+    expect(optionsFor(at(GROUPS, 1), rows, state)).toEqual(['Germany', 'Singapore']);
   });
   it('pages twelve rows at a time and clamps the page index', () => {
     const page = paginate(FALLBACK_ROWS, 99);

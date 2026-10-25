@@ -67,15 +67,15 @@ export function validatePublicKey(
     );
   if (!parts) throw new Error('Use an ED25519, RSA or ECDSA OpenSSH public key.');
   const algorithm = parts[1];
-  const bytes = decodeBase64(parts[2], runtime);
+  const bytes = decodeBase64(parts[2] ?? '', runtime);
   let cursor = 0;
   function field(): Uint8Array {
     if (cursor + 4 > bytes.length) throw new Error('The public key is incomplete.');
     const size =
-      bytes[cursor] * 0x1000000 +
-      (bytes[cursor + 1] << 16) +
-      (bytes[cursor + 2] << 8) +
-      bytes[cursor + 3];
+      (bytes[cursor] ?? 0) * 0x1000000 +
+      ((bytes[cursor + 1] ?? 0) << 16) +
+      ((bytes[cursor + 2] ?? 0) << 8) +
+      (bytes[cursor + 3] ?? 0);
     cursor += 4;
     if (size > bytes.length - cursor) throw new Error('The public key is incomplete.');
     const result = bytes.slice(cursor, cursor + size);
@@ -93,12 +93,14 @@ export function validatePublicKey(
     const modulus = field();
     const unsigned = (data: Uint8Array) =>
       data.length > 0 &&
-      !(data[0] & 128) &&
-      !(data.length > 1 && data[0] === 0 && !(data[1] & 128));
+      !((data[0] ?? 0) & 128) &&
+      !(data.length > 1 && data[0] === 0 && !((data[1] ?? 0) & 128));
     let exp = 0n;
     for (const byte of exponent) exp = (exp << 8n) + BigInt(byte);
     const number = modulus[0] === 0 ? modulus.slice(1) : modulus;
-    const bits = number.length ? 8 * (number.length - 1) + Math.floor(Math.log2(number[0])) + 1 : 0;
+    const bits = number.length
+      ? 8 * (number.length - 1) + Math.floor(Math.log2(number[0] ?? 0)) + 1
+      : 0;
     if (
       !unsigned(exponent) ||
       !unsigned(modulus) ||
@@ -107,7 +109,7 @@ export function validatePublicKey(
       exp % 2n === 0n ||
       bits < 2048 ||
       bits > 8192 ||
-      !(number[number.length - 1] & 1)
+      !((number[number.length - 1] ?? 0) & 1)
     )
       throw new Error('Use a valid RSA public key between 2,048 and 8,192 bits.');
   } else {
@@ -145,7 +147,9 @@ export async function fingerprint(
       'ecdsa-sha2-nistp384': ['P-384', 97],
       'ecdsa-sha2-nistp521': ['P-521', 133],
     };
-    const [namedCurve, length] = curves[parsed.algorithm];
+    const curve = curves[parsed.algorithm];
+    if (!curve) throw new Error('The ECDSA public point is not valid.');
+    const [namedCurve, length] = curve;
     try {
       await subtle.importKey(
         'raw',

@@ -177,6 +177,7 @@ export function SeriesTable({
             {geo.series.map((s) => {
               const first = s.points[0];
               const last = s.points[s.points.length - 1];
+              if (!first || !last) return null;
               const change =
                 s.points.length > 1 && first.value > 0
                   ? (last.value / first.value - 1) * 100

@@ -46,7 +46,7 @@ export interface FeeEstimate {
 
 /** Seller settlement estimate from a base unit price, quantity and duration (rounded on the base amount). */
 export function sellerEstimate(rate: unknown, count: unknown, hours: unknown): FeeEstimate {
-  const values = [Number(rate), Number(count), Number(hours)];
+  const values: [number, number, number] = [Number(rate), Number(count), Number(hours)];
   const valid = values.every((value) => Number.isFinite(value) && value > 0);
   const base = Math.round(values[0] * values[1] * values[2] * 100) / 100;
   const fee = Math.round(base * FEE_RATE * 100) / 100;

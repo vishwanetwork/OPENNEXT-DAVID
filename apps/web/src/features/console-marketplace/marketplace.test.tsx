@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderConsole, mockFetch, json } from '@/test/render';
 import {
@@ -90,12 +91,12 @@ describe('marketplace snapshot helpers', () => {
   it('derives Live / Approved · Private statuses and rejects wrong scopes', () => {
     const data = normalizeSnapshot(snapshot, 'production');
     expect(data.rfqs.map((r) => r.status)).toEqual(['Live RFQ', 'Open', 'Live RFQ']);
-    expect(data.rfqs[0].workflowStatus).toBe('Open');
+    expect(data.rfqs[0]?.workflowStatus).toBe('Open');
     expect(
       normalizeSnapshot(
         { ...snapshot, rfqs: [{ ...privateRfq, reviewStatus: 'Approved' }] },
         'production',
-      ).rfqs[0].status,
+      ).rfqs[0]?.status,
     ).toBe('Approved · Private RFQ');
     expect(() => normalizeSnapshot({ ...snapshot, scope: 'demo' }, 'production')).toThrow(
       /different workspace scope/,
@@ -113,11 +114,11 @@ describe('marketplace snapshot helpers', () => {
   });
   it('renders external quantities, ranges and durations from source values only', () => {
     const data = normalizeSnapshot(snapshot, 'production');
-    expect(quantity(data.rfqs[2], false)).toBe('2–4 nodes · 8 GPUs / node');
-    expect(duration(data.rfqs[2], false)).toBe('3 months');
+    expect(quantity(at(data.rfqs, 2), false)).toBe('2–4 nodes · 8 GPUs / node');
+    expect(duration(at(data.rfqs, 2), false)).toBe('3 months');
     expect(range({ min: 3, max: null }, ' months')).toBe('3+ months');
-    expect(quantity(data.rfqs[0], false)).toBe('8 GPUs');
-    expect(duration(data.rfqs[0], false)).toBe('48 hours');
+    expect(quantity(at(data.rfqs, 0), false)).toBe('8 GPUs');
+    expect(duration(at(data.rfqs, 0), false)).toBe('48 hours');
     expect(range({ options: [1, 2] }, ' GPUs')).toBe('1 / 2 GPUs');
     expect(range(null)).toBe('');
   });
@@ -150,7 +151,7 @@ describe('MarketplaceInboxPage', () => {
     await waitFor(() => expect(screen.getAllByText('buyer@example.com').length).toBeGreaterThan(0));
     expect(screen.getByText('3 of 3 records')).toBeInTheDocument();
     expect(screen.getAllByText('141 GB / GPU').length).toBe(3);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[1]);
+    fireEvent.click(at(screen.getAllByRole('button', { name: 'Details' }), 1));
     await waitFor(() => expect(screen.getByText('Capacity RFQ')).toBeInTheDocument());
     expect(screen.getByText('Maximum Quote Price:')).toBeInTheDocument();
     expect(screen.getByText('$1,238.40')).toBeInTheDocument();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import type { LedgerEntry, Order } from '@opennext/contracts';
 import { FEE_POLICY } from '@/features/procurement';
 import {
@@ -112,8 +113,8 @@ describe('billing analytics', () => {
     const cards = metrics(summary, analytics(summary));
     expect(cards.find((c) => c.label === 'Pending settlement')?.value).toBe(95);
     expect(cards.find((c) => c.label === 'OpenNEXT Fee 5%')?.value).toBe(-3.5);
-    expect(orderAmount(summary.orders[0])).toBe(95);
-    expect(orderAmount(summary.orders[3])).toBe(20);
+    expect(orderAmount(at(summary.orders, 0))).toBe(95);
+    expect(orderAmount(at(summary.orders, 3))).toBe(20);
   });
   it('activity rows include unpaid orders without ledger entries and sort newest first', () => {
     const summary = data({

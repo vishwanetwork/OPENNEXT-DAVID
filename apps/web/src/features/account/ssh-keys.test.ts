@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { at } from '@/test/at';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { sshTestRuntime as runtime } from '@/test/ssh-runtime';
 import {
@@ -36,7 +37,7 @@ describe('SSH public key validation', () => {
     expect(parsed.material).toBe(publicKey);
     expect(parsed.publicKey).toBe(publicKey + ' workstation');
     const digest = createHash('sha256')
-      .update(Buffer.from(publicKey.split(' ')[1], 'base64'))
+      .update(Buffer.from(publicKey.split(' ')[1] ?? '', 'base64'))
       .digest('base64')
       .replace(/=+$/, '');
     expect(await fingerprint(parsed, runtime)).toBe('SHA256:' + digest);
@@ -146,7 +147,7 @@ describe('SSH key library', () => {
     const result = await changeKey(d, { removing: false, label: 'Laptop', publicKey });
     expect(result?.ok).toBe(true);
     expect(libraryFor('demo:one').keys.length).toBe(1);
-    const [storageKey, value] = [...d.storageMap.entries()][0];
+    const [storageKey, value] = [...d.storageMap.entries()][0] ?? [];
     expect(storageKey).toBe('opennext:demo:account-ssh:v1:one');
     expect(value).toMatch(/Laptop/);
     expect(value).not.toMatch(/PRIVATE/);
@@ -169,7 +170,7 @@ describe('SSH key library', () => {
     expect(second?.ok).toBe(false);
     expect(second?.message).toMatch(/already been added/);
     expect(libraryFor('demo:one').keys.length).toBe(1);
-    const id = libraryFor('demo:one').keys[0].id;
+    const id = at(libraryFor('demo:one').keys, 0).id;
     const removed = await changeKey(d, { removing: true, id });
     expect(removed?.ok).toBe(true);
     expect(libraryFor('demo:one').keys.length).toBe(0);

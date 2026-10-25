@@ -45,7 +45,7 @@ export function ResourceView({
   const offerList = db.offers.slice(0, isInventory ? 32 : 12).filter((x) => matchesQuery(x, q));
   const count = isSpec ? specList.length : offerList.length;
   const imported = db.imported?.[kind] || [];
-  const keys = imported.length ? Object.keys(imported[0]) : [];
+  const keys = imported.length ? Object.keys(imported[0] ?? {}) : [];
   return (
     <>
       <section className="panel">

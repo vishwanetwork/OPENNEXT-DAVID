@@ -75,8 +75,10 @@ export function rowsFor(kind: MarketKind, side: MarketSide, sources: ListingSour
       .map((item) => mapExchange(item, side, usingShowcase));
     const combined: Listing[] = [];
     for (let i = 0; i < Math.max(requirements.length, listings.length); i++) {
-      if (requirements[i]) combined.push(requirements[i]);
-      if (listings[i]) combined.push(listings[i]);
+      const requirement = requirements[i];
+      const listing = listings[i];
+      if (requirement) combined.push(requirement);
+      if (listing) combined.push(listing);
     }
     return combined;
   }

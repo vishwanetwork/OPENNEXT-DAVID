@@ -52,8 +52,11 @@ export function sparkGeometry(points: TickerPoint[]): SparkGeometry | null {
   const pad = spread * 0.15 || Math.max(Math.abs(min) * 0.02, 0.01);
   const low = min - pad;
   const range = spread + pad * 2;
-  const start = rows[0].time;
-  const end = rows[rows.length - 1].time;
+  const firstRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+  if (!firstRow || !lastRow) return null;
+  const start = firstRow.time;
+  const end = lastRow.time;
   const x = (t: number) => (start === end ? 185 : 8 + ((t - start) / (end - start)) * 354);
   const y = (v: number) => 82 - ((v - low) / range) * 74;
   let path = '';
@@ -68,6 +71,7 @@ export function sparkGeometry(points: TickerPoint[]): SparkGeometry | null {
     previous = { time: p.time, value: p.value };
   }
   const last = valid[valid.length - 1];
+  if (!last) return null;
   return {
     path: path.trim(),
     dots: valid.map((p) => ({ x: +x(p.time).toFixed(2), y: +y(p.value).toFixed(2) })),

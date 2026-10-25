@@ -35,8 +35,9 @@ async function forward(request: Request): Promise<Response> {
       (response) => {
         const out = new Headers();
         for (let i = 0; i < response.rawHeaders.length; i += 2) {
-          const key = response.rawHeaders[i].toLowerCase();
-          if (!HOP_BY_HOP.has(key)) out.append(response.rawHeaders[i], response.rawHeaders[i + 1]);
+          const name = response.rawHeaders[i] ?? '';
+          if (!HOP_BY_HOP.has(name.toLowerCase()))
+            out.append(name, response.rawHeaders[i + 1] ?? '');
         }
         const status = response.statusCode || 502;
         const empty = request.method === 'HEAD' || status === 204 || status === 304;

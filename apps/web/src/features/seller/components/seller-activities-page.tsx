@@ -150,7 +150,7 @@ export function SellerActivitiesPage() {
                 <span className="onx-sa-panel-marker" aria-hidden="true">
                   {active ? '✓' : '+'}
                 </span>
-                {panel[0].toUpperCase() + panel.slice(1)}
+                {panel.charAt(0).toUpperCase() + panel.slice(1)}
               </button>
             );
           })}

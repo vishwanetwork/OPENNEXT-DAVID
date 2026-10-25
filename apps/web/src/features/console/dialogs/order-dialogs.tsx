@@ -97,13 +97,10 @@ export function buildOrderDialogs(ctx: DialogContext) {
       let stageTitle = '';
       store.getState().mutate((d) => {
         const o = d.orders.find((v) => v.id === id)!;
-        stageTitle = titles[o.stage];
-        o.events.unshift([
-          titles[o.stage],
-          `${stamp()} · ${get('reference')} · ${get('evidence')}`,
-        ]);
+        stageTitle = titles[o.stage] ?? '';
+        o.events.unshift([stageTitle, `${stamp()} · ${get('reference')} · ${get('evidence')}`]);
         o.stage = Math.min(3, o.stage + 1);
-        o.status = ['Quoted', 'Awaiting funds', 'Reserved', 'Delivered'][o.stage];
+        o.status = ['Quoted', 'Awaiting funds', 'Reserved', 'Delivered'][o.stage] ?? '';
         o.updated = stamp();
       });
       store.getState().record(stageTitle, id, `${get('reference')}: ${get('evidence')}`);

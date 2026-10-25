@@ -40,7 +40,7 @@ export const seriesColor = (index: number): string =>
   ['#315f49', '#678bad', '#b18843', '#9671a7', '#298986', '#b36762'][index] ||
   `hsl(${Math.round(index * 137.508) % 360} 48% 38%)`;
 export const seriesDash = (index: number): string =>
-  ['', '8 4', '2 4', '10 3 2 3'][Math.floor(index / 6) % 4];
+  ['', '8 4', '2 4', '10 3 2 3'][Math.floor(index / 6) % 4] ?? '';
 
 export interface HistorySelection {
   model: string;
@@ -267,6 +267,7 @@ export function summary(
   if (!points.length) return null;
   const first = points[0];
   const last = points[points.length - 1];
+  if (!first || !last) return null;
   return {
     latest: last.value,
     change: points.length > 1 && first.value > 0 ? (last.value / first.value - 1) * 100 : null,
@@ -416,24 +417,29 @@ export function geometry(
 /** SVG path for a series: gaps larger than one and a half buckets break the line. */
 export function seriesPath(s: PlotSeries, gap: number): string {
   return s.points
-    .map(
-      (p, i) =>
-        (i && p.timestamp - s.points[i - 1].timestamp <= gap ? 'L' : 'M') +
+    .map((p, i) => {
+      const previous = s.points[i - 1];
+      return (
+        (i && previous && p.timestamp - previous.timestamp <= gap ? 'L' : 'M') +
         p.x.toFixed(2) +
         ',' +
-        p.y.toFixed(2),
-    )
+        p.y.toFixed(2)
+      );
+    })
     .join(' ');
 }
 
 /** Points drawn as dots: isolated observations and run boundaries. */
 export function seriesDots(s: PlotSeries, gap: number): PlotPoint[] {
-  return s.points.filter(
-    (p, i) =>
+  return s.points.filter((p, i) => {
+    const previous = s.points[i - 1];
+    const next = s.points[i + 1];
+    return (
       s.points.length === 1 ||
-      ((!i || p.timestamp - s.points[i - 1].timestamp > gap) &&
-        (i === s.points.length - 1 || s.points[i + 1].timestamp - p.timestamp > gap)),
-  );
+      ((!previous || p.timestamp - previous.timestamp > gap) &&
+        (!next || next.timestamp - p.timestamp > gap))
+    );
+  });
 }
 
 export function nearestPoint(
