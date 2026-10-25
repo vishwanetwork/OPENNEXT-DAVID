@@ -1,3 +1,4 @@
-export default function AdminPage() {
-  return <main style={{ padding: 32, fontFamily: 'system-ui' }}>Operations Console — port pending.</main>;
+import { OverviewPage } from '@/features/console/pages/overview';
+export default function Page() {
+  return <OverviewPage />;
 }
