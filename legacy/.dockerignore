@@ -1,0 +1,11 @@
+.git
+.opennext-data
+pricing-data
+.env
+.env.*
+.idea
+node_modules
+tests
+scripts
+*.md
+docker-compose.yml

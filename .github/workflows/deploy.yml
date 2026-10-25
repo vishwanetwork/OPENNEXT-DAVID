@@ -21,7 +21,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: opennext-homepage
+  IMAGE_NAME: opennext-homepage # one image: Next.js front-end + interim legacy API (see Dockerfile)
   CONTAINER_NAME: opennext-homepage
 
 jobs:

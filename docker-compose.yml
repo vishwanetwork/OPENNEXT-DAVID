@@ -1,3 +1,6 @@
+# One container runs the Next.js front-end (port 4188) and the interim legacy API
+# (127.0.0.1:4189 inside the container). When the Python backend is deployed as its own
+# service, add it here and set API_ORIGIN=http://<service>:<port> on `web`.
 services:
   web:
     build: .
@@ -6,6 +9,8 @@ services:
     container_name: opennext-homepage
     restart: unless-stopped
     environment:
+      # Leave unset to run the bundled legacy API; set to use an external backend.
+      API_ORIGIN: ${API_ORIGIN:-}
       SITE_HOST: opennextlab.ai
       TERMINAL_HOST: terminal.opennextlab.ai
       ADMIN_HOST: admin.opennextlab.ai

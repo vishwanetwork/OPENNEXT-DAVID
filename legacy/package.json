@@ -1,0 +1,15 @@
+{
+  "name": "opennext-legacy-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenNEXT website, Capacity Terminal and Operations Console preview",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node OpenNEXT-preview-server.cjs",
+    "dev": "node OpenNEXT-preview-server.cjs",
+    "check": "node scripts/check.cjs",
+    "test": "node --test"
+  }
+}

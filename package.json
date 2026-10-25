@@ -1,13 +1,29 @@
 {
-  "name": "opennext",
-  "version": "0.1.0",
+  "name": "opennext-monorepo",
   "private": true,
-  "description": "OpenNEXT website, Capacity Terminal and Operations Console preview",
-  "engines": {"node": ">=20"},
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node OpenNEXT-preview-server.cjs",
-    "dev": "node OpenNEXT-preview-server.cjs",
-    "check": "node scripts/check.cjs",
-    "test": "node --test"
+    "dev": "pnpm --filter @opennext/web dev",
+    "dev:api": "pnpm --filter opennext-legacy-api start",
+    "build": "pnpm -r --filter './apps/**' --filter './packages/**' build",
+    "lint": "pnpm -r --filter './apps/**' --filter './packages/**' lint",
+    "typecheck": "pnpm -r --filter './apps/**' --filter './packages/**' typecheck",
+    "test": "pnpm -r --filter './apps/**' --filter './packages/**' test",
+    "test:legacy": "pnpm --filter opennext-legacy-api test",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,md}\" \"packages/**/*.{ts,tsx,md}\" \"docs/**/*.md\""
+  },
+  "devDependencies": {
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver",
+      "sharp"
+    ]
   }
 }
