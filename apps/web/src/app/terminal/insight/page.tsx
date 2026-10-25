@@ -1,10 +1,10 @@
-import { PendingFeaturePage } from '@/features/terminal/placeholders';
+import { SellerActivitiesPage } from '@/features/seller/components/SellerActivitiesPage';
 import { TerminalPage } from '@/features/terminal/TerminalPage';
 
 export default function Page() {
   return (
     <TerminalPage>
-      <PendingFeaturePage title="Market Insight" feature="seller-activities" />
+      <SellerActivitiesPage />
     </TerminalPage>
   );
 }

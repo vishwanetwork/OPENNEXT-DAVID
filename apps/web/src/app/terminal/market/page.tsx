@@ -1,10 +1,10 @@
-import { MarketPage } from '@/features/terminal/components/MarketPage';
+import { MarketRoute } from '@/features/spot-market/components/MarketRoute';
 import { TerminalPage } from '@/features/terminal/TerminalPage';
 
 export default function Page() {
   return (
     <TerminalPage>
-      <MarketPage />
+      <MarketRoute />
     </TerminalPage>
   );
 }

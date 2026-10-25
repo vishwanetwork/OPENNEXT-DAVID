@@ -1,10 +1,10 @@
-import { PendingFeaturePage } from '@/features/terminal/placeholders';
+import { RfqPage } from '@/features/procurement';
 import { TerminalPage } from '@/features/terminal/TerminalPage';
 
 export default function Page() {
   return (
     <TerminalPage>
-      <PendingFeaturePage title="RFQs & mandates" feature="procurement" />
+      <RfqPage />
     </TerminalPage>
   );
 }

@@ -15,6 +15,7 @@ import { openContact } from './components/TerminalModal';
 import { TerminalOverlays } from './components/TerminalOverlays';
 import { DemoToolbar } from './DemoToolbar';
 import { LegacyHashRedirect } from './LegacyHashRedirect';
+import { FeatureRegistrations } from './FeatureRegistrations';
 import { useWorkspaceStore } from './store';
 import './terminal.css';
 import './preview-shell.css';
@@ -129,6 +130,7 @@ export function TerminalShell({ children, initialUser }: { children: ReactNode; 
         <LegacyHashRedirect />
         <BootQuery />
         <SessionSync initialUser={initialUser} />
+        <FeatureRegistrations />
         <Chrome>{children}</Chrome>
         {demo ? <DemoToolbar /> : null}
       </AgentHintProvider>

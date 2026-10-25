@@ -49,9 +49,14 @@ server did, and `#terminal/<route>` / `#<page>` hashes are mapped to real paths 
 
 ### API proxy
 
-`next.config.ts` rewrites `/api/:path*` to `API_ORIGIN` (default `http://127.0.0.1:4189`). The
-backend receives `x-forwarded-host`, so host-scoped endpoints (`/api/admin/*` only on the admin
-host, `/api/homepage/*` never on it) keep working with `OPENNEXT_TRUST_PROXY=1`.
+`src/app/api/[...path]/route.ts` forwards every `/api/*` request to `API_ORIGIN` (default
+`http://127.0.0.1:4189`) as a transparent pass-through: the client-facing `Host`, `Origin`,
+cookies and CSRF headers reach the backend unchanged, so its same-origin checks and host
+scoping (`/api/admin/*` only on the admin host, `/api/homepage/*` never on it) behave exactly as
+before. `X-Forwarded-*` headers are passed through only when `OPENNEXT_TRUST_PROXY=1` (the
+production container behind the HTTPS reverse proxy); locally they are dropped so the backend
+sees a direct localhost client. A `next.config` rewrite was not usable here because it replaces
+`Host` with the upstream address and invents forwarded headers.
 
 Cookies, CSRF and the OAuth callback URLs are unchanged because the browser only ever talks to
 its own host.
@@ -76,12 +81,9 @@ pnpm test        # vitest (web + contracts)
 pnpm test:legacy # the original node --test suite
 ```
 
-`pnpm dev` (`scripts/dev.cjs`) starts the interim API on 4189 and `next dev` on 4190 behind a
-small local proxy on 4188. The proxy forwards `/api/*` to the API **without** adding forwarded
-headers, so the backend sees a direct localhost client just like before (the console works
-without an administrator token, same-origin checks pass). Everything else goes to Next with HMR.
-`pnpm dev:web` / `pnpm dev:api` run the pieces separately (then Next proxies `/api` itself, which
-is the production path and requires `OPENNEXT_ADMIN_TOKEN` for the console).
+`pnpm dev` (`scripts/dev.cjs`) starts the interim API on 4189 and `next dev` on 4188 together;
+`pnpm dev:web` / `pnpm dev:api` run them separately. The console works locally without an
+administrator token because the backend sees a direct localhost client (see "API proxy").
 
 ## Production
 

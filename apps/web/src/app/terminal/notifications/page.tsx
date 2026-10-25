@@ -1,10 +1,10 @@
-import { PendingFeaturePage } from '@/features/terminal/placeholders';
+import { NotificationsPage } from '@/features/quotes/components/NotificationsPage';
 import { TerminalPage } from '@/features/terminal/TerminalPage';
 
 export default function Page() {
   return (
     <TerminalPage>
-      <PendingFeaturePage title="Notifications" feature="quote-preview" />
+      <NotificationsPage />
     </TerminalPage>
   );
 }
