@@ -6,8 +6,10 @@ Monorepo for the OpenNEXT website (`opennextlab.ai`), the Capacity Terminal
 - `apps/web` — Next.js front-end serving all three hosts (path-based locally)
 - `packages/contracts` — API schemas shared with the backend team
 - `legacy` — the previous implementation; its Node server is the interim backend
-- `docs` — [architecture](docs/ARCHITECTURE.md), [porting conventions](docs/CONVENTIONS.md),
-  [API contract](docs/API_CONTRACT.md), [migration status](docs/MIGRATION_STATUS.md)
+- `docs` — [architecture](docs/ARCHITECTURE.md), [conventions](docs/CONVENTIONS.md),
+  [API contract and backend hand-off](docs/API_CONTRACT.md),
+  [migration status](docs/MIGRATION_STATUS.md), [decision records](docs/ADR/README.md),
+  [architecture review](docs/ARCHITECTURE_REVIEW.md)
 
 ```sh
 pnpm install

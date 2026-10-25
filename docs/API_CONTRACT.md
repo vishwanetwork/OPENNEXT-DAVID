@@ -7,8 +7,11 @@ identical so the front-end is unaffected by the switch (`API_ORIGIN`).
 
 ## Cross-cutting rules
 
-- All endpoints live under `/api/`. The browser calls its own host; Next proxies to the backend
-  and forwards `X-Forwarded-Host` (the backend must trust it only when `OPENNEXT_TRUST_PROXY=1`).
+- All endpoints live under `/api/`. The browser calls its own host; the Next route handler
+  `apps/web/src/app/api/[...path]/route.ts` passes the request through unchanged (`Host`, `Origin`,
+  cookies, CSRF header, body). `X-Forwarded-*` headers reach the backend only when the front-end
+  runs with `OPENNEXT_TRUST_PROXY=1` (behind the TLS reverse proxy); the backend must trust them
+  only in that deployment.
 - JSON everywhere. Errors are `{ "error": "<human message>", "code"?: "<MACHINE_CODE>" }` with a
   meaningful status (400, 401, 403, 404, 405, 409, 413, 415, 429, 502, 503). Unknown failures → 503.
 - **Customer session**: HttpOnly cookie issued by the auth endpoints. Every write (non-GET) must
@@ -72,7 +75,7 @@ availability, observedAt, effectiveAt, sourceUrl, priceKind, stale, currency, op
 | `/api/marketplace/public`                | approved public market records                                             |
 | `/api/marketplace/settlements?period=3D` | `{ rows }` recent settled history (`1D 3D 1W 1M 3M 6M 1Y ALL`, or `days=`) |
 
-## Marketplace (verified customer; writes need CSRF) — contracts: `procurement`
+## Marketplace (verified customer; writes need CSRF) — contracts: `marketplace`
 
 | Method | Path                                                         | Request                          | Response                                                     |
 | ------ | ------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------ |
@@ -114,7 +117,7 @@ specified in `legacy/docs/TERMINAL_CONSOLE_SYNC.md` and `legacy/README.md` ("Ord
 `/billing/account`, `/billing/topups…`, and `/marketplace/*` mirrors of the customer routes.
 Admin, internal, agent, resell, connect and ssh actions are always 403 in demo.
 
-## Operations Console (administrator session; admin host only) — contracts: `console`, `pricing-admin`
+## Operations Console (administrator session; admin host only) — contracts: `admin`
 
 | Method | Path                                          | Request                                    | Response                                                |
 | ------ | --------------------------------------------- | ------------------------------------------ | ------------------------------------------------------- |
@@ -144,6 +147,33 @@ Internal integrations (`POST /api/internal/marketplace/supplies/:id/agent`,
 `POST /api/internal/marketplace/telemetry`) use a bearer integration token and are not called by
 the browser.
 
-## Open questions for the backend team
+## Notes for the Python backend team
 
-Collected per domain in `docs/MIGRATION_STATUS.md` as modules are ported.
+The front-end is finished against the contracts in `packages/contracts/src/<resource>/index.ts`
+(`auth`, `marketplace`, `billing`, `pricing`, `news`, `contact`, `demo`, `admin`, `account`).
+Every call the browser makes is in one place per domain: `apps/web/src/features/*/api.ts`
+(plus `terminal-kit/api.ts` for the shared workspace reads and `features/auth/server.ts` for the
+server-side session read). To switch backends, set `API_ORIGIN`; nothing else changes.
+
+1. **Same origin is preserved.** The pass-through keeps the browser's `Host`/`Origin`, so the
+   backend keeps doing its own same-origin and host-scoping checks; it never sees a Next host.
+   Set-Cookie flows back untouched (HttpOnly session cookies, SameSite as today).
+2. **Forwarded headers.** Only trust `X-Forwarded-*` when the front-end sends them
+   (`OPENNEXT_TRUST_PROXY=1`, production). Locally the backend sees a direct `127.0.0.1` client,
+   which is what grants the console its localhost administrator access.
+3. **Demo namespace.** The client rewrites `/api/(auth|marketplace|billing|contact)/…` to
+   `/api/demo/…` in the sandbox; keep the demo mirrors of those routes and the 403 rules.
+4. **Lenient fields.** Several schemas still use `.passthrough()` and `numberOrString` because
+   the legacy server mixed types (`amount`, `count`, `price` as string or number) and emitted
+   extra keys. Once the Python API settles, tighten `packages/contracts` (the fixture tests in
+   `packages/contracts/src/contracts.test.ts` are the place to pin the final shapes) and drop
+   `.passthrough()`.
+5. **Known legacy defect to not reproduce.** Demo writes compare `Origin` against a
+   socket-derived origin, so `POST /api/demo/start` fails behind TLS unless `secureCookies` is
+   set (see `docs/MIGRATION_STATUS.md`). Derive the expected origin from the forwarded protocol
+   when `OPENNEXT_TRUST_PROXY=1`.
+6. **Endpoints still missing** (the UI fails closed with the legacy "not connected" copy):
+   credit purchase (`beginPurchase` / `getCreditBalance`), account SSH keys, instance
+   termination. Their expected shapes are in `apps/web/src/terminal-kit/services.ts`.
+
+Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.

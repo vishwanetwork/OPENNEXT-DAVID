@@ -1,7 +1,8 @@
 /**
  * Single HTTP client for every backend call made by the browser.
  *
- * - All paths are `/api/...` and are proxied by Next to the backend (see next.config.ts).
+ * - All paths are `/api/...`; the Next route handler `app/api/[...path]/route.ts` passes them
+ *   through to the backend unchanged (same origin, same cookies).
  * - Cookies carry the session; mutating requests add the session's CSRF token.
  * - In the isolated demo workspace, sandboxed namespaces are rewritten to `/api/demo/...`,
  *   administrative APIs are refused locally and nothing can write outside the sandbox.

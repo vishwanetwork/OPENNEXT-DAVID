@@ -1,6 +1,7 @@
-# Porting conventions (legacy → apps/web)
+# Conventions (apps/web)
 
-These rules keep the migration consistent. Every ported module must follow them.
+These rules keep the code base consistent. Most of them are enforced by `pnpm lint`,
+`pnpm typecheck` and the CI workflow; the rest are reviewed.
 
 ## Goal: functional and visual parity first
 
@@ -15,21 +16,40 @@ These rules keep the migration consistent. Every ported module must follow them.
 
 ```
 src/features/<domain>/
-  index.ts              public exports of the feature
-  <domain>.css          legacy stylesheet(s) copied here, class names unchanged
-  api.ts                typed calls: (api: ApiClient) => Promise<Contract>
-  hooks.ts              useQuery/useMutation wrappers around api.ts
-  store.ts              zustand store when state crosses pages (optional)
-  components/*.tsx      UI
-  *.test.tsx            vitest + testing-library
-src/app/<app>/<route>/page.tsx   thin page → feature component
-packages/contracts/src/<domain>/index.ts   zod schemas + types for every endpoint used
+  index.ts              public exports of the feature (the only import path for other features)
+  server.ts             server-only helpers (optional)
+  <domain>.css          the domain stylesheet, legacy class names unchanged
+  api.ts                every backend call: (api: ApiClient, …) => Promise<Contract>
+  hooks.ts              useQuery/useMutation wrappers around api.ts (optional)
+  store.ts              zustand store for UI state that crosses pages (optional)
+  components/*.tsx      UI, one responsibility per file
+  *.test.ts(x)          vitest + testing-library
+src/app/<app>/<route>/page.tsx            thin page → feature component
+src/app/terminal/terminal-app.tsx         composition root (slots, modal maps, integrations)
+src/terminal-kit/                         framework for terminal features (store, routing, modals, slots, data hooks)
+src/components/{ui,icons,hooks,providers} shared UI
+src/lib/                                  apps, env, api client, errors, query keys, format, session store
+src/data/                                 static datasets
+packages/contracts/src/<resource>/index.ts zod schemas + types, one per backend resource
 ```
 
-Domains: `site` (landing, listings, ticker, contact), `auth`, `market` (prices, history,
-charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`, `billing`
-(billing, payments, top-ups), `account` (profile, settings, help), `seller`, `console-*`
-(admin pages), `pricing-admin` (provider console).
+Domains: `site`, `auth`, `market`, `terminal`, `procurement`, `spot-market`, `instances`,
+`billing`, `account`, `seller`, `quotes`, `rfq-details`, `console`, `console-leads`,
+`console-marketplace`, `console-topups`, `pricing-admin`. See `docs/ARCHITECTURE.md` for the
+dependency graph and the page-authoring recipes.
+
+## Lint rules (what CI enforces)
+
+| Rule                                 | Meaning                                                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `boundaries/element-types`           | app → features → terminal-kit → components → lib → contracts; `data`/`styles` are leaves.       |
+| `boundaries/entry-point`             | other modules import a feature only through `index.ts` / `server.ts` (`modal.tsx` for the kit). |
+| `no-restricted-imports`              | nothing imports `@/features/terminal` internals or `@/proxy`.                                   |
+| `max-lines`                          | warn at 300, error at 500 (see "Module size").                                                  |
+| `react/button-has-type`              | every `<button>` declares its type.                                                             |
+| `react-hooks` (React Compiler rules) | no ref access during render, no synchronous `setState` in effects, stable deps.                 |
+| prettier                             | `printWidth` 100, single quotes; `pnpm format` / `prettier --check` in CI.                      |
+| TypeScript                           | `strict` + `noUncheckedIndexedAccess`; no `any`, no `!` assertions, no `@ts-ignore`.            |
 
 ## Code rules
 
@@ -37,8 +57,10 @@ charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`
    GCI iframe), no manual escaping. Event handlers replace `data-act` dispatch tables.
 2. **Links** use `useApp().href()` / `crossHref()`; never hard-code `/terminal` or a hostname.
    Prefer `next/link` for in-app navigation.
-3. **API** calls go through `useApi()` (`src/lib/api/client.ts`). Never call `fetch` directly.
-   Declare the response schema in `@opennext/contracts` and parse with `Schema.parse` in `api.ts`.
+3. **API** calls go through `useApi()` (`src/lib/api/client.ts`) and live in the feature's
+   `api.ts`. Never call `fetch` directly. Declare the response schema in `@opennext/contracts`
+   and parse with `Schema.parse` in `api.ts`. Report failures with `describeError()` /
+   `useApiErrorToast()` from `src/lib/api/errors.ts`; a silent `catch {}` needs a comment.
 4. **Server data** uses TanStack Query. Replicate legacy refresh behaviour with
    `refetchInterval` (visible-only via `refetchIntervalInBackground: false`),
    `refetchOnWindowFocus`, and keep the last snapshot on error (`placeholderData: keepPreviousData`).
@@ -48,19 +70,29 @@ charts, insight), `procurement` (RFQs, supply, quotes, rfq-details), `instances`
    `usePersistedPreference` in `src/lib/persisted-preference.ts`. Legacy keys that stored
    customer records are dropped (the server owns them).
 7. **Formatting** helpers live in `src/lib/format.ts` (`money`, `stampUtc`, `dateUtc`, `number`).
-8. **Styles**: copy the legacy CSS file into the feature folder and import it once from the
-   feature's root component (or the app layout for shell styles). Do not rename classes and keep
-   each file's `:root` block as-is for now (each app loads its own set, so they do not clash).
-   Add new rules only when React structure forces it.
-9. **Icons and logos**: port only the SVGs actually referenced, as small React components in
-   `src/components/icons/` (terminal) or `public/provider-logos/*.svg` (console).
-10. **No window globals**, no cross-feature imports of internals. Shared things go to
+8. **Styles**: one stylesheet per feature, imported once from the feature's root component (or
+   the app layout for shell styles); class names stay as in legacy. Design tokens live only in
+   `src/styles/tokens.css` (`:root`, console overrides under `.app-console`); fonts come from
+   `next/font`. No `@import url(` and no new `:root` blocks.
+9. **Dialogs and icons**: every modal frame uses `src/components/ui/dialog.tsx` (`Dialog`,
+   `NativeDialog`, `useDialogBehavior`); icons are React components in `src/components/icons/`
+   (provider logos are static files under `public/provider-logos/`).
+10. **No window globals, no registries.** Features never import each other's internals and never
+    talk through DOM events or module-level mutable state. Cross-feature hooks go through the
+    terminal kit slots and services, filled in the composition root. Shared things go to
     `src/components` or `src/lib`.
-11. **TypeScript strict.** No `any`; use the contract types. Narrow unknown API payloads with zod.
-12. **Tests**: at least one vitest file per feature covering the pure logic that legacy tests
-    covered (look in `legacy/tests/*.test.cjs` for the behaviours worth keeping) and one render
-    smoke test per page.
-13. **Lint and typecheck clean** (`pnpm lint`, `pnpm typecheck`) before finishing.
+11. **TypeScript strict** (`noUncheckedIndexedAccess` on). No `any`; use the contract types.
+    Narrow unknown API payloads with zod.
+12. **Tests**: at least one vitest file per feature covering its pure logic and one render test
+    per page. Render tests use `src/test/render.tsx` (`renderWithProviders`, `renderTerminal`
+    with `slots` / `workspace` / `billing` seeding, `renderConsole`, `mockFetch`, `signIn`); the
+    `next/navigation` mock is global (`vitest.setup.ts`). Coverage thresholds in
+    `vitest.config.ts` only go up.
+13. **Naming**: kebab-case file names, PascalCase components and types, camelCase everything else.
+    Name things by what they are (`workspace`, `billing`, `selection`), never by legacy
+    shorthand (`S`, `go`, `TButton`).
+14. **Lint, typecheck and tests clean** (`pnpm lint`, `pnpm typecheck`, `pnpm test`) before
+    finishing; `pnpm --filter @opennext/web build` for anything touching routing or layouts.
 
 ## Module size
 
@@ -92,19 +124,20 @@ intentionally left out, open questions for the backend team.
 ## Terminal feature API
 
 Pages under `src/app/terminal/<route>` wrap their content in `TerminalPage` (sign-in / onboarding
-gate) and import what they need from `@/features/terminal`:
+gate). Features import only from `@/terminal-kit` and sibling barrels:
 
-| Need                                         | Use                                                                                                                                          |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Legacy `S` state                             | `useWorkspaceStore` (fields match `S`; `patch()` / `setExtra()` for feature-specific data), `findOffer`                                      |
-| Legacy `go()`                                | `useGo()` (role rules + pending route), `useTerminal().route`                                                                                |
-| Legacy `open()` / modals                     | `useOpenModal()`, `useCloseModal()`; register your modal types with `registerTerminalModal(modal => ModalRender                              | null)`; `ModalShell` for the frame |
-| Legacy `toast()`                             | `useToast()`                                                                                                                                 |
-| Legacy `pageHead()` / `badge()` / `button()` | `PageHeading`, `StatusTag`, `TButton`, `EmptyState`                                                                                          |
-| Workspace refresh loop (30 s)                | `registerWorkspaceRefresher(async () => …)` in a `useEffect`; call `refreshWorkspace()` after writes                                         |
-| Listing / opportunity intents from the site  | `registerIntentResumer(fn)`; pending intents live in `pendingListing` / `pendingOpportunity`                                                 |
-| Hook points the shell exposes                | `registerOpportunityOpener`, `registerContactOpener`, `registerHeaderBell`, `registerMatchesPanel`, `registerListingTable`                   |
-| Market data                                  | `@/features/market`: `usePrices`, `useRegions`, `useRegionalHistory`, `offersFor`, `RegionalHistoryChart`, `InsightIndex`, `listModelQuotes` |
+| Need                                       | Use                                                                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UI state (role, filters, cart, intents)    | `useWorkspaceStore` (select fields; `patch()` to update)                                                                                                                              |
+| Server records                             | `useWorkspace()`, `useWorkspaceData()`, `usePublicMarket()`, `useReferenceCatalog()`, `useMatches()`, `useSettlements()`, `useBillingAccount()`, `useBalance()`, `useNotifications()` |
+| After a write                              | `useInvalidateWorkspace()`; `useRefreshBillingAccount()` for billing                                                                                                                  |
+| Navigation                                 | `useTerminal().go(route)` (role rules + pending route), `useTerminal().route`                                                                                                         |
+| Modals                                     | augment `TerminalModalMap`, export a `ModalComponents` map, `useTerminal().openModal(type, payload)` / `closeModal()`; `ModalShell` frame                                             |
+| Toasts / errors                            | `useToast()`, `useApiErrorToast()`                                                                                                                                                    |
+| Page chrome                                | `PageHeading`, `StatusTag`, `Button`, `EmptyState`                                                                                                                                    |
+| Hook points filled by the composition root | `useTerminalSlots()`: `headerBell`, `listingTable`, `matchesPanel`, `sshLibrary`, `openContact`, `openOpportunity`, `services`                                                        |
+| Site → terminal intents                    | `useIntentResume(handler)`; pending intents live in `pendingListing` / `pendingOpportunity`                                                                                           |
+| Market data                                | `@/features/market`: `usePrices`, `useRegions`, `useRegionalHistory`, `offersFor`, `RegionalHistoryChart`, `InsightIndex`                                                             |
 
-Replace a stub page by editing `src/app/terminal/<route>/page.tsx`; keep the `TerminalPage` wrapper.
-Demo mode needs nothing special: `useApi()` already routes sandboxed calls to `/api/demo/*`.
+Demo mode needs nothing special: `useApi()` already routes sandboxed calls to `/api/demo/*`, and
+`useIsDemo()` tells a feature when it runs inside the sandbox.
