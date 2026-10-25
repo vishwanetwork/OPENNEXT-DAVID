@@ -25,7 +25,7 @@ import {
   geometry,
   metricText,
   nearestPoint,
-  selection,
+  reconcileSelection,
   selectionKey,
   timeLabel,
   type HistorySelection,
@@ -47,7 +47,7 @@ export interface PriceHoverDetail {
 }
 
 export interface RegionalHistoryChartProps {
-  S: HistorySelection;
+  selection: HistorySelection;
   data: RegionalHistoryResponse;
   regions: readonly Region[];
   /** Period buttons; omit to hide the period row (the insight index uses a shared control). */
@@ -57,13 +57,13 @@ export interface RegionalHistoryChartProps {
 
 /** Multi-region price comparison chart with region picker, legend focus and hover tooltip. */
 export function RegionalHistoryChart({
-  S,
+  selection,
   data,
   regions,
   onPeriod,
   onPriceHover,
 }: RegionalHistoryChartProps) {
-  const key = selectionKey(S);
+  const key = selectionKey(selection);
   const stored = useHistoryChoices((s) => s.map[key]);
   const commit = useHistoryChoices((s) => s.commit);
   const updateChoice = useHistoryChoices((s) => s.update);
@@ -80,17 +80,20 @@ export function RegionalHistoryChart({
     return () => observer?.disconnect();
   }, []);
 
-  const result = useMemo(() => selection(S, data, stored || emptyChoice()), [S, data, stored]);
+  const result = useMemo(
+    () => reconcileSelection(selection, data, stored || emptyChoice()),
+    [selection, data, stored],
+  );
   const state = result.state;
   useEffect(() => {
     if (result.changed) commit(key, result.state);
   }, [result, commit, key]);
   const geo = useMemo(
-    () => geometry(S, data, result, regions, width),
-    [S, data, result, regions, width],
+    () => geometry(selection, data, result, regions, width),
+    [selection, data, result, regions, width],
   );
-  const metrics = metricsOf(S);
-  const metric = primaryMetric(S);
+  const metrics = metricsOf(selection);
+  const metric = primaryMetric(selection);
   const [hover, setHover] = useState<HoverState | null>(null);
   const [activeFocus, setActiveFocus] = useState<{ id: string | null; metric: PriceMetric | null }>(
     { id: null, metric: null },
@@ -136,7 +139,7 @@ export function RegionalHistoryChart({
     const hit = nearestPoint(geo, x, y);
     if (!hit) return;
     onPriceHover?.({
-      model: S.model,
+      model: selection.model,
       region: hit.series.region,
       metric: hit.series.metric,
       price: hit.point.value,
@@ -162,7 +165,7 @@ export function RegionalHistoryChart({
       ].map((r) => [r.code, r]),
     ).values(),
   ];
-  const term = data.term || S.term || 'Spot';
+  const term = data.term || selection.term || 'Spot';
 
   const controls = (
     <div className="history-controls">
@@ -172,7 +175,7 @@ export function RegionalHistoryChart({
             <button
               key={period}
               type="button"
-              className={`period ${S.period === period ? 'active' : ''}`}
+              className={`period ${selection.period === period ? 'active' : ''}`}
               data-act="period"
               data-value={period}
               onClick={() => onPeriod(period)}
@@ -183,7 +186,7 @@ export function RegionalHistoryChart({
         </div>
       ) : null}
       <span className="capacity-unit">
-        {metricText(S)} · USD / GPU-hour · {term}
+        {metricText(selection)} · USD / GPU-hour · {term}
       </span>
     </div>
   );
@@ -304,12 +307,20 @@ export function RegionalHistoryChart({
           {dateLabel(geo.from)} – {dateLabel(geo.to)}
         </span>
         <span>
-          {geo.series.length} curves · {metricText(S)} price
+          {geo.series.length} curves · {metricText(selection)} price
         </span>
       </div>
-      <PricePlot S={S} geo={geo} hover={hover} lineStyle={lineStyle} onMove={onMove} />
+      <PricePlot
+        selection={selection}
+        geo={geo}
+        hover={hover}
+        lineStyle={lineStyle}
+        onMove={onMove}
+      />
       <div className="history-footnote">
-        <span>Actual {metricText(S).toLowerCase()} observations · Missing dates remain gaps</span>
+        <span>
+          Actual {metricText(selection).toLowerCase()} observations · Missing dates remain gaps
+        </span>
         <span>{snapshot}</span>
       </div>
       <details className="regional-method">

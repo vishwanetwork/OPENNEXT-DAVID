@@ -9,15 +9,13 @@ export interface Country {
   name: string;
 }
 
-let cached: Country[] | null = null;
-export function countryList(): Country[] {
-  if (cached) return cached;
-  const names = new Intl.DisplayNames(['en'], { type: 'region' });
-  cached = CODES.map((code) => ({ code, name: names.of(code) || code })).sort((a, b) =>
-    a.name.localeCompare(b.name, 'en'),
-  );
-  return cached;
-}
+const NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRIES: readonly Country[] = CODES.map((code) => ({
+  code,
+  name: NAMES.of(code) || code,
+})).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+
+export const countryList = (): readonly Country[] => COUNTRIES;
 
 export const findCountry = (value: string | null | undefined): Country | undefined => {
   const label = String(value || '').trim();

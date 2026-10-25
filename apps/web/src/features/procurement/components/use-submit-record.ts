@@ -26,7 +26,7 @@ export function useSubmitRecord() {
     if (submitting) return;
     setSubmitting(true);
     let saved: { id: string } | null = null;
-    const S = useWorkspaceStore.getState();
+    const workspace = useWorkspaceStore.getState();
     try {
       let result: { id: string; status?: string | null; submission?: unknown };
       const warnings: string[] = [];
@@ -81,7 +81,7 @@ export function useSubmitRecord() {
         warnings,
         demo,
       };
-      S.patch({ modal });
+      workspace.patch({ modal });
       if (recordKind === 'supply') {
         try {
           const installation = await procurementApi.requestAgent(api, result.id);

@@ -10,10 +10,10 @@ import { exportDownload } from './billing-dialogs';
 import { OrderActions, OrderDelivery, OrderFeeRows, OrderPricing, party } from './order-sections';
 
 export function OrderModal({ id }: { id?: string }) {
-  const S = useBillingData();
+  const billing = useBillingData();
   const { closeModal } = useTerminal();
   const toast = useToast();
-  const o = S.orders.find((x) => x.id === id);
+  const o = billing.orders.find((x) => x.id === id);
   if (!o)
     return (
       <p className="form-note">
@@ -34,8 +34,8 @@ export function OrderModal({ id }: { id?: string }) {
         ? (o.inputMillion || 0) + 'M input / ' + (o.outputMillion || 0) + 'M output tokens'
         : 'As agreed in accepted quote'
       : (o.count || '—') + ' GPUs';
-  const commission = orderCommission(S, o);
-  const download = () => exportDownload(S, 'order', o.id, toast);
+  const commission = orderCommission(billing, o);
+  const download = () => exportDownload(billing, 'order', o.id, toast);
   return (
     <>
       <div className="bill-order-summary">
@@ -68,7 +68,7 @@ export function OrderModal({ id }: { id?: string }) {
         <OrderFeeRows o={o} />
         {commission != null ? (
           <Detail
-            label={S.role === 'seller' ? 'Commission paid' : 'Commission earned'}
+            label={billing.role === 'seller' ? 'Commission paid' : 'Commission earned'}
             value={usd(commission)}
           />
         ) : null}

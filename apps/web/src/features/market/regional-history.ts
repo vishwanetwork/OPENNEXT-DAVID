@@ -52,8 +52,8 @@ export interface HistorySelection {
   priceMetrics: PriceMetric[];
 }
 
-export const selectionKey = (S: HistorySelection): string =>
-  [S.model, S.count, S.region, S.term].join('|');
+export const selectionKey = (selection: HistorySelection): string =>
+  [selection.model, selection.count, selection.region, selection.term].join('|');
 
 export function regionName(
   series: { name?: string | null; region: string },
@@ -102,16 +102,16 @@ export function presentation(
   return { name, description, label: [name, description].filter(Boolean).join(' · ') };
 }
 
-export const metricText = (S: HistorySelection): string =>
-  metricsOf(S)
+export const metricText = (selection: HistorySelection): string =>
+  metricsOf(selection)
     .map((metric) => METRIC_SHORT[metric])
     .join(' / ');
 
 export function valueOf(
   p: RegionalPoint,
-  S: HistorySelection,
+  selection: HistorySelection,
   data: { metric?: string | null },
-  metric: PriceMetric = primaryMetric(S),
+  metric: PriceMetric = primaryMetric(selection),
 ): number | null {
   if (Object.prototype.hasOwnProperty.call(p, metric))
     return isNumber(p[metric]) ? p[metric] : null;
@@ -160,8 +160,8 @@ export interface SelectionResult {
 }
 
 /** Reconcile the remembered choices with the latest data without mutating the input. */
-export function selection(
-  S: HistorySelection,
+export function reconcileSelection(
+  selection: HistorySelection,
   data: RegionalHistoryResponse,
   input: ChoiceState,
 ): SelectionResult {
@@ -199,7 +199,7 @@ export function selection(
     s.points.some(
       (p) =>
         Number.isFinite(Date.parse(p.time)) &&
-        metricsOf(S).some((metric) => isNumber(valueOf(p, S, data, metric))),
+        metricsOf(selection).some((metric) => isNumber(valueOf(p, selection, data, metric))),
     ),
   );
   let selected = input.selected;
@@ -215,7 +215,7 @@ export function selection(
     changed = true;
   }
   let metricFocus = input.metricFocus;
-  if (metricFocus !== null && !metricsOf(S).includes(metricFocus)) {
+  if (metricFocus !== null && !metricsOf(selection).includes(metricFocus)) {
     metricFocus = null;
     changed = true;
   }
@@ -244,21 +244,22 @@ export interface HistorySummary {
 }
 
 export function summary(
-  S: HistorySelection,
+  selection: HistorySelection,
   data: RegionalHistoryResponse | null | undefined,
   state: ChoiceState,
   regions: readonly Region[],
 ): HistorySummary | null {
   if (!data) return null;
-  const { selected } = selection(S, data, state);
+  const { selected } = reconcileSelection(selection, data, state);
   const primary = selected.find((series) =>
     series.points.some(
-      (point) => Number.isFinite(Date.parse(point.time)) && isNumber(valueOf(point, S, data)),
+      (point) =>
+        Number.isFinite(Date.parse(point.time)) && isNumber(valueOf(point, selection, data)),
     ),
   );
   if (!primary) return null;
   const points = primary.points
-    .map((p) => ({ ...p, value: valueOf(p, S, data) }))
+    .map((p) => ({ ...p, value: valueOf(p, selection, data) }))
     .filter(
       (p): p is RegionalPoint & { value: number } =>
         isNumber(p.value) && Number.isFinite(Date.parse(p.time)),
@@ -316,14 +317,14 @@ export interface Geometry {
 
 /** Computes plotted series and axes for the selected curves. Returns null when nothing is drawable. */
 export function geometry(
-  S: HistorySelection,
+  selection: HistorySelection,
   data: RegionalHistoryResponse,
   result: SelectionResult,
   regions: readonly Region[],
   width: number,
 ): Geometry | null {
   const { state, known, selected } = result;
-  const metrics = metricsOf(S);
+  const metrics = metricsOf(selection);
   const series: PlotSeries[] = selected
     .flatMap((s) =>
       metrics.map((metric) => {
@@ -338,7 +339,7 @@ export function geometry(
           points: s.points
             .map((p) => ({
               ...p,
-              value: valueOf(p, S, data, metric),
+              value: valueOf(p, selection, data, metric),
               timestamp: Date.parse(p.time),
               x: 0,
               y: 0,
@@ -405,7 +406,7 @@ export function geometry(
     to,
     gap,
     daily: (data.meta?.bucketMinutes || 0) >= 1440,
-    metric: primaryMetric(S),
+    metric: primaryMetric(selection),
     metrics,
     grid,
     ticks,

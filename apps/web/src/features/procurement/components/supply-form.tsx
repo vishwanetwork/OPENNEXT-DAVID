@@ -9,7 +9,7 @@ import { useSubmitRecord } from './use-submit-record';
 
 /* ---------- Supply ---------- */
 export function SupplyForm() {
-  const S = useWorkspaceStore();
+  const workspace = useWorkspaceStore();
   const { submit, submitting } = useSubmitRecord();
   const [live, setLive] = useState({ rate: '', count: '', hours: '' });
   const track = (name: keyof typeof live) => (event: React.ChangeEvent<HTMLInputElement>) =>
@@ -23,7 +23,13 @@ export function SupplyForm() {
       <input type="hidden" name="kind" value="gpu_rental" />
       <div className="form-grid">
         <Input label="Listing title" name="title" required maxLength={140} />
-        <Input label="GPU model" name="model" defaultValue={S.model} required maxLength={100} />
+        <Input
+          label="GPU model"
+          name="model"
+          defaultValue={workspace.model}
+          required
+          maxLength={100}
+        />
         <CountrySelect name="region" />
         <Input
           label="Available GPU count"

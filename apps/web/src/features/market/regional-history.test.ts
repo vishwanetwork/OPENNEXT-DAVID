@@ -5,7 +5,7 @@ import {
   emptyChoice,
   geometry,
   presentation,
-  selection,
+  reconcileSelection,
   seriesPath,
   summary,
   valueOf,
@@ -69,12 +69,12 @@ const S = {
 describe('selection', () => {
   it('selects the first three eligible series once and ignores fractional GPUs', () => {
     const state = emptyChoice();
-    const result = selection(S, data(), state);
+    const result = reconcileSelection(S, data(), state);
     expect(result.selected.map((s) => s.id)).toEqual(['a', 'b', 'c']);
     expect(result.changed).toBe(true);
     expect(state.initialized).toBe(false);
     expect(result.known.some((s) => s.id === 'frac')).toBe(false);
-    const again = selection(S, data(), { ...result.state, selected: ['b'] });
+    const again = reconcileSelection(S, data(), { ...result.state, selected: ['b'] });
     expect(again.selected.map((s) => s.id)).toEqual(['b']);
     expect(again.changed).toBe(false);
   });
@@ -84,7 +84,7 @@ describe('selection', () => {
     expect(valueOf({ time: 't', avg: null, value: 2.95 }, S, { metric: 'avg' })).toBeNull();
   });
   it('labels duplicate region/configuration pairs as numbered series without machine codes', () => {
-    const { known } = selection(S, data(), emptyChoice());
+    const { known } = reconcileSelection(S, data(), emptyChoice());
     const b = known.find((s) => s.id === 'b')!;
     const c = known.find((s) => s.id === 'c')!;
     expect(presentation(b, known, data(), BASE_REGIONS)).toEqual({
@@ -109,7 +109,7 @@ describe('summary and geometry', () => {
   });
   it('breaks lines across gaps and draws one curve per metric', () => {
     const multi = { ...S, priceMetrics: ['max' as const, 'min' as const] };
-    const result = selection(multi, data(), emptyChoice());
+    const result = reconcileSelection(multi, data(), emptyChoice());
     const geo = geometry(multi, data(), result, BASE_REGIONS, 900)!;
     expect(geo.series.filter((s) => s.id === 'a').map((s) => s.metric)).toEqual(['max', 'min']);
     const gapped = {

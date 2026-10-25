@@ -158,7 +158,7 @@ export function MarketPage() {
       );
     return (
       <RegionalHistoryChart
-        S={selection}
+        selection={selection}
         data={history.data}
         regions={regions}
         onPeriod={onPeriod}

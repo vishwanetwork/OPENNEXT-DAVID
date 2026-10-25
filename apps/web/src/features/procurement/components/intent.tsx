@@ -27,7 +27,7 @@ export function ProcurementIntentResumer() {
   const review = useWorkspaceData().review;
   const handler = useCallback<IntentResumer>(
     (intent) => {
-      const S = useWorkspaceStore.getState();
+      const workspace = useWorkspaceStore.getState();
       if (intent.kind === 'opportunity') {
         resume();
         return true;
@@ -35,8 +35,8 @@ export function ProcurementIntentResumer() {
       const item = findCatalogItem(intent.id);
       if (!item) return true;
       if (
-        (intent.intent === 'offer' && S.role !== 'seller') ||
-        (intent.intent === 'buy' && S.role !== 'buyer')
+        (intent.intent === 'offer' && workspace.role !== 'seller') ||
+        (intent.intent === 'buy' && workspace.role !== 'buyer')
       ) {
         toast(
           'Switch to ' +
@@ -47,7 +47,7 @@ export function ProcurementIntentResumer() {
       }
       if (item.kind === 'model') {
         const quote = item.sku && getModelQuote(item.sku);
-        if (quote) S.openModal('model-rfq-form', { sku: quote.sku });
+        if (quote) workspace.openModal('model-rfq-form', { sku: quote.sku });
         else
           openContact({
             message: [
@@ -90,7 +90,7 @@ export function ProcurementIntentResumer() {
           return true;
         }
         const minimum = Number(String(item.minimum || '1').match(/\d+/)?.[0]) || 1;
-        S.openModal('rfq-form', {
+        workspace.openModal('rfq-form', {
           prefill: {
             kind: 'physical_gpu',
             model: item.name,
@@ -121,10 +121,10 @@ export function ProcurementIntentResumer() {
       };
       if (intent.intent === 'offer') {
         if (review.status !== 'Approved') {
-          S.patch({ afterReview: { type: 'respond', requirement } });
-          S.openModal('review');
-        } else S.openModal('respond', { requirement });
-      } else S.openModal('rfq-form', { model: item.model, prefill: requirement });
+          workspace.patch({ afterReview: { type: 'respond', requirement } });
+          workspace.openModal('review');
+        } else workspace.openModal('respond', { requirement });
+      } else workspace.openModal('rfq-form', { model: item.model, prefill: requirement });
       return true;
     },
     [resume, toast, openContact, review.status],

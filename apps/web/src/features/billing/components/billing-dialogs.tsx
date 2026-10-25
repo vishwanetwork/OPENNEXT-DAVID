@@ -18,12 +18,12 @@ import { Detail } from './billing-page';
 import { Btn } from './billing-modals';
 
 export function exportDownload(
-  S: BillingData,
+  billing: BillingData,
   type: string,
   id: string | undefined,
   toast: (m: string) => void,
 ) {
-  const rows = exportRows(S, type, id);
+  const rows = exportRows(billing, type, id);
   if (!rows.length) return toast('No records to export in this period');
   downloadText('OpenNEXT-' + type + '.csv', csv(rows), 'text/csv;charset=utf-8');
 }
@@ -116,7 +116,7 @@ export function CashoutDetail({ payout }: { payout: Payout }) {
 }
 
 export function RecordModal({ l }: { l: LedgerEntry }) {
-  const S = useBillingData();
+  const billing = useBillingData();
   const toast = useToast();
   const identity = useWorkspaceStore((s) => s.identity);
   return (
@@ -127,8 +127,8 @@ export function RecordModal({ l }: { l: LedgerEntry }) {
         </div>
       ) : null}
       <div className="bill-detail-grid">
-        <Detail label="Description" value={ledgerLabel(S.role, l)} />
-        <Detail label="Amount" value={usd(ledgerAmount(S.role, l))} />
+        <Detail label="Description" value={ledgerLabel(billing.role, l)} />
+        <Detail label="Amount" value={usd(ledgerAmount(billing.role, l))} />
         <Detail label="Status" value={l.status || 'Posted'} />
         <Detail label="Date" value={stamp(l.createdAt || l.date)} />
         <Detail label="Account" value={identity.email} />
@@ -141,7 +141,7 @@ export function RecordModal({ l }: { l: LedgerEntry }) {
           act="bill-export"
           value="record"
           id={l.id}
-          onClick={() => exportDownload(S, 'record', l.id, toast)}
+          onClick={() => exportDownload(billing, 'record', l.id, toast)}
         >
           Download record
         </Btn>

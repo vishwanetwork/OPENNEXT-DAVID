@@ -52,11 +52,13 @@ declare module '@/terminal-kit/modal' {
 }
 
 const BillOrderModal: ModalComponent<'bill-order'> = ({ modal, close }) => {
-  const S = useBillingData();
+  const billing = useBillingData();
   const id = modal.id;
   return (
     <ModalFrame
-      title={S.orders.some((o) => o.id === id) ? 'Order details · ' + id : 'Order unavailable'}
+      title={
+        billing.orders.some((o) => o.id === id) ? 'Order details · ' + id : 'Order unavailable'
+      }
       wide
       close={close}
     >
@@ -109,8 +111,8 @@ const CashoutStartModal: ModalComponent<'cashout-start'> = ({ close }) => (
 );
 
 const CashoutDetailModal: ModalComponent<'cashout-detail'> = ({ modal, close }) => {
-  const S = useBillingData();
-  const payout = S.payouts.find((item) => item.id === modal.id);
+  const billing = useBillingData();
+  const payout = billing.payouts.find((item) => item.id === modal.id);
   if (!payout) return null;
   return (
     <ModalFrame title={'Payout details · ' + payout.id} close={close}>
@@ -120,8 +122,8 @@ const CashoutDetailModal: ModalComponent<'cashout-detail'> = ({ modal, close }) 
 };
 
 const RecordDetailModal: ModalComponent<'bill-record' | 'receipt'> = ({ modal, close }) => {
-  const S = useBillingData();
-  const l = S.ledger.find((x) => x.id === modal.id);
+  const billing = useBillingData();
+  const l = billing.ledger.find((x) => x.id === modal.id);
   if (!l) return null;
   if (l.orderId)
     return (

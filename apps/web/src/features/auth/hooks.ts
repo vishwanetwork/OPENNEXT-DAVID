@@ -5,25 +5,32 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import type { SessionUser } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { ApiError } from '@/lib/api/client';
+import { create } from 'zustand';
 import { useSessionStore } from '@/lib/session-store';
 import { authApi } from './api';
 import { allowedRole, roleIntentKey, RoleIntentStore } from './role-intent';
 
-let roleIntentSingleton: RoleIntentStore | null = null;
+/**
+ * One `RoleIntentStore` per (storage key, URL hint) shared by every component on the page.
+ * A new pathname scope or `?role=` hint creates a new instance; tests reset the map.
+ */
+export const useRoleIntentStores = create<{ map: Record<string, RoleIntentStore> }>(() => ({
+  map: {},
+}));
 
 function roleIntentFor(pathname: string, queryRole: string | null): RoleIntentStore {
-  if (!roleIntentSingleton) {
-    const storage = typeof window === 'undefined' ? null : window.sessionStorage;
-    roleIntentSingleton = new RoleIntentStore(
-      roleIntentKey(pathname),
-      allowedRole(queryRole),
-      storage,
-    );
-  }
-  return roleIntentSingleton;
+  const key = roleIntentKey(pathname);
+  const hint = allowedRole(queryRole);
+  const id = key + '|' + hint;
+  const existing = useRoleIntentStores.getState().map[id];
+  if (existing) return existing;
+  const storage = typeof window === 'undefined' ? null : window.sessionStorage;
+  const store = new RoleIntentStore(key, hint, storage);
+  useRoleIntentStores.setState((s) => ({ map: { ...s.map, [id]: store } }));
+  return store;
 }
 
-/** Role preference carried from public CTAs; one instance per page (sessionStorage-backed). */
+/** Role preference carried from public CTAs (sessionStorage-backed), keyed by page scope and hint. */
 export function useRoleIntent(): RoleIntentStore {
   const pathname = usePathname();
   const params = useSearchParams();

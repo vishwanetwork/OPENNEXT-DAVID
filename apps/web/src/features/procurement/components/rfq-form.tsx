@@ -19,7 +19,7 @@ export function RfqForm({
   r?: Partial<OwnedRfq> & Record<string, unknown>;
   editing?: boolean;
 }) {
-  const S = useWorkspaceStore();
+  const workspace = useWorkspaceStore();
   const { closeModal } = useTerminal();
   const { submit, submitting } = useSubmitRecord();
   const findMarketRow = useFindMarketRow();
@@ -29,7 +29,7 @@ export function RfqForm({
   const quoteRequest = r.requestKind === 'quote_request';
   const [live, setLive] = useState({
     budget: r.budget ?? '',
-    count: r.count || S.count || 8,
+    count: r.count || workspace.count || 8,
     hours: r.hours || 72,
   });
   const [budgetValue, setBudgetValue] = useState<string>(
@@ -95,11 +95,11 @@ export function RfqForm({
         <Input
           label="GPU / model"
           name="model"
-          defaultValue={r.model || S.model}
+          defaultValue={r.model || workspace.model}
           required
           readOnly={Boolean(r.originSupply)}
         />
-        <CountrySelect name="region" defaultValue={String(r.region || S.region)} />
+        <CountrySelect name="region" defaultValue={String(r.region || workspace.region)} />
         {!model && !hardware ? (
           <Input
             label="vCPU"
@@ -154,7 +154,7 @@ export function RfqForm({
             <Input
               label="GPU quantity"
               name="count"
-              defaultValue={r.count || S.count || 8}
+              defaultValue={r.count || workspace.count || 8}
               type="number"
               min={1}
               max={4096}
@@ -201,7 +201,7 @@ export function RfqForm({
         ) : (
           <div>
             <label className="form-label">Market terms</label>
-            <select className="field" name="term" defaultValue={String(r.term || S.term)}>
+            <select className="field" name="term" defaultValue={String(r.term || workspace.term)}>
               {terms.map((v) => (
                 <option key={v}>{v}</option>
               ))}
@@ -233,7 +233,7 @@ export function RfqForm({
         </div>
         <BudgetRange
           r={r}
-          model={String(r.model || S.model)}
+          model={String(r.model || workspace.model)}
           onPick={(value) => {
             setBudgetValue(String(value));
             setLive((prev) => ({ ...prev, budget: value }));

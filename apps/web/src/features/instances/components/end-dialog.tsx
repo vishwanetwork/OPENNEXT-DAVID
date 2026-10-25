@@ -1,5 +1,7 @@
 'use client';
 
+import { create } from 'zustand';
+
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useInvalidateWorkspace, useTerminal, useTerminalSlots } from '@/terminal-kit';
@@ -19,7 +21,18 @@ const ENDED = [
   'canceled',
 ];
 
-const ending = new Set<string>();
+/** Instance keys with a termination request in flight; survives the dialog being remounted. */
+const useEnding = create<{ keys: Record<string, true> }>(() => ({ keys: {} }));
+const ending = {
+  has: (key: string) => Boolean(useEnding.getState().keys[key]),
+  add: (key: string) => useEnding.setState((s) => ({ keys: { ...s.keys, [key]: true } })),
+  delete: (key: string) =>
+    useEnding.setState((s) => {
+      const keys = { ...s.keys };
+      delete keys[key];
+      return { keys };
+    }),
+};
 
 export function EndDialog({ id, isExample }: { id?: string; isExample: boolean }) {
   const { instanceLifecycle: lifecycleAdapter } = useTerminalSlots().services;

@@ -24,9 +24,9 @@ function useViewportWidth() {
   return width;
 }
 
-export function BillingChart({ S, a }: { S: BillingData; a: Analytics }) {
+export function BillingChart({ billing, a }: { billing: BillingData; a: Analytics }) {
   const ui = useBillingUi();
-  const series = seriesFor(S.role);
+  const series = seriesFor(billing.role);
   const visible = series.filter(([key]) => !ui.hidden.includes(key));
   const w = chartWidth(useViewportWidth());
   const h = 240,
@@ -68,7 +68,7 @@ export function BillingChart({ S, a }: { S: BillingData; a: Analytics }) {
     <section className="panel bill-chart-panel">
       <div className="bill-panel-head">
         <div>
-          <h2>{S.role === 'buyer' ? 'Compute spend' : 'Earnings over time'}</h2>
+          <h2>{billing.role === 'buyer' ? 'Compute spend' : 'Earnings over time'}</h2>
           <p>
             {a.sample
               ? 'Example analysis · not your balance or transaction history'
@@ -214,7 +214,7 @@ export function BillingChart({ S, a }: { S: BillingData; a: Analytics }) {
         ) : null}
       </div>
       <p className="bill-footnote">
-        {S.role === 'buyer'
+        {billing.role === 'buyer'
           ? 'Payments and posted usage charges are shown on their posting date. Prepaid orders are not a measure of actual GPU utilization.'
           : 'Net settlement earnings already include the OpenNEXT fee deduction. Broker commissions, if recorded, are separate expenses shown below zero. Only settled earnings are withdrawable.'}
       </p>

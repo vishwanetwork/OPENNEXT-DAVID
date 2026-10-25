@@ -4,9 +4,15 @@ import { useTerminal } from '@/terminal-kit';
 import { activityRows, stamp, usd, type BillingData } from '../analytics';
 import { Btn } from './billing-ui';
 
-export function Activity({ S, onExport }: { S: BillingData; onExport: (type: string) => void }) {
+export function Activity({
+  billing,
+  onExport,
+}: {
+  billing: BillingData;
+  onExport: (type: string) => void;
+}) {
   const { openModal } = useTerminal();
-  const rows = activityRows(S);
+  const rows = activityRows(billing);
   return (
     <section className="panel bill-activity">
       <div className="bill-panel-head">
@@ -94,9 +100,9 @@ export function Activity({ S, onExport }: { S: BillingData; onExport: (type: str
   );
 }
 
-export function Payouts({ S }: { S: BillingData }) {
+export function Payouts({ billing }: { billing: BillingData }) {
   const { openModal } = useTerminal();
-  if (S.role === 'buyer') return null;
+  if (billing.role === 'buyer') return null;
   return (
     <section className="panel">
       <div className="bill-panel-head">
@@ -108,7 +114,7 @@ export function Payouts({ S }: { S: BillingData }) {
           Cash out
         </Btn>
       </div>
-      {S.payouts.length ? (
+      {billing.payouts.length ? (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
@@ -122,7 +128,7 @@ export function Payouts({ S }: { S: BillingData }) {
               </tr>
             </thead>
             <tbody>
-              {S.payouts.map((p) => (
+              {billing.payouts.map((p) => (
                 <tr key={p.id}>
                   <td>{p.id}</td>
                   <td>{p.destination}</td>

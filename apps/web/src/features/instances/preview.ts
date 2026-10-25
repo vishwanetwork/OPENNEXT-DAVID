@@ -4,6 +4,7 @@
  * real resources, so localStorage is acceptable here (keyed per identity and role).
  */
 import type { Instance } from '@opennext/contracts';
+import { create } from 'zustand';
 import { lifecycle } from './lifecycle';
 
 export interface PreviewState {
@@ -17,13 +18,10 @@ export interface PreviewState {
   endedDemo: Record<string, string>;
 }
 
-const memory = new Map<string, PreviewState>();
-const listeners = new Set<() => void>();
-export const subscribePreview = (fn: () => void) => {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-};
-const notify = () => listeners.forEach((fn) => fn());
+/** In-memory mirror of the per-scope localStorage records; components subscribe to it. */
+export const usePreviewStore = create<{ states: Record<string, PreviewState> }>(() => ({
+  states: {},
+}));
 
 export const previewScope = (identity: string | undefined, role: string) =>
   String(identity || 'anonymous') + ':' + String(role || 'Buyer');
@@ -37,7 +35,7 @@ const freshExample = (): PreviewState['example'] => ({
 
 export function previewState(scope: string): PreviewState {
   const key = keyFor(scope);
-  let saved = memory.get(key) || null;
+  let saved: PreviewState | null = usePreviewStore.getState().states[key] || null;
   if (!saved) {
     try {
       saved = JSON.parse(window.localStorage?.getItem(key) || 'null') as PreviewState | null;
@@ -59,19 +57,24 @@ export function previewState(scope: string): PreviewState {
   }
   if (!saved.endedDemo || typeof saved.endedDemo !== 'object' || Array.isArray(saved.endedDemo))
     saved.endedDemo = {};
-  memory.set(key, saved);
   if (created) persist(scope, saved);
+  else remember(key, saved);
   return saved;
 }
 
+const remember = (key: string, saved: PreviewState) => {
+  if (usePreviewStore.getState().states[key] !== saved)
+    usePreviewStore.setState((s) => ({ states: { ...s.states, [key]: saved } }));
+};
+
 function persist(scope: string, saved: PreviewState) {
-  memory.set(keyFor(scope), saved);
+  const next = { ...saved, example: { ...saved.example }, endedDemo: { ...saved.endedDemo } };
   try {
-    window.localStorage?.setItem(keyFor(scope), JSON.stringify(saved));
+    window.localStorage?.setItem(keyFor(scope), JSON.stringify(next));
   } catch {
     /* storage unavailable */
   }
-  notify();
+  usePreviewStore.setState((s) => ({ states: { ...s.states, [keyFor(scope)]: next } }));
 }
 
 export function example(
@@ -98,23 +101,25 @@ export function example(
 
 export function setExampleScenario(scope: string, value: 'reset' | 'interrupted' | 'running') {
   const saved = previewState(scope);
-  if (value === 'reset') saved.example = freshExample();
+  if (value === 'reset') persist(scope, { ...saved, example: freshExample() });
   else if (!lifecycle(example(scope)).ended)
-    saved.example.status = value === 'interrupted' ? 'Connecting' : 'Running';
-  persist(scope, saved);
+    persist(scope, {
+      ...saved,
+      example: { ...saved.example, status: value === 'interrupted' ? 'Connecting' : 'Running' },
+    });
 }
 
 export function endExample(scope: string) {
   const saved = previewState(scope);
-  saved.example.status = 'End';
-  saved.example.endedAt = new Date().toISOString();
-  persist(scope, saved);
+  persist(scope, {
+    ...saved,
+    example: { ...saved.example, status: 'End', endedAt: new Date().toISOString() },
+  });
 }
 
 export function endDemo(scope: string, id: string) {
   const saved = previewState(scope);
-  saved.endedDemo[id] = new Date().toISOString();
-  persist(scope, saved);
+  persist(scope, { ...saved, endedDemo: { ...saved.endedDemo, [id]: new Date().toISOString() } });
 }
 
 /** Applies a locally recorded demo end-state to a demo allocation. */

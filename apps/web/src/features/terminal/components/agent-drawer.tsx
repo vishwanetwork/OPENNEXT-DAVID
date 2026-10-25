@@ -49,9 +49,9 @@ export function AgentHintProvider({ children }: { children: ReactNode }) {
   const { model, role, agentOpen, modal } = useWorkspaceStore();
   const suggest = useCallback(
     (next: AgentHint) => {
-      const S = useWorkspaceStore.getState();
-      if (route !== 'market' || S.agentOpen || S.modal) return;
-      setHint({ ...next, model: S.model, role: S.role });
+      const workspace = useWorkspaceStore.getState();
+      if (route !== 'market' || workspace.agentOpen || workspace.modal) return;
+      setHint({ ...next, model: workspace.model, role: workspace.role });
     },
     [route],
   );

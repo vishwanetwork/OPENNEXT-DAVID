@@ -123,13 +123,13 @@ export const inPeriod = (ui: BillingUi, value: unknown) => {
   return Boolean(day) && day >= ui.from && day <= ui.to;
 };
 
-export function periodRows(S: BillingData): LedgerEntry[] {
-  return S.ledger.filter((l) => {
+export function periodRows(billing: BillingData): LedgerEntry[] {
+  return billing.ledger.filter((l) => {
     const day = dateKey(l.createdAt || l.date);
     return (
       day &&
-      day >= S.billingUI.from &&
-      day <= S.billingUI.to &&
+      day >= billing.billingUI.from &&
+      day <= billing.billingUI.to &&
       !['Failed', 'Cancelled', 'Pending'].includes(String(l.status))
     );
   });
@@ -155,8 +155,8 @@ export interface Analytics {
   sample: boolean;
 }
 
-export function analytics(S: BillingData): Analytics {
-  const days = daysBetween(S.billingUI.from, S.billingUI.to);
+export function analytics(billing: BillingData): Analytics {
+  const days = daysBetween(billing.billingUI.from, billing.billingUI.to);
   const rows: DailyRow[] = days.map((day) => ({
     day,
     purchase: 0,
@@ -167,15 +167,15 @@ export function analytics(S: BillingData): Analytics {
     other: 0,
   }));
   const map = Object.fromEntries(rows.map((r) => [r.day, r]));
-  for (const l of periodRows(S)) {
+  for (const l of periodRows(billing)) {
     const key = flow(l);
     const r = map[dateKey(l.createdAt || l.date)];
     if (!r || key === 'transfer') continue;
     const amount =
-      key === 'commission' ? signedCommission(S.role, l.amount) : Math.abs(num(l.amount));
+      key === 'commission' ? signedCommission(billing.role, l.amount) : Math.abs(num(l.amount));
     r[key] += amount;
     if (key === 'purchase') {
-      const o = S.orders.find((x) => x.id === l.orderId);
+      const o = billing.orders.find((x) => x.id === l.orderId);
       r[
         o && /spot/i.test(String(o.term))
           ? 'spot'
@@ -185,14 +185,14 @@ export function analytics(S: BillingData): Analytics {
       ] += amount;
     }
   }
-  if (S.billingUI.sample)
+  if (billing.billingUI.sample)
     rows.forEach((r, i) => {
       r.spot = round(38 + (i % 6) * 8);
       r.demand = round(118 + (i % 9) * 13);
       r.other = round(12 + (i % 4) * 3);
       r.purchase = r.spot + r.demand + r.other;
       r.revenue = round(r.purchase * 1.22);
-      r.commission = signedCommission(S.role, round(r.revenue * 0.035));
+      r.commission = signedCommission(billing.role, round(r.revenue * 0.035));
     });
   const sums = rows.reduce(
     (a, r) => {
@@ -212,18 +212,18 @@ export function analytics(S: BillingData): Analytics {
       number
     >,
   );
-  return { rows, sums, sample: S.billingUI.sample };
+  return { rows, sums, sample: billing.billingUI.sample };
 }
 
-export function settledPlatformFees(S: BillingData): number {
-  return S.orders
+export function settledPlatformFees(billing: BillingData): number {
+  return billing.orders
     .filter(
       (o) =>
         orderSide(o) === 'sell' &&
         currentFees(o) &&
         o.paymentStatus === 'Paid' &&
         /completed|settled/i.test(o.status) &&
-        inPeriod(S.billingUI, o.settledAt || o.completedAt),
+        inPeriod(billing.billingUI, o.settledAt || o.completedAt),
     )
     .reduce((sum, o) => sum + num(o.sellerFee), 0);
 }
@@ -235,23 +235,23 @@ export interface MetricCard {
   count?: boolean;
 }
 
-export function metrics(S: BillingData, a: Analytics): MetricCard[] {
-  const r = S.role;
+export function metrics(billing: BillingData, a: Analytics): MetricCard[] {
+  const r = billing.role;
   const n = Math.max(1, a.rows.length);
   const sample = a.sample ? 'Example analysis' : 'Selected period';
-  const settled = S.orders.filter(
+  const settled = billing.orders.filter(
     (o) =>
       orderSide(o) === 'buy' &&
       /completed|settled/i.test(o.status) &&
       o.paymentStatus === 'Paid' &&
       inPeriod(
-        S.billingUI,
+        billing.billingUI,
         o.completedAt ||
           o.settledAt ||
           (o.audit || []).filter((e) => /completed|settled/i.test(e.event)).at(-1)?.at,
       ),
   );
-  const pending = S.orders
+  const pending = billing.orders
     .filter(
       (o) =>
         orderSide(o) === 'sell' &&
@@ -280,7 +280,7 @@ export function metrics(S: BillingData, a: Analytics): MetricCard[] {
       },
       {
         label: 'Pending orders',
-        value: S.orders
+        value: billing.orders
           .filter(
             (o) =>
               orderSide(o) === 'buy' && o.paymentStatus !== 'Paid' && !/cancelled/i.test(o.status),
@@ -305,17 +305,17 @@ export function metrics(S: BillingData, a: Analytics): MetricCard[] {
       },
       {
         label: FEE_LABEL,
-        value: -settledPlatformFees(S),
+        value: -settledPlatformFees(billing),
         note: 'Recorded settlement fees · already deducted from net proceeds',
       },
       {
         label: 'Paid out',
-        value: S.payouts
+        value: billing.payouts
           .filter(
             (p) =>
               p.status === 'Paid' &&
-              dateKey(p.paidAt) >= S.billingUI.from &&
-              dateKey(p.paidAt) <= S.billingUI.to,
+              dateKey(p.paidAt) >= billing.billingUI.from &&
+              dateKey(p.paidAt) <= billing.billingUI.to,
           )
           .reduce((sum, p) => sum + num(p.amount), 0),
         note: 'Completed withdrawals',
@@ -367,24 +367,24 @@ export interface ActivityRow {
   test?: boolean;
 }
 
-export function activityRows(S: BillingData): ActivityRow[] {
-  const list = S.ledger.filter((l) => {
+export function activityRows(billing: BillingData): ActivityRow[] {
+  const list = billing.ledger.filter((l) => {
     const d = dateKey(l.createdAt || l.date);
-    return d && d >= S.billingUI.from && d <= S.billingUI.to;
+    return d && d >= billing.billingUI.from && d <= billing.billingUI.to;
   });
-  const unpaid = S.orders.filter(
+  const unpaid = billing.orders.filter(
     (o) =>
       o.paymentStatus !== 'Paid' &&
-      dateKey(o.createdAt || o.created) >= S.billingUI.from &&
-      dateKey(o.createdAt || o.created) <= S.billingUI.to &&
+      dateKey(o.createdAt || o.created) >= billing.billingUI.from &&
+      dateKey(o.createdAt || o.created) <= billing.billingUI.to &&
       !list.some((l) => l.orderId === o.id),
   );
   return [
     ...list.map((l) => ({
       ...l,
       orderId: l.orderId,
-      type: ledgerLabel(S.role, l),
-      displayAmount: ledgerAmount(S.role, l),
+      type: ledgerLabel(billing.role, l),
+      displayAmount: ledgerAmount(billing.role, l),
       isOrder: false,
     })),
     ...unpaid.map(
@@ -404,14 +404,14 @@ export function activityRows(S: BillingData): ActivityRow[] {
   );
 }
 
-export function orderCommission(S: BillingData, item: Order): number | null {
+export function orderCommission(billing: BillingData, item: Order): number | null {
   const recorded = item.commissionAmount ?? item.brokerCommission ?? item.commission;
-  if (recorded != null) return signedCommission(S.role, recorded);
-  const entries = S.ledger.filter(
+  if (recorded != null) return signedCommission(billing.role, recorded);
+  const entries = billing.ledger.filter(
     (entry) => entry.orderId === item.id && flow(entry) === 'commission',
   );
   return entries.length
-    ? entries.reduce((sum, entry) => sum + ledgerAmount(S.role, entry), 0)
+    ? entries.reduce((sum, entry) => sum + ledgerAmount(billing.role, entry), 0)
     : null;
 }
 
@@ -434,30 +434,34 @@ export function csv(rows: Record<string, unknown>[]): string {
   );
 }
 
-export function exportRows(S: BillingData, type: string, id?: string): Record<string, unknown>[] {
-  if (type === 'daily') return analytics(S).rows as unknown as Record<string, unknown>[];
+export function exportRows(
+  billing: BillingData,
+  type: string,
+  id?: string,
+): Record<string, unknown>[] {
+  if (type === 'daily') return analytics(billing).rows as unknown as Record<string, unknown>[];
   if (type === 'order')
-    return S.orders
+    return billing.orders
       .filter((item) => item.id === id)
       .map((item) => {
         const row: Record<string, unknown> = { ...item };
         for (const key of ['commission', 'commissionAmount', 'brokerCommission'])
-          if (row[key] != null) row[key] = signedCommission(S.role, row[key]);
-        const commission = orderCommission(S, item);
+          if (row[key] != null) row[key] = signedCommission(billing.role, row[key]);
+        const commission = orderCommission(billing, item);
         if (commission != null) row.commissionAmount = commission;
         return row;
       });
   return (
     type === 'record'
-      ? S.ledger.filter((item) => item.id === id)
-      : S.ledger.filter((item) => {
+      ? billing.ledger.filter((item) => item.id === id)
+      : billing.ledger.filter((item) => {
           const day = dateKey(item.createdAt || item.date);
-          return day && day >= S.billingUI.from && day <= S.billingUI.to;
+          return day && day >= billing.billingUI.from && day <= billing.billingUI.to;
         })
   ).map((item) => ({
     ...item,
-    type: ledgerLabel(S.role, item),
-    amount: ledgerAmount(S.role, item),
+    type: ledgerLabel(billing.role, item),
+    amount: ledgerAmount(billing.role, item),
   }));
 }
 

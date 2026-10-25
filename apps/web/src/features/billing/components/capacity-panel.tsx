@@ -4,9 +4,9 @@ import { useTerminal } from '@/terminal-kit';
 import { num, orderSide, type BillingData } from '../analytics';
 import { Btn, Detail } from './billing-ui';
 
-export function CapacityPanel({ S }: { S: BillingData }) {
+export function CapacityPanel({ billing }: { billing: BillingData }) {
   const { openModal } = useTerminal();
-  const paid = S.orders.filter(
+  const paid = billing.orders.filter(
     (o) => orderSide(o) === 'buy' && o.paymentStatus === 'Paid' && !/cancelled/i.test(o.status),
   );
   const gpuOrders = paid.filter(
@@ -18,14 +18,14 @@ export function CapacityPanel({ S }: { S: BillingData }) {
   );
   let used = withTelemetry.reduce((sum, o) => sum + num(o.telemetry?.usedGpuHours), 0);
   let coverage = reserved > 0 && withTelemetry.length === gpuOrders.length;
-  const sample = S.billingUI.sample;
+  const sample = billing.billingUI.sample;
   if (sample) {
     reserved = 11520;
     used = 7920;
     coverage = true;
   }
-  const seller = S.role === 'seller';
-  const delivering = S.orders.filter(
+  const seller = billing.role === 'seller';
+  const delivering = billing.orders.filter(
     (o) => orderSide(o) === 'sell' && /provisioning|active/i.test(o.status),
   ).length;
   return (
@@ -55,7 +55,7 @@ export function CapacityPanel({ S }: { S: BillingData }) {
             seller
               ? sample
                 ? 12
-                : S.listings.filter((l) => l.status === 'Published').length
+                : billing.listings.filter((l) => l.status === 'Published').length
               : reserved.toLocaleString('en-US')
           }
         />

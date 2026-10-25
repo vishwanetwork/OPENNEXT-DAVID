@@ -12,15 +12,15 @@ import { Activity, CapacityPanel, DailyTable, Payouts } from './billing-panels';
 
 /** Billing & usage / Earnings & payouts page (legacy `OpenNEXTBilling.page`). */
 export function BillingPage() {
-  const S = useBillingData();
+  const billing = useBillingData();
   const ui = useBillingUi();
   const { openModal } = useTerminal();
   const toast = useToast();
   const { available: balance, earnings: earningsBalance } = useBalance();
-  const a = analytics(S);
-  const r = S.role;
+  const a = analytics(billing);
+  const r = billing.role;
   const onExport = (type: string, id?: string) => {
-    const rows = exportRows(S, type, id);
+    const rows = exportRows(billing, type, id);
     if (!rows.length) return toast('No records to export in this period');
     downloadText(
       'OpenNEXT-' + (type === 'daily' && ui.sample ? 'example-' : '') + type + '.csv',
@@ -83,7 +83,7 @@ export function BillingPage() {
               <span>Payouts in progress</span>
               <strong>
                 {usd(
-                  S.payouts
+                  billing.payouts
                     .filter((p) => p.status === 'Pending')
                     .reduce((sum, p) => sum + num(p.amount), 0),
                 )}
@@ -132,7 +132,7 @@ export function BillingPage() {
         </div>
       ) : null}
       <div className="bill-metrics">
-        {metrics(S, a).map((card) => (
+        {metrics(billing, a).map((card) => (
           <div key={card.label} className="bill-metric">
             <span>{card.label}</span>
             <strong>{card.count ? card.value : usd(card.value)}</strong>
@@ -140,11 +140,11 @@ export function BillingPage() {
           </div>
         ))}
       </div>
-      <BillingChart S={S} a={a} />
-      <CapacityPanel S={S} />
-      <DailyTable S={S} a={a} onExport={onExport} />
-      <Activity S={S} onExport={onExport} />
-      <Payouts S={S} />
+      <BillingChart billing={billing} a={a} />
+      <CapacityPanel billing={billing} />
+      <DailyTable billing={billing} a={a} onExport={onExport} />
+      <Activity billing={billing} onExport={onExport} />
+      <Payouts billing={billing} />
     </div>
   );
 }

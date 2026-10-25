@@ -130,18 +130,18 @@ export function useOpportunity() {
 
   /** Resumes the pending opportunity once records are authoritative (legacy `resume(c)`). */
   const resume = useCallback(() => {
-    const S = useWorkspaceStore.getState();
-    const pending = S.pendingOpportunity;
+    const workspace = useWorkspaceStore.getState();
+    const pending = workspace.pendingOpportunity;
     const user = useSessionStore.getState().user;
     if (!pending || !user) return;
     const item = find(pending.id);
-    S.patch({ pendingOpportunity: null });
+    workspace.patch({ pendingOpportunity: null });
     if (!item) {
       toast('This listing is no longer available.');
       return;
     }
     if (item.external) {
-      inquire(item, S.role);
+      inquire(item, workspace.role);
       return;
     }
     if (item.referenceOnly) {
@@ -150,10 +150,10 @@ export function useOpportunity() {
     }
     if (pending.intent === 'offer') {
       const requirement = requirementFromRow(item, rfqs) as unknown as RequirementDraft;
-      S.patch({ activeRequirement: requirement });
+      workspace.patch({ activeRequirement: requirement });
       go('supply');
       if (review.status !== 'Approved') {
-        S.patch({ afterReview: { type: 'respond', requirement } });
+        workspace.patch({ afterReview: { type: 'respond', requirement } });
         openModal('review');
       } else openModal('respond', { requirement });
     } else {
@@ -164,14 +164,14 @@ export function useOpportunity() {
 
   const open = useCallback(
     (id: string, intent: Intent) => {
-      const S = useWorkspaceStore.getState();
+      const workspace = useWorkspaceStore.getState();
       const item = find(id);
       if (!item) {
         toast('Listing unavailable. Refresh the market.');
         return;
       }
       if (item.external) {
-        inquire(item, S.role);
+        inquire(item, workspace.role);
         return;
       }
       if (item.referenceOnly) {
@@ -181,7 +181,8 @@ export function useOpportunity() {
       const user = useSessionStore.getState().user;
       if (
         user &&
-        ((intent === 'offer' && S.role !== 'seller') || (intent === 'buy' && S.role !== 'buyer'))
+        ((intent === 'offer' && workspace.role !== 'seller') ||
+          (intent === 'buy' && workspace.role !== 'buyer'))
       ) {
         toast(
           intent === 'offer'
@@ -190,7 +191,7 @@ export function useOpportunity() {
         );
         return;
       }
-      S.patch({ pendingOpportunity: { id, intent } });
+      workspace.patch({ pendingOpportunity: { id, intent } });
       if (!user) {
         go(intent === 'offer' ? 'supply' : 'rfqs');
         return;

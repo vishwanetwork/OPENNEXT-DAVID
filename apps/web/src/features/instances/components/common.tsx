@@ -5,17 +5,20 @@ import { useSessionStore } from '@/lib/session-store';
 import { useApp } from '@/components/providers/app-context';
 import { useTerminalSlots, useWorkspaceStore } from '@/terminal-kit';
 import type { Lifecycle } from '../lifecycle';
-import { previewScope, subscribePreview } from '../preview';
+import { previewScope, usePreviewStore } from '../preview';
 
-/** Re-renders every second (legacy `syncModal` 1 s refresh) so lifecycle labels stay current. */
+/**
+ * Re-renders every second (legacy `syncModal` 1 s refresh) so lifecycle labels stay current,
+ * and immediately after a local preview change.
+ */
 export function useTick(ms = 1000): number {
   const [now, setTick] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setTick(Date.now()), ms);
-    const off = subscribePreview(() => setTick(Date.now()));
+    const unsubscribe = usePreviewStore.subscribe(() => setTick(Date.now()));
     return () => {
       clearInterval(timer);
-      off();
+      unsubscribe();
     };
   }, [ms]);
   return now;

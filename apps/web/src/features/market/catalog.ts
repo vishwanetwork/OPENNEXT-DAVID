@@ -306,31 +306,43 @@ export function normalizeMetrics(values: unknown, legacy: unknown = 'avg'): Pric
   return valid.length ? valid : ['avg'];
 }
 
-export const metricsOf = (S: { priceMetrics?: unknown; priceMetric?: unknown }): PriceMetric[] => {
-  const selected = Array.isArray(S.priceMetrics)
-    ? PRICE_METRICS.filter((metric) => (S.priceMetrics as unknown[]).includes(metric))
+export const metricsOf = (selection: {
+  priceMetrics?: unknown;
+  priceMetric?: unknown;
+}): PriceMetric[] => {
+  const selected = Array.isArray(selection.priceMetrics)
+    ? PRICE_METRICS.filter((metric) => (selection.priceMetrics as unknown[]).includes(metric))
     : [];
   if (selected.length) return selected;
   return [
-    PRICE_METRICS.includes(S.priceMetric as PriceMetric) ? (S.priceMetric as PriceMetric) : 'avg',
+    PRICE_METRICS.includes(selection.priceMetric as PriceMetric)
+      ? (selection.priceMetric as PriceMetric)
+      : 'avg',
   ];
 };
-export const primaryMetric = (S: { priceMetrics?: unknown; priceMetric?: unknown }): PriceMetric =>
-  metricsOf(S).includes('avg') ? 'avg' : metricsOf(S)[0];
+export const primaryMetric = (selection: {
+  priceMetrics?: unknown;
+  priceMetric?: unknown;
+}): PriceMetric => (metricsOf(selection).includes('avg') ? 'avg' : metricsOf(selection)[0]);
 
 /** Query string for `/api/pricing/regional-history` (the chart the Terminal shows). */
-export function regionalHistoryQuery(S: MarketSelection, regions: readonly Region[]): string {
+export function regionalHistoryQuery(
+  selection: MarketSelection,
+  regions: readonly Region[],
+): string {
   const query = new URLSearchParams({
-    gpuModel: modelOf(S.model).canonical,
-    gpuCount: String(S.count),
-    region: S.region === ALL_REGIONS ? 'all' : regionCode(regions, S.region),
-    term: S.term || 'Spot',
-    period: (FREE_PERIODS as readonly string[]).includes(S.period) ? S.period : '3D',
-    metric: primaryMetric(S),
+    gpuModel: modelOf(selection.model).canonical,
+    gpuCount: String(selection.count),
+    region: selection.region === ALL_REGIONS ? 'all' : regionCode(regions, selection.region),
+    term: selection.term || 'Spot',
+    period: (FREE_PERIODS as readonly string[]).includes(selection.period)
+      ? selection.period
+      : '3D',
+    metric: primaryMetric(selection),
   });
-  const form = /PCIe|SXM|NVL72/i.exec(S.model);
+  const form = /PCIe|SXM|NVL72/i.exec(selection.model);
   if (form) query.set('formFactor', form[0]);
-  if (['A100 80GB', 'A100 PCIe'].includes(S.model)) query.set('gpuMemoryGb', '80');
+  if (['A100 80GB', 'A100 PCIe'].includes(selection.model)) query.set('gpuMemoryGb', '80');
   return query.toString();
 }
 

@@ -26,13 +26,13 @@ export interface LineStyle {
 
 /** The SVG price curves, axis grid, hover crosshair and tooltip. */
 export function PricePlot({
-  S,
+  selection,
   geo,
   hover,
   lineStyle,
   onMove,
 }: {
-  S: HistorySelection;
+  selection: HistorySelection;
   geo: Geometry;
   hover: HoverState | null;
   lineStyle: (series: PlotSeries) => LineStyle;
@@ -43,7 +43,7 @@ export function PricePlot({
       <svg
         viewBox={`0 0 ${geo.w} ${geo.h}`}
         role="img"
-        aria-label={`${S.model} regional ${metricText(S).toLowerCase()} prices`}
+        aria-label={`${selection.model} regional ${metricText(selection).toLowerCase()} prices`}
         onPointerMove={onMove}
       >
         {geo.grid.map((g, i) => (

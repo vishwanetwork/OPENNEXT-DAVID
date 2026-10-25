@@ -30,22 +30,16 @@ export interface InsightIndexProps {
   role?: string;
 }
 
-const optionCache = new Map<string, InsightOptions>();
-/** Stable options object per serialized input so query keys and memoised filters do not churn. */
-function parseOptions(key: string): InsightOptions {
-  let value = optionCache.get(key);
-  if (!value) {
-    value = optionsCopy(JSON.parse(key) as Parameters<typeof optionsCopy>[0]);
-    optionCache.set(key, value);
-  }
-  return value;
-}
-
 /** Historical GPU price index panel (`.onx-sa-index`) used on the seller Market Insight page. */
 export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIndexProps) {
   const api = useApi();
   const user = useSessionStore((s) => s.user);
-  const options: InsightOptions = parseOptions(JSON.stringify(input));
+  // One options object per serialized input so query keys and memoised filters do not churn.
+  const serialized = JSON.stringify(input);
+  const options = useMemo<InsightOptions>(
+    () => optionsCopy(JSON.parse(serialized) as Parameters<typeof optionsCopy>[0]),
+    [serialized],
+  );
   const key = String(user?.id || user?.email || 'local') + ':' + role;
   const stored = useInsightSessions((s) => s.map[key]);
   const updateSession = useInsightSessions((s) => s.update);
@@ -116,7 +110,7 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
       priceMetrics: session.metrics.slice(),
       priceMetric: session.metrics.includes('avg') ? ('avg' as const) : session.metrics[0],
     };
-    return <RegionalHistoryChart S={privateState} data={filtered.data} regions={regions} />;
+    return <RegionalHistoryChart selection={privateState} data={filtered.data} regions={regions} />;
   };
 
   return (
