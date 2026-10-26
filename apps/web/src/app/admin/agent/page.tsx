@@ -1,4 +1,4 @@
-import { AgentPage } from '@/features/console';
+import { AgentWorkspace } from '@/features/console';
 export default function Page() {
-  return <AgentPage />;
+  return <AgentWorkspace />;
 }

@@ -1,224 +1,168 @@
 'use client';
 
-import { useConsoleStore } from '../store';
-import { ConsoleIcon as Icon } from '@/components/icons';
-import { number } from '../helpers';
-import { Badge, Btn, Empty, Note } from '../components/forms';
-import { useConsoleDialogs } from '../dialogs/use-dialogs';
-import { useConsoleNav } from '../components/shell';
-import { usePageTools } from './use-page-tools';
-import type { DatasetId } from '../types';
+import Link from 'next/link';
+import { useApp } from '@/components/providers/app-context';
+import { agentInventory, regionCountry } from '@/features/spot-market';
+import { stampUtc } from '@/lib/format';
+import { useOperationsOverview } from '../hooks';
+import { AdminLoginForm, isAccessError } from '../components/admin-access';
+import { Btn, Head } from '../components/forms';
+import { availableSourceCount, recentOperations } from './overview-data';
 
 export function OverviewPage() {
-  const db = useConsoleStore((s) => s.db);
-  const setUi = useConsoleStore((s) => s.setUi);
-  const market = useConsoleStore((s) => s.market);
-  const dialogs = useConsoleDialogs();
-  const nav = useConsoleNav();
-  const { refresh } = usePageTools('overview');
-  const pending = db.users.filter((x) => x.status === 'In review').length;
-  const tasks: [string, string, string, string, () => void][] = [
-    ...db.users
-      .filter((x) => x.status === 'In review')
-      .map((x): [string, string, string, string, () => void] => [
-        'shield',
-        'Complete supplier review',
-        `${x.company} · ${Object.values(x.review).filter((v) => v === 'Approved').length} of 4 checks complete`,
-        'Review',
-        () => dialogs.userDetail(x.id),
-      ]),
-    ...db.instances
-      .filter((x) => x.status === 'Pending')
-      .map((x): [string, string, string, string, () => void] => [
-        'instances',
-        'Verify delivery access',
-        `${x.name} · ${x.count} ${x.model} · ${x.region}`,
-        'Verify',
-        () => dialogs.instanceDetail(x.id),
-      ]),
-    ...db.orders
-      .filter((x) => x.stage === 1)
-      .map((x): [string, string, string, string, () => void] => [
-        'orders',
-        'Confirm funding reference',
-        `${x.buyer} · ${x.id} · ${x.period}`,
-        'Open order',
-        () => dialogs.orderDetail(x.id),
-      ]),
+  const { href } = useApp();
+  const data = useOperationsOverview();
+  const queries = Object.values(data);
+  const refresh = () => {
+    queries.forEach((query) => void query.refetch());
+  };
+  const denied = queries.some((query) => isAccessError(query.error));
+  const market = data.marketplace.data;
+  const liveSpot = data.publicMarket.data
+    ? agentInventory(data.publicMarket.data.supplies, regionCountry).filter(
+        (row) => row.term === 'Spot' && !row.previewOnly,
+      ).length
+    : undefined;
+  const sourceCount =
+    data.providers.data && data.prices.data && data.prices.data.meta.truncated !== true
+      ? availableSourceCount(data.providers.data.providers, data.prices.data.records)
+      : undefined;
+  const metrics = [
+    {
+      label: 'Available Price Sources',
+      value: sourceCount,
+      path: '/pricing',
+      note:
+        data.prices.data?.meta.truncated === true
+          ? 'Complete source summary awaiting backend'
+          : 'Enabled sources with fresh collected prices',
+    },
+    {
+      label: 'Available Spot Instance',
+      value: liveSpot,
+      path: '/instances?term=Spot&view=terminal',
+      note: 'Eligible offers in the Terminal feed · not GPU count',
+    },
+    {
+      label: 'Pending Top-up Requests',
+      value: data.topups.data?.requests.filter((r) => r.status === 'Pending' && !r.solved).length,
+      path: '/topups',
+      note: 'Live deposits awaiting review',
+    },
+    {
+      label: 'Pending Payment Confirmed',
+      value: undefined,
+      path: '/payments',
+      note: 'Bank receipt confirmation · Awaiting backend',
+    },
+    {
+      label: 'Pending KYB Requests',
+      value: market?.kyb.filter((r) => r.status === 'Reviewing').length,
+      path: '/kyb',
+      note: 'Due diligence awaiting review',
+    },
+    {
+      label: 'Pending Contact Requests',
+      value: data.contacts.data?.leads.filter((r) => r.status === 'New').length,
+      path: '/leads',
+      note: 'New enquiries awaiting first response',
+    },
+    {
+      label: 'Pending RFQs',
+      value: market?.rfqs.filter(
+        (r) =>
+          !r.external &&
+          ['Reviewing', 'Open', 'Quoted'].includes(r.workflowStatus || r.status || ''),
+      ).length,
+      path: '/rfqs',
+      note: 'Reviewing, open or quoted buyer requests',
+    },
+    {
+      label: 'Live Instances',
+      value: undefined,
+      path: '/orders',
+      note: 'Running customer instances · Awaiting backend',
+    },
   ];
-  const stats: [string, number, string, string, string][] = [
-    ['Accounts', db.users.length, '+2', 'joined this month', 'users'],
-    ['Access inquiries', pending, String(pending), 'awaiting review', 'shield'],
-    [
-      'Imported records',
-      db.datasets.reduce((a, x) => a + x.count, 0),
-      '5',
-      'normalized datasets',
-      'database',
-    ],
-    [
-      'Active schedules',
-      db.schedules.filter((x) => x.status === 'Active').length,
-      '100%',
-      'approval gates enabled',
-      'schedules',
-    ],
-  ];
+  const activity = denied
+    ? []
+    : recentOperations(market, data.topups.data?.requests, data.contacts.data?.leads);
   return (
     <>
-      <div className="welcome">
-        <div>
-          <div className="eyebrow">YOUR OPERATIONS, AT A GLANCE</div>
-          <h1>Welcome back, {db.profile.name.split(' ')[0]}.</h1>
-          <p>
-            Monitor market intelligence, delivery readiness and the work that needs a human
-            decision.
-          </p>
-        </div>
-        <Btn className="btn-icon" onClick={refresh}>
-          <Icon name="refresh" />
-          Refresh overview
-        </Btn>
-      </div>
-      <div className="stats">
-        {stats.map(([l, v, u, f, i]) => (
-          <div className="stat" key={l}>
-            <div className="stat-label">
-              {l}
-              <Icon name={i} />
+      <Head
+        title="Overview"
+        copy="Market sources, customer requests and operations in one place."
+        actions={
+          <Btn onClick={refresh} disabled={queries.some((q) => q.isFetching)}>
+            Refresh overview
+          </Btn>
+        }
+      />
+      <div className="ops-metrics">
+        {metrics.map((metric) => (
+          <Link key={metric.label} href={href(metric.path)} className="stat ops-metric">
+            <div className="stat-label">{metric.label}</div>
+            <div className="stat-value">
+              {denied || metric.value === undefined ? '—' : metric.value.toLocaleString('en-US')}
             </div>
-            <div className="stat-value">{number(v)}</div>
-            <div className="stat-foot">
-              <span className="up">{u}</span>
-              {f}
-            </div>
-          </div>
+            <div className="stat-foot">{metric.note}</div>
+          </Link>
         ))}
       </div>
-      <div className="dataset-grid">
-        {db.datasets.map((x, i) => (
-          <button
-            key={x.id}
-            type="button"
-            className={`dataset ${i === 0 ? 'active' : ''}`}
-            onClick={() => {
-              setUi({ market: { ...market, dataset: x.id as DatasetId } });
-              nav('market');
-            }}
-          >
-            <span className="eyebrow">{x.name}</span>
-            <strong>{number(x.count)}</strong>
-            <small>{x.file}</small>
-          </button>
-        ))}
-      </div>
-      <div className="grid-two">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>Needs your attention</h2>
-              <p>Prioritized work across procurement and supply.</p>
-            </div>
-            <Badge label={`${tasks.length} items`} tone="blue" />
-          </div>
-          <div className="panel-body">
-            {tasks.length ? (
-              tasks.slice(0, 5).map(([ic, title, copy, label, open], i) => (
-                <div className="queue-row" key={i}>
-                  <span className="activity-icon">
-                    <Icon name={ic} />
-                  </span>
-                  <div>
-                    <strong>{title}</strong>
-                    <p>{copy}</p>
-                  </div>
-                  <Btn className="small" onClick={open}>
-                    {label}
-                  </Btn>
-                </div>
-              ))
-            ) : (
-              <Empty
-                title="All caught up"
-                copy="Supplier, delivery and funding reviews are complete."
-              />
-            )}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>Agent execution health</h2>
-              <p>Validation and evaluation runs.</p>
-            </div>
-            <Badge label="Within policy" tone="green" />
-          </div>
-          <div className="panel-body">
-            <div className="metric-list">
-              <div className="metric-tile">
-                <small>Completed runs</small>
-                <strong>{db.runs.length}</strong>
-              </div>
-              <div className="metric-tile">
-                <small>Policy breaches</small>
-                <strong>0</strong>
-              </div>
-              <div className="metric-tile">
-                <small>Pending approvals</small>
-                <strong>{db.advisory.filter((x) => x.status === 'Open').length}</strong>
-              </div>
-            </div>
-            <div style={{ marginTop: 18 }}>
-              <div className="spend-line">
-                <span>Approved execution scope</span>
-                <strong>Read-only</strong>
-              </div>
-              <div className="progress-track">
-                <span style={{ width: '100%' }} />
-              </div>
-              <p className="small-text muted" style={{ marginTop: 12 }}>
-                Orders, payments and provisioning stay behind a human approval gate.
-              </p>
-            </div>
-          </div>
-        </section>
-      </div>
+      {denied ? <AdminLoginForm onConnected={refresh} /> : null}
+      {queries.some((q) => q.error) ? (
+        <p className="ops-state" role="alert">
+          Some services could not be refreshed. Retained figures may be out of date; unavailable
+          values are shown as —.
+        </p>
+      ) : null}
       <section className="panel">
         <div className="panel-head">
           <div>
             <h2>Recent activity</h2>
-            <p>Traceable actions from your team and scheduled evaluations.</p>
+            <p>Latest 10 recorded operations decisions · UTC</p>
           </div>
-          <Btn className="link small" onClick={() => nav('audit')}>
-            View audit log
-          </Btn>
         </div>
-        <div className="panel-body">
-          {db.audit.slice(0, 5).map((a, i) => (
-            <div className="activity-row" key={i}>
-              <span className="activity-icon">
-                <Icon
-                  name={
-                    a.actor === 'Scheduler'
-                      ? 'schedules'
-                      : a.action.includes('market')
-                        ? 'market'
-                        : 'audit'
-                  }
-                />
-              </span>
-              <div>
-                <strong>{a.action}</strong>
-                <p>
-                  {a.actor} · {a.target}
-                </p>
-              </div>
-              <time>{a.time}</time>
-            </div>
-          ))}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Processed by</th>
+                <th>Processed at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activity.map((event) => (
+                <tr key={event.key}>
+                  <td>
+                    <Link className="ops-activity-link" href={href(event.path)}>
+                      {event.event}
+                    </Link>
+                  </td>
+                  <td>{event.actor}</td>
+                  <td>{stampUtc(event.at)}</td>
+                </tr>
+              ))}
+              {!activity.length ? (
+                <tr>
+                  <td colSpan={3} className="ops-empty-table">
+                    {denied
+                      ? 'Connect an administrator session to view activity.'
+                      : queries.some((q) => q.isPending)
+                        ? 'Loading operations activity…'
+                        : 'No recorded operations decisions available.'}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </section>
-      <Note />
+      <p className="page-note">
+        Refreshes every 30 seconds while visible. — means unavailable, not zero. Pricing
+        observations are not confirmed inventory.
+      </p>
     </>
   );
 }

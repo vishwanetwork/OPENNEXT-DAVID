@@ -1,6 +1,7 @@
 'use client';
 
 import '../console.css';
+import '../operations.css';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, type ReactNode } from 'react';
 import { useApp } from '@/components/providers/app-context';

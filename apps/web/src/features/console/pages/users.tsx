@@ -1,137 +1,120 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useConsoleStore } from '../store';
-import { ConsoleIcon as Icon } from '@/components/icons';
-import { matchesQuery } from '../helpers';
-import { Badge, Btn, Empty, Head, Note, SearchBox, Status } from '../components/forms';
-import { useConsoleDialogs } from '../dialogs/use-dialogs';
-import { useDetailRequestStore } from '../detail-request';
-import { usePageTools } from './use-page-tools';
+import { useState } from 'react';
+import { dateUtc } from '@/lib/format';
+import { Empty, Head, SearchBox, Status } from '../components/forms';
+import {
+  filterUsers,
+  GROWTH_PERIODS,
+  growthValue,
+  type GrowthPeriod,
+  type UsersSnapshot,
+} from './operations-records';
 
-export function UsersPage() {
-  const db = useConsoleStore((s) => s.db);
-  const tab = useConsoleStore((s) => s.userTab);
-  const setUi = useConsoleStore((s) => s.setUi);
-  const dialogs = useConsoleDialogs();
-  const { search, setSearch, exportRows } = usePageTools('users');
-  const pending = useDetailRequestStore((s) => s.pending);
-  const consume = useDetailRequestStore((s) => s.consume);
-  useEffect(() => {
-    const id = pending?.kind === 'user' ? consume('user') : null;
-    if (id) dialogs.userDetail(id);
-  }, [pending, consume, dialogs]);
-  const list = db.users.filter(
-    (x) =>
-      (tab === 'All accounts' ||
-        (tab === 'Supplier review' && ['Seller', 'Broker'].includes(x.role)) ||
-        (tab === 'Team' && ['Administrator', 'Operations', 'Analyst'].includes(x.role))) &&
-      matchesQuery(x, search),
-  );
+/** The administrator user service is not connected; no browser-local account records are used. */
+export function UsersPage({ snapshot }: { snapshot?: UsersSnapshot }) {
+  const [period, setPeriod] = useState<GrowthPeriod>('7D');
+  const [search, setSearch] = useState('');
+  const [role, setRole] = useState('All');
+  const users = snapshot?.users ?? [];
+  const roles = [...new Set(users.map((user) => user.role))].sort();
+  const list = filterUsers(users, search, role);
+  const growth = growthValue(snapshot, period);
   return (
     <>
-      <Head
-        title="User & supplier access"
-        copy="Manage roles, company verification and the right to supply capacity."
-        actions={
-          <>
-            <Btn
-              className="btn-icon"
-              onClick={() => exportRows(db.users.map(({ review, ...x }) => ({ ...x, ...review })))}
+      <Head title="User" copy="Platform accounts and registration growth." />
+      <div className="stats">
+        <div className="stat">
+          <div className="stat-label">Total Users</div>
+          <div className="stat-value">{snapshot?.totalUsers.toLocaleString('en-US') ?? '—'}</div>
+          <div className="stat-foot">{snapshot ? 'Platform-wide total' : 'Awaiting backend'}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">User growth</div>
+          <div className="stat-value">
+            {growth === undefined ? '—' : `+${growth.toLocaleString('en-US')}`}
+          </div>
+          <div className="stat-foot">
+            <label htmlFor="user-growth-period">New users · </label>
+            <select
+              id="user-growth-period"
+              value={period}
+              onChange={(event) => {
+                const value = GROWTH_PERIODS.find((item) => item === event.target.value);
+                if (value) setPeriod(value);
+              }}
             >
-              <Icon name="export" />
-              Export
-            </Btn>
-            <Btn className="primary btn-icon" onClick={dialogs.invite}>
-              <Icon name="plus" />
-              Invite account
-            </Btn>
-          </>
-        }
-      />
+              {GROWTH_PERIODS.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+      {!snapshot && (
+        <p className="ops-state" role="status">
+          Awaiting backend · The platform user directory and growth totals are not connected.
+        </p>
+      )}
       <section className="panel">
         <div className="table-toolbar">
-          <div className="tabs">
-            {['All accounts', 'Supplier review', 'Team'].map((t) => (
-              <Btn
-                key={t}
-                className={tab === t ? 'active' : ''}
-                onClick={() => {
-                  setUi({ userTab: t });
-                  setSearch('');
-                }}
-              >
-                {t}
-              </Btn>
-            ))}
-          </div>
+          <h2>Platform users</h2>
           <SearchBox
             placeholder="Search name, company or email…"
             value={search}
             onChange={setSearch}
           />
         </div>
-        {list.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Account</th>
-                  <th>Company</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Verification</th>
-                  <th>Joined</th>
-                  <th></th>
+        <div className="ops-filters">
+          <label>
+            Role
+            <select value={role} onChange={(event) => setRole(event.target.value)}>
+              <option>All</option>
+              {roles.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Company</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.name || '—'}</td>
+                  <td>{user.email}</td>
+                  <td>{user.company || '—'}</td>
+                  <td>{user.role}</td>
+                  <td>
+                    <Status label={user.status} />
+                  </td>
+                  <td>{dateUtc(user.joinedAt)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {list.map((x) => (
-                  <tr key={x.id}>
-                    <td>
-                      <strong>{x.name}</strong>
-                      <small>{x.email}</small>
-                    </td>
-                    <td>{x.company}</td>
-                    <td>
-                      <Badge
-                        label={x.role}
-                        tone={['Seller', 'Broker'].includes(x.role) ? 'purple' : 'blue'}
-                      />
-                    </td>
-                    <td>
-                      <Status label={x.status} />
-                    </td>
-                    <td>
-                      {['Seller', 'Broker'].includes(x.role)
-                        ? `${Object.values(x.review).filter((v) => v === 'Approved').length} / 4 complete`
-                        : 'Account verified'}
-                    </td>
-                    <td>{x.joined}</td>
-                    <td>
-                      <Btn className="link small" onClick={() => dialogs.userDetail(x.id)}>
-                        Manage
-                      </Btn>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!list.length && (
           <Empty
-            title="No accounts found"
-            copy="Try a different company name or invite an account."
-            action={<Btn onClick={dialogs.invite}>Invite account</Btn>}
+            title={snapshot ? 'No matching users' : 'User directory awaiting backend'}
+            copy={
+              snapshot
+                ? 'Try another role or search.'
+                : 'Verified account records will appear here when the administrator user service is connected.'
+            }
           />
         )}
       </section>
-      <div className="callout">
-        Supplier onboarding checks eligibility, KYB and delivery rights once. Every new capacity
-        allocation requires a separate technical test and approval. Technical verification does not
-        imply upstream resale authorization.
-      </div>
-      <Note />
     </>
   );
 }

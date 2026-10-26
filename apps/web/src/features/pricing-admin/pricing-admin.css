@@ -9,7 +9,8 @@
   gap: 24px;
   margin-bottom: 24px;
 }
-.pc-heading h1 {
+.pc-heading h1,
+.pc-heading h2 {
   font-size: 28px;
   letter-spacing: -0.8px;
   margin: 7px 0 8px;
@@ -168,13 +169,13 @@
   object-fit: contain;
 }
 .pc-provider strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #344861;
   overflow-wrap: anywhere;
 }
 .pc-enabled {
-  font-size: 7px;
+  font-size: 8px;
   letter-spacing: 0.3px;
   text-transform: uppercase;
   background: #eef1f5;
@@ -189,7 +190,7 @@
   color: #469675;
 }
 .pc-cadence {
-  font-size: 9px;
+  font-size: 10px;
   color: #a1adbf;
   padding: 0 12px 13px;
   margin: 0;
@@ -217,7 +218,7 @@
   border-radius: 3px;
   padding: 3px 5px;
   max-width: 130px;
-  font-size: 7px;
+  font-size: 8px;
   line-height: 1.5;
   font-weight: 700;
   text-transform: uppercase;
@@ -258,11 +259,11 @@
   min-height: 24px;
 }
 .pc-card-bottom small {
-  font-size: 8px;
+  font-size: 10px;
   color: #a1afc2;
 }
 .pc-card-bottom strong {
-  font-size: 8px;
+  font-size: 10px;
   color: #7c8da4;
   white-space: nowrap;
   font-weight: 500;
@@ -274,7 +275,7 @@
   border-top: 1px solid #f3f5f8;
 }
 .pc-card .pc-card-actions button {
-  font-size: 8px;
+  font-size: 10px;
   padding: 4px 7px;
   line-height: 1.4;
   border-color: #e5eaf2;
@@ -514,6 +515,78 @@
   overflow-wrap: anywhere;
   max-height: 350px;
   overflow: auto;
+}
+.pc-embedded {
+  max-width: none;
+}
+.pc-embedded .pc-eyebrow {
+  display: none;
+}
+.pc-embedded .pc-heading h2 {
+  font-size: 22px;
+}
+.pc-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 12px 12px;
+}
+.pc-terms span {
+  font-size: 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  color: var(--muted);
+  background: var(--bg);
+}
+.pc-terms .is-supported {
+  color: var(--green);
+  background: var(--mint);
+  border-color: #d7e7df;
+}
+.pc-card-bottom {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.pc-reference {
+  margin-top: 22px;
+}
+.pc-reference .pc-details {
+  margin-top: 18px;
+}
+.pc-directory {
+  width: 960px;
+  max-width: min(960px, calc(100vw - 30px));
+}
+.pc-directory-list details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 14px;
+}
+.pc-directory-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.pc-directory-list summary > span:last-child {
+  color: var(--muted);
+  font-size: 11px;
+}
+.pc-directory-list summary::after {
+  content: '+';
+  color: var(--muted);
+}
+.pc-directory-list details[open] summary::after {
+  content: '−';
+}
+.pc-directory-list .pc-reference {
+  margin-top: 12px;
+}
+.pc-directory-list .pc-callout {
+  margin-bottom: 12px;
 }
 @media (max-width: 1250px) {
   .pc-grid {

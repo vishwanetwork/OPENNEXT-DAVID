@@ -3,6 +3,7 @@
 import './console-topups.css';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { CreditTopup } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
@@ -26,10 +27,11 @@ export type Dialog =
 
 /** Manual credit top-up review (legacy OpenNEXT-console-topups.js). Approval records verified receipt only. */
 export function ConsoleTopupsPage() {
+  const params = useSearchParams();
   const api = useApi();
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<TopupScope>('production');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => params.get('record') || '');
   const [filter, setFilter] = useState('All');
   const [reviewing, setReviewing] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);

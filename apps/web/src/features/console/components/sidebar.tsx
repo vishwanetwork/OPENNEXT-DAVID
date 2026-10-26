@@ -3,28 +3,17 @@
 import Link from 'next/link';
 import { useApp } from '@/components/providers/app-context';
 import { CONSOLE_LOGO_PATH, ConsoleIcon as Icon } from '@/components/icons';
-import { CONSOLE_PAGES, type ConsolePage } from '../pages';
-import { useConsoleStore } from '../store';
+import { CONSOLE_PAGES, REQUEST_PAGES, SIDEBAR_PAGES } from '../pages';
 import { useConsoleNav } from './shell';
-
-const COUNTED: ConsolePage[] = ['advisory', 'orders', 'instances', 'schedules', 'users'];
-
-const NAV_ICON: Partial<Record<ConsolePage, string>> = {
-  pricing: 'database',
-  topups: 'billing',
-  agent: 'agent',
-};
 
 export function Sidebar({ page }: { page: string }) {
   const { href } = useApp();
-  const db = useConsoleStore((s) => s.db);
-  const instanceTab = useConsoleStore((s) => s.instanceTab);
-  const setUi = useConsoleStore((s) => s.setUi);
   const nav = useConsoleNav();
-  const count = (id: ConsolePage) =>
-    id === 'advisory'
-      ? db.advisory.filter((x) => x.status === 'Open').length
-      : (db[id as 'orders' | 'instances' | 'schedules' | 'users'] || []).length;
+  const active = REQUEST_PAGES.some((item) => item === page)
+    ? 'requests'
+    : page === 'billing'
+      ? 'agent'
+      : page;
   return (
     <aside className="sidebar">
       <Link className="brand" href={href('/')} aria-label="OpenNEXT Operations Console">
@@ -37,46 +26,55 @@ export function Sidebar({ page }: { page: string }) {
         </div>
       </Link>
       <div className="side-section">Workspace</div>
-      <nav className="side-nav">
-        {(Object.entries(CONSOLE_PAGES) as [ConsolePage, string][])
-          .filter(([id]) => id !== 'settings')
-          .map(([id, label]) => (
-            <span key={id} style={{ display: 'contents' }}>
-              <button
-                type="button"
-                className={`nav-item ${page === id ? 'active' : ''}`}
-                onClick={() => nav(id)}
-              >
-                <Icon name={NAV_ICON[id] || id} />
-                <span>{label}</span>
-                {COUNTED.includes(id) ? <b className="count">{count(id)}</b> : null}
-              </button>
-              {id === 'instances' ? (
-                <div className="side-sub">
-                  {['Platform supplied', 'Seller supplied'].map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      className={page === 'instances' && instanceTab === tab ? 'active' : ''}
-                      onClick={() => {
-                        setUi({ instanceTab: tab });
-                        nav('instances');
-                      }}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </span>
-          ))}
+      <nav className="side-nav" aria-label="Console navigation">
+        {SIDEBAR_PAGES.map((id) => (
+          <div key={id}>
+            <button
+              type="button"
+              className={'nav-item ' + (active === id ? 'active' : '')}
+              aria-current={active === id ? 'page' : undefined}
+              onClick={() => nav(id)}
+            >
+              <Icon name={id === 'requests' ? 'advisory' : id === 'pricing' ? 'database' : id} />
+              <span>{CONSOLE_PAGES[id]}</span>
+            </button>
+            {id === 'requests' && active === id ? (
+              <div className="side-sub">
+                {REQUEST_PAGES.map((item) => (
+                  <Link
+                    key={item}
+                    href={href('/' + item)}
+                    aria-current={page === item ? 'page' : undefined}
+                  >
+                    {item === 'kyb' ? 'KYB Review Requests' : CONSOLE_PAGES[item]}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+            {id === 'instances' && active === id ? (
+              <div className="side-sub">
+                {['Spot', 'On-demand', 'Reserved'].map((term) => (
+                  <Link key={term} href={href('/instances?term=' + encodeURIComponent(term))}>
+                    {term}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+            {id === 'agent' && active === id ? (
+              <div className="side-sub">
+                <Link href={href('/agent')}>Configuration</Link>
+                <Link href={href('/agent?tab=billing')}>Agent billing</Link>
+              </div>
+            ) : null}
+          </div>
+        ))}
       </nav>
       <div className="side-footer">
         <div className="system-status">
           <span className="dot" />
-          Workspace ready
+          Operations workspace
         </div>
-        <p>Policy revision {db.config.revision} · Read-only agent</p>
+        <p>Private access · Human approval required</p>
       </div>
     </aside>
   );

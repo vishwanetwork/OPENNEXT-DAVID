@@ -1,0 +1,109 @@
+OpenNEXT Console update - 2026-10-27
+Workspace: D:/小说/opennext-release-20261024/
+Approved scope: frontend + existing APIs + backend handoff.
+Release scope: Console frontend, existing API integration and backend handoff; no legacy/backend, wire contract, host-routing or deployment configuration edits.
+Price Source is a standalone sidebar page between Instances and Buyer RFQs; it is no longer nested under Instances.
+
+Preview: http://localhost:4188/admin
+Source management: http://localhost:4188/admin/pricing
+API directory / handoff: D:/小说/opennext-release-20261024/docs/API_CONTRACT.md
+Architecture: D:/小说/opennext-release-20261024/docs/ARCHITECTURE.md
+
+Validation:
+- pnpm format and whole-repo Prettier check: PASS.
+- Web and contracts TypeScript: PASS.
+- Web lint: 0 errors; 3 existing max-lines warnings in catalog, model-quotes and checkout.
+- Contracts lint: PASS.
+- Web tests with coverage: 232 PASS; contracts tests: 5 PASS; legacy regression tests: 668 PASS.
+- Coverage: statements/lines 62.32%, branches 73.4%, functions 55.72%; thresholds PASS.
+- A resource-contended parallel test run timed out; the complete web suite passed with --maxWorkers=2 and the original timeout thresholds.
+- Production web build: PASS.
+- Browser: 11 Console routes HTTP 200, no page errors or desktop horizontal overflow.
+- Overview at 390px: no horizontal overflow. All 24 source logos loaded; API dialog checked at 390px.
+- Price Source standalone heading, sidebar order/active state, navigation clicks and Instances term tabs: PASS in browser; no page errors or horizontal overflow.
+- git diff --check: PASS.
+- On Windows, root recursive pnpm scripts match no projects due to quoted filters; actual validation used explicit workspace filters.
+- Existing Terminal tests emit React act/setState warnings but pass. Unrelated Terminal components were not changed.
+
+Backend boundaries:
+- User totals/growth, global orders/running instances and bank-payment confirmation await backend.
+- 24 registered references do not mean 24 live collectors. Existing adapters: AWS, Vultr, Shadeform, Lambda.
+- AWS has a credential-gated Spot collector despite inconsistent registry capability reporting. No Reserved collector is implemented.
+- Price observations are not stock. Terminal eligibility rules are reused, not bypassed.
+- Truncated prices cannot yield an exact source count. Partial resource lists are explicitly labelled.
+- Arbitrary homepage placement needs backend support. Existing current candidates can use the real review endpoint.
+- RFQ/KYB/top-up owner notifications exist. Uniform contact/homepage/payment/order/user notifications await backend.
+- Supply currently does not collect vCPU/Memory. Missing values are not inferred.
+
+Changed files (71):
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/aliyun.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/aws.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/azure.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/coreweave.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/crusoe.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/cudo.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/gcp.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/lightning.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/nebius.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/oci.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/packet.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/runpod.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/shadeform.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/tensordock.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/vast.svg
+D:/小说/opennext-release-20261024/apps/web/public/provider-logos/volcengine.svg
+D:/小说/opennext-release-20261024/apps/web/src/app/admin/agent/page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/app/admin/payments/page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/app/admin/requests/page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-leads/leads-page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/console-marketplace.css
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/details-dialog.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/details.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/homepage-candidate-card.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/inbox-login-dialog.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/inbox-page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/inbox-resources.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/inbox-tables.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/inbox-toolbar.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/marketplace.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/resource-filters.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-marketplace/supply-details.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console-topups/topups-page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/api.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/components/shell.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/components/sidebar.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/components/topbar.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/console.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/hooks.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/index.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/operations.css
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/agent-workspace.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/instance-catalog.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/instance-filters.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/instances.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/operations-pages.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/operations-records.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/operations-records.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/orders.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/overview-data.test.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/overview-data.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/overview.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/payments.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/requests.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/console/pages/users.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/api-directory.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/api.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/collection-history.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/pricing-admin-page.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/pricing-admin.css
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/pricing-admin.test.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/provider-card.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/provider-dialogs.tsx
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/provider-logos.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/provider-references.test.ts
+D:/小说/opennext-release-20261024/apps/web/src/features/pricing-admin/provider-references.ts
+D:/小说/opennext-release-20261024/apps/web/src/lib/api/query-keys.ts
+D:/小说/opennext-release-20261024/docs/API_CONTRACT.md
+D:/小说/opennext-release-20261024/docs/ARCHITECTURE.md
+D:/小说/opennext-release-20261024/docs/reviews/console-changes-20261027.txt

@@ -143,17 +143,28 @@ describe('marketplace snapshot helpers', () => {
 });
 
 describe('MarketplaceInboxPage', () => {
-  it('lists RFQs by email, model and hardware and shows full details with the review form', async () => {
+  it('lists RFQs in Terminal column order and shows full details with the review form', async () => {
     mockFetch((path) =>
       path === '/api/admin/marketplace' ? json(200, snapshot) : json(404, { error: 'Not found.' }),
     );
     renderConsole(<MarketplaceInboxPage tab="rfqs" />);
-    await waitFor(() => expect(screen.getAllByText('buyer@example.com').length).toBeGreaterThan(0));
-    expect(screen.getByText('3 of 3 records')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('3 of 3 records')).toBeInTheDocument());
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Model',
+      'Capacity',
+      'Max. Price',
+      'Country',
+      'vCPU',
+      'Memory',
+      'Duration',
+      'Terms',
+      'Details',
+    ]);
     expect(screen.getAllByText('141 GB / GPU').length).toBe(3);
     fireEvent.click(at(screen.getAllByRole('button', { name: 'Details' }), 1));
     await waitFor(() => expect(screen.getByText('Capacity RFQ')).toBeInTheDocument());
     expect(screen.getByText('Maximum Quote Price:')).toBeInTheDocument();
+    expect(screen.getByText('buyer@example.com')).toBeInTheDocument();
     expect(screen.getByText('$1,238.40')).toBeInTheDocument();
     expect(screen.getByText('Approve RFQ')).toBeInTheDocument();
   });

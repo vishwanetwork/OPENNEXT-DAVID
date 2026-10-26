@@ -36,6 +36,7 @@ export const queryKeys = {
   },
   admin: {
     all: ['admin'] as const,
+    overview: (resource: string) => ['admin', 'overview', resource] as const,
     session: ['admin', 'pricing-session'] as const,
     providers: ['admin', 'pricing-providers'] as const,
     runs: (provider?: string) => ['admin', 'pricing-runs', provider ?? ''] as const,

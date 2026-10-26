@@ -45,9 +45,22 @@ export const STATUS_LABELS: Record<string, string> = {
   not_implemented: 'Setup required',
   not_synced: 'Not synced',
   disabled: 'Disabled',
+  cancelled: 'Cancelled',
 };
+export const providerRun = (p: PricingProvider) => p.latestRun ?? p.lastRun;
+export const credentialReady = (p: PricingProvider) =>
+  !p.credentialRequired || (p.credentialConfigured ?? p.configured) === true;
 export const providerState = (p: PricingProvider): string =>
-  p.lastRun?.status || p.status || 'not_synced';
+  providerRun(p)?.status || p.status || 'not_synced';
+
+export const PRICE_TERMS = ['Spot', 'On-demand', 'Reserved'] as const;
+export function providerTerms(p: PricingProvider) {
+  const supported = p.supportedTerms ?? p.capabilities ?? [];
+  return PRICE_TERMS.map((term) => ({
+    term,
+    supported: p.adapterStatus === 'implemented' && supported.includes(term),
+  }));
+}
 
 export type ProviderFilter = 'all' | 'connected' | 'enabled' | 'attention';
 
@@ -62,7 +75,7 @@ export function filterProviders(
       (p.name + ' ' + p.id).toLowerCase().includes(q) &&
       (filter === 'all' ||
         (filter === 'enabled' && p.enabled) ||
-        (filter === 'connected' && p.adapterStatus === 'implemented') ||
+        (filter === 'connected' && p.adapterStatus === 'implemented' && credentialReady(p)) ||
         (filter === 'attention' &&
           ['failed', 'completed_with_gaps', 'needs_credentials', 'not_implemented'].includes(
             providerState(p),
@@ -73,9 +86,8 @@ export function filterProviders(
 export function providerMetrics(providers: PricingProvider[]) {
   return {
     providers: providers.length,
-    connected: providers.filter(
-      (p) => p.adapterStatus === 'implemented' && (!p.credentialRequired || p.configured),
-    ).length,
+    connected: providers.filter((p) => p.adapterStatus === 'implemented' && credentialReady(p))
+      .length,
     records: providers.reduce((n, p) => n + (Number(p.recordCount) || 0), 0),
     running: providers.filter((p) => providerState(p) === 'running').length,
   };

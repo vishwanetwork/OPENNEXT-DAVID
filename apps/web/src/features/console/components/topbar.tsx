@@ -6,15 +6,13 @@ import { ConsoleIcon as Icon } from '@/components/icons';
 import { CONSOLE_PAGES, HIDDEN_PAGES } from '../pages';
 import { useConsoleStore } from '../store';
 import { initials } from '../helpers';
-import { Badge, Btn } from './forms';
-import { useConsoleNav, useDetailRequest } from './shell';
+import { useConsoleNav } from './shell';
 
 export function Topbar({ page }: { page: string }) {
   const db = useConsoleStore((s) => s.db);
   const { crossHref } = useApp();
   const nav = useConsoleNav();
   const [menu, setMenu] = useState<'' | 'user' | 'notifications'>('');
-  const { drawerRequest } = { drawerRequest: useDetailRequest() };
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -46,7 +44,7 @@ export function Topbar({ page }: { page: string }) {
           <strong>{title}</strong>
         </div>
         <div className="top-actions">
-          <span className="env-pill">LOCAL WORKSPACE</span>
+          <span className="env-pill">OPERATIONS</span>
           <button
             type="button"
             className="icon-button"
@@ -55,7 +53,6 @@ export function Topbar({ page }: { page: string }) {
             onClick={() => setMenu(menu === 'notifications' ? '' : 'notifications')}
           >
             <Icon name="bell" />
-            <span className="unread" />
           </button>
           <button
             type="button"
@@ -103,33 +100,13 @@ export function Topbar({ page }: { page: string }) {
             <small className="muted">Items requiring your attention</small>
           </header>
           <div className="notice">
-            <Badge label="Supplier review" tone="orange" />
-            <p style={{ marginTop: 6 }}>Pacific Compute’s rights review is pending.</p>
-            <Btn
-              className="link small"
-              onClick={() => {
-                setMenu('');
-                drawerRequest({ kind: 'user', id: 'USR-1003' });
-              }}
-            >
-              Review supplier
-            </Btn>
+            <p>Review customer requests and the latest recorded decisions.</p>
           </div>
-          <div className="notice">
-            <Badge label="Delivery readiness" tone="blue" />
-            <p style={{ marginTop: 6 }}>B200 reservation starts tomorrow.</p>
-            <Btn
-              className="link small"
-              onClick={() => {
-                setMenu('');
-                drawerRequest({ kind: 'order', id: 'ORD-8023' });
-              }}
-            >
-              Open order
-            </Btn>
-          </div>
-          <button type="button" onClick={() => go('advisory')}>
-            View all recommendations <Icon name="arrow" />
+          <button type="button" onClick={() => go('requests')}>
+            Open requests <Icon name="arrow" />
+          </button>
+          <button type="button" onClick={() => go('overview')}>
+            Recent activity <Icon name="arrow" />
           </button>
         </div>
       ) : null}

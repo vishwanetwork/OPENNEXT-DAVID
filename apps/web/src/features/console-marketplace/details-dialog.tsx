@@ -107,7 +107,7 @@ export function DetailsDialog({
         </>
       );
     } else {
-      title = r.id;
+      title = tab === 'supplies' && !isExternal(r, demo) ? 'Supply details' : r.id;
       body = (
         <GenericRecordBody r={r} tab={tab} demo={demo}>
           {review}

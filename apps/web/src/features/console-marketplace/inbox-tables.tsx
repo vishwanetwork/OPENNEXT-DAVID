@@ -1,33 +1,43 @@
 import type { FeaturedCandidate, KybRecord, MarketRecord } from '@opennext/contracts';
 import {
-  MARKETS,
   date,
   duration,
-  isExternal,
   money,
   number,
   present,
   quantity,
-  recordKind,
+  sourceName,
   unit,
   type InboxTab,
 } from './marketplace';
-import { DetailsButton, ReceiptCell, SourceCell, StatusSpan, WorkspaceCell } from './inbox-cells';
+import { DetailsButton, StatusSpan, WorkspaceCell } from './inbox-cells';
+import { homepageCandidate, recordCountry } from './resource-filters';
 
 export type OpenDetails = (id: string, workspace: string) => void;
 
 const COLUMNS: Record<Exclude<InboxTab, 'featured'>, string[]> = {
   kyb: ['Business / account', 'Country', 'Registration', 'Submitted', 'Status', ''],
-  rfqs: ['Email', 'Model', 'vCPU', 'Memory', 'Request type', 'Details'],
+  rfqs: [
+    'Model',
+    'Capacity',
+    'Max. Price',
+    'Country',
+    'vCPU',
+    'Memory',
+    'Duration',
+    'Terms',
+    'Details',
+  ],
   supplies: [
-    'Supply / account',
-    'Source',
-    'Market / location',
-    'Offered capacity',
-    'Quoted price',
-    'Console receipt',
-    'Marketplace status',
-    '',
+    'Model',
+    'Capacity',
+    'Min. Price',
+    'Country',
+    'vCPU',
+    'Memory',
+    'Duration',
+    'Terms',
+    'Details',
   ],
 };
 
@@ -114,79 +124,65 @@ function KybRow({ r, demo, open }: { r: KybRecord; demo: boolean; open: OpenDeta
   );
 }
 
-function RfqRow({ r, demo, open }: { r: MarketRecord; demo: boolean; open: OpenDetails }) {
-  const request = r.requestKind === 'quote_request' ? 'Ask for quote' : 'RFQ';
+function MarketRecordRow({
+  r,
+  demo,
+  open,
+  supply,
+  candidates,
+  feature,
+}: {
+  r: MarketRecord;
+  demo: boolean;
+  open: OpenDetails;
+  supply: boolean;
+  candidates: FeaturedCandidate[];
+  feature: (id: string) => void;
+}) {
+  const candidate = homepageCandidate(r, supply ? 'supply' : 'demand', candidates, demo);
+  const homepageLabel =
+    candidate?.status === 'Approved' ? 'Manage homepage' : 'Feature on homepage';
+  const homepageHint = candidate
+    ? `Review placement in Inside OpenNEXT → ${supply ? 'Buy Capacity' : 'Offer Capacity'}.`
+    : demo
+      ? 'Demo records cannot be featured on the live homepage.'
+      : 'The backend has not selected this record as a current homepage candidate. Only eligible public RFQs and published supply can be featured.';
   return (
     <tr>
       <td>
-        <strong>
-          {r.ownerEmail ||
-            r.email ||
-            (isExternal(r, demo) ? 'No OpenNEXT account assigned' : 'Not provided')}
-        </strong>
-        <SourceCell record={r} demo={demo} />
-        <WorkspaceCell record={r} demo={demo} />
-      </td>
-      <td>
-        <strong>{r.model}</strong>
-      </td>
-      <td>{number(r.vcpu)}</td>
-      <td>{present(r.memory) ? number(r.memory) + ' GB / GPU' : 'Not provided'}</td>
-      <td>
-        <strong>{r.term || request}</strong>
-        <small>{request}</small>
+        <strong>{r.model || 'Not provided'}</strong>
+        <small>{sourceName(r, demo)}</small>
         <StatusSpan status={r.status} />
-      </td>
-      <td>
-        <DetailsButton label="Details" onClick={() => open(r.id, r.workspaceId || '')} />
-      </td>
-    </tr>
-  );
-}
-
-function SupplyRow({ r, demo, open }: { r: MarketRecord; demo: boolean; open: OpenDetails }) {
-  return (
-    <tr>
-      <td>
-        <strong>{r.title || r.model}</strong>
-        {isExternal(r, demo) ? (
-          <small>External market record · no OpenNEXT account assigned</small>
-        ) : (
-          <>
-            <small>{r.ownerName || r.accountName || ''}</small>
-            <small>{r.company || r.ownerCompany || ''}</small>
-            <small>{r.ownerEmail || r.email || 'Account email unavailable'}</small>
-          </>
-        )}
-        <small>{r.id}</small>
         <WorkspaceCell record={r} demo={demo} />
       </td>
+      <td>{quantity(r, demo)}</td>
       <td>
-        <SourceCell record={r} demo={demo} />
-      </td>
-      <td>
-        <strong>{r.model}</strong>
-        <small>{MARKETS[recordKind(r)] || recordKind(r)}</small>
-        <small>{r.region}</small>
-      </td>
-      <td>
-        {quantity(r, demo)}
-        <small>{duration(r, demo)}</small>
-        <small>{r.term}</small>
-      </td>
-      <td>
-        {money(r.netPrice)}
+        <strong>{money(supply ? r.netPrice : r.budget)}</strong>
         <small>{unit(r)}</small>
       </td>
+      <td>{recordCountry(r) || 'Not provided'}</td>
+      <td>{number(r.vcpu)}</td>
+      <td>{present(r.memory) ? number(r.memory) + ' GB / GPU' : 'Not provided'}</td>
+      <td>{duration(r, demo)}</td>
       <td>
-        <ReceiptCell record={r} demo={demo} />
+        {r.term || 'Not provided'}
+        {!supply && r.requestKind === 'quote_request' ? <small>Ask for quote</small> : null}
       </td>
       <td>
-        <StatusSpan status={r.status} />
-        {r.agentStatus ? <small>Agent: {r.agentStatus}</small> : null}
-      </td>
-      <td>
-        <DetailsButton label="View details" onClick={() => open(r.id, r.workspaceId || '')} />
+        <div className="market-console-row-actions">
+          <DetailsButton label="Details" onClick={() => open(r.id, r.workspaceId || '')} />
+          <span title={homepageHint}>
+            <button
+              type="button"
+              className="btn small"
+              disabled={!candidate}
+              onClick={() => candidate && feature(candidate.id)}
+              aria-label={`${homepageLabel}: ${r.model || r.id}`}
+            >
+              {homepageLabel}
+            </button>
+          </span>
+        </div>
       </td>
     </tr>
   );
@@ -197,13 +193,16 @@ export function RecordsTable({
   rows,
   demo,
   open,
+  candidates,
+  feature,
 }: {
   tab: Exclude<InboxTab, 'featured'>;
   rows: (MarketRecord | KybRecord)[];
   demo: boolean;
   open: OpenDetails;
+  candidates: FeaturedCandidate[];
+  feature: (id: string) => void;
 }) {
-  const Row = tab === 'kyb' ? KybRow : tab === 'rfqs' ? RfqRow : SupplyRow;
   return (
     <table>
       <thead>
@@ -214,10 +213,21 @@ export function RecordsTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          // Each tab renders a single record shape; the union is narrowed by `tab` above.
-          <Row key={r.id + (r.workspaceId || '')} r={r as never} demo={demo} open={open} />
-        ))}
+        {rows.map((r) =>
+          tab === 'kyb' ? (
+            <KybRow key={r.id + (r.workspaceId || '')} r={r as KybRecord} demo={demo} open={open} />
+          ) : (
+            <MarketRecordRow
+              key={r.id + (r.workspaceId || '')}
+              r={r as MarketRecord}
+              demo={demo}
+              open={open}
+              supply={tab === 'supplies'}
+              candidates={candidates}
+              feature={feature}
+            />
+          ),
+        )}
       </tbody>
     </table>
   );

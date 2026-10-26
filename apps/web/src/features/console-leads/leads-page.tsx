@@ -3,6 +3,7 @@
 import './console-leads.css';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { ContactLead } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
@@ -14,9 +15,10 @@ type Dialog = { kind: 'details'; id: string; version: string } | { kind: 'login'
 
 /** Contact requests inbox (legacy OpenNEXT-console-leads.js). */
 export function ConsoleLeadsPage() {
+  const params = useSearchParams();
   const api = useApi();
   const queryClient = useQueryClient();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => params.get('record') || '');
   const [filter, setFilter] = useState('All requests');
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);

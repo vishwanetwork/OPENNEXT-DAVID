@@ -3,9 +3,10 @@
 import './console-marketplace.css';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { FeaturedCandidate, KybRecord, MarketRecord } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
-import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
+import { isAccessError } from '@/features/console';
 import {
   POLL_MS,
   TAB_LABELS,
@@ -23,8 +24,10 @@ import { marketplaceApi } from './api';
 import { DetailsDialog } from './details-dialog';
 import { FeaturedTable, RecordsTable } from './inbox-tables';
 import { InboxToolbar } from './inbox-toolbar';
+import { InboxLoginDialog } from './inbox-login-dialog';
+import { EMPTY_RESOURCE_FILTERS, matchesResourceFilters } from './resource-filters';
 
-type Dialog = { kind: 'details'; id: string; workspace: string } | { kind: 'login' };
+type Dialog = { kind: 'details'; id: string; workspace: string; tab: InboxTab } | { kind: 'login' };
 
 const EMPTY: InboxData = { rfqs: [], supplies: [], kyb: [], featured: [], generatedAt: '' };
 
@@ -41,21 +44,30 @@ export function MarketplaceInboxPage({
 }) {
   const api = useApi();
   const queryClient = useQueryClient();
+  const requestedRecord = useSearchParams().get('record') || '';
+  const [dismissedRecord, setDismissedRecord] = useState('');
   const demo = scope === 'demo';
   const resolvedTab: InboxTab = demo && initialTab === 'featured' ? 'rfqs' : initialTab;
   const [tab, setTab] = useState<InboxTab>(resolvedTab);
   const [routeTab, setRouteTab] = useState(resolvedTab);
-  if (routeTab !== resolvedTab) {
-    // The route changed (sidebar navigation): follow it, like the legacy render(selected).
-    setRouteTab(resolvedTab);
-    setTab(resolvedTab);
-  }
   const [query, setQuery] = useState('');
   const [reviewFilter, setReviewFilter] = useState('Current');
   const [statusFilter, setStatusFilter] = useState('All');
   const [kindFilter, setKindFilter] = useState('All');
   const [sourceFilter, setSourceFilter] = useState('All');
+  const [resourceFilters, setResourceFilters] = useState(EMPTY_RESOURCE_FILTERS);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  if (routeTab !== resolvedTab) {
+    // A different inbox must not inherit a previous page's hidden filters or dialog.
+    setRouteTab(resolvedTab);
+    setTab(resolvedTab);
+    setResourceFilters(EMPTY_RESOURCE_FILTERS);
+    setQuery('');
+    setStatusFilter('All');
+    setKindFilter('All');
+    setSourceFilter('All');
+    setDialog(null);
+  }
   const key = ['admin', 'marketplace', scope];
   const snapshot = useQuery({
     queryKey: key,
@@ -74,7 +86,25 @@ export function MarketplaceInboxPage({
       ? snapshot.error.message
       : 'Request failed.'
     : '';
-  const detailsOpen = dialog?.kind === 'details' && !accessDenied ? dialog : null;
+  const linkedRecord =
+    requestedRecord && requestedRecord !== dismissedRecord
+      ? data[tab].find((record) => record.id === requestedRecord)
+      : undefined;
+  const detailsOpen = accessDenied
+    ? null
+    : dialog?.kind === 'details'
+      ? dialog
+      : linkedRecord
+        ? {
+            id: linkedRecord.id,
+            workspace: typeof linkedRecord.workspaceId === 'string' ? linkedRecord.workspaceId : '',
+            tab,
+          }
+        : null;
+  const closeDialog = () => {
+    setDialog(null);
+    setDismissedRecord(requestedRecord);
+  };
   const refresh = () => queryClient.invalidateQueries({ queryKey: key });
 
   const statusValues = useMemo(
@@ -105,7 +135,11 @@ export function MarketplaceInboxPage({
     sourceFilter: effectiveSource,
   };
   const filtered =
-    statusFilter !== 'All' || kindFilter !== 'All' || sourceFilter !== 'All' || query;
+    statusFilter !== 'All' ||
+    kindFilter !== 'All' ||
+    sourceFilter !== 'All' ||
+    query ||
+    Object.values(resourceFilters).some((filter) => filter !== 'All');
 
   const heading = demo ? 'Demo submissions · ' + TAB_LABELS[tab] : TAB_LABELS[tab];
   const rows: (MarketRecord | KybRecord)[] =
@@ -113,11 +147,14 @@ export function MarketplaceInboxPage({
       ? filterKyb(data.kyb, filters)
       : tab === 'featured'
         ? []
-        : filterRecords(data[tab], tab, demo, filters);
+        : filterRecords(data[tab], tab, demo, filters).filter((record) =>
+            matchesResourceFilters(record, resourceFilters),
+          );
   const featuredRows: FeaturedCandidate[] =
     tab === 'featured' ? filterFeatured(data.featured, query, reviewFilter) : [];
 
-  const details = (id: string, workspace: string) => setDialog({ kind: 'details', id, workspace });
+  const details = (id: string, workspace: string) =>
+    setDialog({ kind: 'details', id, workspace, tab });
 
   return (
     <section className="on-marketplace-console">
@@ -169,9 +206,12 @@ export function MarketplaceInboxPage({
           filters={{ ...filters, reviewFilter }}
           sources={sources}
           statusValues={statusValues}
+          resourceFilters={resourceFilters}
+          onResourceChange={(patch) => setResourceFilters((current) => ({ ...current, ...patch }))}
           onTab={(k) => {
             setTab(k);
             setStatusFilter('All');
+            setResourceFilters(EMPTY_RESOURCE_FILTERS);
           }}
           onChange={(patch) => {
             if (patch.query !== undefined) setQuery(patch.query);
@@ -225,7 +265,14 @@ export function MarketplaceInboxPage({
               )}
             </>
           ) : rows.length ? (
-            <RecordsTable tab={tab} rows={rows} demo={demo} open={details} />
+            <RecordsTable
+              tab={tab}
+              rows={rows}
+              demo={demo}
+              open={details}
+              candidates={data.featured}
+              feature={(id) => setDialog({ kind: 'details', id, workspace: '', tab: 'featured' })}
+            />
           ) : (
             <div className="market-console-empty">
               <strong>
@@ -254,38 +301,24 @@ export function MarketplaceInboxPage({
           : 'Received confirms a Terminal submission; Imported identifies an external source record, not a customer account or a confirmed trade. Operational approval and homepage review remain separate. Demo workspaces stay isolated.'}
       </p>
       {dialog?.kind === 'login' ? (
-        <NativeDialog className="market-console-dialog" onClose={() => setDialog(null)}>
-          <header>
-            <h2>Administrator session</h2>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setDialog(null)}
-              aria-label="Close dialog"
-            >
-              ×
-            </button>
-          </header>
-          <AdminLoginForm
-            intro={<p>Use the server administrator token to create an HTTP-only session.</p>}
-            inputClassName="field"
-            onConnected={async () => {
-              setDialog(null);
-              await refresh();
-            }}
-          />
-        </NativeDialog>
+        <InboxLoginDialog
+          onClose={closeDialog}
+          onConnected={async () => {
+            closeDialog();
+            await refresh();
+          }}
+        />
       ) : null}
       {detailsOpen ? (
         <DetailsDialog
           id={detailsOpen.id}
           workspace={detailsOpen.workspace}
-          tab={tab}
+          tab={detailsOpen.tab}
           scope={scope}
           data={data}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           onDecided={async () => {
-            setDialog(null);
+            closeDialog();
             await refresh();
           }}
         />

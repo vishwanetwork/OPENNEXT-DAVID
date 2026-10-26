@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { PricingProvider } from '@opennext/contracts';
 import { renderConsole, mockFetch, json } from '@/test/render';
-import { filterProviders, providerMetrics, providerState } from './api';
+import {
+  credentialReady,
+  filterProviders,
+  providerMetrics,
+  providerState,
+  providerTerms,
+} from './api';
 import { PricingAdminPage } from './pricing-admin-page';
 
 const providers: [PricingProvider, PricingProvider, PricingProvider] = [
@@ -47,7 +53,27 @@ const providers: [PricingProvider, PricingProvider, PricingProvider] = [
 ];
 
 describe('price sources helpers', () => {
-  it('derives state, metrics and filters like the legacy console', () => {
+  it('reads the actual backend latestRun / credentialConfigured / supportedTerms fields', () => {
+    const provider = {
+      ...providers[1],
+      credentialConfigured: true,
+      supportedTerms: ['On-demand'],
+      latestRun: { id: 'r-new', provider: 'lambda', status: 'completed', records: 8 },
+    };
+    expect(providerState(provider)).toBe('completed');
+    expect(credentialReady(provider)).toBe(true);
+    expect(providerMetrics([provider]).connected).toBe(1);
+    expect(filterProviders([provider], '', 'connected')).toHaveLength(1);
+    expect(providerTerms(provider)).toEqual([
+      { term: 'Spot', supported: false },
+      { term: 'On-demand', supported: true },
+      { term: 'Reserved', supported: false },
+    ]);
+    expect(credentialReady({ ...provider, credentialConfigured: false, configured: true })).toBe(
+      false,
+    );
+  });
+  it('keeps connected filters consistent with credential-aware source metrics', () => {
     expect(providerState(providers[0])).toBe('completed_with_gaps');
     expect(providerState({ ...providers[1], lastRun: null })).toBe('needs_credentials');
     expect(providerMetrics(providers)).toEqual({
@@ -56,7 +82,7 @@ describe('price sources helpers', () => {
       records: 374,
       running: 0,
     });
-    expect(filterProviders(providers, '', 'connected').map((p) => p.id)).toEqual(['aws', 'lambda']);
+    expect(filterProviders(providers, '', 'connected').map((p) => p.id)).toEqual(['aws']);
     expect(filterProviders(providers, '', 'enabled').map((p) => p.id)).toEqual(['aws']);
     expect(filterProviders(providers, '', 'attention').map((p) => p.id)).toEqual([
       'aws',
@@ -68,6 +94,35 @@ describe('price sources helpers', () => {
 });
 
 describe('PricingAdminPage', () => {
+  it('embeds the source grid, reads backend latest-run fields, and opens the official API directory', async () => {
+    const actualProvider = {
+      ...providers[1],
+      enabled: true,
+      credentialConfigured: true,
+      latestRun: {
+        id: 'r-new',
+        provider: 'lambda',
+        status: 'completed',
+        recordCount: 8,
+        finishedAt: '2026-10-27T00:00:00Z',
+      },
+    };
+    mockFetch((path) =>
+      path.endsWith('/providers')
+        ? json(200, { providers: [actualProvider], access: { mutable: true } })
+        : json(200, { runs: [] }),
+    );
+    renderConsole(<PricingAdminPage embedded />);
+    expect(screen.getByRole('heading', { level: 2, name: 'Price Source' })).toBeInTheDocument();
+    const card = await screen.findByRole('article', { name: 'Lambda price source' });
+    expect(within(card).getByText('8 records')).toBeInTheDocument();
+    expect(within(card).getByText('Run now')).not.toBeDisabled();
+    fireEvent.click(screen.getByText('API directory'));
+    expect(screen.getByRole('heading', { name: 'Source API directory' })).toBeInTheDocument();
+    expect(
+      screen.getByText('GET https://cloud.lambda.ai/api/v1/instance-types'),
+    ).toBeInTheDocument();
+  });
   it('renders provider cards and history from the admin API', async () => {
     mockFetch((path) =>
       path.endsWith('/providers')
@@ -85,7 +140,7 @@ describe('PricingAdminPage', () => {
           }),
     );
     renderConsole(<PricingAdminPage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Price sources' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Price Source' })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByText('AWS', { selector: '.pc-provider strong' })).toBeInTheDocument(),
     );

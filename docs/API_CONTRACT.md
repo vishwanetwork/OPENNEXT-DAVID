@@ -147,13 +147,184 @@ Internal integrations (`POST /api/internal/marketplace/supplies/:id/agent`,
 `POST /api/internal/marketplace/telemetry`) use a bearer integration token and are not called by
 the browser.
 
+### Console redesign: implemented reads and known gaps (2026-10-27)
+
+The redesign reuses the endpoints above. No business route was added to Next.js and no wire
+schema or `legacy/` service was changed. Routes and navigation are described in
+[`ARCHITECTURE.md`](ARCHITECTURE.md#operations-console-information-architecture).
+
+| Overview value            | Current source / definition                                                                                                                                                            | Limitation                                                                                                                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Available Price Sources   | Provider registry plus collected prices: enabled, implemented, required credential configured, with a non-stale positive price observed within `max(2 × intervalMinutes, 60)` minutes. | A registered logo, enabled toggle or successful old run is not proof of current data. If `meta.truncated` is true, the metric is unavailable rather than undercounted; a complete backend aggregate is required. |
+| Available Spot Instance   | Eligible non-preview Spot offers in `/api/marketplace/public`, using the same `agentInventory` rules as Terminal.                                                                      | Counts offers, not GPUs or purchased running instances. A catalog price does not qualify by itself.                                                                                                              |
+| Pending Top-up Requests   | Live `/api/admin/topups` requests with `status=Pending` and not solved.                                                                                                                | Demo requests must not contribute to live totals.                                                                                                                                                                |
+| Pending Payment Confirmed | Not connected.                                                                                                                                                                         | Needs the bank-receipt confirmation queue, distinct from Credit top-ups.                                                                                                                                         |
+| Pending KYB Requests      | `/api/admin/marketplace` KYB records with `status=Reviewing`.                                                                                                                          | Global DD review count must eventually come from an authoritative aggregate.                                                                                                                                     |
+| Pending Contact Requests  | `/api/admin/contacts` records with `status=New`.                                                                                                                                       | This is currently a first-response count; backend must define whether contacted-but-unresolved cases also count as pending.                                                                                      |
+| Pending RFQs              | First-party RFQs in `Reviewing`, `Open` or `Quoted` workflow states.                                                                                                                   | Includes requests awaiting review, matching or reply; not imported external source records. Backend should define resolution and order-transition boundaries.                                                    |
+| Live Instances            | Not connected.                                                                                                                                                                         | Requires platform-wide purchased allocations in `Running`; do not substitute supplier offers or the current user's instance list.                                                                                |
+
+Unavailable values render as `—`, not zero. Reads poll every 30 seconds while visible and retain
+their last snapshot on transient failure with a stale warning. Authorization loss clears private
+data. Recent activity currently merges available marketplace audit, top-up review and contact
+history events, orders them by UTC time and shows ten. Missing actor fields remain **Not
+recorded**. This is not a complete globally ordered operations ledger.
+
+#### Existing homepage review boundary
+
+`GET /api/admin/marketplace` returns server-selected `featured` candidates. The legacy selection
+algorithm selects one eligible GPU-rental candidate per model/side: highest approved public RFQ
+budget, or lowest published supply net price. Private RFQs, Demo records and arbitrary non-selected
+records cannot be promoted through the current endpoint.
+
+`PATCH /api/admin/marketplace/featured/:id` accepts
+`{ status: "Approved" | "Rejected", reason, fingerprint }`. The ID is the homepage review ID,
+not the RFQ/supply ID. The fingerprint must match the current server snapshot; changed or
+superseded candidates return 409. Approval places RFQs in **Inside OpenNEXT → Offer Capacity**
+and supply in **Inside OpenNEXT → Buy Capacity**, using the existing public card data format.
+Removal is the existing Rejected decision, not deletion of the customer submission.
+
+The Console can open this review directly from a candidate's table row and preview its public
+card. It cannot manufacture candidates or promise that any arbitrary row is featureable. A new
+server capability is needed for unrestricted operator selection.
+
+#### RFQ / Supply details and missing fields
+
+- RFQs and Ask-for-quote requests retain the existing submitted form schema and shared
+  `rfq-details` rendering. RFQ decisions still send `expectedRevision` and respect the review
+  gate before a public record becomes live.
+- Supply detail labels/order mirror the Terminal form. The current form does **not** collect
+  vCPU or per-GPU Memory. The new columns display `Not provided` when those fields are absent;
+  they must not infer values from the model name. A coordinated future change must add the
+  inputs, validation, persistence and response fields on both sides.
+- The marketplace snapshot does not expose submitted SSH connection details. Keep those in
+  the backend's privileged installer workflow; the Console shows the verification state, not
+  fabricated or unmasked credentials.
+- Source provenance remains attached to both imported RFQs and supply. External facts are not
+  verified customer identity, guaranteed stock or completed trades.
+
+### Backend handoff proposals — not implemented or called by this frontend
+
+The following paths and shapes are **proposals for the Python team**, not existing API
+contracts. They require backend agreement, authorization design, zod schemas and fixture tests
+before the frontend may call them. The Orders, Payment Requests and User pages currently use
+read-only view models in `features/console/pages/operations-records.ts`; these are not wire
+schemas or browser-local customer databases.
+
+| Proposed method / path                                 | Required capability                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/overview`                              | Complete platform-wide metrics with per-metric value or explicit unavailable state, definition, `asOf`, and freshness; latest ten operator events with stable work-item links. Never aggregate a single paginated results page.                                        |
+| `GET /api/admin/users?cursor=&limit=&growthPeriod=`    | Authorized user directory, pagination, platform `totalUsers`, and registration growth for `7D`, `1M`, `3M`, `6M`, `1Y`; email, name, company, role, status and joined time. Specify whether period means rolling time or calendar months.                              |
+| `GET /api/admin/orders?state=processing&kind=&cursor=` | Instance and RFQ orders across accounts, with stable order/customer IDs, email, model, GPU quantity, country, term, currency, total, status and submitted time. Linkable details must remain permission-checked.                                                       |
+| `GET /api/admin/payment-requests?status=&cursor=`      | Customer-reported bank payments, order link, amount/currency, transfer reference, submitted time and receipt verification state. Reporting a transfer is not confirmation of receipt.                                                                                  |
+| `POST /api/admin/payment-requests/:id/review`          | Authorized Approve/Reject, rejection reason, verified bank evidence reference, expected revision and idempotency key. Atomically update payment/order state and enqueue the owner's notification; never infer a bank receipt from a browser action.                    |
+| `GET /api/admin/instances?status=&cursor=`             | Purchased customer allocations across accounts, linked order/owner, term, model, region and authoritative lifecycle. `Running` excludes `Connecting` and `End`; source-collected offers are not allocations.                                                           |
+| `GET /api/admin/operations/activity?limit=10&cursor=`  | Unified audited events with event ID/type, record ID/type, verified operator ID/display name, UTC timestamp, decision and safe Console destination. An overview response may embed the first page instead of duplicating reads.                                        |
+| `POST /api/admin/marketplace/featured`                 | Nominate an arbitrary eligible RFQ/supply by record ID and expected revision; backend checks publication rights, captures the public snapshot and returns its review ID/fingerprint. Reuse the existing review step only after its new selection semantics are agreed. |
+
+All proposed writes must be administrator-only, same-origin, audited and revision-aware. No
+endpoint should accept a client-supplied operator identity as proof of who performed an action.
+Monetary values need documented units/currency and ledger-safe integer minor units or decimal
+handling. Duplicate approval or retry must not credit funds, confirm payment or notify twice.
+
+#### Uniform user notification requirement
+
+Existing RFQ reviews, KYB reviews and trusted supply-verification updates already append owner
+notifications in the marketplace service. Top-up review uses its existing server-side billing
+notification/ledger flow. This does **not** mean every Console action has notification coverage:
+homepage decisions currently audit the action without notifying the owner, and contact status
+changes do not provide a uniform account notification or outgoing email guarantee. Bank-payment,
+global order and user-management services are not connected.
+
+For every user-related operation, the backend handoff requires:
+
+1. Authorize the operator and resolve the affected owner from the stored record, never a typed
+   email or browser-supplied owner ID. A contact lead may be unauthenticated; do not bind it to
+   an account solely because its email matches.
+2. Validate the current revision and idempotency key. Persist the business decision, audit event
+   and notification-outbox event atomically. For top-ups, include the ledger transition in the
+   same consistency boundary; for bank payment, require verified receipt evidence.
+3. Use a stable event ID/deduplication key across retries. Delivery workers may retry at least
+   once, but the account must see one logical notification per completed decision. A delivery
+   failure must not repeat the financial operation.
+4. Include record type/ID, outcome, relevant amount/currency, UTC time and a permission-checked
+   Terminal destination. Avoid private keys, sensitive KYB evidence and provider credentials.
+5. Surface queued/delivered/failed delivery state in operations diagnostics. Email requires a
+   configured sender service and appropriate recipient authorization; do not claim an email
+   was sent merely because a review returned 200.
+6. Keep Demo and live outboxes, owners, events and ledgers isolated. Customer notifications remain
+   server-owned and are read through the existing workspace/billing interfaces until a new
+   notification API is agreed. Do not add a browser-controlled notification injection endpoint.
+
+### Supplier integration reference — 24 providers
+
+This table mirrors `features/pricing-admin/provider-references.ts`, researched against linked
+official references on **2026-10-27**. **Documented API ≠ implemented OpenNEXT collector ≠ live
+availability.** URLs/actions below are integration references, not requests made directly from
+the browser. Provider credentials stay server-side. Entries explicitly marked unverified or
+price-page-only must remain disabled until the integration and permitted access are confirmed.
+
+The current legacy registry implements only **AWS, Vultr, Shadeform and Lambda**. Actual supported
+terms remain those returned by the runtime registry: AWS On-demand (registry labels Spot/Reserved pending),
+Vultr and Shadeform On-demand/Spot, Lambda On-demand. Credentials and fresh successful results
+are still required where applicable. A documented upstream capability does not widen those
+implemented capabilities automatically.
+
+The AWS service also contains a credential-gated `DescribeSpotPriceHistory` collector requiring
+IAM and the optional AWS SDK, despite the registry's pending label. Preserve this discrepancy
+until the backend aligns capability reporting; inspect actual fresh observations rather than
+assuming that a registry label proves collection success. No Reserved collector is implemented.
+
+Console Instances pushes term, source, model, GPU count and memory filters to the current prices
+endpoint. It still has a 5,000-record hard limit and no cursor. A truncated response is explicitly
+labelled partial; country, vCPU and text search apply to the loaded records only. The Python
+replacement needs server-side filtering, total counts and stable cursor pagination for complete
+cross-source operations. Unknown vCPU/Memory remain unknown; pricing is never promoted to
+executable inventory by the frontend.
+
+| Provider / official reference                                                                           | Corresponding API or verified reference                                                                                                                                                              | Authentication                                                                  | Coverage and limits                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [AWS](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSpotPriceHistory.html)         | AWS Price List `GetProducts` / public AmazonEC2 bulk offers; EC2 `DescribeSpotPriceHistory`; `DescribeReservedInstancesOfferings`.                                                                   | Public bulk files; signed IAM for EC2/Pricing API calls.                        | On-demand, Spot history, Reserved offerings. Amortize upfront Reserved fees over the exact commitment. Public prices are not deployable stock; the existing AWS collector uses a narrower public pricing-page feed.       |
+| [GCP](https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api)                    | `GET https://cloudbilling.googleapis.com/v1/services/{serviceId}/skus`; `GET https://cloudbilling.googleapis.com/v2beta/skus`; `GET https://cloudbilling.googleapis.com/v1beta/skus/{skuId}/prices`. | API key for public pricing; IAM/OAuth for account contract rates.               | GPU/Spot SKUs; combine GPU, CPU and RAM correctly. Consumption models need mapping; commitment discounts are not capacity reservations.                                                                                   |
+| [Hyperstack](https://docs.hyperstack.cloud/docs/billing/pricebook/)                                     | `GET https://infrahub-api.nexgencloud.com/v1/pricebook`; `GET https://infrahub-api.nexgencloud.com/v1/core/flavors`.                                                                                 | Server-side `api_key` header.                                                   | Account hourly rates, `-spot` resources and contract discounts. Pricebook can contain unavailable resources; join capacity separately. Reserved contracts need their terms.                                               |
+| [Vultr](https://www.vultr.com/api/)                                                                     | `GET https://api.vultr.com/v2/plans`; `GET https://api.vultr.com/v2/plans-metal`.                                                                                                                    | Existing collector reads public catalog; account operations use Bearer token.   | GPU catalog and explicitly returned preemptible rates. Respect region/deployment flags; Reserved feed unverified.                                                                                                         |
+| [Packet.ai](https://dash.packet.ai/docs/ai)                                                             | `GET /api/v1/launch-options` (confirm production base in current OpenAPI); `GET https://packet.ai/api/openapi`.                                                                                      | Provider API key; confirm current OpenAPI security scheme.                      | Products, `pricePerHourCents`, GPU pools and availability. Dynamic/shared does not automatically mean Spot. Contract clusters require a quote; adapter pending.                                                           |
+| [Lightning](https://api.lightning.ai/pricing/)                                                          | Official pricing page only; no public GPU price-catalog API verified.                                                                                                                                | Public page; API access/schema requires confirmation.                           | Published GPU and interruptible rates. Confirm permitted collection and enterprise contract pricing before ingestion.                                                                                                     |
+| [Shadeform](https://docs.shadeform.ai/api-reference/instances/instances-types)                          | `GET https://api.shadeform.ai/v1/instances/types`.                                                                                                                                                   | `X-API-KEY`.                                                                    | Instance specifications, hourly prices and regional rental availability. Preserve underlying cloud; top-level prices are cents and regional overrides use their documented units. Reserved support requires confirmation. |
+| [Vast.ai](https://docs.vast.ai/api-reference/search/search-offers)                                      | `POST https://console.vast.ai/api/v0/bundles` (read-only offer search).                                                                                                                              | Bearer API key.                                                                 | On-demand/interruptible offers with documented type filters. Storage, networking and rental conditions vary; hourly offers are not Reserved contracts.                                                                    |
+| [Crusoe](https://docs.crusoecloud.com/api/)                                                             | `GET https://api.cloud.crusoe.ai/v1/projects/{project_id}/compute/vms/types`.                                                                                                                        | Account credentials and project permissions.                                    | Hardware types, **not a complete price feed**. Obtain an approved rate card/account pricing source; inference prices cannot substitute for VM prices.                                                                     |
+| [RunPod](https://docs.runpod.io/sdks/graphql/manage-pods)                                               | `POST https://api.runpod.io/graphql`, read-only `gpuTypes` / `gpuType` queries.                                                                                                                      | Server-held RunPod API key.                                                     | GPU catalog and On-demand/interruptible price fields subject to current schema. Separate secure/community cloud, storage and regional availability; Reserved pricing unverified.                                          |
+| [Aliyun](https://www.alibabacloud.com/help/en/ecs/developer-reference/api-ecs-2014-05-26-describeprice) | ECS actions `DescribePrice`, `DescribeSpotPriceHistory`.                                                                                                                                             | Signed OpenAPI with scoped RAM credentials.                                     | Pay-as-you-go/subscription quotes, capacity-reservation prices and Spot history. Preserve China/international account currency; verify Reserved Instance commercial terms separately.                                     |
+| [Azure](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices)   | `GET https://prices.azure.com/api/retail/prices?api-version=2023-01-01-preview`.                                                                                                                     | Public retail catalog, no authentication.                                       | Consumption, Spot/low-priority, Reservation and savings-plan meters. Follow `NextPageLink`; retain region, OS, meter and commitment terms. No stock guarantee.                                                            |
+| [Modal](https://modal.com/pricing)                                                                      | Official pricing page only; no public GPU price-catalog API verified.                                                                                                                                | Public page.                                                                    | Serverless GPU/CPU/RAM resource rates, not rented GPU instances. Spot/Reserved instance-price feed unverified.                                                                                                            |
+| [Nebius](https://docs.nebius.com/signup-billing/spot-prices)                                            | `GET https://api.nebius.cloud/billing/v1alpha1/spot-price`; `GET https://api.nebius.cloud/billing/v1alpha1/spot-price/list-series`.                                                                  | Public Spot prices/history, no authentication.                                  | Current per-GPU Spot prices by platform/region and up to 30 days of history; follow `nextPageToken`. 15-minute history steps up to 7 days, otherwise hourly. On-demand/commitment feed and adapter pending.               |
+| [OCI](https://www.oracle.com/cloud/price-list/)                                                         | Official price list; no stable documented all-terms GPU price-catalog API verified.                                                                                                                  | Public list; signed OCI APIs for account resources.                             | Published GPU rates/commitment terms. Verify preemptible availability per GPU shape; do not guess an undocumented catalog endpoint.                                                                                       |
+| [Paperspace](https://docs.digitalocean.com/reference/paperspace/api-reference/machine-types/)           | `GET https://api.paperspace.com/v1/machine-availability?machineType={type}&region={region}`.                                                                                                         | Bearer API key.                                                                 | Type/region availability **without price fields**. Needs a separate approved rate source; Spot/Reserved feeds unverified.                                                                                                 |
+| [Tencent](https://www.tencentcloud.com/document/product/213/33248)                                      | CVM `InquiryPriceRunInstances`; `DescribeReservedInstancesOfferings`.                                                                                                                                | Signed Tencent Cloud API requests and scoped credentials.                       | Configuration-specific hourly/prepaid quotes and Reserved offerings. Verify Spot strategy/regional SKU support separately; quoting does not reserve capacity.                                                             |
+| [Volcengine](https://docs.volcengine.com/docs/ecs/Elastic-Compute-Service-API-overview?lang=zh)         | ECS `DescribeSpotPriceHistory`; `DescribeInstanceTypes`.                                                                                                                                             | Signed OpenAPI with scoped AccessKey credentials.                               | Spot history and hardware types. On-demand quotes/Reserved price contracts require confirmation. Owned reservations are not public inventory.                                                                             |
+| [Lambda](https://docs.lambda.ai/api/cloud)                                                              | `GET https://cloud.lambda.ai/api/v1/instance-types`.                                                                                                                                                 | Bearer API key.                                                                 | On-demand instance prices in cents/hour and regional availability. Entire-instance rate, not per-GPU rate; availability is boolean, not quantity. Spot/Reserved catalog unverified.                                       |
+| [TensorDock](https://dashboard.tensordock.com/api/docs)                                                 | Official API reference; current price schema/endpoint unverified because reference access was restricted.                                                                                            | Provider account credentials; confirm current specification.                    | Host availability is described, but no guessed legacy endpoint may be enabled.                                                                                                                                            |
+| [CoreWeave](https://docs.coreweave.com/reference-home)                                                  | Infrastructure API reference; no public all-terms GPU price-catalog endpoint verified.                                                                                                               | Account/organization credentials.                                               | Negotiated pricing requires an approved rate card and commercial access.                                                                                                                                                  |
+| [CUDO Compute](https://www.cudocompute.com/)                                                            | Enterprise provider contact; no current public price-catalog endpoint verified.                                                                                                                      | Confirm service/API access directly.                                            | Existing registry marks the former public On-demand platform closed; collection stays disabled. Current cluster proposals need commercial confirmation.                                                                   |
+| [Verda / DataCrunch](https://api.verda.com/v1/docs)                                                     | `GET https://api.verda.com/v1/instance-types`; `/v1/instance-availability`; `/v1/long-term/periods/instances` on the same API host.                                                                  | Public catalog; account operations use OAuth2 client-credentials Bearer tokens. | Hourly/Spot prices, hardware, regional availability and long-term periods. Join availability separately; resolve period discounts to exact prices. Adapter pending; do not use deprecated price-history.                  |
+| [DigitalOcean](https://docs.digitalocean.com/reference/api/reference/sizes/)                            | `GET https://api.digitalocean.com/v2/sizes`.                                                                                                                                                         | Bearer token with `sizes:read` / `regions:read`.                                | GPU-capable Droplet sizes, hourly price and available regions. Filter GPU sizes explicitly; Spot/Reserved feed unverified. Dedicated inference is a different product.                                                    |
+
+Before adding an upstream adapter, pin the response fixture, pagination, retry/backoff and rate
+limits; normalize currency and per-instance/per-GPU units; preserve source URL, observation time,
+region, GPU count, memory basis and commercial term. Keep availability evidence separate from
+pricing. Missing regions or uncollected terms are gaps, not zero prices, and a partially
+successful run must not be reported as complete coverage. Do not trigger provisioning or a paid
+purchase as part of price collection.
+
 ## Notes for the Python backend team
 
-The front-end is finished against the contracts in `packages/contracts/src/<resource>/index.ts`
+Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
 (`auth`, `marketplace`, `billing`, `pricing`, `news`, `contact`, `demo`, `admin`, `account`).
 Every call the browser makes is in one place per domain: `apps/web/src/features/*/api.ts`
 (plus `terminal-kit/api.ts` for the shared workspace reads and `features/auth/server.ts` for the
 server-side session read). To switch backends, set `API_ORIGIN`; nothing else changes.
+The proposed Console services above remain unimplemented; they must not be mistaken for existing
+contract coverage merely because their pages and read-only view models are present.
 
 1. **Same origin is preserved.** The pass-through keeps the browser's `Host`/`Origin`, so the
    backend keeps doing its own same-origin and host-scoping checks; it never sees a Next host.

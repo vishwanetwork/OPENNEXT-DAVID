@@ -128,6 +128,67 @@ Domains: `site`, `auth`, `market`, `terminal` (shell and generic pages), `procur
 (shell, store, dialogs and pages of the Operations Console), `console-leads`,
 `console-marketplace`, `console-topups`, `pricing-admin`.
 
+### Operations Console information architecture
+
+The Console sidebar is organised around operations work, in this order: **Overview, Requests,
+Orders, Instances, Price Source, Buyer RFQs, Supplier capacity, Platform agent, User**. `CONSOLE_PAGES` still
+recognises older routes for compatibility; sidebar membership is the smaller `SIDEBAR_PAGES`
+list in `features/console/pages.ts`. Hiding a route is not an authorization rule: administrator
+host and session checks remain mandatory.
+
+Paths below are Console-relative. Locally they have the `/admin` prefix; on the dedicated
+Console host they do not. Build links with `useApp().href()`, not hard-coded prefixes.
+
+| Section           | Relative route                                              | Ownership and behaviour                                                                                                                                         |
+| ----------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview          | `/`                                                         | `console/pages/overview.tsx`; eight metrics and ten recent recorded decisions. Existing services are read through `console/api.ts` and query hooks.             |
+| Requests          | `/requests`                                                 | Hub for `/payments`, `/topups`, `/leads`, `/kyb`, in that order. Payment confirmation and Credit top-up review are separate workflows.                          |
+| Orders            | `/orders`                                                   | Platform-wide in-progress instance and RFQ orders; administrator order service pending.                                                                         |
+| Instances         | `/instances?term=Spot`, `?term=On-demand`, `?term=Reserved` | Collected prices and a separate `view=terminal` view of eligible Terminal offers, with filters and Terminal-aligned columns.                                    |
+| Price Source      | `/pricing`                                                  | `pricing-admin`; independent sidebar page between Instances and Buyer RFQs. Provider cards, run status/logs, configuration and official integration references. |
+| Buyer RFQs        | `/rfqs`                                                     | `console-marketplace`; shared `rfq-details` renderer, revision-aware operations review and eligible homepage candidate review.                                  |
+| Supplier capacity | `/supplies`                                                 | `console-marketplace`; submitted supply form details, filters, provenance and eligible homepage candidate review.                                               |
+| Platform agent    | `/agent`, `/agent?tab=billing`                              | `AgentWorkspace` composes existing Platform agent and Agent billing pages without changing their execution policy.                                              |
+| User              | `/users`                                                    | Platform user directory and server-owned totals/growth for `7D`, `1M`, `3M`, `6M`, `1Y`; administrator user service pending.                                    |
+
+RFQ, supply, KYB and homepage review routes accept `?record=<id>` to open the matching work item
+in a details dialog. Activity links use stable record IDs and UTC timestamps, not array
+positions. Missing operator identity is shown as **Not recorded**, not invented. The current
+activity view combines available marketplace audit, top-up reviews and contact history; it is
+not a complete cross-service event ledger.
+
+#### Server facts versus interface scaffolding
+
+- Overview derives available metrics from provider, pricing, marketplace, top-up and contact
+  responses. Missing services show `—` / **Awaiting backend**, never a fabricated zero. Queries
+  refresh every 30 seconds while visible, retain a previous snapshot on transient failure and
+  clear private data on authorization loss.
+- A **price observation is not inventory**. Collected prices come from `/api/pricing/prices`;
+  the separate Terminal feed comes from approved `/api/marketplace/public` offers through the
+  same `spot-market` eligibility rules as Terminal. Offer counts, GPU counts and running
+  purchased-instance counts must not be substituted for one another.
+- The current collected-price read is capped at 5,000 records. Partial table lengths are not
+  authoritative platform-wide aggregates. Complete Overview totals require backend aggregation
+  as described in `API_CONTRACT.md`.
+- `console/pages/operations-records.ts` contains read-only **view models**, not new wire
+  contracts. Orders, payment confirmations, the complete user directory and running-instance
+  totals remain unconnected until backend endpoints and contract tests are agreed.
+- The 24 provider references document official integration surfaces and limitations. They do
+  not implement collectors, grant permissions, establish inventory or imply that every provider
+  supports all three rental terms. Availability comes from the backend registry and current
+  records, not the number of logos.
+- Homepage placement reuses the current-candidate/fingerprint review API. It covers the
+  backend-selected highest public RFQ budget / lowest live supply price per GPU model.
+  Arbitrary selection needs a new backend capability; the UI does not forge candidates or
+  bypass review. RFQs map to **Inside OpenNEXT → Offer Capacity**; supply maps to
+  **Inside OpenNEXT → Buy Capacity**.
+- User notifications are backend-owned effects of completed operations. A successful browser
+  request must not manufacture notifications or change Credit locally. Notification coverage
+  and the proposed audited, idempotent outbox are documented in `API_CONTRACT.md`.
+
+This redesign changes neither `legacy/` nor `packages/contracts`. Backend handoff proposals are
+explicitly unimplemented until the backend team agrees the wire contracts.
+
 ### Terminal kit and composition root
 
 `src/terminal-kit/` is the framework every terminal feature builds on and the only thing a

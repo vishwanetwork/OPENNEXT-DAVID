@@ -1,11 +1,11 @@
-/** Provider brand assets extracted from legacy/OpenNEXT-provider-logos.js (unmodified bytes). */
+/** Official brand assets restored from legacy provenance; SVG wrappers preserve bitmap bytes. */
 export const PROVIDER_LOGOS: Record<string, { src: string; page: string | null }> = {
   aliyun: {
-    src: '/provider-logos/aliyun.png',
+    src: '/provider-logos/aliyun.svg',
     page: 'https://www.alibabacloud.com/',
   },
   volcengine: {
-    src: '/provider-logos/volcengine.png',
+    src: '/provider-logos/volcengine.svg',
     page: 'https://www.volcengine.com/',
   },
   tencent: {
@@ -13,23 +13,23 @@ export const PROVIDER_LOGOS: Record<string, { src: string; page: string | null }
     page: 'https://www.tencentcloud.com/',
   },
   nebius: {
-    src: '/provider-logos/nebius.png',
+    src: '/provider-logos/nebius.svg',
     page: 'https://nebius.com/',
   },
   tensordock: {
-    src: '/provider-logos/tensordock.png',
+    src: '/provider-logos/tensordock.svg',
     page: 'https://www.tensordock.com/',
   },
   crusoe: {
-    src: '/provider-logos/crusoe.png',
+    src: '/provider-logos/crusoe.svg',
     page: 'https://www.crusoe.ai/',
   },
   azure: {
-    src: '/provider-logos/azure.png',
+    src: '/provider-logos/azure.svg',
     page: 'https://azure.microsoft.com/en-us/blog/a-fluent-new-look-for-the-azure-icon/',
   },
   cudo: {
-    src: '/provider-logos/cudo.png',
+    src: '/provider-logos/cudo.svg',
     page: 'https://www.cudocompute.com/',
   },
   digitalocean: {
@@ -41,7 +41,7 @@ export const PROVIDER_LOGOS: Record<string, { src: string; page: string | null }
     page: 'https://verda.com/',
   },
   runpod: {
-    src: '/provider-logos/runpod.png',
+    src: '/provider-logos/runpod.svg',
     page: 'https://www.runpod.io/',
   },
   lambda: {
@@ -53,7 +53,7 @@ export const PROVIDER_LOGOS: Record<string, { src: string; page: string | null }
     page: 'https://github.com/Paperspace',
   },
   coreweave: {
-    src: '/provider-logos/coreweave.png',
+    src: '/provider-logos/coreweave.svg',
     page: 'https://docs.coreweave.com/',
   },
   modal: {
@@ -61,31 +61,31 @@ export const PROVIDER_LOGOS: Record<string, { src: string; page: string | null }
     page: 'https://modal.com/',
   },
   oci: {
-    src: '/provider-logos/oci.png',
+    src: '/provider-logos/oci.svg',
     page: 'https://www.oracle.com/cloud/',
   },
   gcp: {
-    src: '/provider-logos/gcp.png',
+    src: '/provider-logos/gcp.svg',
     page: 'https://cloud.google.com/',
   },
   shadeform: {
-    src: '/provider-logos/shadeform.png',
+    src: '/provider-logos/shadeform.svg',
     page: 'https://shadeform.com/',
   },
   vast: {
-    src: '/provider-logos/vast.png',
+    src: '/provider-logos/vast.svg',
     page: 'https://vast.ai/',
   },
   aws: {
-    src: '/provider-logos/aws.png',
+    src: '/provider-logos/aws.svg',
     page: 'https://aws.amazon.com/',
   },
   packet: {
-    src: '/provider-logos/packet.png',
+    src: '/provider-logos/packet.svg',
     page: 'https://packet.ai/',
   },
   lightning: {
-    src: '/provider-logos/lightning.png',
+    src: '/provider-logos/lightning.svg',
     page: 'https://lightning.ai/',
   },
   hyperstack: {

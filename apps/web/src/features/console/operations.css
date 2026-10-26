@@ -1,0 +1,139 @@
+.app-console .side-sub a {
+  display: block;
+  padding: 7px 12px 7px 28px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.app-console .side-sub a[aria-current='page'] {
+  color: var(--blue);
+  font-weight: 600;
+}
+.app-console .ops-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.app-console .ops-metric {
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+}
+.app-console .ops-metric .stat-label {
+  min-height: 36px;
+  line-height: 1.4;
+}
+.app-console .ops-metric .stat-value {
+  font-variant-numeric: tabular-nums;
+}
+.app-console .ops-metric .stat-foot {
+  margin-top: auto;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.app-console .ops-state {
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--bg);
+}
+.app-console .ops-state[role='alert'] {
+  color: var(--red);
+}
+.app-console .ops-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 22px;
+}
+.app-console .ops-tabs a {
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.app-console .ops-tabs a[aria-current='page'] {
+  background: var(--blue-soft, #edf3ff);
+  color: var(--blue);
+}
+.app-console .ops-filters {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.app-console .ops-filters label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 110px;
+}
+.app-console .ops-filters input,
+.app-console .ops-filters select {
+  padding: 8px 10px;
+  max-width: 210px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.app-console .ops-paging {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+}
+.app-console .ops-paging div {
+  display: flex;
+  gap: 8px;
+}
+.app-console .ops-source-label {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.app-console .ops-empty-table {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+.app-console .ops-activity-link {
+  display: block;
+  padding: 6px 0;
+  font-weight: 600;
+}
+.app-console .ops-requests {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.app-console .ops-request-card {
+  display: block;
+  color: var(--ink);
+  padding: 24px;
+}
+.app-console .ops-request-card p {
+  color: var(--muted);
+  margin: 10px 0 18px;
+}
+.app-console .ops-request-card strong {
+  color: var(--blue);
+}
+@media (max-width: 1250px) {
+  .app-console .ops-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 650px) {
+  .app-console .ops-metrics,
+  .app-console .ops-requests {
+    grid-template-columns: 1fr;
+  }
+}

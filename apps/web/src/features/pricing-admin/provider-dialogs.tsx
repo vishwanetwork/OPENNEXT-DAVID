@@ -4,10 +4,11 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import type { PricingProvider } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog } from '@/features/console';
-import { pricingAdminApi, providerState } from './api';
+import { credentialReady, pricingAdminApi, providerState, providerTerms } from './api';
 import { Dialog } from './pricing-admin-page';
 import { StatusBadge } from './provider-card-ui';
 import { JobDialog, PricesDialog } from './job-dialogs';
+import { ProviderReference } from './api-directory';
 
 export function PcDialog({
   dialog,
@@ -166,14 +167,28 @@ function ProviderDetail({
           <dd>
             {!p.credentialRequired
               ? 'Not needed for public catalog'
-              : p.configured
+              : credentialReady(p)
                 ? 'Configured — never returned to browser'
                 : 'Not configured'}
           </dd>
         </div>
         <div>
           <dt>Supported price types</dt>
-          <dd>{(p.capabilities || []).join(' · ') || 'Pending integration'}</dd>
+          <dd>
+            {providerTerms(p)
+              .filter((item) => item.supported)
+              .map((item) => item.term)
+              .join(' · ') || 'Pending integration'}
+          </dd>
+        </div>
+        <div>
+          <dt>Pending price types</dt>
+          <dd>
+            {providerTerms(p)
+              .filter((item) => !item.supported)
+              .map((item) => item.term)
+              .join(' · ') || 'None'}
+          </dd>
         </div>
         <div>
           <dt>Credential environment</dt>
@@ -245,7 +260,7 @@ function ProviderDetail({
         </form>
       ) : null}
       <div className="pc-api-list">
-        <h3>Read-only upstream API</h3>
+        <h3>Registered upstream endpoints</h3>
         {(p.endpoints || []).length ? (
           (p.endpoints || []).map((e, i) => (
             <code key={i}>
@@ -257,10 +272,13 @@ function ProviderDetail({
             No verified connector endpoint yet. Credentials alone do not establish a price feed.
           </p>
         )}
-        <a href={p.docsUrl || '#'} target="_blank" rel="noopener noreferrer">
-          Official API documentation ↗
-        </a>
+        {p.docsUrl ? (
+          <a href={p.docsUrl} target="_blank" rel="noopener noreferrer">
+            Registered documentation ↗
+          </a>
+        ) : null}
       </div>
+      <ProviderReference id={p.id} />
     </>
   );
 }

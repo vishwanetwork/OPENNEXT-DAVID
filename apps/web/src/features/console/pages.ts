@@ -1,8 +1,10 @@
 /** Console pages in sidebar order (legacy `pages`). `settings` is reachable from the user menu only. */
 export const CONSOLE_PAGES = {
   overview: 'Overview',
+  requests: 'Requests',
+  payments: 'Payment Requests',
   market: 'Market',
-  pricing: 'Price sources',
+  pricing: 'Price Source',
   leads: 'Contact requests',
   topups: 'Top-up Requests',
   rfqs: 'Buyer RFQs',
@@ -20,6 +22,19 @@ export const CONSOLE_PAGES = {
   settings: 'My account',
 } as const;
 export type ConsolePage = keyof typeof CONSOLE_PAGES;
+
+export const SIDEBAR_PAGES: ConsolePage[] = [
+  'overview',
+  'requests',
+  'orders',
+  'instances',
+  'pricing',
+  'rfqs',
+  'supplies',
+  'agent',
+  'users',
+];
+export const REQUEST_PAGES: ConsolePage[] = ['payments', 'topups', 'leads', 'kyb'];
 
 /** Pages that exist as routes but are not listed in the sidebar. */
 export const HIDDEN_PAGES: Record<string, string> = { 'demo-submissions': 'Demo submissions' };

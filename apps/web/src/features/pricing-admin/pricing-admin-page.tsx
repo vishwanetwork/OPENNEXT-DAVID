@@ -8,14 +8,15 @@ import { useApi } from '@/components/providers/api-context';
 import { isAccessError } from '@/features/console';
 import {
   filterProviders,
-  fmt,
   pricingAdminApi,
   providerMetrics,
-  providerState,
+  credentialReady,
   type ProviderFilter,
 } from './api';
 import { PcDialog } from './provider-dialogs';
-import { ProviderLogo, StatusBadge } from './provider-card-ui';
+import { ProviderCard } from './provider-card';
+import { CollectionHistory } from './collection-history';
+import { ApiDirectory } from './api-directory';
 
 export const POLL_MS = 5000;
 
@@ -26,10 +27,11 @@ export type Dialog =
   | { kind: 'login' };
 
 /** Price sources operations page (legacy OpenNEXT-provider-console.js). */
-export function PricingAdminPage() {
+export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
   const api = useApi();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
+  const [directoryOpen, setDirectoryOpen] = useState(false);
   const [filter, setFilter] = useState<ProviderFilter>('all');
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -96,7 +98,9 @@ export function PricingAdminPage() {
   const syncAll = async () => {
     setBusy('all');
     try {
-      const selected = providers.filter((p) => p.enabled && p.adapterStatus === 'implemented');
+      const selected = providers.filter(
+        (p) => p.enabled && p.adapterStatus === 'implemented' && credentialReady(p),
+      );
       for (const p of selected) await pricingAdminApi.startRun(api, p.id);
       setNotice({
         text: `Started or reused ${selected.length} configured collection jobs.`,
@@ -114,14 +118,17 @@ export function PricingAdminPage() {
   const metrics = providerMetrics(providers);
 
   return (
-    <section className="provider-console">
+    <section className={`provider-console${embedded ? ' pc-embedded' : ''}`}>
       <div className="pc-heading">
         <div>
           <div className="pc-eyebrow">MARKET DATA OPERATIONS</div>
-          <h1>Price sources</h1>
+          {embedded ? <h2>Price Source</h2> : <h1>Price Source</h1>}
           <p>Collect provider prices. Normalize units. Publish one trusted API.</p>
         </div>
         <div className="pc-actions">
+          <button type="button" onClick={() => setDirectoryOpen(true)} disabled={!providers.length}>
+            API directory
+          </button>
           <button type="button" onClick={() => void refresh()}>
             ↻ Refresh
           </button>
@@ -192,111 +199,35 @@ export function PricingAdminPage() {
             </button>
           </div>
         ) : !data.data ? (
-          <div className="pc-loading">Loading price-source status…</div>
+          <div className="pc-loading">
+            {data.error
+              ? 'Price sources are unavailable. Refresh to retry.'
+              : 'Loading price-source status…'}
+          </div>
         ) : visible.length ? (
-          visible.map((p) => {
-            const state = providerState(p);
-            return (
-              <article className="pc-card" key={p.id}>
-                <button
-                  type="button"
-                  className="pc-card-top"
-                  onClick={() => setDialog({ kind: 'detail', id: p.id })}
-                >
-                  <span className="pc-provider">
-                    <ProviderLogo id={p.id} />
-                    <strong>{p.name}</strong>
-                  </span>
-                  <span className={`pc-enabled ${p.enabled ? 'is-enabled' : ''}`}>
-                    {p.enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </button>
-                <p className="pc-cadence">Incremental · every {p.intervalMinutes} minutes</p>
-                <div className="pc-card-run">
-                  <span>LATEST RUN</span>
-                  <StatusBadge status={state} />
-                </div>
-                <div className="pc-card-bottom">
-                  <small>{fmt(p.lastRun?.finishedAt || p.lastRun?.startedAt)}</small>
-                  <strong>
-                    {p.lastRun
-                      ? Number(p.lastRun.recordCount || 0).toLocaleString() + ' records'
-                      : '—'}
-                  </strong>
-                </div>
-                <div className="pc-card-actions">
-                  <button type="button" onClick={() => setDialog({ kind: 'detail', id: p.id })}>
-                    Configure
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      !access.mutable ||
-                      p.adapterStatus !== 'implemented' ||
-                      state === 'running' ||
-                      busy === p.id
-                    }
-                    onClick={() => void runProvider(p.id, false)}
-                  >
-                    {state === 'running' ? 'Running…' : 'Run now'}
-                  </button>
-                </div>
-              </article>
-            );
-          })
+          visible.map((p) => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              mutable={access.mutable && !blocked}
+              busy={busy === p.id || busy === 'all'}
+              onOpen={() => setDialog({ kind: 'detail', id: p.id })}
+              onRun={() => void runProvider(p.id, false)}
+            />
+          ))
         ) : (
           <div className="pc-loading">No price sources match these filters.</div>
         )}
       </div>
-      <section className="pc-history">
-        <div className="pc-history-head">
-          <div>
-            <h2>Collection history</h2>
-            <p>Actual jobs, accepted prices and redacted diagnostics.</p>
-          </div>
-          <button type="button" onClick={() => void refresh()}>
-            Refresh history
-          </button>
-        </div>
-        <div className="pc-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Started</th>
-                <th>Status</th>
-                <th>Records</th>
-                <th>Mode</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.length ? (
-                runs.slice(0, 20).map((r) => (
-                  <tr key={r.id}>
-                    <td>{nameOf(r.provider)}</td>
-                    <td>{fmt(r.startedAt)}</td>
-                    <td>
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td>{Number(r.recordCount ?? r.records ?? 0).toLocaleString()}</td>
-                    <td>{r.mode || 'Incremental'}</td>
-                    <td>
-                      <button type="button" onClick={() => setDialog({ kind: 'job', id: r.id })}>
-                        View log ↗
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6}>No collection jobs yet. Run a configured source to begin.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <CollectionHistory
+        runs={runs}
+        nameOf={nameOf}
+        onRefresh={() => void refresh()}
+        onOpen={(id) => setDialog({ kind: 'job', id })}
+      />
+      {directoryOpen && (
+        <ApiDirectory providers={providers} onClose={() => setDirectoryOpen(false)} />
+      )}
       <p className="pc-foot">
         AWS charts use AWS observations only. Catalog prices do not guarantee stock. Unsupported
         price types stay unavailable until an adapter and permissions are verified.

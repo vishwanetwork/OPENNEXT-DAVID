@@ -1,4 +1,5 @@
 import { MARKETS, TAB_LABELS, type InboxData, type InboxTab } from './marketplace';
+import { ResourceFilterFields, type ResourceFilters } from './resource-filters';
 
 export interface InboxFilterState {
   query: string;
@@ -25,6 +26,8 @@ export function InboxToolbar({
   statusValues,
   onTab,
   onChange,
+  resourceFilters,
+  onResourceChange,
 }: {
   tab: InboxTab;
   demo: boolean;
@@ -34,25 +37,29 @@ export function InboxToolbar({
   statusValues: string[];
   onTab: (tab: InboxTab) => void;
   onChange: (patch: Partial<InboxFilterState>) => void;
+  resourceFilters: ResourceFilters;
+  onResourceChange: (patch: Partial<ResourceFilters>) => void;
 }) {
   const visibleTabs = (Object.entries(TAB_LABELS) as [InboxTab, string][]).filter(
-    ([k]) => !demo || k !== 'featured',
+    ([k]) => demo && k !== 'featured',
   );
   const marketTab = tab === 'rfqs' || tab === 'supplies';
   return (
     <div className="market-console-toolbar">
-      <div className="market-console-tabs">
-        {visibleTabs.map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            className={`btn ${k === tab ? 'primary' : ''}`}
-            onClick={() => onTab(k)}
-          >
-            {label} <span>{(data[k] || []).length}</span>
-          </button>
-        ))}
-      </div>
+      {visibleTabs.length ? (
+        <div className="market-console-tabs">
+          {visibleTabs.map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              className={`btn ${k === tab ? 'primary' : ''}`}
+              onClick={() => onTab(k)}
+            >
+              {label} <span>{(data[k] || []).length}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="market-console-filters">
         <input
           className="field"
@@ -62,6 +69,13 @@ export function InboxToolbar({
           value={filters.query}
           onChange={(e) => onChange({ query: e.target.value })}
         />
+        {marketTab ? (
+          <ResourceFilterFields
+            rows={data[tab]}
+            filters={resourceFilters}
+            onChange={onResourceChange}
+          />
+        ) : null}
         <select
           className="field"
           aria-label="Market type"
@@ -117,6 +131,22 @@ export function InboxToolbar({
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => {
+            onChange({
+              query: '',
+              kindFilter: 'All',
+              sourceFilter: 'All',
+              statusFilter: 'All',
+              reviewFilter: 'Current',
+            });
+            onResourceChange({ modelFilter: 'All', countryFilter: 'All', termFilter: 'All' });
+          }}
+        >
+          Reset filters
+        </button>
       </div>
     </div>
   );

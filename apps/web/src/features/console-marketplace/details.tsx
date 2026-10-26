@@ -15,6 +15,8 @@ import {
 } from './marketplace';
 import { Info, recordInfo, sourceInfo } from './record-info';
 import { DecisionForm } from './review-forms';
+import { SupplyDetails } from './supply-details';
+import { HomepageCandidateCard } from './homepage-candidate-card';
 
 export function DetailGrid({ info }: { info: Info }) {
   return (
@@ -152,7 +154,17 @@ export function GenericRecordBody({
   const external = isExternal(r, demo);
   return (
     <>
-      <DetailGrid info={recordInfo(r, tab, demo)} />
+      {tab === 'supplies' && !external ? (
+        <>
+          <SupplyDetails record={r} />
+          <details className="market-console-record-metadata">
+            <summary>Submission &amp; review</summary>
+            <DetailGrid info={recordInfo(r, tab, demo)} />
+          </details>
+        </>
+      ) : (
+        <DetailGrid info={recordInfo(r, tab, demo)} />
+      )}
       <h3>Requirements / commercial terms</h3>
       <p className="market-console-notes">{r.notes || 'No additional notes supplied.'}</p>
       <p className="form-note">
@@ -242,14 +254,13 @@ export function FeaturedDialogBody({
         ))}
       </div>
       <h3>Homepage content</h3>
-      <strong>{snapshot.title}</strong>
-      <p className="market-console-notes">{snapshot.description}</p>
+      <HomepageCandidateCard candidate={row} />
       <p className="form-note">
         Approval applies only to this record and its reviewed price and terms. It cannot transfer to
         a replacement or material edit.
       </p>
       {row.reason ? <p className="market-console-notes">Decision notes: {row.reason}</p> : null}
-      {row.current ? (
+      {row.current && row.fingerprint?.trim() ? (
         <DecisionForm
           placeholder="Required when rejecting; optional approval notes"
           buttons={buttons}
@@ -262,7 +273,9 @@ export function FeaturedDialogBody({
         />
       ) : (
         <p className="market-console-review-note">
-          This candidate has been superseded. Review the current candidate instead.
+          {row.current
+            ? 'The backend review fingerprint is missing. Refresh before making a homepage decision.'
+            : 'This candidate has been superseded. Review the current candidate instead.'}
         </p>
       )}
     </>
