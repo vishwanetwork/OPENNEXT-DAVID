@@ -42,14 +42,14 @@ beforeAll(() => {
 });
 afterEach(() => cleanup());
 
-const prodOrigins = {
-  site: 'https://opennextlab.ai',
-  terminal: 'https://terminal.opennextlab.ai',
-  admin: 'https://admin.opennextlab.ai',
+const prodHosts = {
+  site: 'opennextlab.ai',
+  terminal: 'terminal.opennextlab.ai',
+  admin: 'admin.opennextlab.ai',
 };
 const renderLanding = () =>
   render(
-    <Providers app="site" base="" demo={false} origins={prodOrigins}>
+    <Providers app="site" base="" demo={false} hosts={prodHosts}>
       <LandingPage />
     </Providers>,
   );
@@ -97,12 +97,16 @@ describe('landing page', () => {
     expect(generic.length).toBeGreaterThanOrEqual(1);
     generic.forEach((button) => expect(button).not.toHaveAttribute('data-preferred-role'));
   });
-  it('routes a CTA into the terminal host with the role hint as query parameters', () => {
+  const stubLocation = (host: string) => {
     const assign = vi.fn();
     Object.defineProperty(window, 'location', {
       configurable: true,
-      value: { ...window.location, assign, search: '', pathname: '/' },
+      value: { ...window.location, assign, host, hostname: host, search: '', pathname: '/' },
     });
+    return assign;
+  };
+  it('routes a CTA into the terminal host with the role hint as query parameters', () => {
+    const assign = stubLocation('opennextlab.ai');
     window.scrollTo = vi.fn();
     renderLanding();
     fireEvent.click(screen.getByRole('button', { name: 'List capacity' }));
@@ -113,6 +117,13 @@ describe('landing page', () => {
     ).toBe('seller');
     fireEvent.click(at(screen.getAllByRole('button', { name: 'Open Terminal' }), 0));
     expect(assign).toHaveBeenLastCalledWith('https://terminal.opennextlab.ai/market?role=seller');
+  });
+  it('stays on the current host when the page is opened on an unconfigured host', () => {
+    const assign = stubLocation('127.0.0.1:4188');
+    window.scrollTo = vi.fn();
+    renderLanding();
+    fireEvent.click(at(screen.getAllByRole('button', { name: 'Open Terminal' }), 0));
+    expect(assign).toHaveBeenLastCalledWith(expect.stringMatching(/^\/terminal\/market\?/));
   });
   it('supply and demand selectors remain a centered two-button group without side copy', () => {
     const { container } = renderLanding();

@@ -1,7 +1,7 @@
 'use client';
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { appHref, type AppKind, type AppOrigins } from '@/lib/apps';
+import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { appHref, appOrigins, type AppKind, type AppOrigins, type HostConfig } from '@/lib/apps';
 
 export interface AppContextValue {
   app: AppKind;
@@ -11,27 +11,47 @@ export interface AppContextValue {
   origins: AppOrigins;
   /** In-app href helper. */
   href: (path: string) => string;
-  /** Cross-app href helper (absolute on production hosts, path-based locally). */
+  /** Cross-app href helper (absolute on production hosts, path-based elsewhere). */
   crossHref: (app: AppKind, path?: string) => string;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+const subscribeNever = () => () => {};
+
+/**
+ * The host the page is viewed on. Server renders use `requestHost` (null for the statically
+ * rendered public site); the client always knows `location.hostname`, so a static page served
+ * on an unconfigured host switches its cross-app links to path mode right after hydration.
+ */
+function useCurrentHost(requestHost: string | null): string | null {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => window.location.host,
+    () => requestHost,
+  );
+}
+
 export function AppProvider({
   app,
   base,
   demo,
-  origins,
+  hosts,
+  requestHost = null,
   children,
 }: {
   app: AppKind;
   base: string;
   demo: boolean;
-  origins: AppOrigins;
+  /** Configured application hosts (SITE_HOST / TERMINAL_HOST / ADMIN_HOST). */
+  hosts: HostConfig;
+  requestHost?: string | null;
   children: ReactNode;
 }) {
-  const value = useMemo<AppContextValue>(
-    () => ({
+  const currentHost = useCurrentHost(requestHost);
+  const value = useMemo<AppContextValue>(() => {
+    const origins = appOrigins(hosts, currentHost);
+    return {
       app,
       base,
       demo,
@@ -43,9 +63,8 @@ export function AppProvider({
         if (origin.startsWith('http')) return origin + (clean === '/' ? '/' : clean);
         return appHref(origin, clean);
       },
-    }),
-    [app, base, demo, origins],
-  );
+    };
+  }, [app, base, demo, hosts, currentHost]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 

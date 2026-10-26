@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appHref, appOrigins, resolveRequest } from './apps';
+import { appHref, appOrigins, isConfiguredHost, normalizeHost, resolveRequest } from './apps';
 
 const prod = {
   site: 'opennextlab.ai',
@@ -137,5 +137,50 @@ describe('link helpers', () => {
       terminal: 'https://terminal.opennextlab.ai',
       admin: 'https://admin.opennextlab.ai',
     });
+  });
+});
+
+describe('production image opened on an unconfigured host', () => {
+  it('serves the site and terminal by path instead of redirecting to production', () => {
+    expect(resolveRequest('127.0.0.1:4188', '/', prod)).toMatchObject({ app: 'site' });
+    expect(resolveRequest('127.0.0.1:4188', '/terminal/market', prod)).toMatchObject({
+      app: 'terminal',
+      base: '/terminal',
+      internalPath: '/terminal/market',
+    });
+    expect(resolveRequest('127.0.0.1:4188', '/demo/', prod)).toMatchObject({
+      app: 'terminal',
+      base: '/demo',
+      demo: true,
+    });
+  });
+  it('serves the console by path only to loopback hosts', () => {
+    expect(resolveRequest('127.0.0.1:4188', '/admin/', prod)).toMatchObject({
+      app: 'admin',
+      base: '/admin',
+    });
+    expect(resolveRequest('localhost', '/admin/pricing', prod)).toMatchObject({
+      internalPath: '/admin/pricing',
+    });
+    expect(resolveRequest('[::1]:4188', '/admin', prod)).toMatchObject({ app: 'admin' });
+    expect(resolveRequest('203.0.113.7', '/admin/', prod)).toEqual({ kind: 'not-found' });
+    expect(resolveRequest('staging.example.com', '/admin', prod)).toEqual({ kind: 'not-found' });
+  });
+  it('keeps cross-app links on the current host', () => {
+    expect(appOrigins(prod, '127.0.0.1:4188')).toEqual({
+      site: '',
+      terminal: '/terminal',
+      admin: '/admin',
+    });
+    expect(appOrigins(prod, 'www.opennextlab.ai')).toMatchObject({
+      terminal: 'https://terminal.opennextlab.ai',
+    });
+    expect(appOrigins(prod, null)).toMatchObject({ terminal: 'https://terminal.opennextlab.ai' });
+  });
+  it('recognises configured hosts and normalises IPv6 literals', () => {
+    expect(isConfiguredHost('www.opennextlab.ai', prod)).toBe(true);
+    expect(isConfiguredHost('127.0.0.1', prod)).toBe(false);
+    expect(normalizeHost('[::1]:4188')).toBe('[::1]');
+    expect(normalizeHost('Terminal.OpenNEXTlab.ai:443')).toBe('terminal.opennextlab.ai');
   });
 });

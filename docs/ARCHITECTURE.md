@@ -66,6 +66,7 @@ src/lib  (apps, env, api client, query keys, format, session store)
 | `terminal.opennextlab.ai/demo/*`     | `src/app/terminal/*` (demo on) | `/demo`               |
 | `admin.opennextlab.ai/*`             | `src/app/admin/*`              | ``                    |
 | local `/`, `/terminal/*`, `/admin/*` | same route trees               | `/terminal`, `/admin` |
+| any other host (e.g. `127.0.0.1`)    | same route trees, by path      | `/terminal`, `/admin` |
 
 Hosts come from `SITE_HOST`, `TERMINAL_HOST`, `ADMIN_HOST` (unset locally; read by
 `src/lib/env.ts`). The proxy rewrites to the internal path and tags the request with the
@@ -78,6 +79,14 @@ const { href, crossHref } = useApp();
 <Link href={href('/market')} />                 // inside the current app
 <a href={crossHref('terminal', '/market')} />  // from the site to the terminal
 ```
+
+**Unconfigured hosts.** When the hosts are configured but a request arrives on a different host
+(the production image opened at `http://127.0.0.1:4188`, an IP, a staging alias), the apps are
+served by path on that host and cross-app links stay there instead of jumping to production.
+The console stays isolated: with `ADMIN_HOST` set, `/admin` on such a host is served to loopback
+hosts only (`localhost`, `127.0.0.1`, `[::1]`) and is a 404 otherwise; its API still requires the
+administrator session. Because the public site is statically rendered, `useApp()` resolves the
+final cross-app origins from `location.host` right after hydration (`appOrigins(hosts, host)`).
 
 Legacy entry points keep working: `/admin/`, `/terminal`, `/demo/` redirect exactly as the old
 server did, and `#terminal/<route>` / `#<page>` hashes are mapped to real paths on the client

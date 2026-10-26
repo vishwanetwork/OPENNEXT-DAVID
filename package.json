@@ -7,12 +7,12 @@
   },
   "scripts": {
     "dev": "node scripts/dev.cjs",
-    "dev:api": "PORT=4189 pnpm --filter opennext-legacy-api start",
+    "dev:api": "cd legacy && PORT=4189 node OpenNEXT-preview-server.cjs",
     "build": "pnpm -r --filter './apps/**' --filter './packages/**' build",
     "lint": "pnpm -r --filter './apps/**' --filter './packages/**' lint",
     "typecheck": "pnpm -r --filter './apps/**' --filter './packages/**' typecheck",
     "test": "pnpm -r --filter './apps/**' --filter './packages/**' test",
-    "test:legacy": "pnpm --filter opennext-legacy-api test",
+    "test:legacy": "cd legacy && node --test",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,md}\" \"packages/**/*.{ts,tsx,md}\" \"docs/**/*.md\"",
     "dev:web": "pnpm --filter @opennext/web dev"
   },

@@ -23,7 +23,8 @@ import {
  * applies to every suite regardless of import order.
  */
 
-const ORIGINS = { site: '', terminal: '/terminal', admin: '/admin' };
+/** No configured hosts: path mode, as in local development. */
+const HOSTS = {};
 
 export interface RenderWithProvidersOptions extends RenderOptions {
   app?: AppKind;
@@ -48,7 +49,7 @@ export function renderWithProviders(
   const resolvedBase = base ?? (app === 'site' ? '' : `/${app}`);
   const client = queryClient ?? testQueryClient();
   const result = render(
-    <Providers app={app} base={resolvedBase} demo={demo} origins={ORIGINS} queryClient={client}>
+    <Providers app={app} base={resolvedBase} demo={demo} hosts={HOSTS} queryClient={client}>
       {ui}
     </Providers>,
     options,

@@ -1,5 +1,5 @@
 import 'server-only';
-import { appOrigins, normalizeHosts, type AppOrigins, type HostConfig } from './apps';
+import { normalizeHosts, type HostConfig } from './apps';
 
 /**
  * Server-side runtime configuration, read once per call so one image serves every
@@ -7,7 +7,6 @@ import { appOrigins, normalizeHosts, type AppOrigins, type HostConfig } from './
  */
 export interface ServerEnv {
   hosts: HostConfig;
-  origins: AppOrigins;
   /** True only behind the production HTTPS reverse proxy: forwarded headers are then trusted. */
   trustProxy: boolean;
   /** Backend origin every /api/* request is forwarded to. */
@@ -20,7 +19,6 @@ export function serverEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   const hosts = normalizeHosts(env);
   return {
     hosts,
-    origins: appOrigins(hosts),
     trustProxy: env.OPENNEXT_TRUST_PROXY === '1',
     apiOrigin: (env.API_ORIGIN || DEFAULT_API_ORIGIN).replace(/\/$/, ''),
   };

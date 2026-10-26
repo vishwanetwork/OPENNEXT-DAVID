@@ -7,9 +7,15 @@ import { Providers } from '@/components/providers/providers';
 /** Server wrapper for the terminal and console layouts: resolves host/base from the proxy tags. */
 export async function AppShell({ app, children }: { app: AppKind; children: ReactNode }) {
   const location = await requestApp(app);
-  const { origins } = serverEnv();
+  const { hosts } = serverEnv();
   return (
-    <Providers app={location.app} base={location.base} demo={location.demo} origins={origins}>
+    <Providers
+      app={location.app}
+      base={location.base}
+      demo={location.demo}
+      hosts={hosts}
+      requestHost={location.host || null}
+    >
       {children}
     </Providers>
   );
@@ -20,9 +26,9 @@ export async function AppShell({ app, children }: { app: AppKind; children: Reac
  * request data is needed and the page can be rendered statically / revalidated.
  */
 export function SiteShell({ children }: { children: ReactNode }) {
-  const { origins } = serverEnv();
+  const { hosts } = serverEnv();
   return (
-    <Providers app="site" base="" demo={false} origins={origins}>
+    <Providers app="site" base="" demo={false} hosts={hosts}>
       {children}
     </Providers>
   );

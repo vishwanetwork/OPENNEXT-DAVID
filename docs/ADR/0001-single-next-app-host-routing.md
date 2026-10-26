@@ -28,3 +28,5 @@ session seeding, and a second routing layer for the host split.
 - Links never hard-code a prefix: `useApp().href()` / `crossHref()`.
 - Host-specific behaviour is testable as a pure function (`src/lib/apps.test.ts`).
 - The demo sandbox is a base-path variant of the terminal (`/demo`), not a separate app.
+- A request on a host that is not configured (IP, `localhost`, staging alias) is served in path
+  mode with links that stay on that host; `/admin` there is loopback-only when `ADMIN_HOST` is set.

@@ -11,6 +11,11 @@
  *   /terminal/*  terminal   (/terminal/demo/* = isolated demo workspace)
  *   /admin/*     admin
  *
+ * A request whose host is not one of the configured hosts (e.g. the production image opened
+ * at http://127.0.0.1:4188) is served in path mode as well, so links stay on that host instead
+ * of jumping to production. The console keeps its isolation: with ADMIN_HOST configured,
+ * `/admin` on an unknown host is only served to loopback hosts, otherwise it is a 404.
+ *
  * `resolveRequest` is a pure function so it can be unit-tested and reused by the
  * proxy (edge) and by server components. It never touches `process.env`.
  */
@@ -55,8 +60,11 @@ export const APP_SEGMENT: Record<AppKind, string> = {
 
 export function normalizeHost(raw: string | null | undefined): string {
   const [first = ''] = String(raw || '').split(',');
-  const [host = ''] = first.split(':');
-  return host.trim().toLowerCase();
+  const value = first.trim().toLowerCase();
+  // Bracketed IPv6 literal, optionally with a port: `[::1]:4188` -> `[::1]`.
+  if (value.startsWith('[')) return value.slice(0, value.indexOf(']') + 1) || value;
+  const [host = ''] = value.split(':');
+  return host;
 }
 
 export function normalizeHosts(env: Record<string, string | undefined>): HostConfig {
@@ -65,6 +73,29 @@ export function normalizeHosts(env: Record<string, string | undefined>): HostCon
     return value || undefined;
   };
   return { site: pick('SITE_HOST'), terminal: pick('TERMINAL_HOST'), admin: pick('ADMIN_HOST') };
+}
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** `localhost`, `*.localhost`, `127.0.0.1` or `[::1]` (as returned by normalizeHost). */
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK.has(host) || host.endsWith('.localhost');
+}
+
+/** True when the hosts split the apps across domains (production). */
+export function isSplit(hosts: HostConfig): boolean {
+  return Boolean(hosts.site && (hosts.terminal || hosts.admin));
+}
+
+/** True when `host` is one of the configured application hosts (apex, `www.` apex or app host). */
+export function isConfiguredHost(host: string, hosts: HostConfig): boolean {
+  if (!host) return false;
+  return (
+    host === hosts.site ||
+    (Boolean(hosts.site) && host === `www.${hosts.site}`) ||
+    host === hosts.terminal ||
+    host === hosts.admin
+  );
 }
 
 const stripTrailing = (pathname: string) =>
@@ -89,7 +120,9 @@ export function resolveRequest(
   const host = normalizeHost(hostHeader);
   const onAdmin = Boolean(hosts.admin) && host === hosts.admin;
   const onTerminal = Boolean(hosts.terminal) && host === hosts.terminal;
-  const split = Boolean(hosts.site && (hosts.terminal || hosts.admin));
+  const known = isConfiguredHost(host, hosts);
+  // Cross-host redirects only apply on the configured public host; any other host uses paths.
+  const split = known && isSplit(hosts);
 
   if (onAdmin) {
     // The console host serves only the console. Legacy `/admin/` links land on `/`.
@@ -115,6 +148,8 @@ export function resolveRequest(
     if (split && hosts.admin)
       return { kind: 'redirect', location: `https://${hosts.admin}${admin}`, permanent: true };
     if (split) return { kind: 'not-found' };
+    // Unknown host with a dedicated console host configured: loopback only.
+    if (!known && hosts.admin && !isLoopbackHost(host)) return { kind: 'not-found' };
     return serve('admin', '/admin', admin);
   }
   const terminal = matchPrefix(pathname, '/terminal');
@@ -151,9 +186,15 @@ export interface AppOrigins {
   admin: string;
 }
 
-export function appOrigins(hosts: HostConfig): AppOrigins {
-  const split = Boolean(hosts.site && (hosts.terminal || hosts.admin));
-  if (!split) return { site: '', terminal: '/terminal', admin: '/admin' };
+const PATH_ORIGINS: AppOrigins = { site: '', terminal: '/terminal', admin: '/admin' };
+
+/**
+ * Cross-app origins. Absolute production URLs only when the apps are split across hosts and
+ * the current host (when known) is one of them; otherwise path-based, staying on this host.
+ */
+export function appOrigins(hosts: HostConfig, currentHost?: string | null): AppOrigins {
+  if (!isSplit(hosts)) return PATH_ORIGINS;
+  if (currentHost && !isConfiguredHost(normalizeHost(currentHost), hosts)) return PATH_ORIGINS;
   return {
     site: `https://${hosts.site}`,
     terminal: hosts.terminal ? `https://${hosts.terminal}` : '/terminal',
