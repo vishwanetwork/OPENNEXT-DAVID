@@ -6,6 +6,7 @@ Monorepo for the OpenNEXT website (`opennextlab.ai`), the Capacity Terminal
 - `apps/web` — Next.js front-end serving all three hosts (path-based locally)
 - `packages/contracts` — API schemas shared with the backend team
 - `legacy` — the previous implementation; its Node server is the interim backend
+- `AGENTS.md` — project map and rules for AI coding agents (Codex reads it automatically)
 - `docs` — [architecture](docs/ARCHITECTURE.md), [conventions](docs/CONVENTIONS.md),
   [API contract and backend hand-off](docs/API_CONTRACT.md),
   [migration status](docs/MIGRATION_STATUS.md), [decision records](docs/ADR/README.md),
