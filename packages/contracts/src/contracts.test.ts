@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AdminInstancesResponse,
   BillingAccount,
   CreditTopup,
   CuratedRfqsResponse,
@@ -104,5 +105,48 @@ describe('pricing', () => {
     expect(record.gpuCount).toBe(8);
     const ticker = TickerResponse.parse({ records: [{ gpuModel: 'H100', term: 'Spot' }, null] });
     expect(ticker.records).toHaveLength(1);
+  });
+});
+
+describe('admin instances', () => {
+  const instance = {
+    id: 'f8dcd7d2-147e-48dc-89b1-18bd7f145499',
+    tenantId: 'integration-partner',
+    orderId: 'order-10001',
+    rfqId: 'order-10001',
+    model: 'L4',
+    gpuCount: 1,
+    term: 'Spot',
+    region: 'us-west-2',
+    zone: 'us-west-2c',
+    instanceType: 'g6.2xlarge',
+    instanceId: 'i-0123456789abcdef0',
+    generation: 3,
+    state: 'ACTIVE',
+    lifecycle: 'Running',
+    error: null,
+    degraded: null,
+    priceCeilingHourlyUsd: '0.95',
+    estimatedCostUsd: '0.420000',
+    budgetUsd: '3.00',
+    createdAt: '2026-10-27T03:00:00+00:00',
+    expiresAt: '2026-10-28T00:00:00+00:00',
+    closedAt: null,
+  };
+
+  it('parses a page of allocations and rejects unknown lifecycles', () => {
+    const page = AdminInstancesResponse.parse({
+      instances: [instance],
+      nextCursor: '50',
+      asOf: '2026-10-27T03:01:00+00:00',
+    });
+    expect(page.instances[0]?.lifecycle).toBe('Running');
+    expect(
+      AdminInstancesResponse.safeParse({
+        instances: [{ ...instance, lifecycle: 'Paused' }],
+        nextCursor: null,
+        asOf: 'x',
+      }).success,
+    ).toBe(false);
   });
 });

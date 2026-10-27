@@ -9,6 +9,7 @@ import { stampUtc } from '@/lib/format';
 import { useOperationsInventory } from '../hooks';
 import { Head } from '../components/forms';
 import { InstanceFilters } from './instance-filters';
+import { AllocationsView } from './instance-allocations';
 import {
   INSTANCE_TERMS,
   collectedRows,
@@ -22,8 +23,32 @@ import {
 export function InstancesPage() {
   const params = useSearchParams();
   const term = instanceTerm(params.get('term')) || 'Spot';
-  const terminal = params.get('view') === 'terminal';
+  const view = params.get('view');
+  if (view === 'allocations') return <AllocationsPage term={term} />;
+  const terminal = view === 'terminal';
   return <InstanceCatalogView key={term + ':' + terminal} term={term} terminal={terminal} />;
+}
+
+function AllocationsPage({ term }: { term: InstanceTerm }) {
+  const { href } = useApp();
+  const path = (view: string) =>
+    href('/instances?' + new URLSearchParams({ term, view }).toString());
+  return (
+    <>
+      <Head
+        title="Instances"
+        copy="Purchased GPU allocations across accounts, with their authoritative lifecycle."
+      />
+      <nav className="ops-tabs" aria-label="Instance views">
+        <Link href={path('collected')}>Collected prices</Link>
+        <Link href={path('terminal')}>Terminal feed</Link>
+        <Link href={path('allocations')} aria-current="page">
+          Allocations
+        </Link>
+      </nav>
+      <AllocationsView />
+    </>
+  );
 }
 
 function InstanceCatalogView({ term, terminal }: { term: InstanceTerm; terminal: boolean }) {
@@ -82,6 +107,7 @@ function InstanceCatalogView({ term, terminal }: { term: InstanceTerm; terminal:
             <Link href={path(term, 'terminal')} aria-current={terminal ? 'page' : undefined}>
               Terminal feed
             </Link>
+            <Link href={path(term, 'allocations')}>Allocations</Link>
           </div>
         </div>
         <InstanceFilters

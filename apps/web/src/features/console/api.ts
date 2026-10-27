@@ -1,4 +1,5 @@
 import {
+  AdminInstancesResponse,
   AdminSessionOk,
   MarketplaceSnapshot,
   ProvidersResponse,
@@ -55,6 +56,11 @@ export const adminApi = {
   },
   contacts: async (api: ApiClient, signal?: AbortSignal) =>
     LeadsResponse.parse(await api.get('/api/admin/contacts', { signal })),
+  /** Purchased GPU allocations across accounts, served by the SpotOrderBot backend. */
+  instances: async (api: ApiClient, signal?: AbortSignal, params: Record<string, string> = {}) =>
+    AdminInstancesResponse.parse(
+      await api.get('/api/admin/instances?' + new URLSearchParams(params), { signal }),
+    ),
   publicMarket: async (api: ApiClient, signal?: AbortSignal) =>
     PublicMarketResponse.parse(
       requireLists(await api.get('/api/marketplace/public', { signal }), ['supplies', 'rfqs']),
