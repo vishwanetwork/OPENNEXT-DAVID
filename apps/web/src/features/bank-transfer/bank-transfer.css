@@ -1,0 +1,96 @@
+.bank-transfer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+}
+.bank-transfer-summary > div {
+  display: grid;
+  gap: 6px;
+}
+.bank-transfer-summary span,
+.bank-transfer-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.bank-transfer-summary strong {
+  font-size: 20px;
+}
+.bank-transfer-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--soft);
+  color: var(--ink);
+}
+.bank-transfer-card h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-size: 19px;
+}
+.bank-transfer-card h3 span {
+  color: var(--green);
+  font-size: 14px;
+}
+.bank-transfer-bank {
+  margin: 6px 0 22px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.bank-transfer-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px 24px;
+  margin: 0;
+}
+.bank-transfer-fields dt {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bank-transfer-fields dd {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.bank-transfer-fields .bank-transfer-code {
+  font-family: monospace;
+  font-size: 15px;
+}
+.bank-transfer-full {
+  grid-column: 1 / -1;
+}
+.bank-transfer-correspondent {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.bank-transfer-correspondent h4 {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bank-transfer-correspondent p {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.bank-transfer-unavailable,
+.bank-transfer-pending {
+  padding: 12px 0;
+  line-height: 1.6;
+}
+@media (max-width: 560px) {
+  .bank-transfer-card {
+    padding: 16px;
+  }
+  .bank-transfer-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

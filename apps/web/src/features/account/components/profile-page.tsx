@@ -8,6 +8,7 @@ import { initialsOf, profileIdentity, verificationFor } from '../ssh-keys';
 import { useAccountRef } from '../hooks';
 import { AccountIcons } from '@/components/icons';
 import { SshKeyLibrary } from './ssh-key-library';
+import { BuyerKybButton } from '@/features/buyer-kyb';
 import '../account.css';
 
 /** Profile page (legacy `OpenNEXTAccountProfile.page`). */
@@ -55,18 +56,22 @@ export function ProfilePage() {
           ))}
         </dl>
         <div className="onx-account-verification">
-          <button
-            type="button"
-            className={`onx-account-verify ${check.kind}`}
-            data-act="account-verification"
-            onClick={() => openModal(role === 'seller' ? 'review' : 'account-verification')}
-          >
-            <AccountIcons.shield />
-            <span>{check.label}</span>
-            {check.status ? (
-              <span className="onx-account-review-status">{check.status}</span>
-            ) : null}
-          </button>
+          {role === 'buyer' ? (
+            <BuyerKybButton />
+          ) : (
+            <button
+              type="button"
+              className={`onx-account-verify ${check.kind}`}
+              data-act="account-verification"
+              onClick={() => openModal('review')}
+            >
+              <AccountIcons.shield />
+              <span>{check.label}</span>
+              {check.status ? (
+                <span className="onx-account-review-status">{check.status}</span>
+              ) : null}
+            </button>
+          )}
         </div>
       </section>
       <SshKeyLibrary />

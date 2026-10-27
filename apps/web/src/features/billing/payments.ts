@@ -3,10 +3,7 @@ import type { CreditTopup, SessionUser } from '@opennext/contracts';
 import { create } from 'zustand';
 import { asRole, type Role } from '@/terminal-kit';
 
-export const METHODS: [string, string][] = [
-  ['credit_card', 'Credit card'],
-  ['paypal', 'PayPal'],
-];
+export const METHODS: [string, string][] = [['bank_transfer', 'Bank transfer']];
 export const PRESETS = [100, 500, 1000];
 
 export interface PaymentDraft {

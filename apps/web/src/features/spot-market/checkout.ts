@@ -5,6 +5,7 @@
  * freeze, demo/preview rows never purchasable) can be unit-tested without a DOM.
  */
 import type { CreditBalanceResult, PurchaseResult } from '@/terminal-kit';
+import type { BankTransferRequest } from '@/lib/buyer-kyb';
 import { round, usd, type SpotRow } from './inventory';
 
 export const CHECKOUT_STORAGE = 'opennext:pending-spot-purchase:v1:';
@@ -129,6 +130,8 @@ export interface CheckoutDeps {
   setBalance: (value: number) => void;
   inventory: () => SpotRow[];
   service: () => SpotCheckoutService;
+  verifyKyb?: () => Promise<boolean>;
+  beginBankTransfer?: (input: BankTransferRequest) => Promise<boolean>;
   validateSsh: (value: unknown) => Promise<string>;
   storage: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   now: () => number;
@@ -492,6 +495,9 @@ export class SpotCheckout {
         throw new Error(
           'This purchase flow is for testing only. No Credit was charged and no order or instance was created.',
         );
+      if (!(await this.deps.verifyKyb?.()))
+        throw new Error('Complete Buyer KYB approval before purchasing capacity.');
+      if (this.pending() !== draft || this.deps.owner() !== draft.owner) return;
       const balance = await this.refreshCredit();
       confirmDetails();
       if (Math.round(balance * 100) < expectedPricing.totalCents) {
@@ -548,6 +554,52 @@ export class SpotCheckout {
     }
   }
 
+  async chooseDirect(): Promise<void> {
+    const draft = this.pending();
+    if (!draft || draft.busy) return;
+    draft.busy = true;
+    this.notify();
+    try {
+      const row = this.liveRow();
+      const hours = durationHours(draft.hoursRaw);
+      const expected = signature(row);
+      if (draft.stage !== 'payment' || draft.paymentSubmitted || draft.reviewRequired)
+        throw new Error('Review the purchase before choosing bank transfer.');
+      if (this.deps.isDemo() || row.previewOnly || row.sourceKind !== 'agent')
+        throw new Error('Bank transfers are unavailable for Demo inventory.');
+      if (!(await this.deps.verifyKyb?.()))
+        throw new Error('Complete Buyer KYB approval before purchasing capacity.');
+      if (this.pending() !== draft || this.deps.owner() !== draft.owner) return;
+      if (
+        this.deps.role() !== 'buyer' ||
+        signature(this.liveRow()) !== expected ||
+        durationHours(draft.hoursRaw) !== hours
+      )
+        throw new Error('Your account or purchase changed. Review it before continuing.');
+      if (!this.deps.beginBankTransfer)
+        throw new Error('Bank transfer is not connected yet. No payment request was created.');
+      const started = await this.deps.beginBankTransfer({
+        purpose: 'order',
+        currency: 'USD',
+        offerId: row.id,
+        amountCents: checkoutTotals(row, hours).totalCents,
+        durationHours: hours,
+        sshPublicKey: draft.sshPublicKey || null,
+        purchaseReference: this.purchaseReference() || undefined,
+        idempotencyKey: draft.idempotencyKey,
+      });
+      if (!started && this.pending() === draft)
+        throw new Error(
+          'Bank transfer instructions could not be confirmed. Please retry or contact support. No payment was taken.',
+        );
+    } catch (error) {
+      if (this.pending() === draft) this.showError((error as Error).message);
+    } finally {
+      draft.busy = false;
+      this.notify();
+    }
+  }
+
   /** Legacy `data-act="spot-checkout-*"` dispatcher. */
   action(act: string): boolean {
     if (!act.startsWith('spot-checkout-')) return false;
@@ -596,9 +648,7 @@ export class SpotCheckout {
         if (draft.stage === 'confirm' && !draft.busy) this.openTopup();
         return true;
       case 'spot-checkout-direct':
-        this.showError(
-          'Direct Pay is not connected yet. No payment was taken and no order was created.',
-        );
+        void this.chooseDirect();
         return true;
       case 'spot-checkout-authorize':
         void this.authorizeCredit();

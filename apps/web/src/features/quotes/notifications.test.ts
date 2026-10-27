@@ -14,6 +14,25 @@ const user = { id: 'u1', role: 'buyer', onboardingCompleted: true };
 const owner = ownerKey(user, false);
 
 describe('notifications', () => {
+  it('only exposes KYB shortcuts for explicit buyer KYB notifications, never arbitrary URLs', () => {
+    const items = notices(
+      [
+        {
+          id: 'approved',
+          kind: 'buyer_kyb',
+          kybStatus: 'Approved',
+          actionUrl: 'https://untrusted.test',
+        },
+        { id: 'supplier', kind: 'supplier_kyb', kybStatus: 'Approved' },
+        { id: 'invalid', kind: 'buyer_kyb', kybStatus: 'Paid' },
+      ],
+      new Set(),
+    );
+    expect(items.find((item) => item.id === 'approved')?.buyerKybStatus).toBe('Approved');
+    expect(items.find((item) => item.id === 'supplier')?.buyerKybStatus).toBeUndefined();
+    expect(items.find((item) => item.id === 'invalid')?.buyerKybStatus).toBeUndefined();
+    expect(items[0]).not.toHaveProperty('actionUrl');
+  });
   it('scopes rows to the verified account and dedupes notices by id, newest first', () => {
     const rows = accountRows(
       [

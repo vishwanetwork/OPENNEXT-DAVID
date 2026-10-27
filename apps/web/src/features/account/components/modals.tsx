@@ -5,45 +5,13 @@ import { useToast } from '@/components/ui/toast';
 import {
   ModalFrame,
   useCloseModal,
-  useTerminalSlots,
   type ModalComponent,
   type ModalComponents,
 } from '@/terminal-kit';
 import { useAccountService } from '../hooks';
 import { UNCONFIGURED } from '../ssh-keys';
 import { useKeyLibrary } from '../hooks';
-
-function VerificationModal() {
-  const closeModal = useCloseModal();
-  const { openContact } = useTerminalSlots();
-  return (
-    <div className="onx-account-dialog">
-      <p>
-        Buyer identity verification is not connected yet. Contact OpenNEXT support if verification
-        is required for your order.
-      </p>
-      <p className="form-note">
-        No documents have been submitted and no approval has been granted.
-      </p>
-      <div className="modal-footer">
-        <button type="button" className="btn secondary" data-act="close-modal" onClick={closeModal}>
-          Close
-        </button>
-        <button
-          type="button"
-          className="btn"
-          data-act="account-contact-support"
-          onClick={() => {
-            closeModal();
-            openContact({ message: 'I would like help with account verification.' });
-          }}
-        >
-          Contact support
-        </button>
-      </div>
-    </div>
-  );
-}
+import { BuyerKybContent } from '@/features/buyer-kyb';
 
 function AddKeyModal() {
   const { connected: serviceConnected } = useAccountService();
@@ -189,8 +157,8 @@ declare module '@/terminal-kit/modal' {
 }
 
 const VerificationDialog: ModalComponent<'account-verification'> = ({ close }) => (
-  <ModalFrame title="Identity verification" close={close}>
-    <VerificationModal />
+  <ModalFrame title="Business verification" eyebrow="BUYER KYB" wide close={close}>
+    <BuyerKybContent />
   </ModalFrame>
 );
 const AddKeyDialog: ModalComponent<'account-ssh-add'> = ({ close }) => (

@@ -30,6 +30,8 @@ import {
 } from '@/terminal-kit';
 import { countryFor } from '@/features/market';
 import { fingerprint, validatePublicKey } from '@/features/account';
+import { useBuyerKyb } from '@/features/buyer-kyb';
+import { useStartBankTransfer } from '@/features/bank-transfer';
 import {
   agentInventory,
   inventoryState,
@@ -87,6 +89,8 @@ interface LatestDeps {
   role: ReturnType<typeof useWorkspaceStore.getState>['role'];
   identity: string;
   refreshBilling: ReturnType<typeof useRefreshBillingAccount>;
+  verifyKyb: () => Promise<boolean>;
+  beginBankTransfer: ReturnType<typeof useStartBankTransfer>['start'];
 }
 
 interface EngineState {
@@ -128,6 +132,8 @@ function buildEngine(client: QueryClient): SpotCheckout {
     inventory: () => useSpotEngineStore.getState().inventory,
     service: () =>
       deps().services.spotCheckout || { refreshBillingAccount: () => deps().refreshBilling() },
+    verifyKyb: () => deps().verifyKyb(),
+    beginBankTransfer: (input) => deps().beginBankTransfer(input),
     validateSsh: async (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
@@ -170,6 +176,8 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
   const role = useWorkspaceStore((s) => s.role);
   const identity = useAccountIdentity();
   const refreshBilling = useRefreshBillingAccount();
+  const { refreshApproved: verifyKyb } = useBuyerKyb();
+  const bankTransfer = useStartBankTransfer();
   const client = useQueryClient();
   const snapshot: LatestDeps = {
     openModal,
@@ -183,6 +191,8 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
     role,
     identity,
     refreshBilling,
+    verifyKyb,
+    beginBankTransfer: bankTransfer.start,
   };
   const value = useMemo<EngineContextValue>(() => {
     // First publication happens before the children render; later renders update it below.

@@ -21,6 +21,8 @@ import {
 import { NotificationBell } from '@/features/quotes';
 import { SshKeyLibrary, accountModals } from '@/features/account';
 import { ContactDialog } from '@/features/site';
+import { buyerKybModals } from '@/features/buyer-kyb';
+import { bankTransferModals } from '@/features/bank-transfer';
 
 /**
  * Composition root of the Capacity Terminal. This is the only module that knows every
@@ -34,6 +36,8 @@ const MODALS = composeModals(
   instanceModals,
   spotCheckoutModals,
   accountModals,
+  buyerKybModals,
+  bankTransferModals,
 );
 
 function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']): TerminalSlots {

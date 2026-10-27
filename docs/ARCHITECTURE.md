@@ -1,5 +1,15 @@
 # OpenNEXT architecture
 
+## Buyer verification and bank transfer extension
+
+`features/buyer-kyb` owns Buyer forms and payment gates separately from supplier review.
+`features/bank-transfer` owns shared top-up / Direct Pay instructions; `features/console-buyer-kyb`
+owns private operations review. Optional ports in `lib/buyer-kyb.ts` have no live adapters until
+secure backend contracts exist. Modals register in the Terminal composition root; `/admin/kyb`
+defaults to Buyer, while `?tab=supplier` preserves the existing supplier queue.
+ISO country data lives in `lib/countries.ts` with the procurement re-export retained, avoiding a
+Buyer KYB / procurement import cycle. See [the handoff](BUYER_KYB_HANDOFF.md) for activation gates.
+
 One Next.js application serves three hosts; one independent backend serves `/api/*`. Decisions
 with lasting consequences are recorded in [`docs/ADR/`](ADR/README.md).
 

@@ -4,6 +4,7 @@
  * (show the legacy "not connected yet" copy) rather than fabricate a result.
  */
 import type { Instance } from '@opennext/contracts';
+import type { BankTransferService, BuyerKybService } from '@/lib/buyer-kyb';
 
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
@@ -64,6 +65,8 @@ export interface PurchaseContext {
 }
 
 export interface TerminalServices {
+  buyerKyb?: BuyerKybService;
+  bankTransfer?: BankTransferService;
   account?: AccountService;
   instanceLifecycle?: InstanceLifecycleAdapter;
   spotCheckout?: SpotCheckoutService;

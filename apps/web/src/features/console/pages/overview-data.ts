@@ -71,7 +71,11 @@ export function recentOperations(
       event,
       actor: row.actor || row.by || 'Not recorded',
       at: row.at,
-      path: '/' + target + '?record=' + encodeURIComponent(id),
+      path:
+        '/' +
+        target +
+        (target === 'kyb' ? '?tab=supplier&record=' : '?record=') +
+        encodeURIComponent(id),
     });
   }
   for (const row of topups) {

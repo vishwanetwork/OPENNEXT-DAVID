@@ -5,6 +5,7 @@ import { money } from '@/lib/format';
 import { useToast } from '@/components/ui/toast';
 import { useApi } from '@/components/providers/api-context';
 import { RfqDetails } from '@/features/rfq-details';
+import { BuyerKybGate, useBuyerKyb } from '@/features/buyer-kyb';
 import { useTerminal } from '@/terminal-kit';
 import { procurementApi } from '../api';
 import { currentFees } from '../fees';
@@ -18,6 +19,7 @@ export function AcceptReview({ r, q }: { r: OwnedRfq; q: Quote | undefined }) {
   const api = useApi();
   const toast = useToast();
   const { run, busy } = useRunServer();
+  const kyb = useBuyerKyb();
   const accept = () =>
     void run(async () => {
       if (!r.serverRecord || !q) throw new Error('Refresh the verified quotation record.');
@@ -25,11 +27,13 @@ export function AcceptReview({ r, q }: { r: OwnedRfq; q: Quote | undefined }) {
         throw new Error(
           'Request an updated quote with the complete fee breakdown before acceptance.',
         );
+      if (!(await kyb.refreshApproved()))
+        throw new Error('Complete Buyer KYB approval before accepting a quote.');
       await procurementApi.decideQuote(api, r.id, q.id, 'accept');
       toast('Supplier selected. The order awaits payment integration.');
     });
   return (
-    <>
+    <BuyerKybGate returnTo="billing">
       <div className="details-grid">
         <Field label="Supplier" value={q?.provider} />
         <Field label="Base unit price" value={money(q?.price) + unitSuffix(r)} />
@@ -64,7 +68,7 @@ export function AcceptReview({ r, q }: { r: OwnedRfq; q: Quote | undefined }) {
           Confirm acceptance
         </PBtn>
       </div>
-    </>
+    </BuyerKybGate>
   );
 }
 

@@ -52,6 +52,13 @@ export function NotificationRows({
           <span>
             <strong>{n.title}</strong>
             <span className="qp-notification-copy">{n.message}</span>
+            {n.buyerKybStatus && (
+              <span className="qp-notification-copy">
+                {n.buyerKybStatus === 'Approved'
+                  ? 'Continue to bank transfer →'
+                  : 'Review your KYB →'}
+              </span>
+            )}
             <time dateTime={n.createdAt}>{formatDate(n.createdAt)}</time>
           </span>
         </button>
