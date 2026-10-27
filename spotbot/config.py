@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
+    # Bot API for the OpenNEXT Spot market (catalog, purchases, instances); empty disables it.
+    # The adapter authenticates with SPOTBOT_API_KEY and keeps rentals in this tenant.
+    spotbot_opennext_bot_url: str = ""
+    spotbot_opennext_tenant: str = Field("opennext", pattern=r"^[A-Za-z0-9_.-]{1,100}$")
+    # Optional gateway API for customer SSH entry points of running rentals.
+    spotbot_opennext_gateway_url: str = ""
+    spotbot_opennext_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)
