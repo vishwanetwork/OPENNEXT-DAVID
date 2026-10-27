@@ -95,9 +95,12 @@ class RentalEngine:
     def create(self, request, tenant_id, key):
         rules = request.rfq
         payload = request.model_dump(mode="json")
-        # Preserve idempotency fingerprints accepted before this optional field existed.
+        # Preserve idempotency fingerprints accepted before these optional fields existed.
         if not payload["rfq"]["initial_image_ids"]:
             payload["rfq"].pop("initial_image_ids")
+        for name in ("ssh_public_key", "customer_ref"):
+            if payload["rfq"][name] is None:
+                payload["rfq"].pop(name)
         fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()
         rental_id = identity("rental", tenant_id, key)
         existing = self.db.get("rental", rental_id)
@@ -154,6 +157,8 @@ class RentalEngine:
                 "root_volume_gib",
                 "data_disks",
                 "ssh_key_name",
+                "ssh_public_key",
+                "customer_ref",
                 "ssh_user",
                 "http_port",
                 "http_health_path",
@@ -1005,7 +1010,7 @@ class RentalEngine:
                         "host": ip,
                         "port": 22,
                         "user": rules.ssh_user,
-                        "key_reference": rules.ssh_key_name,
+                        "key_reference": rules.ssh_key_name or "customer-public-key",
                     },
                     http=f"http://{ip}:{rules.http_port}" if rules.http_port else None,
                 ),

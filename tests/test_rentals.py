@@ -468,10 +468,23 @@ def test_every_rental_region_requires_an_interruption_queue():
     assert Settings(**dict(values, spotbot_rental_regions="us-west-2")).rental_regions == ["us-west-2"]
 
 
+def test_customer_reference_is_part_of_the_idempotent_request(rental_env):
+    env = rental_env
+    request = env.request.model_copy(deep=True)
+    request.rfq.customer_ref = "opennext:user-1"
+    row, created = env.engine.create(request, "tenant-a", "customer-order")
+    assert created and row["rfq"]["customer_ref"] == "opennext:user-1"
+    other = request.model_copy(deep=True)
+    other.rfq.customer_ref = "opennext:user-2"
+    with pytest.raises(ValueError, match="idempotency_key_conflict"):
+        env.engine.create(other, "tenant-a", "customer-order")
+
+
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
     env = rental_env
     old = env.request.model_dump(mode="json")
-    old["rfq"].pop("initial_image_ids")
+    for name in ("initial_image_ids", "ssh_public_key", "customer_ref"):
+        old["rfq"].pop(name)  # A client from before these optional fields existed.
     from spotbot.storage.common import dump
 
     row, _ = env.engine.create(env.request, "tenant-a", "old-client")

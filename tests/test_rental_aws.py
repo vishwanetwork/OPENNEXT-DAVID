@@ -311,3 +311,72 @@ async def test_interruption_is_confirmed_from_spot_request_status(native_backend
     query = next(p for _, m, p in calls if m == "describe_spot_instance_requests")
     assert query["Filters"] == [{"Name": "instance-id", "Values": ["i-12345678"]}]
 
+
+def openssh_key(kind="ssh-ed25519", size=32, comment="customer@laptop"):
+    import base64
+    import struct
+
+    name = kind.encode()
+    blob = struct.pack(">I", len(name)) + name + struct.pack(">I", size) + b"k" * size
+    return f"{kind} {base64.b64encode(blob).decode()} {comment}"
+
+
+async def test_customer_public_key_is_installed_at_boot_without_an_ec2_key_pair(native_backend):
+    import base64
+    import subprocess
+
+    env, backend, calls, image = native_backend
+    key = openssh_key()
+    rules = env.request.rfq.model_copy(update={"ssh_key_name": None, "ssh_public_key": key})
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, rules)
+    payload = next(p for _, m, p in calls if m == "run_instances")
+    assert "KeyName" not in payload
+    script = payload["UserData"]
+    assert base64.b64encode(key.encode()).decode() in script
+    assert 'grep -qxF "$key"' in script  # Re-running on a restored disk adds no duplicate.
+    assert subprocess.run(["bash", "-n"], input=script.encode()).returncode == 0
+    # The largest accepted key still fits EC2's 16 KB user-data limit.
+    big = openssh_key("ssh-rsa", 2800, "x" * 200)
+    assert len(big) <= 4096
+    rules = rules.model_copy(update={"ssh_public_key": big})
+    await backend.launch({"id": "rental"}, gen, env.offer, rules)
+    assert len([p for _, m, p in calls if m == "run_instances"][-1]["UserData"].encode()) < 16384
+
+
+async def test_key_pair_and_public_key_can_be_combined(native_backend):
+    env, backend, calls, image = native_backend
+    rules = env.request.rfq.model_copy(update={"ssh_public_key": openssh_key()})
+    gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
+    await backend.launch({"id": "rental"}, gen, env.offer, rules)
+    payload = next(p for _, m, p in calls if m == "run_instances")
+    assert payload["KeyName"] == rules.ssh_key_name and "authorized_keys" in payload["UserData"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "ssh-ed25519 not-base64!",
+        "ssh-dss AAAAB3NzaC1kc3MAAAA= old",
+        "ssh-ed25519 " + __import__("base64").b64encode(b"\x00\x00\x00\x07ssh-rsa").decode(),
+        "ssh-ed25519 AAAA\nssh-ed25519 AAAA",
+    ],
+)
+def test_public_keys_must_be_one_valid_openssh_line(rental_env, value):
+    from pydantic import ValidationError
+
+    rfq = rental_env.request.rfq.model_dump(mode="json")
+    with pytest.raises(ValidationError):
+        type(rental_env.request.rfq).model_validate({**rfq, "ssh_public_key": value})
+
+
+def test_rfq_needs_a_key_pair_or_a_public_key(rental_env):
+    from pydantic import ValidationError
+
+    rfq = rental_env.request.rfq.model_dump(mode="json")
+    model = type(rental_env.request.rfq)
+    with pytest.raises(ValidationError, match="ssh_key_name_or_ssh_public_key_required"):
+        model.model_validate({**rfq, "ssh_key_name": None})
+    accepted = model.model_validate({**rfq, "ssh_key_name": None, "ssh_public_key": openssh_key()})
+    assert accepted.ssh_public_key.startswith("ssh-ed25519 ")
+

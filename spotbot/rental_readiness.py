@@ -225,18 +225,23 @@ class Readiness:
 
     def region(self, rules, region, account):
         config = self.settings.model_copy(
-            update={"spotbot_aws_regions": region, "spotbot_aws_key_name": rules.ssh_key_name}
+            update={
+                "spotbot_aws_regions": region,
+                "spotbot_aws_key_name": rules.ssh_key_name or self.settings.spotbot_aws_key_name,
+            }
         )
         provider = AWSProvider(config, None, session=self.session)
         ec2 = provider._client(region)
         checks, candidates = [], []
         try:
-            key = ec2.describe_key_pairs(KeyNames=[rules.ssh_key_name])["KeyPairs"]
-            checks.append(
-                check(
-                    "ssh_key_registered", len(key) == 1 and key[0]["KeyName"] == rules.ssh_key_name
+            if rules.ssh_key_name:
+                key = ec2.describe_key_pairs(KeyNames=[rules.ssh_key_name])["KeyPairs"]
+                checks.append(
+                    check(
+                        "ssh_key_registered",
+                        len(key) == 1 and key[0]["KeyName"] == rules.ssh_key_name,
+                    )
                 )
-            )
             offers = provider._collect()
             for offer in offers:
                 d = offer.details

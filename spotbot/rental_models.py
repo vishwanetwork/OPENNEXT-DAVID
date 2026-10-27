@@ -16,6 +16,33 @@ from pydantic import (
 
 from spotbot.models import gpu_model
 
+PUBLIC_KEY_TYPES = {
+    "ssh-ed25519",
+    "ssh-rsa",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "sk-ssh-ed25519@openssh.com",
+    "sk-ecdsa-sha2-nistp256@openssh.com",
+}
+
+
+def valid_public_key(value):
+    """One OpenSSH public key line whose encoded blob names the same key type."""
+    import base64
+    import re
+    import struct
+
+    match = re.fullmatch(r"(\S+) ([A-Za-z0-9+/]+={0,3})(?: [ -~]{0,200})?", value.strip())
+    if not match or match.group(1) not in PUBLIC_KEY_TYPES:
+        return False
+    try:
+        blob = base64.b64decode(match.group(2), validate=True)
+        (length,) = struct.unpack(">I", blob[:4])
+        return blob[4 : 4 + length].decode() == match.group(1)
+    except (ValueError, struct.error, UnicodeDecodeError):
+        return False
+
 
 class RulesModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -78,8 +105,13 @@ class RFQ(RulesModel):
     allow_older_backup: bool = False
     allow_cross_region: bool = False
     backup: BackupRule = Field(default_factory=BackupRule)
-    ssh_key_name: str = Field(min_length=1, max_length=255)
+    # An EC2 key pair registered in every RFQ Region, a customer public key installed for
+    # ssh_user at boot, or both. At least one is required.
+    ssh_key_name: str | None = Field(None, min_length=1, max_length=255)
+    ssh_public_key: str | None = Field(None, max_length=4096)
     ssh_user: str = Field("ubuntu", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
+    # Opaque upstream customer reference, so an upstream can list one customer's rentals.
+    customer_ref: str | None = Field(None, min_length=1, max_length=200)
     http_port: int | None = Field(None, ge=1, le=65535)
     http_health_path: str = Field("/health", pattern=r"^/[A-Za-z0-9/_-]*$")
     require_gateway_ack: bool = True
@@ -98,10 +130,21 @@ class RFQ(RulesModel):
             raise ValueError("invalid_aws_region")
         return list(dict.fromkeys(value))
 
+    @field_validator("ssh_public_key")
+    @classmethod
+    def openssh_public_key(cls, value):
+        if value is None:
+            return value
+        if not valid_public_key(value):
+            raise ValueError("ssh_public_key_must_be_one_openssh_public_key")
+        return value.strip()
+
     @model_validator(mode="after")
     def compatible_times_and_disks(self):
         import re
 
+        if not self.ssh_key_name and not self.ssh_public_key:
+            raise ValueError("ssh_key_name_or_ssh_public_key_required")
         if self.initial_image_ids and (
             set(self.initial_image_ids) != set(self.regions)
             or any(not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", v) for v in self.initial_image_ids.values())
