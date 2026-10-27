@@ -328,7 +328,8 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             invalid_key = any(e["loc"] == ("sshPublicKey",) for e in exc.errors())
             return error(
                 400,
-                "Enter a valid OpenSSH public key."
+                "Add a valid SSH public key in the purchase review; this offer requires one. "
+                "No order was created."
                 if invalid_key
                 else "The purchase request is invalid. No order was created.",
                 code="INVALID_PURCHASE",
