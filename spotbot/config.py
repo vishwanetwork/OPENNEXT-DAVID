@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     spotbot_rental_initial_images: str = "{}"
     spotbot_rental_public_url: str = ""
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
+    # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
+    spotbot_opennext_legacy_origin: str = ""
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)
