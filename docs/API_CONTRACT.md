@@ -91,6 +91,21 @@ availability, observedAt, effectiveAt, sourceUrl, priceKind, stale, currency, op
 | POST   | `/api/marketplace/supplies/:id/agent`                        |                                  | installation status                                          |
 | POST   | `/api/marketplace/instances/:id/resell`                      |                                  | `201 { supply }`                                             |
 | POST   | `/api/marketplace/quote-interest`                            | `{ supplyId }`                   | interest receipt                                             |
+| POST   | `/api/marketplace/spot-purchases`                            | see below                        | `{ confirmed, orderId, totalCents, … }`                      |
+
+`POST /api/marketplace/spot-purchases` (`billing` contracts
+`SpotPurchaseRequest` / `SpotPurchaseResponse`) is Spot "Buy Now" from the Terminal Spot market, served by SpotOrderBot.
+The body is `{ pricingVersion: "duration-v1", offerId, durationHours, expectedPricing,
+sshPublicKey, idempotencyKey }`, where `expectedPricing` is the checkout's `checkoutTotals` result.
+The server verifies a signed-in, non-demo Buyer session, CSRF and same origin, recomputes the
+totals from the current offer (409 `PRICE_CHANGED`; 409 `OFFER_UNAVAILABLE` when the offer left
+the market) and starts acquiring a Spot server for the customer's key (required; 400 without a
+valid key). A retry with the same `idempotencyKey` returns the same `orderId`; reusing it for
+another offer or duration is 409 `IDEMPOTENCY_CONFLICT`. Any 4xx means no order was created, so
+the checkout returns to review; other failures leave the purchase pending for a retry. **No
+Credit is charged yet.** The order then appears in `GET /api/marketplace/me` `instances` with
+`id` equal to `orderId`, `status` `pending` → `active` (or `recovering`, `ended`), `rate` per
+GPU-hour, `serviceEnd`, and gateway SSH details (`sshHost`, `sshPort`, `sshUser`) once running.
 
 Record semantics (receipts, revisions, idempotency, fees 5 % each side, review states) are
 specified in `legacy/docs/TERMINAL_CONSOLE_SYNC.md` and `legacy/README.md` ("Order fees").
@@ -336,7 +351,10 @@ purchase as part of price collection.
 request to the legacy API unchanged (`Host`, cookies, CSRF header and `Set-Cookie` intact), so
 pointing `API_ORIGIN` at it keeps every other feature working while routes move to Python one at a
 time. Run it on a private listener the web server reaches directly, not behind a host-routing
-reverse proxy.
+reverse proxy. It also serves the Terminal Spot market: it adds its orderable Spot offers to
+`GET /api/marketplace/public` `supplies` (published rows with `term: "Spot"`, `gpuCount`, `vcpu`,
+`memory`, `perGpuHourly`), answers `POST /api/marketplace/spot-purchases`, and adds the
+customer's Spot orders to `GET /api/marketplace/me` `instances`.
 
 Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
 (`auth`, `marketplace`, `billing`, `pricing`, `news`, `contact`, `demo`, `admin`, `account`).
@@ -364,7 +382,8 @@ contract coverage merely because their pages and read-only view models are prese
    set (see `docs/MIGRATION_STATUS.md`). Derive the expected origin from the forwarded protocol
    when `OPENNEXT_TRUST_PROXY=1`.
 6. **Endpoints still missing** (the UI fails closed with the legacy "not connected" copy):
-   credit purchase (`beginPurchase` / `getCreditBalance`), account SSH keys, instance
+   Credit balance and debit for purchases (`getCreditBalance`; `beginPurchase` now creates Spot
+   orders through `/api/marketplace/spot-purchases` without charging), account SSH keys, instance
    termination. Their expected shapes are in `apps/web/src/terminal-kit/services.ts`.
 
 Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.

@@ -541,6 +541,12 @@ export class SpotCheckout {
       this.clearStored();
       this.deps.open('spot-purchase-complete');
     } catch (error) {
+      // A definite refusal (HTTP 4xx) created no order, so the purchase can be reviewed again.
+      const status = (error as { status?: unknown }).status;
+      if (draft.paymentSubmitted && typeof status === 'number' && status >= 400 && status < 500) {
+        draft.paymentSubmitted = false;
+        this.savePending();
+      }
       this.showError((error as Error).message);
     } finally {
       draft.busy = false;

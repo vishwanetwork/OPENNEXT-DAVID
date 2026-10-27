@@ -12,12 +12,15 @@ import {
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import type { BillingAccount } from '@opennext/contracts';
+import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
+import type { ApiClient } from '@/lib/api/client';
 import { queryKeys } from '@/lib/api/query-keys';
 import { useSessionStore } from '@/lib/session-store';
 import {
   useAccountIdentity,
   useBalance,
+  useInvalidateWorkspace,
   useIsDemo,
   usePublicMarket,
   useRefreshBillingAccount,
@@ -38,6 +41,7 @@ import {
   type SpotRow,
 } from './inventory';
 import { SpotCheckout } from './checkout';
+import { spotMarketApi } from './api';
 import { useSpotMarketStore } from './store';
 
 export { usePublicMarket };
@@ -87,6 +91,8 @@ interface LatestDeps {
   role: ReturnType<typeof useWorkspaceStore.getState>['role'];
   identity: string;
   refreshBilling: ReturnType<typeof useRefreshBillingAccount>;
+  api: ApiClient;
+  invalidateWorkspace: ReturnType<typeof useInvalidateWorkspace>;
 }
 
 interface EngineState {
@@ -126,8 +132,16 @@ function buildEngine(client: QueryClient): SpotCheckout {
       );
     },
     inventory: () => useSpotEngineStore.getState().inventory,
-    service: () =>
-      deps().services.spotCheckout || { refreshBillingAccount: () => deps().refreshBilling() },
+    // Purchases go to the backend's Spot purchase endpoint unless the host injects a service.
+    service: () => ({
+      refreshBillingAccount: () => deps().refreshBilling(),
+      beginPurchase: async (input) => {
+        const result = await spotMarketApi.purchase(deps().api, input);
+        void deps().invalidateWorkspace();
+        return result;
+      },
+      ...deps().services.spotCheckout,
+    }),
     validateSsh: async (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
@@ -170,6 +184,8 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
   const role = useWorkspaceStore((s) => s.role);
   const identity = useAccountIdentity();
   const refreshBilling = useRefreshBillingAccount();
+  const api = useApi();
+  const invalidateWorkspace = useInvalidateWorkspace();
   const client = useQueryClient();
   const snapshot: LatestDeps = {
     openModal,
@@ -183,6 +199,8 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
     role,
     identity,
     refreshBilling,
+    api,
+    invalidateWorkspace,
   };
   const value = useMemo<EngineContextValue>(() => {
     // First publication happens before the children render; later renders update it below.

@@ -9,6 +9,8 @@ import {
   PriceRecord,
   SessionResponse,
   SettlementsResponse,
+  SpotPurchaseRequest,
+  SpotPurchaseResponse,
   TickerResponse,
   WorkspaceResponse,
 } from './index';
@@ -61,6 +63,34 @@ describe('marketplace', () => {
       rows: [{ id: 'ORD-1', model: 'H100', settledAt: '2026-10-01T00:00:00Z' }, 42],
     });
     expect(settlements.rows.map((r) => r.id)).toEqual(['ORD-1']);
+  });
+  it('keeps the Spot purchase contract', () => {
+    const request = {
+      pricingVersion: 'duration-v1',
+      offerId: 'spotbot-us-west-2-g6.xlarge',
+      durationHours: 1.5,
+      expectedPricing: {
+        currency: 'USD',
+        durationHours: 1.5,
+        hourlyCents: 39,
+        baseCents: 59,
+        feeCents: 3,
+        totalCents: 62,
+      },
+      sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA buyer@laptop',
+      idempotencyKey: '7f0c1e9e-2b1d-4c55-9a43-0d6f6a1d2c11',
+    };
+    expect(SpotPurchaseRequest.parse(request).expectedPricing.totalCents).toBe(62);
+    expect(SpotPurchaseRequest.safeParse({ ...request, pricingVersion: 'v0' }).success).toBe(false);
+    const confirmed = SpotPurchaseResponse.parse({
+      confirmed: true,
+      offerId: request.offerId,
+      orderId: '0b7c7a52-55b8-4f0e-8a37-6bb0d1f3c7d2',
+      currency: 'USD',
+      durationHours: 1.5,
+      totalCents: 62,
+    });
+    expect(confirmed.orderId).toHaveLength(36);
   });
 });
 
