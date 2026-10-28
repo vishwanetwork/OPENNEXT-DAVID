@@ -338,6 +338,13 @@ async def test_workspace_adds_the_customers_own_rentals(env):
     theirs = await client.get("/api/marketplace/me", headers={"Cookie": "session=other"})
     pending = theirs.json()["instances"][1]
     assert pending["status"] == "pending" and pending["sshHost"] is None
+    # Retried launches raise the generation; only a replacement after delivery reconnects.
+    fakes.rentals[0].update(state="PROVISIONING", generation=3)
+    retried = await client.get("/api/marketplace/me", headers={"Cookie": "session=other"})
+    assert retried.json()["instances"][1]["status"] == "pending"
+    fakes.rentals[0]["recovery_started_at"] = "2026-10-28T02:00:00+00:00"
+    replacing = await client.get("/api/marketplace/me", headers={"Cookie": "session=other"})
+    assert replacing.json()["instances"][1]["status"] == "recovering"
     signed_out = await client.get("/api/marketplace/me")
     assert signed_out.json()["instances"] == [{"id": "legacy-1"}]
 

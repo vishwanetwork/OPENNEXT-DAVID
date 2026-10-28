@@ -249,8 +249,9 @@ def instance_status(row):
         return "active"
     if state in {"ENDING", "CLOSED"}:
         return "ended"
-    # A replacement after a Spot interruption reconnects; a first acquisition is pending.
-    if state == "RECOVERING" or (state in PENDING and row.get("generation", 0) > 1):
+    # A replacement after an interruption reconnects; a first acquisition is pending. The
+    # generation counts launch attempts, so only the bot's recovery marker tells them apart.
+    if state == "RECOVERING" or (state in PENDING and row.get("recovery_started_at")):
         return "recovering"
     return "pending" if state in PENDING else state.lower()
 
