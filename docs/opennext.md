@@ -15,7 +15,7 @@ keeps every other OpenNEXT feature working.
 | POST   | `/api/marketplace/spot-purchases`       | Spot "Buy Now": creates a protected rental for the customer's public key |
 | GET    | `/api/marketplace/me`                   | Existing workspace plus the customer's rentals in `instances` |
 | GET    | `/api/billing/account`                  | Existing Credit less open Spot charges (`spotCharges`)        |
-| GET/PUT | `/api/marketplace/instances/{id}/ssh-keys` | The customer keys installed on one of their Spot instances |
+| GET/PUT/POST | `/api/marketplace/instances/{id}/ssh-keys` | The customer keys installed on one of their Spot instances |
 | POST   | `/api/marketplace/instances/{id}/end`   | End one of the customer's Spot instances (`{"confirmation":"END"}`) |
 | GET/POST | `/api/account/ssh-keys`               | The account's saved SSH public keys (`{label, publicKey}` to add) |
 | DELETE | `/api/account/ssh-keys/{id}`            | Remove a saved key (instances keep keys already installed)    |
@@ -96,7 +96,7 @@ delivered rental early is not refunded: the duration is prepaid. Charges for an 
 serialized in one process, so run a single adapter instance.
 
 **SSH keys.** The account key library (`/api/account/ssh-keys`, up to 50 keys) only stores keys.
-`PUT /api/marketplace/instances/{id}/ssh-keys` with `{"keys": [...]}` replaces the keys on one
+`PUT` (or `POST`) `/api/marketplace/instances/{id}/ssh-keys` with `{"keys": [...]}` replaces the keys on one
 instance through the bot (`PUT /v1/rentals/{id}/ssh-keys`); the guest agent installs them for
 `ubuntu` within about 15 seconds, also on replacement servers, and `installed` turns true once
 the running server has them. No administrator SSH key is involved.

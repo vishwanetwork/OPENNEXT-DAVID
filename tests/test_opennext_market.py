@@ -547,5 +547,5 @@ async def test_instance_keys_and_end_for_the_owner_only(env):
     ended = await write(client, "POST", end, {"confirmation": "END"})
     assert ended.status_code == 200 and ended.json()["confirmed"] is True
     assert ended.json()["instance"]["id"] == order and ended.json()["instance"]["status"] == "ended"
-    late = await write(client, "PUT", path, {"keys": [KEY]})
+    late = await write(client, "POST", path, {"keys": [KEY]})  # POST is accepted as PUT.
     assert late.status_code == 409

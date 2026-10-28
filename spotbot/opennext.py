@@ -557,7 +557,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         except (httpx.HTTPError, ValueError):
             return error(503, "SSH keys are temporarily unavailable.")
 
-    @app.put("/api/marketplace/instances/{rental_id}/ssh-keys")
+    @app.api_route("/api/marketplace/instances/{rental_id}/ssh-keys", methods=["PUT", "POST"])
     async def set_instance_keys(request: Request, rental_id: str):
         _, rental, failed = await own_rental(request, rental_id, write=True)
         if failed:
