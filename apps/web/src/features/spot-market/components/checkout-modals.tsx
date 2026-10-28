@@ -1,6 +1,7 @@
 'use client';
 
 import { ModalFrame, type ModalComponent, type ModalComponents } from '@/terminal-kit';
+import { BuyerKybGate } from '@/features/buyer-kyb';
 import {
   CompleteBody,
   CreditConfirmBody,
@@ -20,19 +21,25 @@ declare module '@/terminal-kit/modal' {
 
 const ReviewModal: ModalComponent<'spot-review'> = ({ close }) => (
   <ModalFrame title={<PendingTitle fallback="Review Spot purchase" />} close={close}>
-    <ReviewBody />
+    <BuyerKybGate returnTo="spot">
+      <ReviewBody />
+    </BuyerKybGate>
   </ModalFrame>
 );
 
 const PaymentChoiceModal: ModalComponent<'spot-payment-choice'> = ({ close }) => (
   <ModalFrame title={<PendingTitle fallback="Choose payment" />} close={close}>
-    <PaymentChoiceBody />
+    <BuyerKybGate returnTo="spot">
+      <PaymentChoiceBody />
+    </BuyerKybGate>
   </ModalFrame>
 );
 
 const CreditConfirmModal: ModalComponent<'spot-credit-confirm'> = ({ close }) => (
   <ModalFrame title={<PendingTitle fallback="Confirm Credit payment" />} close={close}>
-    <CreditConfirmBody />
+    <BuyerKybGate returnTo="spot">
+      <CreditConfirmBody />
+    </BuyerKybGate>
   </ModalFrame>
 );
 

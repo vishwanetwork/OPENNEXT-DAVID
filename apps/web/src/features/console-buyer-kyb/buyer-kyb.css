@@ -1,0 +1,194 @@
+.app-console .buyer-kyb-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line, #dce3db);
+  padding-bottom: 12px;
+}
+.app-console .buyer-kyb-tabs a {
+  color: #526451;
+  text-decoration: none;
+  padding: 9px 16px;
+  border-radius: 6px;
+}
+.app-console .buyer-kyb-tabs a[aria-current='page'] {
+  color: #fff;
+  background: #283d2b;
+}
+.app-console .buyer-kyb-heading {
+  margin-bottom: 24px;
+}
+.app-console .buyer-kyb-heading h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+.app-console .buyer-kyb-heading p,
+.app-console .buyer-kyb-note {
+  color: #687567;
+  line-height: 1.6;
+}
+.app-console .buyer-kyb-state {
+  background: #f4f6ef;
+  border: 1px solid #dbe3d6;
+  border-radius: 8px;
+  padding: 16px 20px;
+  line-height: 1.6;
+}
+.app-console .buyer-kyb-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  padding: 20px;
+}
+.app-console .buyer-kyb-field {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  color: #586755;
+}
+.app-console .buyer-kyb-field input,
+.app-console .buyer-kyb-field select,
+.app-console .buyer-kyb-field textarea {
+  min-height: 38px;
+  border: 1px solid #d3ddd1;
+  border-radius: 5px;
+  padding: 9px 12px;
+  background: white;
+  color: #1e2c21;
+  font: inherit;
+}
+.app-console .buyer-kyb-toolbar .buyer-kyb-field:first-child {
+  flex: 1;
+}
+.app-console .buyer-kyb-status,
+.app-console .buyer-kyb-eyebrow {
+  font-size: 12px;
+  color: #476144;
+}
+.app-console .buyer-kyb-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: #6b7769;
+}
+.app-console .buyer-kyb-empty h2 {
+  font-size: 17px;
+  color: #31452e;
+}
+.app-console .buyer-kyb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 30px;
+  background: #12221666;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.app-console .buyer-kyb-modal {
+  width: min(900px, 100%);
+  max-height: calc(100dvh - 60px);
+  overflow-y: auto;
+  background: #fff;
+  color: #263624;
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 24px 80px #17251133;
+}
+.app-console .buyer-kyb-reject {
+  width: min(540px, 100%);
+}
+.app-console .buyer-kyb-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.app-console .buyer-kyb-modal h2 {
+  font-size: 23px;
+  margin: 6px 0 18px;
+}
+.app-console .buyer-kyb-modal h3 {
+  margin: 24px 0 10px;
+  font-size: 17px;
+}
+.app-console .buyer-kyb-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 30px;
+  padding: 22px 0;
+  border-top: 1px solid #e0e6dd;
+  border-bottom: 1px solid #e0e6dd;
+}
+.app-console .buyer-kyb-fields dt {
+  font-size: 12px;
+  color: #73816f;
+  margin-bottom: 7px;
+}
+.app-console .buyer-kyb-fields dd {
+  font-size: 14px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.app-console .buyer-kyb-documents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.app-console .buyer-kyb-documents li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e0e6dd;
+  padding: 15px 0;
+}
+.app-console .buyer-kyb-documents li div {
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.app-console .buyer-kyb-documents span,
+.app-console .buyer-kyb-documents small {
+  color: #687567;
+  font-size: 12px;
+}
+.app-console .buyer-kyb-confirm {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.app-console .buyer-kyb-confirm input {
+  margin-top: 4px;
+}
+.app-console .buyer-kyb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+.app-console .buyer-kyb-error {
+  color: #9d312c;
+  line-height: 1.6;
+}
+@media (max-width: 640px) {
+  .app-console .buyer-kyb-toolbar {
+    flex-wrap: wrap;
+  }
+  .app-console .buyer-kyb-toolbar .buyer-kyb-field:first-child {
+    flex-basis: 100%;
+  }
+  .app-console .buyer-kyb-overlay {
+    padding: 12px;
+  }
+  .app-console .buyer-kyb-modal {
+    max-height: calc(100dvh - 24px);
+    padding: 20px;
+  }
+  .app-console .buyer-kyb-fields {
+    grid-template-columns: 1fr;
+  }
+}

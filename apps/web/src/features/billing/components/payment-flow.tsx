@@ -1,14 +1,12 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { useApi } from '@/components/providers/api-context';
+import { useState, type FormEvent } from 'react';
+import { useStartBankTransfer } from '@/features/bank-transfer';
 import { useToast } from '@/components/ui/toast';
-import { useSessionStore } from '@/lib/session-store';
-import { useRefreshBillingAccount, useTerminal } from '@/terminal-kit';
-import { billingApi } from '../api';
+import { useTerminal } from '@/terminal-kit';
 import { usd } from '../analytics';
 import { useOwnTopups, usePaymentIdentity } from '../hooks';
-import { METHODS, PRESETS, usePaymentStore, validAmount, validRequest } from '../payments';
+import { METHODS, PRESETS, usePaymentStore, validAmount } from '../payments';
 import { Btn } from './payment-ui';
 
 export function PaymentAmount({
@@ -116,79 +114,22 @@ export function PaymentAmount({
 
 export function PaymentMethod() {
   const { openModal } = useTerminal();
-  const api = useApi();
-  const toast = useToast();
   const owner = usePaymentIdentity();
-  const ownerRef = useRef(owner);
-  useLayoutEffect(() => {
-    ownerRef.current = owner;
-  }, [owner]);
-  const userId = useSessionStore((s) => s.user?.id);
-  const refreshBillingAccount = useRefreshBillingAccount();
-  const draft = usePaymentStore((s) => s.draft);
-  const update = usePaymentStore((s) => s.update);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const mounted = useRef(true);
-  useEffect(
-    () => () => {
-      mounted.current = false;
-    },
-    [],
-  );
-  if (!draft) return <p>Start a new credit top-up.</p>;
-  const back = () => {
-    if (draft.submitted)
-      return toast(
-        'This request may already be recorded. Retry the same details or check your notifications.',
-      );
-    openModal('pay-start', {
-      purchaseReference: draft.purchaseReference || '',
-      orderId: draft.orderId || undefined,
-    });
-  };
+  const draft = usePaymentStore((state) => state.draft);
+  const transfer = useStartBankTransfer();
+  if (!draft || draft.owner !== owner) return <p>Start a new credit top-up.</p>;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const method = String(new FormData(event.currentTarget).get('method') || '');
     const current = usePaymentStore.getState().draft;
-    if (!current || !owner || current.owner !== owner || !METHODS.some(([m]) => m === method))
-      return toast('Choose an amount and payment method in your signed-in account.');
-    if (current.busy) return;
-    if (current.submitted && current.method !== method)
-      return toast(
-        'This request may already be recorded. Retry the same payment method or check your notifications.',
-      );
-    update({ busy: true, method });
-    setBusy(true);
-    setError('');
-    const stillCurrent = () =>
-      ownerRef.current === owner &&
-      usePaymentStore.getState().draft?.idempotencyKey === current.idempotencyKey &&
-      mounted.current;
-    try {
-      update({ submitted: true });
-      const result = await billingApi.createTopup(api, {
-        amount: current.amount,
-        method: method as 'credit_card' | 'paypal',
-        idempotencyKey: current.idempotencyKey,
-        ...(current.purchaseReference ? { purchaseReference: current.purchaseReference } : {}),
-      });
-      if (!stillCurrent()) return;
-      const checked = { ...current, method };
-      if (!validRequest(result.request, checked, userId))
-        throw new Error(
-          'The top-up request was not confirmed. Check your notifications before trying again.',
-        );
-      const request = result.request;
-      update({ requestId: request.id });
-      openModal('payment-topup-status', { id: request.id });
-      refreshBillingAccount().catch(() => {});
-    } catch (failure) {
-      if (stillCurrent()) setError((failure as Error).message);
-    } finally {
-      update({ busy: false });
-      if (mounted.current) setBusy(false);
-    }
+    if (!current || current.owner !== owner || !validAmount(current.amount)) return;
+    await transfer.start({
+      purpose: 'topup',
+      amountCents: Math.round(current.amount * 100),
+      currency: 'USD',
+      idempotencyKey: current.idempotencyKey,
+      ...(current.orderId ? { orderId: current.orderId } : {}),
+      ...(current.purchaseReference ? { purchaseReference: current.purchaseReference } : {}),
+    });
   };
   return (
     <>
@@ -198,34 +139,44 @@ export function PaymentMethod() {
       </div>
       <form data-form="payment-method" onSubmit={submit}>
         <div className="payment-methods">
-          {METHODS.map(([value, label], index) => (
+          {METHODS.map(([value, label]) => (
             <label key={value} className="payment-method">
-              <input
-                type="radio"
-                name="method"
-                value={value}
-                defaultChecked={draft.method ? draft.method === value : index === 0}
-                required
-              />
+              <input type="radio" name="method" value={value} checked readOnly />
               <span>
                 <strong>{label}</strong>
+                <small>USD · subject to KYB approval</small>
               </span>
             </label>
           ))}
         </div>
         <p className="form-note">
-          Submit your top-up request for payment verification. Credit is added only after operations
-          approves the received funds. Promotional credit cannot be withdrawn.
+          Credit is added only after operations confirms receipt of your bank transfer. Card and
+          online payment providers are not available yet.
         </p>
-        <div className="payment-error form-note" role="alert" hidden={!error}>
-          {error}
-        </div>
+        {!transfer.connected && (
+          <p className="form-note" role="status">
+            Bank transfer instructions are not connected yet. No payment request will be submitted.
+          </p>
+        )}
+        {transfer.error && (
+          <p className="payment-error form-note" role="alert">
+            {transfer.error}
+          </p>
+        )}
         <div className="modal-footer">
-          <Btn act="payment-amount-back" onClick={back}>
+          <Btn
+            act="payment-amount-back"
+            onClick={() =>
+              openModal('pay-start', {
+                purchaseReference: draft.purchaseReference || '',
+                orderId: draft.orderId || undefined,
+              })
+            }
+          >
             Back
           </Btn>
-          <button className="btn" type="submit" disabled={busy}>
-            Proceed to payment
+          <button className="btn" type="submit" disabled={transfer.busy || !transfer.connected}>
+            {transfer.busy ? 'Checking…' : 'Proceed to payment'}
           </button>
         </div>
       </form>

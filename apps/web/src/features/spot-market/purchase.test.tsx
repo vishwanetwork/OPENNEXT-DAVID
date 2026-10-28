@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/terminal-kit';
 import { CHECKOUT_MODALS, type SpotCheckout } from './checkout';
 import { spotCheckoutModals } from './components/checkout-modals';
 import type { SpotRow } from './inventory';
+import { serviceFixture } from '@/features/buyer-kyb/test-fixtures';
 import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
 
 const offer = {
@@ -81,7 +82,13 @@ describe('Spot purchase', () => {
       <SpotCheckoutProvider>
         <Probe />
       </SpotCheckoutProvider>,
-      { billing: { availableCredit: 100, promotionalCredit: 100 }, workspace: {}, queryClient },
+      {
+        billing: { availableCredit: 100, promotionalCredit: 100 },
+        workspace: {},
+        queryClient,
+        // Purchases require an approved Buyer KYB.
+        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+      },
     );
     await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
     expect(seen.rows[0]?.sourceKind).toBe('agent');

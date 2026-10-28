@@ -102,7 +102,7 @@ export function PaymentChoiceBody() {
         >
           <span>
             <strong>Direct Pay</strong>
-            <small>Pay with a payment provider</small>
+            <small>Pay by bank transfer</small>
           </span>
           <span aria-hidden="true">→</span>
         </button>

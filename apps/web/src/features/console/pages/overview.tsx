@@ -57,9 +57,9 @@ export function OverviewPage() {
     },
     {
       label: 'Pending KYB Requests',
-      value: market?.kyb.filter((r) => r.status === 'Reviewing').length,
+      value: undefined,
       path: '/kyb',
-      note: 'Due diligence awaiting review',
+      note: 'Buyer KYB summary · Awaiting backend',
     },
     {
       label: 'Pending Contact Requests',

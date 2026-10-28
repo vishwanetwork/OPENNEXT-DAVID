@@ -18,6 +18,7 @@ export interface Notice {
   orderId?: string;
   rfqId?: string;
   topupId?: string;
+  buyerKybStatus?: 'Approved' | 'Rejected';
 }
 
 export interface NotificationPreferences {
@@ -81,6 +82,10 @@ export function notices(rows: Record_[], readIds: ReadonlySet<string>): Notice[]
         orderId: typeof n.orderId === 'string' ? n.orderId : undefined,
         rfqId: typeof n.rfqId === 'string' ? n.rfqId : undefined,
         topupId: typeof n.topupId === 'string' ? n.topupId : undefined,
+        buyerKybStatus:
+          n.kind === 'buyer_kyb' && ['Approved', 'Rejected'].includes(String(n.kybStatus))
+            ? (n.kybStatus as 'Approved' | 'Rejected')
+            : undefined,
       });
   return [...unique.values()].sort(
     (a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0),

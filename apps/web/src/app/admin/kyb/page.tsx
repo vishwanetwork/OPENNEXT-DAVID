@@ -1,4 +1,4 @@
-import { MarketplaceInboxPage } from '@/features/console-marketplace';
+import { KybReviewWorkspace } from '@/features/console-buyer-kyb';
 export default function Page() {
-  return <MarketplaceInboxPage tab="kyb" />;
+  return <KybReviewWorkspace />;
 }

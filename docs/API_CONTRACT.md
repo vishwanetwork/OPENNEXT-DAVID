@@ -95,6 +95,8 @@ availability, observedAt, effectiveAt, sourceUrl, priceKind, stale, currency, op
 
 `POST /api/marketplace/spot-purchases` (`billing` contracts
 `SpotPurchaseRequest` / `SpotPurchaseResponse`) is Spot "Buy Now" from the Terminal Spot market, served by SpotOrderBot.
+The Terminal calls it only after Buyer KYB is approved (see the Buyer KYB notes below; until
+that backend is connected, checkout stops before this call).
 The body is `{ pricingVersion: "duration-v1", offerId, durationHours, expectedPricing,
 sshPublicKey, idempotencyKey }`, where `expectedPricing` is the checkout's `checkoutTotals` result.
 The server verifies a signed-in, non-demo Buyer session, CSRF and same origin, recomputes the
@@ -378,6 +380,11 @@ reverse proxy. It also serves the Terminal Spot market: it adds its orderable Sp
 `GET /api/marketplace/public` `supplies` (published rows with `term: "Spot"`, `gpuCount`, `vcpu`,
 `memory`, `perGpuHourly`), answers `POST /api/marketplace/spot-purchases`, and adds the
 customer's Spot orders to `GET /api/marketplace/me` `instances`.
+
+Buyer KYB and bank transfer are **not connected**. See [the Buyer KYB handoff](BUYER_KYB_HANDOFF.md)
+for frontend-only scope, proposed endpoints, private file transport, ALLScale review, notifications
+and server-side payment gates. Optional ports in `src/lib/buyer-kyb.ts` are not wire contracts.
+Never send Buyer data to supplier KYB or disguise bank transfers as card payments.
 
 Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
 (`auth`, `marketplace`, `billing`, `pricing`, `news`, `contact`, `demo`, `admin`, `account`).

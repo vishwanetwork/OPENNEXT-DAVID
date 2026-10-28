@@ -129,7 +129,8 @@ export function useOpenNotice() {
     (n: Notice) => {
       store.markRead([n.id]);
       store.setPanel(false);
-      if (n.topupId) openModal('payment-topup-status', { id: n.topupId });
+      if (n.buyerKybStatus) openModal('buyer-kyb', { returnTo: 'topup' });
+      else if (n.topupId) openModal('payment-topup-status', { id: n.topupId });
       else if (n.orderId) {
         if (ownedOrders.some((o) => o.id === n.orderId)) openModal('bill-order', { id: n.orderId });
         else go('billing');

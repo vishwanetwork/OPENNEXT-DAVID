@@ -74,12 +74,16 @@ function setup({
   storage = new Map<string, string>(),
   service,
   begin = true,
+  verifyKyb = async () => true,
+  beginBankTransfer,
 }: {
   rows?: unknown[];
   demo?: boolean;
   storage?: Map<string, string>;
   service?: SpotCheckoutService;
   begin?: boolean;
+  verifyKyb?: CheckoutDeps['verifyKyb'];
+  beginBankTransfer?: CheckoutDeps['beginBankTransfer'];
 } = {}): Env {
   let inventory = normalizeInjected(rows);
   const ctx: Env['ctx'] = {
@@ -106,6 +110,8 @@ function setup({
     },
     inventory: () => inventory,
     service: () => service || {},
+    verifyKyb,
+    beginBankTransfer,
     validateSsh: async (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
@@ -181,6 +187,85 @@ function deferred<T>() {
 }
 
 describe('Spot checkout totals', () => {
+  it('blocks Credit payment when current Buyer KYB is not approved', async () => {
+    let calls = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      verifyKyb: async () => false,
+      service: {
+        getCreditBalance: async () => wallet(),
+        beginPurchase: async (input) => {
+          calls++;
+          return confirmation(input);
+        },
+      },
+    });
+    await toPayment(env);
+    await env.engine.chooseCredit();
+    await env.engine.authorizeCredit();
+    expect(calls).toBe(0);
+    expect(env.ctx.messages.at(-1)).toMatch(/KYB approval/);
+  });
+  it('routes Direct Pay through bank transfer with aggregate amount and duration', async () => {
+    const requests: Parameters<NonNullable<CheckoutDeps['beginBankTransfer']>>[0][] = [];
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      beginBankTransfer: async (input) => {
+        requests.push(input);
+        return true;
+      },
+    });
+    await toPayment(env, '', '2');
+    await env.engine.chooseDirect();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      purpose: 'order',
+      amountCents: 3024,
+      durationHours: 2,
+      offerId: 'offer-one',
+      currency: 'USD',
+    });
+    expect(env.ctx.orders).toHaveLength(0);
+    expect(env.ctx.balance).toBe(100);
+  });
+  it('never starts a bank transfer for Demo or unapproved KYB', async () => {
+    let calls = 0;
+    for (const demo of [true, false]) {
+      const env = setup({
+        rows: [agent],
+        demo,
+        verifyKyb: async () => false,
+        beginBankTransfer: async () => {
+          calls++;
+          return true;
+        },
+      });
+      await toPayment(env);
+      await env.engine.chooseDirect();
+    }
+    expect(calls).toBe(0);
+  });
+  it('ignores account changes during a pending KYB recheck', async () => {
+    const gate = deferred<boolean>();
+    let calls = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      verifyKyb: () => gate.promise,
+      beginBankTransfer: async () => {
+        calls++;
+        return true;
+      },
+    });
+    await toPayment(env);
+    const pending = env.engine.chooseDirect();
+    env.ctx.userId = 'another-buyer';
+    gate.resolve(true);
+    await pending;
+    expect(calls).toBe(0);
+  });
   it('review uses editable duration, aggregate computation and a flat 5% fee', () => {
     const { row } = setup();
     const total = checkoutTotals(row);
@@ -232,7 +317,7 @@ describe('Spot checkout safety', () => {
     await toPayment(env);
     expect(env.engine.pending()?.sshPublicKey).toBe('');
     env.engine.action('spot-checkout-direct');
-    expect(env.ctx.messages.at(-1)).toMatch(/not connected/);
+    expect(env.ctx.messages.at(-1)).toMatch(/unavailable for Demo/);
     expect(env.ctx.balance).toBe(100);
   });
   it('invalid/private SSH stays on review; valid public key persists across modal navigation', async () => {

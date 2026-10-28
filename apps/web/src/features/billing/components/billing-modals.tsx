@@ -1,9 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { BuyerKybGate } from '@/features/buyer-kyb';
 import { ModalFrame, type ModalComponent, type ModalComponents } from '@/terminal-kit';
-import { useBillingData } from '../hooks';
-import { PaymentAmount, PaymentMethod, PaymentProvider, TopupStatus } from './payment-modals';
+import { useBillingData, usePaymentIdentity } from '../hooks';
+import { usePaymentStore } from '../payments';
+import { PaymentAmount, PaymentMethod, TopupStatus } from './payment-modals';
 import { OrderModal } from './order-modal';
 import { CashoutDetail, CashoutStart, Measurement, RecordModal } from './billing-dialogs';
 
@@ -78,19 +80,41 @@ const PayStartModal: ModalComponent<'pay-start' | 'topup' | 'pay-checkout'> = ({
   close,
 }) => (
   <ModalFrame title="Add credit" close={close}>
-    <PaymentAmount
-      orderId={modal.orderId}
-      purchaseReference={modal.purchaseReference}
-      spotCheckout={modal.spotCheckout === true}
-    />
+    <BuyerKybGate
+      returnTo="topup"
+      topupContext={{
+        orderId: modal.orderId,
+        purchaseReference: modal.purchaseReference,
+        spotCheckout: modal.spotCheckout === true,
+      }}
+    >
+      <PaymentAmount
+        orderId={modal.orderId}
+        purchaseReference={modal.purchaseReference}
+        spotCheckout={modal.spotCheckout === true}
+      />
+    </BuyerKybGate>
   </ModalFrame>
 );
 
-const PaymentMethodModal: ModalComponent<'payment-method'> = ({ close }) => (
-  <ModalFrame title="Choose payment method" close={close}>
-    <PaymentMethod />
-  </ModalFrame>
-);
+const PaymentMethodModal: ModalComponent<'payment-method'> = ({ close }) => {
+  const owner = usePaymentIdentity();
+  const draft = usePaymentStore((state) => state.draft);
+  const topupContext =
+    draft?.owner === owner
+      ? {
+          orderId: draft.orderId ?? undefined,
+          purchaseReference: draft.purchaseReference || undefined,
+        }
+      : undefined;
+  return (
+    <ModalFrame title="Choose payment method" close={close}>
+      <BuyerKybGate returnTo="topup" topupContext={topupContext}>
+        <PaymentMethod />
+      </BuyerKybGate>
+    </ModalFrame>
+  );
+};
 
 const TopupStatusModal: ModalComponent<'payment-topup-status'> = ({ modal, close }) => (
   <ModalFrame title={<TopupStatus.Title id={modal.id} />} close={close}>
@@ -100,7 +124,10 @@ const TopupStatusModal: ModalComponent<'payment-topup-status'> = ({ modal, close
 
 const PaymentProviderModal: ModalComponent<'payment-provider'> = ({ close }) => (
   <ModalFrame title="Complete your credit top-up" close={close}>
-    <PaymentProvider />
+    <p className="form-note">
+      Only bank transfer is currently available. Start from Add credit to verify your KYB and
+      request payment instructions.
+    </p>
   </ModalFrame>
 );
 

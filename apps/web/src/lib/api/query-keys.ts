@@ -28,6 +28,9 @@ export const queryKeys = {
     matches: (identity: string, model: string, region: string) =>
       ['account', 'matches', identity, model, region] as const,
     billing: (identity: string) => ['account', 'billing', identity] as const,
+    buyerKyb: (identity: string) => ['account', 'buyer-kyb', identity] as const,
+    bankTransfer: (identity: string, id: string) =>
+      ['account', 'bank-transfer', identity, id] as const,
     topup: (identity: string, id: string) => ['account', 'topup', identity, id] as const,
   },
   site: {
