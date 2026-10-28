@@ -1212,3 +1212,24 @@ async def test_rejected_snapshot_and_image_requests_are_retried(rental_env):
     assert (backup["state"], backup["error"]) == ("AVAILABLE", None)
     assert calls == {"snapshots": 2, "images": 2}
     assert len(env.cloud.snapshot_sets[backup["id"]]) == len(backup["volumes"])
+
+
+async def test_retention_of_the_initial_backup_keeps_a_delivered_rental_active(rental_env):
+    """Routine backups retire the initial one after `keep` newer points; the rental stays up."""
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "long-running")
+    row = await deliver(env, row["id"])
+    initial = next(b for b in env.engine.backups(row) if b["state"] == "AVAILABLE")
+    for _ in range(12):
+        env.clock.advance(901)
+        await report_ready(env, row["id"])
+        await cycle(env, 3)
+        await report_ready(env, row["id"])
+        await cycle(env, 3)
+        if env.engine.db.get("backup", initial["id"])["state"] == "DELETED":
+            break
+    assert env.engine.db.get("backup", initial["id"])["state"] == "DELETED"
+    await report_ready(env, row["id"])
+    await cycle(env, 3)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "ACTIVE" and row["error"] is None and row["connection"]

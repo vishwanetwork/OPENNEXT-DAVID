@@ -1001,7 +1001,10 @@ class RentalEngine:
             row.update(degraded=None, degraded_at=None, error=None)
             self.save(row, "healthy")
         initial = self.request_backup(row, "initial")
-        if initial["state"] != "AVAILABLE":
+        # Routine retention deletes the initial backup of a long-running generation; once the
+        # generation was verified, that is not a reason to take it out of service again.
+        retired = verified and initial["state"] in {"DELETING", "DELETED"}
+        if initial["state"] != "AVAILABLE" and not retired:
             if initial["state"] in {"FAILED", "NEEDS_RECONCILIATION"}:
                 row.update(state="ACTION_REQUIRED", error="initial_backup_unavailable")
             else:
