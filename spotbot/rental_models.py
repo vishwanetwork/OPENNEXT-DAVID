@@ -106,7 +106,7 @@ class RFQ(RulesModel):
     allow_cross_region: bool = False
     backup: BackupRule = Field(default_factory=BackupRule)
     # An EC2 key pair registered in every RFQ Region, a customer public key installed for
-    # ssh_user at boot, or both. At least one is required.
+    # ssh_user at boot, both, or neither: keys can be set later (`PUT .../ssh-keys`).
     ssh_key_name: str | None = Field(None, min_length=1, max_length=255)
     ssh_public_key: str | None = Field(None, max_length=4096)
     ssh_user: str = Field("ubuntu", pattern=r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -143,8 +143,6 @@ class RFQ(RulesModel):
     def compatible_times_and_disks(self):
         import re
 
-        if not self.ssh_key_name and not self.ssh_public_key:
-            raise ValueError("ssh_key_name_or_ssh_public_key_required")
         if self.initial_image_ids and (
             set(self.initial_image_ids) != set(self.regions)
             or any(not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", v) for v in self.initial_image_ids.values())
@@ -161,6 +159,20 @@ class RFQ(RulesModel):
 
 class RentalRequest(RulesModel):
     rfq: RFQ
+
+
+class SshKeysRequest(RulesModel):
+    """Customer public keys the guest agent keeps in ssh_user's authorized_keys."""
+
+    keys: list[str] = Field(max_length=20)
+
+    @field_validator("keys")
+    @classmethod
+    def public_keys(cls, values):
+        keys = [v.strip() for v in values]
+        if any(len(k) > 4096 or not valid_public_key(k) for k in keys):
+            raise ValueError("invalid_ssh_public_key")
+        return list(dict.fromkeys(keys))
 
 
 class RevisionRequest(RulesModel):
@@ -199,3 +211,5 @@ class AgentReport(RulesModel):
     frozen_command: str | None = Field(None, max_length=36)
     thawed_command: str | None = Field(None, max_length=36)
     canaries: dict[str, str] = Field(default_factory=dict, max_length=128)
+    # Version of the managed customer key set the agent last installed.
+    ssh_keys_version: int | None = Field(None, ge=0)

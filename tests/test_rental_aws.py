@@ -334,7 +334,8 @@ async def test_customer_public_key_is_installed_at_boot_without_an_ec2_key_pair(
     assert "KeyName" not in payload
     script = payload["UserData"]
     assert base64.b64encode(key.encode()).decode() in script
-    assert 'grep -qxF "$key"' in script  # Re-running on a restored disk adds no duplicate.
+    # Written inside the agent-managed block; a restored disk keeps its block.
+    assert 'grep -qxF "# BEGIN spotbot managed keys"' in script
     assert subprocess.run(["bash", "-n"], input=script.encode()).returncode == 0
     # The largest accepted key still fits EC2's 16 KB user-data limit.
     big = openssh_key("ssh-rsa", 2800, "x" * 200)
@@ -370,13 +371,10 @@ def test_public_keys_must_be_one_valid_openssh_line(rental_env, value):
         type(rental_env.request.rfq).model_validate({**rfq, "ssh_public_key": value})
 
 
-def test_rfq_needs_a_key_pair_or_a_public_key(rental_env):
-    from pydantic import ValidationError
-
+def test_rfq_keys_are_optional_because_keys_can_be_set_later(rental_env):
     rfq = rental_env.request.rfq.model_dump(mode="json")
     model = type(rental_env.request.rfq)
-    with pytest.raises(ValidationError, match="ssh_key_name_or_ssh_public_key_required"):
-        model.model_validate({**rfq, "ssh_key_name": None})
+    assert model.model_validate({**rfq, "ssh_key_name": None}).ssh_public_key is None
     accepted = model.model_validate({**rfq, "ssh_key_name": None, "ssh_public_key": openssh_key()})
     assert accepted.ssh_public_key.startswith("ssh-ed25519 ")
 

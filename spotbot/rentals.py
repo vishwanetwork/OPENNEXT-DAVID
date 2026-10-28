@@ -127,6 +127,8 @@ class RentalEngine:
             estimated_cost_usd="0",
             end_requested=False,
             recovery_started_at=None,
+            # Customer keys the guest agent installs; changed later through set_ssh_keys.
+            ssh_keys=dict(version=1, keys=[rules.ssh_public_key] if rules.ssh_public_key else []),
         )
         row["id"] = rental_id
         try:
@@ -195,6 +197,29 @@ class RentalEngine:
                 )
             self.save(row, "policy_updated")
             return row
+
+    async def set_ssh_keys(self, rental_id, tenant_id, keys):
+        async with self.row_lock(rental_id):
+            row = self.get(rental_id, tenant_id)
+            if row["state"] == "CLOSED" or row["end_requested"]:
+                raise ValueError("rental_ended")
+            current = row.get("ssh_keys") or dict(version=0, keys=[])
+            if current["keys"] != keys:
+                row["ssh_keys"] = dict(version=current["version"] + 1, keys=keys)
+                self.save(row, "ssh_keys_updated")
+            return self.ssh_keys(row)
+
+    def ssh_keys(self, row):
+        """The rental's customer key set and whether the current server has installed it."""
+        value = row.get("ssh_keys") or dict(version=0, keys=[])
+        gen = self.current(row)
+        applied = ((gen or {}).get("report") or {}).get("ssh_keys_version")
+        return dict(
+            version=value["version"],
+            keys=value["keys"],
+            applied_version=applied,
+            installed=applied == value["version"] and row["state"] != "CLOSED",
+        )
 
     async def release(self, rental_id, tenant_id):
         async with self.row_lock(rental_id):
@@ -370,7 +395,15 @@ class RentalEngine:
                 if row["state"] == "RECOVERING" and row.get("freeze_generation_id") == gen["id"]
                 else None
             )
+            keys = row.get("ssh_keys")
             return dict(
+                authorized_keys=dict(
+                    version=keys["version"],
+                    user=row["rfq"].get("ssh_user", "ubuntu"),
+                    keys=keys["keys"],
+                )
+                if keys
+                else None,
                 freeze_command=freeze,
                 flush_command=command,
                 create_canaries=not gen.get("source_backup_id") and not gen.get("verified_at"),

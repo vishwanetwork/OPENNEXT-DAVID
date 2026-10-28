@@ -17,6 +17,7 @@ from spotbot.rental_models import (
     RentalRequest,
     RevisionRequest,
     RulesModel,
+    SshKeysRequest,
 )
 from spotbot.rentals import identity
 
@@ -176,6 +177,16 @@ def install(app, service):
         return {
             "items": [{k: v for k, v in g.items() if k in allowed} for g in engine.generations(row)]
         }
+
+    @router.get("/{rental_id}/ssh-keys")
+    def get_ssh_keys(rental_id: str, owner: Annotated[str, Depends(tenant)]):
+        return engine.ssh_keys(guard(lambda: engine.get(rental_id, owner)))
+
+    @router.put("/{rental_id}/ssh-keys")
+    async def put_ssh_keys(
+        rental_id: str, request: SshKeysRequest, owner: Annotated[str, Depends(tenant)]
+    ):
+        return await async_guard(lambda: engine.set_ssh_keys(rental_id, owner, request.keys))
 
     @router.post("/{rental_id}/release")
     async def release(rental_id: str, owner: Annotated[str, Depends(tenant)]):

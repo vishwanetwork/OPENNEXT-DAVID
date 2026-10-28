@@ -100,7 +100,8 @@ def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", publ
 
 
 def authorized_key(user, public_key):
-    """Install the customer's public key once; restored disks already carry it."""
+    """Install the customer's public key at first boot, in the block the guest agent manages
+    (it then keeps that block equal to the rental's key set). Restored disks keep their block."""
     if not public_key:
         return []
     encoded = base64.b64encode(public_key.strip().encode()).decode()
@@ -109,7 +110,9 @@ def authorized_key(user, public_key):
         f'install -d -m 700 -o {user} -g {user} "$home/.ssh"',
         f"key=$(echo {encoded} | base64 -d)",
         'touch "$home/.ssh/authorized_keys"',
-        'grep -qxF "$key" "$home/.ssh/authorized_keys" || echo "$key" >> "$home/.ssh/authorized_keys"',
+        'grep -qxF "# BEGIN spotbot managed keys" "$home/.ssh/authorized_keys" || printf'
+        """ '%s\\n' '# BEGIN spotbot managed keys' "$key" '# END spotbot managed keys'"""
+        ' >> "$home/.ssh/authorized_keys"',
         f'chown {user}:{user} "$home/.ssh/authorized_keys"',
         'chmod 600 "$home/.ssh/authorized_keys"',
     ]
