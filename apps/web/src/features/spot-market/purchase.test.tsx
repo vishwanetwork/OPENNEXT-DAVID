@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
 import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test/render';
 import { useWorkspaceStore } from '@/terminal-kit';
-import type { SpotCheckout } from './checkout';
+import { CHECKOUT_MODALS, type SpotCheckout } from './checkout';
+import { spotCheckoutModals } from './components/checkout-modals';
 import type { SpotRow } from './inventory';
 import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
 
@@ -37,6 +38,9 @@ function Probe() {
 }
 
 describe('Spot purchase', () => {
+  it('registers a dialog for every checkout step the engine opens', () => {
+    expect(Object.keys(spotCheckoutModals).sort()).toEqual([...CHECKOUT_MODALS].sort());
+  });
   it('Buy Now sends the confirmed purchase to the backend and shows the order', async () => {
     const posts: { body: unknown; headers: Record<string, string> }[] = [];
     mockFetch((path, init) => {
