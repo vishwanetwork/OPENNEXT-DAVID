@@ -381,6 +381,27 @@ class SpotMarket:
                 return rental
         return None
 
+    async def owned(self, user_id, rental_id):
+        rows = await self.rentals(customer_ref(user_id))
+        return next((r for r in rows if r["id"] == rental_id), None)
+
+    async def keys(self, rental_id, keys=None):
+        """The rental's customer key set; with `keys`, replace it first."""
+        response = await (
+            self.bot("GET", f"/v1/rentals/{rental_id}/ssh-keys")
+            if keys is None
+            else self.bot("PUT", f"/v1/rentals/{rental_id}/ssh-keys", json={"keys": keys})
+        )
+        if response.status_code == 409:
+            raise ValueError(response.json().get("detail", "rental_ended"))
+        response.raise_for_status()
+        return response.json()
+
+    async def release(self, rental_id):
+        response = await self.bot("POST", f"/v1/rentals/{rental_id}/release")
+        response.raise_for_status()
+        return response.json()
+
     async def create(self, rfq):
         return await self.bot(
             "POST", "/v1/rentals", json={"rfq": rfq}, headers={"Idempotency-Key": rfq["rfq_id"]}

@@ -33,6 +33,7 @@ from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
+from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account
 from spotbot.opennext_market import (
     PurchaseRequest,
@@ -144,6 +145,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     client.cookies.jar.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
     market = market or SpotMarket.from_settings(settings, client)
     ledger = CreditLedger(db)
+    library = KeyLibrary(db)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -451,6 +453,143 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             )
         await ledger.settle(charge, rental["id"])
         return confirmation(rental)
+
+    def csrf_ok(request, user):
+        token = user.get("csrfToken")
+        return (
+            same_origin(request)
+            and isinstance(token, str)
+            and secrets.compare_digest(
+                request.headers.get("x-csrf-token", "").encode(), token.encode()
+            )
+        )
+
+    async def customer(request, *, write):
+        """`(user, None)` for a verified customer session, else `(None, error response)`."""
+        try:
+            user = await session_user(request)
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return None, error(503, "Your session could not be verified. Please try again.")
+        if user is None:
+            return None, error(401, "Sign in to continue.")
+        if write and not csrf_ok(request, user):
+            return None, error(403, "Your session verification failed. Refresh and try again.")
+        return user, None
+
+    async def json_body(request, model):
+        try:
+            return model.model_validate_json(await request.body()), None
+        except ValidationError as exc:
+            invalid_key = any(e["msg"].endswith("invalid_ssh_public_key") for e in exc.errors())
+            return None, error(
+                400,
+                "Enter a valid OpenSSH public key." if invalid_key else "The request is invalid.",
+                code="INVALID_REQUEST",
+            )
+
+    def no_store(body):
+        return JSONResponse(body, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/account/ssh-keys")
+    async def list_keys(request: Request):
+        user, failed = await customer(request, write=False)
+        if failed:
+            return failed
+        return no_store({"keys": [key_view(r) for r in await library.list(user["id"])]})
+
+    @app.post("/api/account/ssh-keys")
+    async def add_key(request: Request):
+        user, failed = await customer(request, write=True)
+        if failed:
+            return failed
+        body, failed = await json_body(request, KeyRequest)
+        if failed:
+            return failed
+        try:
+            record = await library.add(user["id"], body.label, body.publicKey)
+        except ValueError:
+            return error(409, "You can save up to 50 SSH keys.", code="TOO_MANY_KEYS")
+        return no_store({"confirmed": True, "key": key_view(record)})
+
+    @app.delete("/api/account/ssh-keys/{key_id}")
+    async def remove_key(request: Request, key_id: str):
+        user, failed = await customer(request, write=True)
+        if failed:
+            return failed
+        try:
+            await library.remove(user["id"], key_id)
+        except LookupError:
+            return error(404, "This SSH key was not found.")
+        return no_store({"confirmed": True, "id": key_id})
+
+    def keys_view(value):
+        return {
+            "keys": [
+                {"publicKey": k, "fingerprint": fingerprint(k), "comment": " ".join(k.split()[2:])}
+                for k in value["keys"]
+            ],
+            "version": value["version"],
+            "installed": bool(value.get("installed")),
+        }
+
+    async def own_rental(request, rental_id, *, write):
+        """`(user, rental, None)` for the signed-in customer's own Spot rental."""
+        if market is None:
+            return None, None, error(404, "Not found")
+        user, failed = await customer(request, write=write)
+        if failed:
+            return None, None, failed
+        try:
+            rental = await market.owned(user["id"], rental_id)
+        except httpx.HTTPError:
+            return None, None, error(503, "Instances are temporarily unavailable.")
+        if rental is None:
+            return None, None, error(404, "This instance was not found.")
+        return user, rental, None
+
+    @app.get("/api/marketplace/instances/{rental_id}/ssh-keys")
+    async def instance_keys(request: Request, rental_id: str):
+        _, rental, failed = await own_rental(request, rental_id, write=False)
+        if failed:
+            return failed
+        try:
+            return no_store(keys_view(await market.keys(rental["id"])))
+        except (httpx.HTTPError, ValueError):
+            return error(503, "SSH keys are temporarily unavailable.")
+
+    @app.put("/api/marketplace/instances/{rental_id}/ssh-keys")
+    async def set_instance_keys(request: Request, rental_id: str):
+        _, rental, failed = await own_rental(request, rental_id, write=True)
+        if failed:
+            return failed
+        body, failed = await json_body(request, InstanceKeysRequest)
+        if failed:
+            return failed
+        try:
+            return no_store(keys_view(await market.keys(rental["id"], body.keys)))
+        except ValueError:
+            return error(409, "This instance has ended; its SSH keys can no longer change.")
+        except httpx.HTTPError:
+            return error(503, "SSH keys could not be updated. Please try again.")
+
+    @app.post("/api/marketplace/instances/{rental_id}/end")
+    async def end_instance(request: Request, rental_id: str):
+        user, rental, failed = await own_rental(request, rental_id, write=True)
+        if failed:
+            return failed
+        try:
+            confirmed = (await request.json()).get("confirmation") == "END"
+        except ValueError:
+            confirmed = False
+        if not confirmed:
+            return error(400, "Type END to confirm.", code="CONFIRMATION_REQUIRED")
+        try:
+            ended = await market.release(rental["id"])
+        except httpx.HTTPError:
+            return error(503, "The instance could not be ended. Please try again.")
+        return no_store(
+            {"confirmed": True, "instance": (await market.instances(user["id"], [ended]))[0]}
+        )
 
     @app.api_route("/api/{path:path}", methods=METHODS)
     async def passthrough(request: Request, path: str):

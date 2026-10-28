@@ -14,10 +14,16 @@ keeps every other OpenNEXT feature working.
 | GET    | `/api/marketplace/public`               | Existing public market plus the bot's Spot offers (Terminal → Spot market) |
 | POST   | `/api/marketplace/spot-purchases`       | Spot "Buy Now": creates a protected rental for the customer's public key |
 | GET    | `/api/marketplace/me`                   | Existing workspace plus the customer's rentals in `instances` |
+| GET    | `/api/billing/account`                  | Existing Credit less open Spot charges (`spotCharges`)        |
+| GET/PUT | `/api/marketplace/instances/{id}/ssh-keys` | The customer keys installed on one of their Spot instances |
+| POST   | `/api/marketplace/instances/{id}/end`   | End one of the customer's Spot instances (`{"confirmation":"END"}`) |
+| GET/POST | `/api/account/ssh-keys`               | The account's saved SSH public keys (`{label, publicKey}` to add) |
+| DELETE | `/api/account/ssh-keys/{id}`            | Remove a saved key (instances keep keys already installed)    |
 | any    | `/api/*` (everything else)              | Passed to `SPOTBOT_OPENNEXT_LEGACY_ORIGIN` unchanged           |
 
-The three marketplace routes need `SPOTBOT_OPENNEXT_BOT_URL`; without it they behave as plain
-pass-through (purchases answer 503).
+The Spot routes need `SPOTBOT_OPENNEXT_BOT_URL`; without it the existing routes behave as plain
+pass-through, purchases answer 503 and instance routes 404. Writes need the session's CSRF token
+and a same-origin `Origin`.
 
 `/api/admin/instances` follows OpenNEXT's contract (`AdminInstancesResponse` in
 `packages/contracts/src/admin/instances.ts` there): newest first, `limit` up to 200 (default 50),
@@ -56,10 +62,11 @@ is unavailable the existing response is returned unchanged.
 The adapter verifies the session with `GET /api/auth/session` (a signed-in, non-demo Buyer), the
 CSRF token and a same-origin `Origin`, then recomputes the totals with the web app's arithmetic
 (duration subtotal plus 5% fee, JavaScript rounding) from the current offer. A mismatch answers
-409 `PRICE_CHANGED`; an offer that left the catalog answers 409 `OFFER_UNAVAILABLE`. **No Credit is
-charged yet.** The rental's RFQ names the offer's Region and instance type, a price ceiling of the
+409 `PRICE_CHANGED`; an offer that left the catalog answers 409 `OFFER_UNAVAILABLE`; too little
+Credit answers 409 `INSUFFICIENT_CREDIT`. The total is charged to the account's Credit (see
+below). `sshPublicKey` is optional: keys can be set on the instance later. The rental's RFQ names the offer's Region and instance type, a price ceiling of the
 listed instance price plus 20%, a 60-minute acquisition deadline, an end time of the deadline
-plus the purchased duration, a 100 GiB root disk, the customer's public key for `ubuntu`, and
+plus the purchased duration, a 100 GiB root disk, the customer's public key (if any) for `ubuntu`, and
 `customer_ref` `opennext:<user id>`. Its budget is a safety bound for the bot (ceiling for the
 whole duration plus storage, with margin). The answer is
 
@@ -78,6 +85,21 @@ duration answers 409 `IDEMPOTENCY_CONFLICT`.
 RFQ end. With `SPOTBOT_OPENNEXT_GATEWAY_URL` and `SPOTBOT_OPENNEXT_GATEWAY_TOKEN` (the gateway's
 API key), running rentals include the gateway's SSH entry point (`sshHost`, `sshPort`, `sshUser`);
 server addresses are never returned.
+
+**Credit.** The existing API keeps each account's Credit (approved top-ups plus promotional
+Credit) and has no debits. The adapter records one charge per purchase in the bot database,
+keyed by the purchase reference so a retry never charges twice, and `GET /api/billing/account`
+subtracts open charges, promotional Credit first, listing them in `spotCharges`. A charge is
+refunded in full when the bot refuses the order, when no rental appears within 10 minutes of an
+unanswered order, or when the rental ends before it was ever handed to the customer. Ending a
+delivered rental early is not refunded: the duration is prepaid. Charges for an account are
+serialized in one process, so run a single adapter instance.
+
+**SSH keys.** The account key library (`/api/account/ssh-keys`, up to 50 keys) only stores keys.
+`PUT /api/marketplace/instances/{id}/ssh-keys` with `{"keys": [...]}` replaces the keys on one
+instance through the bot (`PUT /v1/rentals/{id}/ssh-keys`); the guest agent installs them for
+`ubuntu` within about 15 seconds, also on replacement servers, and `installed` turns true once
+the running server has them. No administrator SSH key is involved.
 
 ## Pass-through
 

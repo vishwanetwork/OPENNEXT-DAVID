@@ -122,6 +122,18 @@ class Fakes:
             assert request.url.params["can_attempt_only"] == "true"
             groups = [{"provider": "aws", "offers": CATALOG}]
             return httpx.Response(200, json={"total": len(CATALOG), "groups": groups})
+        parts = request.url.path.split("/")
+        if len(parts) == 5 and parts[4] in {"ssh-keys", "release"}:
+            row = next(r for r in self.rentals if r["id"] == parts[3])
+            if parts[4] == "release":
+                row.update(state="ENDING", end_requested=True)
+                return httpx.Response(200, json=row)
+            keys = row.setdefault("ssh_keys", {"version": 1, "keys": []})
+            if request.method == "PUT":
+                if row.get("end_requested"):
+                    return httpx.Response(409, json={"detail": "rental_ended"})
+                keys.update(version=keys["version"] + 1, keys=json.loads(request.content)["keys"])
+            return httpx.Response(200, json={**keys, "applied_version": None, "installed": False})
         if request.url.path == "/v1/rentals" and request.method == "GET":
             return httpx.Response(200, json={"total": len(self.rentals), "items": self.rentals})
         if request.url.path == "/v1/rentals":
@@ -469,3 +481,71 @@ async def test_buy_now_without_a_key(env):
     client, fakes, _ = env
     assert (await buy(client, body(sshPublicKey=None))).status_code == 200
     assert fakes.created[0]["ssh_public_key"] is None
+
+
+KEY_B = (
+    "ssh-ed25519 "
+    + base64.b64encode(
+        struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32) + bytes(range(1, 33))
+    ).decode()
+    + " second@laptop"
+)
+
+
+def write(client, method, path, payload=None, cookie="session=buyer", csrf="csrf-1"):
+    headers = {"Cookie": cookie, "X-CSRF-Token": csrf, "Origin": "http://" + HOST}
+    return client.request(method, path, json=payload, headers=headers)
+
+
+async def test_account_key_library(env):
+    client, _, _ = env
+    path = "/api/account/ssh-keys"
+    assert (await client.get(path)).status_code == 401
+    added = await write(client, "POST", path, {"label": "Laptop", "publicKey": KEY})
+    assert added.status_code == 200 and added.json()["key"]["fingerprint"].startswith("SHA256:")
+    again = await write(client, "POST", path, {"label": "Again", "publicKey": " " + KEY})
+    assert again.json()["key"]["id"] == added.json()["key"]["id"]  # Saved once.
+    bad = await write(client, "POST", path, {"label": "Bad", "publicKey": "ssh-ed25519 AAAA"})
+    assert bad.status_code == 400 and "OpenSSH" in bad.json()["error"]
+    assert (
+        await write(client, "POST", path, {"label": "x", "publicKey": KEY}, csrf="no")
+    ).status_code == 403
+    listed = await client.get(path, headers={"Cookie": "session=buyer"})
+    assert [k["label"] for k in listed.json()["keys"]] == ["Laptop"]
+    other = await client.get(path, headers={"Cookie": "session=other"})
+    assert other.json()["keys"] == []
+    key_id = added.json()["key"]["id"]
+    assert (
+        await write(client, "DELETE", path + "/" + key_id, cookie="session=other", csrf="csrf-2")
+    ).status_code == 404
+    assert (await write(client, "DELETE", path + "/" + key_id)).json() == {
+        "confirmed": True,
+        "id": key_id,
+    }
+    assert (await client.get(path, headers={"Cookie": "session=buyer"})).json()["keys"] == []
+
+
+async def test_instance_keys_and_end_for_the_owner_only(env):
+    client, fakes, _ = env
+    order = (await buy(client, body(sshPublicKey=None))).json()["orderId"]
+    path = f"/api/marketplace/instances/{order}/ssh-keys"
+    keys = await client.get(path, headers={"Cookie": "session=buyer"})
+    assert keys.json() == {"keys": [], "version": 1, "installed": False}
+    put = await write(client, "PUT", path, {"keys": [KEY, KEY_B, KEY]})
+    assert put.status_code == 200 and put.json()["version"] == 2
+    assert [k["comment"] for k in put.json()["keys"]] == ["buyer@laptop", "second@laptop"]
+    assert (await write(client, "PUT", path, {"keys": ["nope"]})).status_code == 400
+    # Another customer cannot see or change it, nor end it.
+    assert (await client.get(path, headers={"Cookie": "session=other"})).status_code == 404
+    end = f"/api/marketplace/instances/{order}/end"
+    assert (
+        await write(
+            client, "POST", end, {"confirmation": "END"}, cookie="session=other", csrf="csrf-2"
+        )
+    ).status_code == 404
+    assert (await write(client, "POST", end, {"confirmation": "end"})).status_code == 400
+    ended = await write(client, "POST", end, {"confirmation": "END"})
+    assert ended.status_code == 200 and ended.json()["confirmed"] is True
+    assert ended.json()["instance"]["id"] == order and ended.json()["instance"]["status"] == "ended"
+    late = await write(client, "PUT", path, {"keys": [KEY]})
+    assert late.status_code == 409
