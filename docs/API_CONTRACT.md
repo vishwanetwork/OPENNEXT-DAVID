@@ -99,13 +99,36 @@ The body is `{ pricingVersion: "duration-v1", offerId, durationHours, expectedPr
 sshPublicKey, idempotencyKey }`, where `expectedPricing` is the checkout's `checkoutTotals` result.
 The server verifies a signed-in, non-demo Buyer session, CSRF and same origin, recomputes the
 totals from the current offer (409 `PRICE_CHANGED`; 409 `OFFER_UNAVAILABLE` when the offer left
-the market) and starts acquiring a Spot server for the customer's key (required; 400 without a
-valid key). A retry with the same `idempotencyKey` returns the same `orderId`; reusing it for
-another offer or duration is 409 `IDEMPOTENCY_CONFLICT`. Any 4xx means no order was created, so
-the checkout returns to review; other failures leave the purchase pending for a retry. **No
-Credit is charged yet.** The order then appears in `GET /api/marketplace/me` `instances` with
-`id` equal to `orderId`, `status` `pending` → `active` (or `recovering`, `ended`), `rate` per
-GPU-hour, `serviceEnd`, and gateway SSH details (`sshHost`, `sshPort`, `sshUser`) once running.
+the market; 409 `INSUFFICIENT_CREDIT`), charges the total to the account's Credit and starts
+acquiring a Spot server. `sshPublicKey` is optional (400 only for an invalid key); keys can be
+set on the instance later. A retry with the same `idempotencyKey` returns the same `orderId`
+and charges once; reusing it for another offer or duration is 409 `IDEMPOTENCY_CONFLICT`. Any
+4xx means no order was created and nothing was charged, so the checkout returns to review; other
+failures leave the purchase pending for a retry. The order then appears in
+`GET /api/marketplace/me` `instances` with `id` equal to `orderId`, `status` `pending` → `active`
+(or `recovering`, `ended`), `rate` per GPU-hour, `serviceEnd`, and gateway SSH details
+(`sshHost`, `sshPort`, `sshUser`) once running.
+
+**Credit.** With SpotOrderBot in front, `GET /api/billing/account` returns the account's Credit
+less its open Spot charges (promotional Credit first) and lists them in `spotCharges`
+(`orderId`, `totalCents`, `state`, `createdAt`). A charge is refunded in full when the order was
+refused, never created, or ended before the server was handed over. Ending a delivered instance
+early is not refunded; the duration is prepaid.
+
+**Spot instance actions** (SpotOrderBot; 404 for instances it does not manage):
+
+| Method | Path                                      | Request                   | Response                                                 |
+| ------ | ----------------------------------------- | ------------------------- | -------------------------------------------------------- |
+| GET    | `/api/marketplace/instances/:id/ssh-keys` |                           | `InstanceSshKeysResponse` `{ keys, version, installed }` |
+| POST   | `/api/marketplace/instances/:id/ssh-keys` | `{ keys: [publicKey] }`   | the new set; replaces all keys (max 20)                  |
+| POST   | `/api/marketplace/instances/:id/end`      | `{ confirmation: "END" }` | `{ confirmed: true, instance }`                          |
+| GET    | `/api/account/ssh-keys`                   |                           | `{ keys }` (account key library, max 50)                 |
+| POST   | `/api/account/ssh-keys`                   | `{ label, publicKey }`    | `{ confirmed: true, key }`                               |
+| DELETE | `/api/account/ssh-keys/:id`               |                           | `{ confirmed: true, id }`                                |
+
+The server installs an instance's key set for `ubuntu` within about 15 seconds through its
+guest agent (also on replacement servers); `installed` turns true once the running server has
+the current set. Saved account keys are not installed anywhere until added to an instance.
 
 Record semantics (receipts, revisions, idempotency, fees 5 % each side, review states) are
 specified in `legacy/docs/TERMINAL_CONSOLE_SYNC.md` and `legacy/README.md` ("Order fees").
@@ -381,9 +404,8 @@ contract coverage merely because their pages and read-only view models are prese
    socket-derived origin, so `POST /api/demo/start` fails behind TLS unless `secureCookies` is
    set (see `docs/MIGRATION_STATUS.md`). Derive the expected origin from the forwarded protocol
    when `OPENNEXT_TRUST_PROXY=1`.
-6. **Endpoints still missing** (the UI fails closed with the legacy "not connected" copy):
-   Credit balance and debit for purchases (`getCreditBalance`; `beginPurchase` now creates Spot
-   orders through `/api/marketplace/spot-purchases` without charging), account SSH keys, instance
-   termination. Their expected shapes are in `apps/web/src/terminal-kit/services.ts`.
+6. **Service adapters.** Spot purchases (`beginPurchase` through
+   `/api/marketplace/spot-purchases`, charged to Credit), account SSH keys and Spot instance
+   termination are connected (SpotOrderBot). Shapes are in `apps/web/src/terminal-kit/services.ts`.
 
 Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.

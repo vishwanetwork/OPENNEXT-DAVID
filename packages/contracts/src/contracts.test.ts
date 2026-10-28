@@ -4,6 +4,8 @@ import {
   BillingAccount,
   CreditTopup,
   CuratedRfqsResponse,
+  InstanceEndResponse,
+  InstanceSshKeysResponse,
   MarketplaceReceipt,
   OwnedRfq,
   PriceRecord,
@@ -63,6 +65,28 @@ describe('marketplace', () => {
       rows: [{ id: 'ORD-1', model: 'H100', settledAt: '2026-10-01T00:00:00Z' }, 42],
     });
     expect(settlements.rows.map((r) => r.id)).toEqual(['ORD-1']);
+  });
+  it('keeps the Spot instance key and END contracts', () => {
+    const keys = InstanceSshKeysResponse.parse({
+      keys: [
+        {
+          publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA buyer@laptop',
+          fingerprint: 'SHA256:jJNmOjNUU4OSP3i5MnmJyUj15vepmU1pYL0Ghj0FXAk',
+          comment: 'buyer@laptop',
+        },
+      ],
+      version: 2,
+      installed: false,
+    });
+    expect(keys.keys[0]?.comment).toBe('buyer@laptop');
+    const ended = InstanceEndResponse.parse({
+      confirmed: true,
+      instance: { id: 'rental-1', status: 'ended', term: 'Spot' },
+    });
+    expect(ended.instance.status).toBe('ended');
+    expect(InstanceEndResponse.safeParse({ confirmed: false, instance: { id: 'x' } }).success).toBe(
+      false,
+    );
   });
   it('keeps the Spot purchase contract', () => {
     const request = {

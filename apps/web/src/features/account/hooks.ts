@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo } from 'react';
+import { useApi } from '@/components/providers/api-context';
 import { useApp } from '@/components/providers/app-context';
 import { useSessionStore } from '@/lib/session-store';
 import { useTerminalSlots, type AccountService } from '@/terminal-kit';
+import { accountApi } from './api';
 import { accountRef, type AccountRef } from './ssh-keys';
 import {
   changeKey,
@@ -32,6 +34,19 @@ export function useAccountService(): {
     service: account,
     connected: (method) => typeof account?.[method] === 'function',
   };
+}
+
+/** The backend key library, for the composition root to connect as `services.account`. */
+export function useAccountApiService(): AccountService {
+  const api = useApi();
+  return useMemo(
+    () => ({
+      listSshKeys: () => accountApi.sshKeys(api),
+      addSshKey: (input) => accountApi.addSshKey(api, input),
+      removeSshKey: ({ id }) => accountApi.removeSshKey(api, id),
+    }),
+    [api],
+  );
 }
 
 function depsFor(demo: boolean, service: AccountService | undefined): KeyLibraryDeps {

@@ -48,6 +48,29 @@
 .onx-account-ssh-instance-access {
   margin-top: 24px;
 }
+.instance-keys .form-label {
+  margin-top: 14px;
+}
+.instance-keys-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.instance-keys-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line, #e1e8e3);
+  font-size: 13px;
+}
+.instance-keys-list small {
+  display: block;
+  color: #7a877e;
+  font-size: 11px;
+  word-break: break-all;
+}
 .onx-account-ssh-instance-access .onx-account-section-header h2 {
   font-size: 17px;
 }

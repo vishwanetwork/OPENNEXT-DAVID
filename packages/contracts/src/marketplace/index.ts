@@ -654,3 +654,34 @@ export const ResellRequest = z.object({
 export type ResellRequest = z.infer<typeof ResellRequest>;
 export const ResellResponse = z.object({ supply: OwnedSupply }).passthrough();
 export type ResellResponse = z.infer<typeof ResellResponse>;
+
+/* ---------- Spot instance SSH keys and END (SpotOrderBot) ---------- */
+
+/** One customer key installed on an instance; `fingerprint` is OpenSSH `SHA256:…`. */
+export const InstanceSshKey = z.object({
+  publicKey: z.string(),
+  fingerprint: z.string(),
+  comment: z.string(),
+});
+export type InstanceSshKey = z.infer<typeof InstanceSshKey>;
+
+/**
+ * `GET|POST /api/marketplace/instances/:id/ssh-keys` — the keys on a Spot instance. A POST
+ * with `InstanceSshKeysRequest` replaces them; `installed` turns true once the running
+ * server has the current set (usually within 15 seconds).
+ */
+export const InstanceSshKeysResponse = z.object({
+  keys: z.array(InstanceSshKey).max(20),
+  version: z.number().int(),
+  installed: z.boolean(),
+});
+export type InstanceSshKeysResponse = z.infer<typeof InstanceSshKeysResponse>;
+export const InstanceSshKeysRequest = z.object({
+  keys: z.array(z.string().min(1).max(4096)).max(20),
+});
+export type InstanceSshKeysRequest = z.infer<typeof InstanceSshKeysRequest>;
+
+/** `POST /api/marketplace/instances/:id/end` — ends a Spot instance; prepaid time is not refunded. */
+export const InstanceEndRequest = z.object({ confirmation: z.literal('END') });
+export const InstanceEndResponse = z.object({ confirmed: z.literal(true), instance: Instance });
+export type InstanceEndResponse = z.infer<typeof InstanceEndResponse>;
