@@ -68,6 +68,7 @@ CATALOG = [
     aws("g6.xlarge", "ap-northeast-1", "0.30"),  # Not a rental Region.
     aws("g6.2xlarge", "us-west-2", "0.50", can_attempt=False),
     aws("g6f.large", "us-west-2", "0.10", kind="logical"),  # Fractional GPU.
+    aws("g5g.xlarge", "us-west-2", "0.13", model="T4G", architecture="arm64"),  # Arm.
 ]
 
 

@@ -35,7 +35,8 @@ The adapter reads the bot API with `SPOTBOT_API_KEY` and keeps every purchase in
 `SPOTBOT_OPENNEXT_TENANT` (default `opennext`).
 
 **Offers.** `GET /v1/prices/latest?provider=aws&market=spot&can_attempt_only=true`, cached for 60
-seconds, limited to the rental Regions (`SPOTBOT_RENTAL_REGIONS`) and whole GPUs. Each Region and
+seconds, limited to the rental Regions (`SPOTBOT_RENTAL_REGIONS`), whole GPUs and x86_64 servers (rentals
+start from the Region's x86_64 base image). Each Region and
 instance type becomes one supply row (the cheapest zone): `id` `spotbot-<region>-<instance type>`,
 `term` `Spot`, `model`, `region`, `gpuCount`, `vcpu`, `memory` (marketed GB per GPU) and
 `perGpuHourly`. The instance price is the Spot quote rounded up to whole cents. Rows carry the

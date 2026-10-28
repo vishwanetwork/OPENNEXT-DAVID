@@ -79,7 +79,8 @@ def eligible(offer, regions):
         and offer.get("region") in regions
         # Fractional (logical) GPUs are not whole servers.
         and d.get("gpu_count_kind") == "physical"
-        and d.get("architecture") in {"x86_64", "arm64"}
+        # Rentals start from the Region's enrolled x86_64 base image; Arm servers cannot use it.
+        and d.get("architecture") == "x86_64"
         and isinstance(offer.get("gpu_count"), int)
         and offer["gpu_count"] >= 1
         and bool(memory)
