@@ -31,7 +31,7 @@ def main():
         "opennext-api", help="Serve OpenNEXT's /api: admin rental instances, the rest passed to its existing API"
     )
     opennext.add_argument("--host", default="127.0.0.1")
-    opennext.add_argument("--port", type=int, default=4190)
+    opennext.add_argument("--port", type=int, default=4191)
     gateway = commands.add_parser("gateway", help="Serve stable rental SSH and HTTP entry points")
     gateway.add_argument("--host", default="127.0.0.1")
     gateway.add_argument("--port", type=int, default=18084)

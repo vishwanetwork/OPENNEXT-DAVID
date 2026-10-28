@@ -89,12 +89,14 @@ dropped, as the OpenNEXT web server does. Upstream failures return 502 without u
 ```sh
 SPOTBOT_OPENNEXT_LEGACY_ORIGIN=http://127.0.0.1:4189 \
 SPOTBOT_OPENNEXT_BOT_URL=https://spotbot.example.com \
-spotbot opennext-api --host 127.0.0.1 --port 4190
+spotbot opennext-api --host 127.0.0.1 --port 4191
 ```
 
 It reads rentals from the bot's configured storage (`SPOTBOT_STORAGE_BACKEND` and its settings),
 read-only, so run it with the same environment as the bot, without a second worker. Then set
-`API_ORIGIN=http://127.0.0.1:4190` for the OpenNEXT web server.
+`API_ORIGIN=http://127.0.0.1:4191` for the OpenNEXT web server. Avoid port 4190:
+it is on the fetch specification's blocked-port list, so the web server's server-side session
+reads to it fail.
 
 Deployment requirements:
 
