@@ -169,7 +169,8 @@ class PurchaseRequest(BaseModel):
     offerId: str = Field(min_length=1, max_length=200)
     durationHours: float = Field(gt=0, le=MAX_HOURS)
     expectedPricing: ExpectedPricing
-    sshPublicKey: str = Field(min_length=1, max_length=4096)
+    # Optional: keys can be set later from the instance (`PUT .../ssh-keys`).
+    sshPublicKey: str | None = Field(None, max_length=4096)
     idempotencyKey: str = Field(min_length=1, max_length=100)
 
     @field_validator("durationHours")
@@ -182,6 +183,8 @@ class PurchaseRequest(BaseModel):
     @field_validator("sshPublicKey")
     @classmethod
     def public_key(cls, value):
+        if value is None or not value.strip():
+            return None
         if not valid_public_key(value):
             raise ValueError("invalid_ssh_public_key")
         return value.strip()
@@ -402,8 +405,8 @@ class SpotMarket:
         ssh = body.get("ssh") or {}
         return ssh if body.get("ready") is True and ssh.get("host") and ssh.get("port") else None
 
-    async def instances(self, user_id):
-        rows = await self.rentals(customer_ref(user_id))
+    async def instances(self, user_id, rows=None):
+        rows = await self.rentals(customer_ref(user_id)) if rows is None else rows
         active = [r for r in rows if r["state"] == "ACTIVE"]
         ssh = dict(
             zip(

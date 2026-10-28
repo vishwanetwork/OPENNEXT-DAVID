@@ -33,10 +33,12 @@ from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
+from spotbot.opennext_ledger import CreditLedger, adjusted_account
 from spotbot.opennext_market import (
     PurchaseRequest,
     SpotMarket,
     checkout_totals,
+    customer_ref,
     order_reference,
     purchased,
     rfq_for,
@@ -141,6 +143,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     # later request. Cookies only travel in each browser request's own headers.
     client.cookies.jar.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
     market = market or SpotMarket.from_settings(settings, client)
+    ledger = CreditLedger(db)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -280,14 +283,50 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             user = await session_user(request)
             if user is None:
                 return relay(upstream)
+            rows = await market.rentals(customer_ref(user["id"]))
+            async with ledger.lock(user["id"]):
+                await ledger.reconcile(user["id"], rows)
             body["instances"] = [
                 *(body.get("instances") or []),
-                *await market.instances(user["id"]),
+                *await market.instances(user["id"], rows),
             ]
         except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
             logger.exception("opennext_spot_instances_unavailable")
             return relay(upstream)
         return relay(upstream, body)
+
+    async def credit(request, user_id):
+        """The account's Credit from the existing API less open Spot charges, or None."""
+        response = await legacy_get(request, "/api/billing/account")
+        if response.status_code != 200:
+            return None
+        account = response.json()
+        if account.get("demo") or account.get("accountId") != user_id:
+            return None
+        charges = await ledger.reconcile(user_id, await market.rentals(customer_ref(user_id)))
+        return adjusted_account(account, charges)
+
+    @app.get("/api/billing/account")
+    async def billing_account(request: Request):
+        try:
+            upstream = await legacy_get(request, request.url.path)
+        except httpx.HTTPError:
+            return error(502, "The OpenNEXT service is temporarily unavailable.")
+        if market is None or upstream.status_code != 200:
+            return relay(upstream)
+        try:
+            account = upstream.json()
+            user_id = account.get("accountId")
+            if account.get("demo") or account.get("confirmed") is not True or not user_id:
+                return relay(upstream)
+            async with ledger.lock(user_id):
+                rows = await market.rentals(customer_ref(user_id))
+                charges = await ledger.reconcile(user_id, rows)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            # Without the charges the balance would overstate what can be spent.
+            logger.exception("opennext_credit_unavailable")
+            return error(503, "Your available Credit could not be confirmed.")
+        return relay(upstream, adjusted_account(account, charges))
 
     def confirmation(rental):
         bought = purchased(rental)
@@ -332,13 +371,17 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             invalid_key = any(e["loc"] == ("sshPublicKey",) for e in exc.errors())
             return error(
                 400,
-                "Add a valid SSH public key in the purchase review; this offer requires one. "
+                "Enter a valid OpenSSH public key, or leave it empty and add one later. "
                 "No order was created."
                 if invalid_key
                 else "The purchase request is invalid. No order was created.",
                 code="INVALID_PURCHASE",
             )
         reference = order_reference(user["id"], purchase.idempotencyKey)
+        async with ledger.lock(user["id"]):
+            return await place_order(request, user, purchase, reference)
+
+    async def place_order(request, user, purchase, reference):
         try:
             existing = await market.find(user["id"], reference)
             if existing:
@@ -369,6 +412,19 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 "The offer price changed. Review the current price before paying.",
                 code="PRICE_CHANGED",
             )
+        try:
+            account = await credit(request, user["id"])
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            account = None
+        if account is None:
+            return error(503, "Your available Credit could not be confirmed. No order was created.")
+        if round(account["availableCredit"] * 100) < totals["totalCents"]:
+            return error(
+                409,
+                "Insufficient Credit. Add credit to complete this purchase. No order was created.",
+                code="INSUFFICIENT_CREDIT",
+            )
+        charge = await ledger.hold(user["id"], reference, totals["totalCents"], offer.id)
         rfq = rfq_for(offer, purchase, user["id"], utcnow(), market.storage_rate)
         try:
             response = await market.create(rfq)
@@ -376,6 +432,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 # A concurrent request with the same reference may have created it.
                 existing = await market.find(user["id"], reference)
                 if existing:
+                    await ledger.settle(charge, existing["id"])
                     return confirmation(existing)
             if response.status_code not in {200, 201}:
                 logger.error(
@@ -383,13 +440,17 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     response.status_code,
                     response.text[:500],
                 )
-                return error(502, "The Spot order was not accepted. No order was created.")
-            return confirmation(response.json()["rental"])
+                await ledger.refund(charge, "rental_rejected")
+                return error(502, "The Spot order was not accepted. No Credit was charged.")
+            rental = response.json()["rental"]
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            # The outcome is unknown; retrying with the same reference cannot create a second order.
+            # The outcome is unknown: the charge stays held until the rental appears (settled)
+            # or does not (refunded), and a retry with the same reference cannot order twice.
             return error(
                 503, "The order status is uncertain. Check your instances before trying again."
             )
+        await ledger.settle(charge, rental["id"])
+        return confirmation(rental)
 
     @app.api_route("/api/{path:path}", methods=METHODS)
     async def passthrough(request: Request, path: str):

@@ -75,12 +75,33 @@ CATALOG = [
 class Fakes:
     def __init__(self):
         self.rentals, self.created, self.bot_up = [], [], True
+        self.create = "ok"  # "ok", "reject" (bot refuses) or "lost" (answer never arrives)
+        # Credit in the existing API: approved top-ups and promotional Credit per account.
+        self.credit = {"U1": (0.50, 1.00), "U2": (100.0, 0.0)}
 
     def legacy(self, request):
         path = request.url.path
         if path == "/api/auth/session":
             return httpx.Response(
                 200, json=USERS.get(request.headers.get("cookie"), {"user": None})
+            )
+        if path == "/api/billing/account":
+            user = USERS.get(request.headers.get("cookie"), {}).get("user")
+            if not user:
+                return httpx.Response(401, json={"error": "Sign in to continue."})
+            promotional, paid = self.credit.get(user["id"], (0.0, 0.0))
+            return httpx.Response(
+                200,
+                json={
+                    "confirmed": True,
+                    "accountId": user["id"],
+                    "currency": "USD",
+                    "availableCredit": promotional + paid,
+                    "paidCredit": paid,
+                    "promotionalCredit": promotional,
+                    "requests": [],
+                    "notifications": [],
+                },
             )
         if path == "/api/marketplace/public":
             return httpx.Response(
@@ -106,6 +127,8 @@ class Fakes:
         if request.url.path == "/v1/rentals":
             rfq = json.loads(request.content)["rfq"]
             assert request.headers["idempotency-key"] == rfq["rfq_id"]
+            if self.create == "reject":
+                return httpx.Response(422, json={"detail": "invalid_rfq"})
             self.created.append(rfq)
             row = dict(
                 id=str(uuid4()),
@@ -116,6 +139,8 @@ class Fakes:
                 created_at="2026-10-28T01:01:00+00:00",
             )
             self.rentals.insert(0, row)
+            if self.create == "lost":
+                raise httpx.ReadTimeout("no answer")
             return httpx.Response(200, json={"created": True, "rental": row})
         return httpx.Response(404)
 
@@ -291,8 +316,7 @@ async def test_buy_now_creates_a_rental_for_the_customers_key(env):
         ({"origin": "https://evil.example"}, body(), 403, "verification failed"),
         ({}, body(cents=38), 409, "price changed"),
         ({}, body(offer_id="spotbot-us-west-2-g6.2xlarge"), 409, "no longer available"),
-        ({}, body(sshPublicKey="ssh-ed25519 AAAA"), 400, "SSH public key"),
-        ({}, body(sshPublicKey=None), 400, "requires one"),
+        ({}, body(sshPublicKey="ssh-ed25519 AAAA"), 400, "OpenSSH public key"),
         ({}, body(hours=1.005), 400, "invalid"),
         ({}, body(hours=721), 400, "invalid"),
     ],
@@ -374,3 +398,74 @@ async def test_purchases_are_unavailable_without_a_bot_api(tmp_path):
         public = await client.get("/api/marketplace/public")
         assert [s["id"] for s in public.json()["supplies"]] == ["S1"]
     await upstream.aclose()
+
+
+def balance(client, cookie="session=buyer"):
+    return client.get("/api/billing/account", headers={"Cookie": cookie})
+
+
+async def test_purchases_are_paid_from_credit_promotional_first(env):
+    client, fakes, _ = env
+    before = (await balance(client)).json()
+    assert before["availableCredit"] == 1.5 and before["spotCharges"] == []
+    assert (await buy(client, body())).status_code == 200  # $0.62 total.
+    after = (await balance(client)).json()
+    assert (after["promotionalCredit"], after["paidCredit"], after["availableCredit"]) == (
+        0,
+        0.88,
+        0.88,
+    )
+    assert (
+        after["spotCharges"][0]["totalCents"] == 62
+        and after["spotCharges"][0]["state"] == "charged"
+    )
+    assert after["spotCharges"][0]["orderId"] == fakes.rentals[0]["id"]
+    # A retried purchase returns the same order and charges nothing more.
+    assert (await buy(client, body())).status_code == 200
+    assert (await balance(client)).json()["availableCredit"] == 0.88
+    # Three hours ($1.23) cost more than is left.
+    refused = await buy(
+        client, {**body(hours=3, expectedPricing=checkout_totals(0.39, 3)), "idempotencyKey": "k-2"}
+    )
+    assert refused.status_code == 409 and refused.json()["code"] == "INSUFFICIENT_CREDIT"
+    assert len(fakes.created) == 1 and (await balance(client)).json()["availableCredit"] == 0.88
+
+
+async def test_refused_or_undelivered_orders_are_refunded(env, monkeypatch):
+    client, fakes, _ = env
+    fakes.create = "reject"
+    rejected = await buy(client, body())
+    assert rejected.status_code == 502 and "No Credit was charged" in rejected.json()["error"]
+    assert (await balance(client)).json()["availableCredit"] == 1.5
+    fakes.create = "ok"
+    assert (await buy(client, {**body(), "idempotencyKey": "k-2"})).status_code == 200
+    fakes.rentals[0].update(state="CLOSED")  # Never handed to the customer.
+    assert (await balance(client)).json()["availableCredit"] == 1.5
+    assert (await buy(client, {**body(), "idempotencyKey": "k-3"})).status_code == 200
+    fakes.rentals[0].update(state="CLOSED", delivering_at="2026-10-28T01:05:00+00:00")
+    assert (await balance(client)).json()["availableCredit"] == 0.88  # Delivered: no refund.
+
+
+async def test_an_unanswered_order_stays_held_until_its_rental_shows_up(env, monkeypatch):
+    client, fakes, _ = env
+    fakes.create = "lost"
+    uncertain = await buy(client, body())
+    assert uncertain.status_code == 503
+    held = (await balance(client)).json()
+    assert held["availableCredit"] == 0.88 and held["spotCharges"][0]["state"] == "charged"
+    # Lost before the bot stored it: refunded once the grace period has passed.
+    fakes.rentals.clear()
+    fakes.create = "lost"
+    from spotbot import opennext_ledger
+
+    later = opennext_ledger.utcnow() + opennext_ledger.HELD_GRACE * 2
+    await buy(client, {**body(), "idempotencyKey": "k-2"})
+    fakes.rentals.clear()
+    monkeypatch.setattr(opennext_ledger, "utcnow", lambda: later)
+    assert (await balance(client)).json()["availableCredit"] == 0.88
+
+
+async def test_buy_now_without_a_key(env):
+    client, fakes, _ = env
+    assert (await buy(client, body(sshPublicKey=None))).status_code == 200
+    assert fakes.created[0]["ssh_public_key"] is None
