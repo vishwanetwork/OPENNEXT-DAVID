@@ -154,6 +154,15 @@ async def test_other_routes_pass_through_with_host_cookies_csrf_and_set_cookies(
     assert (await client.delete("/api/admin/instances")).json()["method"] == "DELETE"
 
 
+async def test_upstream_cookies_are_never_kept_for_other_requests(env):
+    client, calls, _ = env
+    first = await client.get("/api/auth/session", headers={"Cookie": "session=s"})
+    assert first.headers.get_list("set-cookie") == ["a=1; HttpOnly", "b=2; HttpOnly"]
+    client.cookies.clear()  # The test client is the browser; it may keep its own cookies.
+    anonymous = await client.get("/api/auth/session")
+    assert anonymous.json()["cookie"] is None and "cookie" not in calls[-1].headers
+
+
 async def test_unavailable_existing_api_is_reported_without_details(tmp_path):
     def down(request):
         raise httpx.ConnectError("refused")

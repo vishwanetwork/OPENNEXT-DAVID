@@ -19,6 +19,7 @@ host-routing reverse proxy: the pass-through keeps the browser's `Host` header.
 """
 
 import asyncio
+import http.cookiejar
 import json
 import logging
 import secrets
@@ -136,6 +137,9 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     client = client or httpx.AsyncClient(
         timeout=httpx.Timeout(60, connect=5), follow_redirects=False, trust_env=False
     )
+    # Never keep upstream cookies: a shared jar would send one browser's session with every
+    # later request. Cookies only travel in each browser request's own headers.
+    client.cookies.jar.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
     market = market or SpotMarket.from_settings(settings, client)
 
     @asynccontextmanager
