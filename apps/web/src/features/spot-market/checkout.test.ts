@@ -284,9 +284,10 @@ describe('Spot checkout totals', () => {
     expect([fractional.baseCents, fractional.feeCents, fractional.totalCents]).toEqual([
       278, 14, 292,
     ]);
-    const halfCent = checkoutTotals({ instanceHourly: 0.25 }, 0.58);
-    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([15, 1, 16]);
-    expect(() => checkoutTotals({ instanceHourly: 0.01 }, 0.01)).toThrow(/payable total/);
+    // 25 cents x 1.58 h = 39.5 cents, rounded half up (orders are at least 1 hour).
+    const halfCent = checkoutTotals({ instanceHourly: 0.25 }, 1.58);
+    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([40, 2, 42]);
+    expect(() => checkoutTotals({ instanceHourly: 0.001 }, 1)).toThrow(/payable total/);
   });
   it('invalid, zero, overprecise and unsafe durations cannot advance checkout', async () => {
     for (const hours of [

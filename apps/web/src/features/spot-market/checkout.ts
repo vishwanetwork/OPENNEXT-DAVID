@@ -23,8 +23,9 @@ export interface CheckoutTotals {
 export function durationHours(value: unknown): number {
   const text = String(value ?? '').trim();
   const hours = Number(text);
-  if (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(hours) || hours <= 0)
-    throw new Error('Enter a usage duration greater than zero, with up to two decimal places.');
+  // Usage is billed per minute with a 1-hour minimum, so shorter orders are not offered.
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text) || !Number.isFinite(hours) || hours < 1)
+    throw new Error('Enter a usage duration of at least 1 hour, with up to two decimal places.');
   return hours;
 }
 

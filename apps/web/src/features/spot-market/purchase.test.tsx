@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
 import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test/render';
 import { useWorkspaceStore } from '@/terminal-kit';
-import { CHECKOUT_MODALS, type SpotCheckout } from './checkout';
+import { CHECKOUT_MODALS, durationHours, type SpotCheckout } from './checkout';
 import { spotCheckoutModals } from './components/checkout-modals';
 import type { SpotRow } from './inventory';
 import { serviceFixture } from '@/features/buyer-kyb/test-fixtures';
@@ -39,6 +39,12 @@ function Probe() {
 }
 
 describe('Spot purchase', () => {
+  it('orders at least one hour, since usage has a 1-hour minimum', () => {
+    expect(durationHours('1')).toBe(1);
+    expect(durationHours('2.25')).toBe(2.25);
+    for (const value of ['0.5', '0.99', '0', '1.005', 'x'])
+      expect(() => durationHours(value)).toThrow('at least 1 hour');
+  });
   it('registers a dialog for every checkout step the engine opens', () => {
     expect(Object.keys(spotCheckoutModals).sort()).toEqual([...CHECKOUT_MODALS].sort());
   });
