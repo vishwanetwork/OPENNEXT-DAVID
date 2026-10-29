@@ -1268,6 +1268,7 @@ def test_service_intervals_follow_delivery_replacement_and_end(monkeypatch):
     step(5, state="CLOSED")
     assert row["rfq"]["expires_at"] == "2026-10-29T02:15:00+00:00"  # Set once.
     assert module.service_seconds(row) == 50 * 60
+    assert [p["end_reason"] for p in row["service_intervals"]] == ["interrupted", "ended"]
 
 
 def test_service_window_never_extends_the_requested_expiry(monkeypatch):

@@ -352,11 +352,24 @@ async def test_workspace_adds_the_customers_own_rentals(env):
     other = {**body(), "idempotencyKey": "k-2"}
     other_buy = await buy(client, other, cookie="session=other", csrf="csrf-2")
     assert other_buy.status_code == 200
-    fakes.rentals[1].update(state="ACTIVE", generation=1, connection={"region": "us-west-2"})
+    fakes.rentals[1].update(
+        state="ACTIVE",
+        generation=1,
+        connection={"region": "us-west-2"},
+        service_intervals=[
+            dict(
+                start="2026-10-28T01:06:00+00:00",
+                end="2026-10-28T01:20:00+00:00",
+                end_reason="interrupted",
+            ),
+            dict(start="2026-10-28T01:31:00+00:00", end=None),
+        ],
+    )
     response = await client.get("/api/marketplace/me", headers={"Cookie": "session=buyer"})
     instances = response.json()["instances"]
     assert [i["id"] for i in instances] == ["legacy-1", fakes.rentals[1]["id"]]
     mine = instances[1]
+    billing = mine["billing"]
     assert mine == {
         "id": fakes.rentals[1]["id"],
         "name": "1 × L4",
@@ -368,6 +381,8 @@ async def test_workspace_adds_the_customers_own_rentals(env):
         "status": "active",
         "connectionStatus": "connected",
         "orderId": fakes.rentals[1]["id"],
+        "durationHours": 1.5,
+        "serviceStart": "2026-10-28T01:06:00+00:00",
         "serviceEnd": fakes.rentals[1]["rfq"]["expires_at"],
         "endedAt": None,
         "createdAt": "2026-10-28T01:01:00+00:00",
@@ -375,7 +390,32 @@ async def test_workspace_adds_the_customers_own_rentals(env):
         "sshUser": "ubuntu",
         "sshPort": 22105,
         "resaleAllowed": False,
+        "usage": [
+            {"start": "2026-10-28T01:06:00+00:00", "end": "2026-10-28T01:20:00+00:00"},
+            {"start": "2026-10-28T01:31:00+00:00", "end": None},
+        ],
+        # The Spot replacement is history; nothing the customer did is.
+        "history": [
+            {
+                "interruptedAt": "2026-10-28T01:20:00+00:00",
+                "reconnectedAt": "2026-10-28T01:31:00+00:00",
+            }
+        ],
+        "billing": {
+            "mode": "usage",
+            "state": "charged",
+            "final": False,
+            "heldCents": 62,
+            "hourlyCents": 39,
+            "feePercent": 5,
+            "minimumMinutes": 60,
+            "usedSeconds": billing["usedSeconds"],
+            "chargedCents": 62,  # Usage so far, never above the hold.
+            "releasedCents": None,
+            "startedAt": "2026-10-28T01:06:00+00:00",
+        },
     }
+    assert billing["usedSeconds"] > 14 * 60
     theirs = await client.get("/api/marketplace/me", headers={"Cookie": "session=other"})
     pending = theirs.json()["instances"][1]
     assert pending["status"] == "pending" and pending["sshHost"] is None
@@ -682,3 +722,52 @@ async def test_notifier_announces_refunds_and_skips_orders_without_an_email(env)
     [(to, subject, text)] = outbox.messages  # U2's session has no email.
     assert to == "u1@example.com" and subject == "Your 1 × L4 Spot order was not filled"
     assert "The full $0.62 was returned to your Credit." in text
+
+
+def test_history_lists_only_interruptions_the_customer_did_not_ask_for():
+    from spotbot.opennext_market import interruptions
+
+    def row(state, *periods, end_requested=False):
+        return dict(state=state, end_requested=end_requested, service_intervals=list(periods))
+
+    a = dict(start="T1", end="T2", end_reason="interrupted")
+    b = dict(start="T3", end="T4", end_reason="ended")
+    assert interruptions(row("CLOSED", a, b, end_requested=True)) == [
+        {"interruptedAt": "T2", "reconnectedAt": "T3"}
+    ]
+    # Still being replaced.
+    assert interruptions(row("RECOVERING", a)) == [{"interruptedAt": "T2", "reconnectedAt": None}]
+    # Ended while being replaced: the interruption stays in the history.
+    assert interruptions(row("CLOSED", a, end_requested=True)) == [
+        {"interruptedAt": "T2", "reconnectedAt": None}
+    ]
+    # Periods recorded before end reasons: the last one of an ended order is its end.
+    old = dict(start="T1", end="T2")
+    assert interruptions(row("CLOSED", old, end_requested=True)) == []
+    assert interruptions(row("RECOVERING", old)) == [{"interruptedAt": "T2", "reconnectedAt": None}]
+
+
+def test_orders_delivered_before_service_periods_show_one_period_from_the_handoff():
+    from spotbot.opennext_market import instance_view
+
+    row = dict(
+        id="R1",
+        state="CLOSED",
+        created_at="2026-10-28T01:00:00+00:00",
+        delivering_at="2026-10-28T01:05:00+00:00",
+        closed_at="2026-10-28T02:00:00+00:00",
+        service_intervals=[],
+        rfq=dict(
+            gpu_count=1,
+            gpu_model="T4",
+            regions=["us-west-2"],
+            max_price_hourly="0.336",
+            acquisition_deadline="2026-10-28T02:00:00+00:00",
+            expires_at="2026-10-28T03:00:00+00:00",
+        ),
+    )
+    view = instance_view(row)
+    assert view["usage"] == [
+        {"start": "2026-10-28T01:05:00+00:00", "end": "2026-10-28T02:00:00+00:00"}
+    ]
+    assert view["serviceStart"] == "2026-10-28T01:05:00+00:00" and view["history"] == []

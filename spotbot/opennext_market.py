@@ -266,9 +266,43 @@ def instance_status(row):
     return "pending" if state in PENDING else state.lower()
 
 
-def instance_view(row, ssh=None):
-    """A customer's rental as an OpenNEXT workspace instance, without server addresses."""
+def interruptions(row):
+    """Service breaks the customer did not ask for, oldest first.
+
+    Each is `{interruptedAt, reconnectedAt}`; `reconnectedAt` is None while a replacement is
+    still being prepared or when the order ended before one was ready.
+    """
+    periods = row.get("service_intervals") or []
+    ended = row["state"] in {"ENDING", "CLOSED"} or row.get("end_requested")
+    result = []
+    for n, period in enumerate(periods):
+        if not period["end"]:
+            continue
+        last = n == len(periods) - 1
+        reason = period.get("end_reason")
+        # Periods recorded before end reasons existed: only the final one can be an end.
+        if reason == "ended" or (reason is None and last and ended):
+            continue
+        result.append(
+            {
+                "interruptedAt": period["end"],
+                "reconnectedAt": None if last else periods[n + 1]["start"],
+            }
+        )
+    return result
+
+
+def instance_view(row, ssh=None, billing=None):
+    """A customer's rental as an OpenNEXT workspace instance, without server addresses.
+
+    `usage` lists the periods the customer had a running server (for the usage chart),
+    `history` the interruptions they did not ask for, and `billing` what the order costs.
+    """
     rfq, bought = row["rfq"], purchased(row)
+    periods = row.get("service_intervals") or []
+    if not periods and row.get("delivering_at"):
+        # Delivered before service periods were recorded: one period from the handoff.
+        periods = [{"start": row["delivering_at"], "end": row.get("closed_at")}]
     status = instance_status(row)
     connection = row.get("connection") or {}
     ready = status == "active" and bool(ssh)
@@ -283,6 +317,8 @@ def instance_view(row, ssh=None):
         "status": status,
         "connectionStatus": "connected" if ready else None,
         "orderId": row["id"],
+        "durationHours": bought["hours"],
+        "serviceStart": periods[0]["start"] if periods else None,
         "serviceEnd": rfq["expires_at"],
         "endedAt": row.get("closed_at"),
         "createdAt": row["created_at"],
@@ -290,6 +326,9 @@ def instance_view(row, ssh=None):
         "sshUser": ssh.get("user") if ready else None,
         "sshPort": ssh.get("port") if ready else None,
         "resaleAllowed": False,
+        "usage": [{"start": p["start"], "end": p["end"]} for p in periods],
+        "history": interruptions(row),
+        "billing": billing,
     }
 
 
@@ -435,8 +474,10 @@ class SpotMarket:
         ssh = body.get("ssh") or {}
         return ssh if body.get("ready") is True and ssh.get("host") and ssh.get("port") else None
 
-    async def instances(self, user_id, rows=None):
+    async def instances(self, user_id, rows=None, billing=None):
+        """Instance views; `billing` maps a rental id to its Billing view."""
         rows = await self.rentals(customer_ref(user_id)) if rows is None else rows
+        billing = billing or {}
         active = [r for r in rows if r["state"] == "ACTIVE"]
         ssh = dict(
             zip(
@@ -445,4 +486,4 @@ class SpotMarket:
                 strict=True,
             )
         )
-        return [instance_view(r, ssh.get(r["id"])) for r in rows]
+        return [instance_view(r, ssh.get(r["id"]), billing.get(r["id"])) for r in rows]

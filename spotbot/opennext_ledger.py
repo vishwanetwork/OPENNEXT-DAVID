@@ -157,6 +157,40 @@ class CreditLedger:
         return result
 
 
+def billing_view(charge, rental, now=None):
+    """What one order costs, for the instance's Billing view.
+
+    `chargedCents` is final once the order is billed or refunded; before that it is the
+    usage so far (with the 1-hour minimum once a server was delivered), never above the hold.
+    """
+    seconds = service_seconds(rental, now)
+    hourly = charge.get("hourly_cents")
+    if charge["state"] == "billed":
+        charged = charge["billed_cents"]
+    elif charge["state"] == "refunded":
+        charged = 0
+    elif hourly:
+        charged = min(charge["cents"], usage_cents(hourly, seconds)) if seconds else 0
+    else:
+        charged = charge["cents"]
+    periods = rental.get("service_intervals") or []
+    return dict(
+        mode="usage" if hourly else "prepaid",
+        state=charge["state"],
+        final=charge["state"] in {"billed", "refunded"},
+        heldCents=charge["cents"],
+        hourlyCents=hourly,
+        feePercent=5,
+        minimumMinutes=MINIMUM_MINUTES,
+        usedSeconds=round(seconds),
+        chargedCents=charged,
+        releasedCents=charge["cents"] - charged
+        if charge["state"] in {"billed", "refunded"}
+        else None,
+        startedAt=periods[0]["start"] if periods else None,
+    )
+
+
 def adjusted_account(account, charges):
     """The existing API's Credit view less Spot charges, promotional Credit first."""
     spent = sum(amount(c) for c in charges)

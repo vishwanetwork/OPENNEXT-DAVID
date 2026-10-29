@@ -49,8 +49,9 @@ def document(kind, tenant_id, **values):
 def track_service(row):
     """Record when the customer has a delivered server, for usage billing.
 
-    `service_intervals` holds one `{start, end}` per period the rental was ACTIVE and not
-    ending; a replacement (RECOVERING), an end request or closing ends the open period. On the
+    `service_intervals` holds one `{start, end, end_reason}` per period the rental was ACTIVE
+    and not ending. `end_reason` is `ended` for an end request (the customer, expiry or budget)
+    and `interrupted` otherwise (a Spot replacement or a failed health check). On the
     first handoff, a `service_seconds` RFQ moves `expires_at` to the delivery time plus that
     duration, so the paid time starts at delivery rather than at the order.
     """
@@ -71,6 +72,7 @@ def track_service(row):
         intervals.append(dict(start=now.isoformat(), end=None))
     elif not serving and intervals and not intervals[-1]["end"]:
         intervals[-1]["end"] = now.isoformat()
+        intervals[-1]["end_reason"] = "ended" if row.get("end_requested") else "interrupted"
 
 
 def service_seconds(row, now=None):

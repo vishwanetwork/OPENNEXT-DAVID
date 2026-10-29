@@ -34,7 +34,7 @@ from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
-from spotbot.opennext_ledger import CreditLedger, adjusted_account
+from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
 from spotbot.opennext_market import (
     PurchaseRequest,
     SpotMarket,
@@ -304,14 +304,23 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             rows = await market.rentals(customer_ref(user["id"]))
             async with ledger.lock(user["id"]):
                 await ledger.reconcile(user["id"], rows)
+                billing = await billing_views(user["id"], rows)
             body["instances"] = [
                 *(body.get("instances") or []),
-                *await market.instances(user["id"], rows),
+                *await market.instances(user["id"], rows, billing),
             ]
         except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
             logger.exception("opennext_spot_instances_unavailable")
             return relay(upstream)
         return relay(upstream, body)
+
+    async def billing_views(user_id, rows):
+        by_id = {r["id"]: r for r in rows}
+        return {
+            c["rental_id"]: billing_view(c, by_id[c["rental_id"]])
+            for c in await ledger.charges(user_id)
+            if c.get("rental_id") in by_id
+        }
 
     async def credit(request, user_id):
         """The account's Credit from the existing API less open Spot charges, or None."""
@@ -616,8 +625,12 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             ended = await market.release(rental["id"])
         except httpx.HTTPError:
             return error(503, "The instance could not be ended. Please try again.")
+        billing = await billing_views(user["id"], [ended])
         return no_store(
-            {"confirmed": True, "instance": (await market.instances(user["id"], [ended]))[0]}
+            {
+                "confirmed": True,
+                "instance": (await market.instances(user["id"], [ended], billing))[0],
+            }
         )
 
     @app.api_route("/api/{path:path}", methods=METHODS)
