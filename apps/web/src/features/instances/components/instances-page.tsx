@@ -1,10 +1,13 @@
 'use client';
 
-import type { Instance } from '@opennext/contracts';
+import type { Instance, Order } from '@opennext/contracts';
 import { useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
-import { lifecycle, moneyOrNa, stampUtcFull, telemetry } from '../lifecycle';
+import { lifecycle, moneyOrNa, stampUtcFull } from '../lifecycle';
 import { example, instanceView } from '../preview';
+import { useInstanceUsage } from '../hooks';
+import { instanceTitle, purchasedHours } from '../usage';
 import { IBtn, SshLibrary, StatusTagLive, usePreviewScope, useTick } from './common';
+import { ReconnectingNote, UsageChart } from './usage-chart';
 
 const endLabel = (i: Partial<Instance>) => (lifecycle(i).ended ? 'ENDED AT' : 'ENDS AT');
 
@@ -103,86 +106,49 @@ function ExampleCard() {
   );
 }
 
-function InstanceCard({ original }: { original: Instance }) {
+function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[] }) {
   const { openModal, toast } = useTerminal();
-  const { scope, demo } = usePreviewScope();
-  const i = instanceView(original, scope, demo);
-  const life = lifecycle(i);
-  const t = telemetry(i);
+  const life = lifecycle(instance);
+  const { snapshot, query } = useInstanceUsage(instance.id);
   const connect = () => {
-    if (!life.running)
-      return toast(
-        life.ended
-          ? 'This instance has ended.'
-          : 'Connection is unavailable until the resource is Running.',
-      );
-    if (!i.sshHost) return toast('Verified connection details are not available yet.');
-    openModal('connect', { id: i.id });
+    if (!life.running) return toast('Connection is unavailable until the resource is Running.');
+    if (!instance.sshHost) return toast('Verified connection details are not available yet.');
+    openModal('connect', { id: instance.id });
   };
   return (
-    <article className="instance-card" data-instance-live={i.id} data-instance-life={life.label}>
+    <article
+      className="instance-card"
+      data-instance-live={instance.id}
+      data-instance-life={life.label}
+    >
       <div className="row spread">
-        <h3>{i.name || i.model}</h3>
+        <h3>{instanceTitle(instance, purchasedHours(instance, orders, snapshot))}</h3>
         <StatusTagLive life={life} />
       </div>
-      <p className="instance-example-meta">{i.region || 'Region not provided'}</p>
-      <div className="details-grid">
-        <div>
-          <small>CAPACITY</small>
-          <strong>
-            {i.count} × {i.model}
-          </strong>
-        </div>
-        <div>
-          <small>RATE / GPU-HOUR</small>
-          <strong>{moneyOrNa(i.rate)}</strong>
-        </div>
-        <div>
-          <small>{endLabel(i)}</small>
-          <strong>{stampUtcFull(i.endedAt || i.serviceEnd || i.end)}</strong>
-        </div>
+      <div className="instance-compact-meta">
+        <span>{moneyOrNa(instance.rate)} / GPU-hour</span>
+        <span>
+          {life.ended ? 'Ended' : 'Ends'}{' '}
+          {stampUtcFull(instance.endedAt || instance.serviceEnd || instance.end)}
+        </span>
       </div>
-      <div className="instance-util">
-        <div className="row spread">
-          <span>GPU utilization</span>
-          <strong>
-            {life.ended
-              ? 'Not active'
-              : life.connecting
-                ? 'Waiting for reconnection'
-                : t.fresh
-                  ? (t.value as number).toFixed(1) + '%'
-                  : 'Awaiting telemetry'}
-          </strong>
-        </div>
-        <progress
-          max={100}
-          value={life.running && t.fresh ? (t.value as number) : 0}
-          aria-label="GPU utilization"
-        />
-        <small>
-          {life.ended
-            ? 'This allocation has ended.'
-            : life.connecting
-              ? 'A Spot interruption was reported. Connection and resale are paused.'
-              : t.fresh
-                ? 'Observed ' + stampUtcFull(t.at)
-                : 'No current measurement is available.'}
-        </small>
-      </div>
-      <div className="row">
+      <UsageChart snapshot={snapshot} loading={query.isFetching} />
+      {life.connecting ? (
+        <ReconnectingNote retained={snapshot?.retainedDataConfirmed === true} />
+      ) : null}
+      <div className="row instance-card-actions">
         <IBtn
           act="instance-connect"
-          id={i.id}
-          disabled={!(life.running && i.sshHost)}
+          id={instance.id}
+          disabled={!(life.running && instance.sshHost)}
           onClick={connect}
         >
           Connect
         </IBtn>
         <IBtn
           act="instance-manage"
-          id={i.id}
-          onClick={() => openModal('instance-manage', { id: i.id })}
+          id={instance.id}
+          onClick={() => openModal('instance-manage', { id: instance.id })}
         >
           Manage
         </IBtn>
@@ -191,15 +157,55 @@ function InstanceCard({ original }: { original: Instance }) {
   );
 }
 
-/** Instances page (legacy `instanceCards` + SSH library). */
+function InstanceGroup({
+  title,
+  items,
+  orders,
+}: {
+  title: string;
+  items: Instance[];
+  orders: Order[];
+}) {
+  return (
+    <details className="instance-state-group" open>
+      <summary>
+        <span>{title}</span>
+        <span className="instance-group-count">{items.length}</span>
+        <span className="instance-group-chevron" aria-hidden="true">
+          ⌄
+        </span>
+      </summary>
+      {items.length ? (
+        <div className="instance-grid">
+          {items.map((instance) => (
+            <InstanceCard key={instance.id} instance={instance} orders={orders} />
+          ))}
+        </div>
+      ) : (
+        <p className="instance-group-empty">No {title.toLowerCase()} instances.</p>
+      )}
+    </details>
+  );
+}
+
 export function InstancesPage() {
   const { go } = useTerminal();
-  const role = useWorkspaceStore((s) => s.role);
-  const items = useWorkspaceData().instances as Instance[];
+  const role = useWorkspaceStore((state) => state.role);
+  const workspace = useWorkspaceData();
+  const { scope, demo } = usePreviewScope();
   useTick();
+  const items = (workspace.instances as Instance[]).map((instance) =>
+    instanceView(instance, scope, demo),
+  );
+  const groups = [
+    { title: 'Running', items: items.filter((instance) => lifecycle(instance).running) },
+    { title: 'Reconnecting', items: items.filter((instance) => lifecycle(instance).connecting) },
+    { title: 'End', items: items.filter((instance) => lifecycle(instance).ended) },
+  ];
+  const unknown = items.filter((instance) => lifecycle(instance).label === 'Awaiting status');
   return (
     <>
-      <div className="page-content">
+      <div className="page-content instance-page">
         <div className="page-heading">
           <div>
             <h1>Instances</h1>
@@ -209,18 +215,30 @@ export function InstancesPage() {
                 : 'Your purchased GPU capacity, access and utilization.'}
             </p>
           </div>
-          {role === 'buyer' ? (
-            <IBtn act="navigate-market" onClick={() => go('market')}>
-              Find capacity
-            </IBtn>
-          ) : null}
+          <div className="row">
+            {role === 'buyer' ? (
+              <IBtn act="navigate-market" onClick={() => go('market')}>
+                Find capacity
+              </IBtn>
+            ) : null}
+          </div>
+        </div>
+        <div className="instance-access-page">
+          <SshLibrary scope="instances" />
         </div>
         {items.length ? (
-          <div className="instance-grid">
-            {items.map((i) => (
-              <InstanceCard key={i.id} original={i} />
+          <>
+            {groups.map((group) => (
+              <InstanceGroup key={group.title} {...group} orders={workspace.orders as Order[]} />
             ))}
-          </div>
+            {unknown.length ? (
+              <InstanceGroup
+                title="Awaiting status"
+                items={unknown}
+                orders={workspace.orders as Order[]}
+              />
+            ) : null}
+          </>
         ) : (
           <>
             <div className="instance-empty-summary">
@@ -234,9 +252,6 @@ export function InstancesPage() {
             <ExampleCard />
           </>
         )}
-      </div>
-      <div className="page-content instance-access-page">
-        <SshLibrary scope="instances" />
       </div>
     </>
   );

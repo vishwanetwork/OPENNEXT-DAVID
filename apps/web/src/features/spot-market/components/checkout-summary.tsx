@@ -80,8 +80,8 @@ export function Summary({
         <Totals row={row} hours={draft.hoursRaw} />
       </div>
       <p className="form-note" data-spot-usage-billing>
-        The total is held from your Credit. You pay per minute for the time your server runs, with
-        a 1-hour minimum, and the rest is returned when the order ends. Paid time starts when the
+        The total is held from your Credit. You pay per minute for the time your server runs, with a
+        1-hour minimum, and the rest is returned when the order ends. Paid time starts when the
         server is ready.
       </p>
     </>

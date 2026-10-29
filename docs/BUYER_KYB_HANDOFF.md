@@ -1,6 +1,6 @@
 # Buyer KYB and bank transfer — backend handoff
 
-Updated 2026-10-28. **Frontend-only implementation; no live adapters or new wire contracts.**
+Updated 2026-10-29. **Frontend-only implementation; no live adapters or new wire contracts.**
 The product owner approved frontend + interface handoff, not changes to `legacy/`.
 
 ## Implemented frontend
@@ -15,13 +15,19 @@ The product owner approved frontend + interface handoff, not changes to `legacy/
 - Allowlisted approval/rejection notification shortcuts; reopening always rechecks KYB.
 - Public-facing forms, review states and notification templates must use OpenNEXT branding;
   ALLScale is an internal operations/review integration detail, not a customer-facing label.
-  Consent covers OpenNEXT and authorized verification partners. The Demo exploration warning
-  is omitted from the KYB UI; Demo isolation and disabled uploads/submission remain unchanged.
+  Consent covers OpenNEXT and authorized verification partners. Consent remains disabled until
+  all five document categories pass validation, and changing a file clears consent.
+- First confirmed Buyer onboarding creates a one-time in-memory KYB introduction with Skip for now.
+  Existing sign-ins do not recreate that intent. The help link opens the existing Contact Us dialog.
 
 Composition supplies no `buyerKyb` / `bankTransfer` service, and the Console route supplies no
 Buyer review service. Upload, submission, review and payment therefore fail closed. No fake
 requests, approvals, notifications, balances or payment confirmations are generated. Demo accepts
-no genuine files and shows no actionable banking instructions. Inputs/files remain in memory only.
+no genuine files. New local demonstration walkthroughs are excluded from this production release.
+Inputs/files remain in memory only.
+
+See [payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md) for the latest
+face-value top-up rule, email outbox, durable provisioning and hourly usage ledger requirements.
 
 ## Source requirements
 
@@ -88,13 +94,15 @@ bank transfers as `credit_card` to fit existing contracts. Demo must never reach
   auditable and subject to agreed retention/deletion rules. No PII/files/approval/credit in browser
   persistent storage, logs, analytics or URL query strings.
 - Operations manually downloads and delivers files to ALLScale via an approved channel. No
-  automatic email or external file sharing is implemented.
+  automatic external document sharing is implemented. Approval/rejection decisions now require
+  both notification and email outbox acknowledgements; a backend worker must deliver them.
 - Rejection reason appears only in the private rejection dialog and recipient notification,
   not the queue, details page or error diagnostics.
 
 KYB flow: not submitted → Reviewing → Approved / Rejected; resubmit creates a revision. Reject
 stale concurrent decisions. UI review success requires correct case ID, next revision, decision
-and `notificationQueued: true`. Store the operator, ALLScale evidence and time in the audit trail.
+and matching owner/idempotency key, with `notificationQueued: true` and `emailQueued: true`.
+Store the operator, ALLScale evidence and time in the audit trail.
 
 Notification proposal on the existing owner-scoped feed: `kind: "buyer_kyb"`,
 `kybStatus: "Approved" | "Rejected"`, subject/message/time/ownerId. UI ignores arbitrary URLs.
@@ -123,6 +131,9 @@ Enforce approved Buyer KYB server-side on every top-up, Credit purchase, quote a
 bank payment endpoint. UI gates alone cannot provide enforcement against direct API calls.
 Order subtotal = node hourly rate × hours; aggregate fee = 5% of subtotal rounded to cents;
 total = subtotal + fee. Recompute prices/inventory server-side; changes require renewed consent.
+Top-ups are strictly face value: transfer $100 to receive $100 Credit, with no top-up fee.
+The tentative 5% fee applies only at purchase, for both Credit and Direct Pay. Changing the fee
+rate or including it in displayed prices requires a new agreed pricing version and updated consent.
 
 Bank transfers are asynchronous. Agree Spot inventory hold/expiry, late/short/overpayment,
 duplicates, refunds and reconciliation before enabling live orders. Cross-method idempotency must

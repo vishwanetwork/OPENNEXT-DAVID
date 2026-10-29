@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CreditTopup } from '@opennext/contracts';
+import type { PaymentReviewService } from '@/lib/payment-review';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderConsole, mockFetch, json } from '@/test/render';
 import { assertScope, filterTopups, pendingRow, topupAmount, topupLabel } from './topups';
@@ -66,6 +67,7 @@ describe('ConsoleTopupsPage', () => {
     await waitFor(() => expect(screen.getByText('buyer@example.com')).toBeInTheDocument());
     expect(screen.getByText('2 of 2 requests · Live accounts')).toBeInTheDocument();
     expect(screen.getByText('Solved', { selector: '.on-topup-status' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
     fireEvent.click(screen.getByText('Approve'));
     expect(screen.getByText('Approve top-up')).toBeInTheDocument();
     const form = document.querySelector('[data-topup-form="review"]') as HTMLFormElement;
@@ -78,5 +80,40 @@ describe('ConsoleTopupsPage', () => {
       ).toBeInTheDocument(),
     );
     expect(fetchSpy.mock.calls.some(([input]) => String(input).includes('/review'))).toBe(false);
+  });
+  it('keeps rejection reachable on the established service without claiming email delivery', async () => {
+    mockFetch((path) =>
+      path.startsWith('/api/admin/topups')
+        ? json(200, { scope: 'production', requests: rows })
+        : json(404, {}),
+    );
+    renderConsole(<ConsoleTopupsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    expect(screen.getByRole('heading', { name: 'Reject top-up' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reject request' })).toBeInTheDocument();
+    expect(screen.queryByText(/notification and email have been queued/i)).not.toBeInTheDocument();
+  });
+  it('selects the versioned queue only when a payment review adapter is supplied', async () => {
+    const fetchSpy = mockFetch(() => json(404, {}));
+    const service: PaymentReviewService = {
+      sessionScope: 'operator-production',
+      list: vi.fn<PaymentReviewService['list']>().mockResolvedValue({
+        confirmed: true,
+        sessionScope: 'operator-production',
+        records: [],
+      }),
+      decide: vi.fn<PaymentReviewService['decide']>(),
+    };
+    renderConsole(<ConsoleTopupsPage service={service} />);
+    await waitFor(() =>
+      expect(service.list).toHaveBeenCalledWith('topup', expect.any(AbortSignal)),
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Bank transfer top-up requests' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Account scope' })).not.toBeInTheDocument();
+    expect(fetchSpy.mock.calls.some(([input]) => String(input).includes('/api/admin/topups'))).toBe(
+      false,
+    );
   });
 });

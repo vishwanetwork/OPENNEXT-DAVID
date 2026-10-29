@@ -9,7 +9,7 @@ describe('lifecycle', () => {
   it('normalizes known states without inventing non-Spot reconnection', () => {
     expect(lifecycle({ status: 'Running', serviceEnd: future }, now).label).toBe('Running');
     expect(lifecycle({ status: 'interrupted', term: 'Spot', serviceEnd: future }, now).label).toBe(
-      'Connecting',
+      'Reconnecting',
     );
     expect(
       lifecycle({ status: 'interrupted', term: 'On-demand', serviceEnd: future }, now).label,

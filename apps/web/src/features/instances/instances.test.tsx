@@ -29,6 +29,9 @@ describe('Instances page', () => {
   });
   it('delivered allocations show live cards with region metadata and no supplier identity', () => {
     renderTerminal(<InstancesPage />, {
+      slots: {
+        sshLibrary: (scope) => <section aria-label={`SSH keys for ${scope}`}>SSH keys</section>,
+      },
       workspace: {
         instances: [
           {
@@ -48,9 +51,15 @@ describe('Instances page', () => {
       },
     });
     expect(screen.queryByLabelText('Example instance')).toBeNull();
-    const card = document.querySelector('[data-instance-live="INS-1"]')!;
+    const card = document.querySelector('[data-instance-live="INS-1"]');
+    expect(card).toBeInTheDocument();
+    if (!card) throw new Error('Expected the delivered instance card.');
+    const keys = screen.getByRole('region', { name: 'SSH keys for instances' });
+    const heading = screen.getByRole('heading', { name: 'Instances' });
+    expect(heading.compareDocumentPosition(keys) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(keys.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(card.getAttribute('data-instance-life')).toBe('Running');
-    expect(card.textContent).toContain('US East');
+    expect(card.textContent).toContain('8 × H100 - USA');
     expect(card.textContent).not.toContain('Secret Supplier');
     expect(screen.getByRole('button', { name: 'Connect' })).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));

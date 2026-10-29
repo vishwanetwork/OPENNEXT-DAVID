@@ -7,6 +7,7 @@ import { useSessionStore } from '@/lib/session-store';
 import { authApi } from '../api';
 import { useRoleIntent } from '../hooks';
 import { allowedRole, type Role } from '../role-intent';
+import { useRegistrationIntent } from '../registration-intent';
 import { AuthError, AuthShell } from './auth-shell';
 import { ArrowIcon, CheckIcon } from '@/components/icons';
 
@@ -91,7 +92,10 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
         throw new Error(
           'Account setup was not confirmed. Refresh your session before trying again.',
         );
+      const current = useSessionStore.getState();
+      if (current.status !== 'verified' || current.user?.id !== user.id) return;
       intent.bind(result);
+      useRegistrationIntent.getState().completed(user, result);
       setUser(result);
       setStage('reward');
     } catch (reason) {

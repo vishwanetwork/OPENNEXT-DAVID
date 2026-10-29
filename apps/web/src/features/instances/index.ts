@@ -1,4 +1,5 @@
 import './instances.css';
+import './usage.css';
 
 export { InstancesPage } from './components/instances-page';
 export { instanceModals } from './components/instance-modals';

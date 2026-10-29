@@ -21,6 +21,10 @@ const intent: BankTransferIntent = {
   purpose: 'topup',
   currency: 'USD',
   amountCents: 10000,
+  pricingVersion: 'credit-face-value-v1',
+  creditAmountCents: 10000,
+  feeAmountCents: 0,
+  idempotencyKey: 'create-1',
   reference: 'ONX-100',
   expiresAt: '2099-01-01T00:00:00Z',
 };
@@ -28,6 +32,9 @@ const request = {
   purpose: 'topup' as const,
   currency: 'USD' as const,
   amountCents: 10000,
+  pricingVersion: 'credit-face-value-v1' as const,
+  creditAmountCents: 10000,
+  feeAmountCents: 0,
   idempotencyKey: 'create-1',
 };
 const bankService = (): BankTransferService => ({
@@ -137,6 +144,22 @@ describe('bank transfer frontend', () => {
       await screen.findByText(/Approved business verification is required/),
     ).toBeInTheDocument();
     expect(bank.create).not.toHaveBeenCalled();
+  });
+  it('does not cache a matching-price receipt from another creation request', async () => {
+    const bank = bankService();
+    bank.create = vi.fn(async () => ({ ...intent, idempotencyKey: 'different-request' }));
+    const view = renderTerminal(<Start />, {
+      slots: { services: { buyerKyb: kybService(), bankTransfer: bank } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start transfer' }));
+    expect(
+      await screen.findByText(/bank transfer request could not be verified/),
+    ).toBeInTheDocument();
+    expect(useWorkspaceStore.getState().modal).toBeNull();
+    const identity = accountIdentity(useSessionStore.getState().user, false);
+    expect(
+      view.queryClient.getQueryData(queryKeys.account.bankTransfer(identity, intent.id)),
+    ).toBeUndefined();
   });
   it('discards a late payment response after switching accounts', async () => {
     let complete: ((value: BankTransferIntent) => void) | undefined;

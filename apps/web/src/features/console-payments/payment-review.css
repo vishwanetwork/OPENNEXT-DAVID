@@ -1,0 +1,106 @@
+.payment-review {
+  color: var(--ink, #182b23);
+}
+.payment-review-state,
+.payment-review-note {
+  color: #647368;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.payment-review-state {
+  padding: 14px 18px;
+  background: #f4f6f1;
+  border: 1px solid #dce2d8;
+  border-radius: 8px;
+}
+.payment-review-toolbar {
+  display: flex;
+  gap: 18px;
+  padding: 18px;
+  align-items: end;
+}
+.payment-review-toolbar label,
+.payment-review-dialog form > label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.payment-review-toolbar input,
+.payment-review-toolbar select,
+.payment-review-dialog textarea {
+  border: 1px solid #dce2d8;
+  border-radius: 6px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #182b23;
+}
+.payment-review-toolbar input {
+  min-width: 260px;
+}
+.payment-review-actions {
+  display: flex;
+  gap: 6px;
+}
+.payment-review-empty {
+  padding: 28px;
+  text-align: center;
+  color: #647368;
+}
+.payment-review-error {
+  color: #9b3030;
+}
+.payment-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #11241b66;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.payment-review-dialog {
+  width: min(580px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #dce2d8;
+  border-radius: 12px;
+  padding: 26px;
+  color: #182b23;
+}
+.payment-review-dialog h2 {
+  margin: 0 0 18px;
+}
+.payment-review-dialog dl > div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  padding: 9px 0;
+  border-bottom: 1px solid #eef1ea;
+}
+.payment-review-dialog dt {
+  color: #647368;
+}
+.payment-review-dialog dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.payment-review-dialog form > .payment-review-check {
+  display: flex;
+  align-items: start;
+  line-height: 1.5;
+}
+.payment-review-dialog footer {
+  display: flex;
+  justify-content: end;
+  gap: 10px;
+  margin-top: 24px;
+}
+@media (max-width: 600px) {
+  .payment-review-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .payment-review-toolbar input {
+    min-width: 0;
+  }
+}

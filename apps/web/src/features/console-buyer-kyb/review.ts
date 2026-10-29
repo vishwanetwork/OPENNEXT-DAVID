@@ -86,14 +86,18 @@ export function confirmedDecision(
   result: Awaited<ReturnType<BuyerKybAdminService['decide']>>,
   record: BuyerKybCase,
   decision: 'Approved' | 'Rejected',
+  idempotencyKey: string,
 ) {
   return (
     result?.confirmed === true &&
     result.caseId === record.id &&
+    result.accountId === record.accountId &&
+    result.idempotencyKey === idempotencyKey &&
     result.status === decision &&
     Number.isSafeInteger(result.revision) &&
     result.revision === record.revision + 1 &&
-    result.notificationQueued === true
+    result.notificationQueued === true &&
+    result.emailQueued === true
   );
 }
 

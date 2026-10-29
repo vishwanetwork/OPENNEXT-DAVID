@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { useStartBankTransfer } from '@/features/bank-transfer';
 import { useToast } from '@/components/ui/toast';
 import { useTerminal } from '@/terminal-kit';
+import { topupPricing } from '@/lib/topup-pricing';
 import { usd } from '../analytics';
 import { useOwnTopups, usePaymentIdentity } from '../hooks';
 import { METHODS, PRESETS, usePaymentStore, validAmount } from '../payments';
@@ -57,7 +58,7 @@ export function PaymentAmount({
       onSubmit={submit}
     >
       <p className="form-note">
-        Choose a top-up amount. Credit is added after operations verifies your payment.
+        Choose the Credit amount to add. Credit is added after operations confirms receipt of funds.
       </p>
       <div className="pay-presets">
         {PRESETS.map((value) => (
@@ -118,13 +119,17 @@ export function PaymentMethod() {
   const draft = usePaymentStore((state) => state.draft);
   const transfer = useStartBankTransfer();
   if (!draft || draft.owner !== owner) return <p>Start a new credit top-up.</p>;
+  const pricing = topupPricing(Math.round(draft.amount * 100));
+  if (!pricing) return <p>Choose a valid credit amount.</p>;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const current = usePaymentStore.getState().draft;
     if (!current || current.owner !== owner || !validAmount(current.amount)) return;
+    const currentPricing = topupPricing(Math.round(current.amount * 100));
+    if (!currentPricing) return;
     await transfer.start({
       purpose: 'topup',
-      amountCents: Math.round(current.amount * 100),
+      ...currentPricing,
       currency: 'USD',
       idempotencyKey: current.idempotencyKey,
       ...(current.orderId ? { orderId: current.orderId } : {}),
