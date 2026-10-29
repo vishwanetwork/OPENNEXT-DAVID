@@ -7,6 +7,9 @@ import { useInstanceUsage } from '../hooks';
 import { IBtn } from './common';
 import { UsageChart } from './usage-chart';
 
+const billedSeconds = (billing: NonNullable<InstanceUsageSnapshot['billing']>) =>
+  billing.entries.reduce((sum, entry) => sum + entry.billableSeconds, 0);
+
 export function BillingHistory({ snapshot }: { snapshot: InstanceUsageSnapshot }) {
   const billing = snapshot.billing;
   if (!billing)
@@ -38,6 +41,12 @@ export function BillingHistory({ snapshot }: { snapshot: InstanceUsageSnapshot }
         Only connected, billable usage is charged. Interrupted periods pause compute billing. All
         amounts below come from the recorded ledger.
       </p>
+      {billing.totalCents > 0 && billedSeconds(billing) < 3600 ? (
+        <p className="form-note" data-instance-billing-minimum>
+          Usage is billed per minute with a 1-hour minimum per order. This order has run for less
+          than an hour, so the minimum is charged and spread across the periods below.
+        </p>
+      ) : null}
       <div className="instance-ledger-wrap">
         <table className="instance-ledger">
           <thead>
