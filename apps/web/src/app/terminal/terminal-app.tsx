@@ -12,7 +12,11 @@ import {
   useOpportunity,
 } from '@/features/procurement';
 import { BillingPolling, billingModals } from '@/features/billing';
-import { instanceModals, useInstanceLifecycleService } from '@/features/instances';
+import {
+  instanceModals,
+  useInstanceLifecycleService,
+  useInstanceUsageApiService,
+} from '@/features/instances';
 import {
   SpotCheckoutProvider,
   spotCheckoutModals,
@@ -21,8 +25,12 @@ import {
 import { NotificationBell } from '@/features/quotes';
 import { SshKeyLibrary, accountModals, useAccountApiService } from '@/features/account';
 import { ContactDialog } from '@/features/site';
-import { BuyerKybOnboardingPrompt, buyerKybModals } from '@/features/buyer-kyb';
-import { bankTransferModals } from '@/features/bank-transfer';
+import {
+  BuyerKybOnboardingPrompt,
+  buyerKybModals,
+  useBuyerKybApiService,
+} from '@/features/buyer-kyb';
+import { bankTransferModals, useBankTransferApiService } from '@/features/bank-transfer';
 
 /**
  * Composition root of the Capacity Terminal. This is the only module that knows every
@@ -45,6 +53,9 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
   const purchaseContext = useSpotPurchaseContext();
   const account = useAccountApiService();
   const instanceLifecycle = useInstanceLifecycleService();
+  const buyerKyb = useBuyerKybApiService();
+  const bankTransfer = useBankTransferApiService();
+  const instanceUsage = useInstanceUsageApiService();
   return useMemo<TerminalSlots>(
     () => ({
       ...EMPTY_SLOTS,
@@ -55,11 +66,28 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       modals: MODALS,
       openContact,
       openOpportunity,
-      // Backend adapters: account SSH keys and instance termination. Spot purchases use the
-      // Spot market feature's own endpoint unless a `spotCheckout` service is injected here.
-      services: { purchaseContext, account, instanceLifecycle },
+      // Backend adapters (SpotOrderBot's OpenNEXT adapter): account SSH keys, instance
+      // termination and usage, Buyer KYB and bank transfers. Spot purchases use the Spot
+      // market feature's own endpoint unless a `spotCheckout` service is injected here.
+      services: {
+        purchaseContext,
+        account,
+        instanceLifecycle,
+        instanceUsage,
+        buyerKyb,
+        bankTransfer,
+      },
     }),
-    [openContact, openOpportunity, purchaseContext, account, instanceLifecycle],
+    [
+      openContact,
+      openOpportunity,
+      purchaseContext,
+      account,
+      instanceLifecycle,
+      instanceUsage,
+      buyerKyb,
+      bankTransfer,
+    ],
   );
 }
 

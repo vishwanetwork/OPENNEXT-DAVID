@@ -1,4 +1,4 @@
-import { ConsoleTopupsPage } from '@/features/console-topups';
+import { TopupRequestsRoute } from '@/features/console-operations';
 export default function Page() {
-  return <ConsoleTopupsPage />;
+  return <TopupRequestsRoute />;
 }

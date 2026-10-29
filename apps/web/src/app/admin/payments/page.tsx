@@ -1,4 +1,4 @@
-import { PaymentsPage } from '@/features/console';
+import { PaymentRequestsRoute } from '@/features/console-operations';
 export default function Page() {
-  return <PaymentsPage />;
+  return <PaymentRequestsRoute />;
 }

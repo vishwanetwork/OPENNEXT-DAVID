@@ -1,4 +1,4 @@
-import { KybReviewWorkspace } from '@/features/console-buyer-kyb';
+import { KybReviewRoute } from '@/features/console-operations';
 export default function Page() {
-  return <KybReviewWorkspace />;
+  return <KybReviewRoute />;
 }
