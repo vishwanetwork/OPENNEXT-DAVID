@@ -185,3 +185,17 @@ Deployment requirements:
   arrive; the adapter forwards them as received.
 - The adapter needs network access to the legacy API, the bot's database, the bot API and, for
   SSH details, the gateway API.
+- It writes its own records (charges, KYB cases and documents, bank transfers, notices) to that
+  database, so the database must be backed up with the KYB files directory.
+
+Topology for the current hosts. The OpenNEXT container (one web server with the legacy API bound to
+`127.0.0.1:4189` inside it) and the bot (with its MySQL) run on different machines.
+
+- Run the adapter as a sidecar sharing the OpenNEXT container's network namespace
+  (`network_mode: service:web`). It reaches the legacy API at `127.0.0.1:4189`, and the web server
+  reaches it at `API_ORIGIN=http://127.0.0.1:4191`, with nothing published.
+- Give it a private, encrypted route to the bot's MySQL. A security group should allow only the
+  OpenNEXT host; alternatively, run a dedicated database.
+- Run ClamAV (`clamav/clamav`) next to it for `SPOTBOT_OPENNEXT_CLAMD`.
+- Reuse the OpenNEXT `SMTP_*` values for `SPOTBOT_OPENNEXT_SMTP_*`.
+- Mount persistent volumes for `SPOTBOT_OPENNEXT_FILES_DIR`.
