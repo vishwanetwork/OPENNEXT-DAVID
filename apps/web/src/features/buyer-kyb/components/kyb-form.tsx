@@ -39,20 +39,25 @@ export function KybForm() {
   }, []);
   const mode = modeForCountry(company.country);
   const available = kyb.connected && kyb.query.isSuccess && !kyb.query.isError;
+  const completeDocuments = validateFiles(files) === null;
   const change = (key: keyof BuyerKybCompany, value: string) => {
     setCompany((current) => ({ ...current, [key]: value }));
-    if (key === 'country') setFiles({});
+    if (key === 'country') {
+      setFiles({});
+      setConsent(false);
+    }
     requestId.current = '';
     setError('');
   };
   const changeFiles = (kind: KybDocumentKind, values: File[]) => {
     const next = { ...files, [kind]: values };
     const issue = validateFiles(next, false);
+    setConsent(false);
     setError(issue ?? '');
     if (!issue) {
       setFiles(next);
       requestId.current = '';
-    }
+    } else setFiles({ ...files, [kind]: [] });
   };
   const currentAccount = () => {
     const session = useSessionStore.getState();
@@ -135,7 +140,7 @@ export function KybForm() {
             <input
               type="checkbox"
               checked={consent}
-              disabled={!available || busy}
+              disabled={!available || !completeDocuments || busy}
               onChange={(event) => setConsent(event.target.checked)}
             />
             <span>
@@ -155,7 +160,11 @@ export function KybForm() {
         <button type="button" className="btn secondary" onClick={close}>
           Cancel
         </button>
-        <button type="submit" className="btn" disabled={!available || !mode || !consent || busy}>
+        <button
+          type="submit"
+          className="btn"
+          disabled={!available || !mode || !completeDocuments || !consent || busy}
+        >
           {busy ? 'Submitting…' : 'Submit KYB'}
         </button>
       </div>

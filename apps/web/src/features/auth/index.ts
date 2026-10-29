@@ -16,3 +16,4 @@ export {
 export { AuthView, fieldError, type AuthMode } from './components/auth-view';
 export { OnboardingView } from './components/onboarding-view';
 export { AuthShell } from './components/auth-shell';
+export { useRegistrationIntent } from './registration-intent';

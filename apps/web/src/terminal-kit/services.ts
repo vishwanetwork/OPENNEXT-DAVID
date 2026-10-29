@@ -5,6 +5,7 @@
  */
 import type { Instance } from '@opennext/contracts';
 import type { BankTransferService, BuyerKybService } from '@/lib/buyer-kyb';
+import type { InstanceUsageService } from '@/lib/instance-usage';
 
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
@@ -69,6 +70,7 @@ export interface TerminalServices {
   bankTransfer?: BankTransferService;
   account?: AccountService;
   instanceLifecycle?: InstanceLifecycleAdapter;
+  instanceUsage?: InstanceUsageService;
   spotCheckout?: SpotCheckoutService;
   purchaseContext?: PurchaseContext;
 }

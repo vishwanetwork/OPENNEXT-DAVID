@@ -37,5 +37,7 @@ describe('bank-only credit top-up', () => {
     expect(screen.queryByRole('radio', { name: /Credit card|PayPal/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Proceed to payment' })).toBeDisabled();
     expect(screen.getByText('$500.00')).toBeInTheDocument();
+    expect(screen.queryByText(/OpenNEXT Fee/)).not.toBeInTheDocument();
+    expect(screen.queryByText('$525.00')).not.toBeInTheDocument();
   });
 });

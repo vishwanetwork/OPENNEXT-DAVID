@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useId, useLayoutEffect, useMemo } from 'react';
+import { useCallback, useId, useLayoutEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BuyerKybAdminService } from '@/lib/buyer-kyb';
-import { isUnauthorized } from '@/lib/api/errors';
 import { confirmedCases } from './review';
 
 /** Private, short-lived cache: no record survives removal of this Console view. */
@@ -30,7 +29,6 @@ export function useBuyerKybQueue(service?: BuyerKybAdminService, blocked = false
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
-  const unauthorized = isUnauthorized(query.error);
   useLayoutEffect(
     () => () => {
       void client.cancelQueries({ queryKey, exact: true });
@@ -38,15 +36,13 @@ export function useBuyerKybQueue(service?: BuyerKybAdminService, blocked = false
     },
     [client, queryKey],
   );
-  useEffect(() => {
-    if (unauthorized) client.removeQueries({ queryKey, exact: true });
-  }, [client, queryKey, unauthorized]);
+  const clear = useCallback(() => {
+    void client.cancelQueries({ queryKey, exact: true });
+    client.removeQueries({ queryKey, exact: true });
+  }, [client, queryKey]);
   return {
     ...query,
     data: service && !blocked && !query.error ? query.data : undefined,
-    clear: () => {
-      void client.cancelQueries({ queryKey, exact: true });
-      client.removeQueries({ queryKey, exact: true });
-    },
+    clear,
   };
 }

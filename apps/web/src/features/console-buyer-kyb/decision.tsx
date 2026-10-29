@@ -58,6 +58,7 @@ export function KybDecision({
     try {
       const response = await service.decide({
         caseId: record.id,
+        accountId: record.accountId,
         expectedRevision: record.revision,
         decision,
         reason: rejectionReason,
@@ -65,9 +66,9 @@ export function KybDecision({
         idempotencyKey: submission.current.key,
       });
       if (!active.current) return;
-      if (!confirmedDecision(response, record, decision))
+      if (!confirmedDecision(response, record, decision, submission.current.key))
         throw new Error(
-          'The decision and user notification were not fully confirmed. Refresh the case before retrying.',
+          'The decision, user notification and email were not fully confirmed. Refresh the case before retrying.',
         );
       await onConfirmed();
     } catch (failure) {
@@ -90,7 +91,7 @@ export function KybDecision({
     return (
       <p className="buyer-kyb-note">
         This application has a final decision. Rejection details are delivered privately through the
-        applicant&apos;s notification.
+        applicant&apos;s notification and email.
       </p>
     );
   return (
@@ -148,7 +149,7 @@ export function KybDecision({
           <h2>Reject Buyer KYB</h2>
           <p>
             Enter ALLScale&apos;s reason. It will be sent privately to the applicant in their
-            notification.
+            notification and email.
           </p>
           <form onSubmit={reject} noValidate>
             <label className="buyer-kyb-field">

@@ -1,0 +1,102 @@
+Production release review — 2026-10-29
+
+Scope
+- SSH keys above purchased Instances.
+- Buyer registration KYB introduction, document consent validation and review acknowledgement.
+- Face-value Credit top-ups; tentative 5% fee only at purchase.
+- Versioned payment review frontend with safe receipt validation and backend handoff.
+- Existing top-up approval/rejection remains available until the new service is connected.
+- Compact grouped Instances, authoritative usage bars, Billing and interruption History.
+- Newly added local Demo KYB, bank-transfer and usage simulations excluded from this release.
+- Preexisting public Demo baseline retained. Synthetic usage records are test-only.
+
+Backend limits
+No legacy, deployment, routing, API proxy or wire-schema changes.
+No live secure upload adapter, email sender, bank reconciliation, ledger writer or provisioning worker added.
+Optional new ports fail closed when unavailable. Backend activation requirements are documented.
+
+Checks
+- Locked dependency install passed; lockfile unchanged.
+- Repository Prettier check passed.
+- ESLint: zero errors; three existing max-lines warnings.
+- Web and contracts TypeScript passed (including production build typecheck).
+- Web: 371 tests / 61 files passed, coverage thresholds passed.
+- Coverage: statements/lines 65.85%, branches 76.40%, functions 59.22%.
+- Contracts: 5 tests passed.
+- Legacy API: 668 tests passed, unchanged.
+- Production Next.js build passed, 40 routes generated.
+- Isolated browser check against the built release: SSH heading above actual cards,
+  four cards fit at 1440x1000, mobile single-column, collapsible groups,
+  country/duration titles and absence of new local Demo controls.
+- Browser responses were isolated fixtures; no account or payment mutation performed.
+- Independent release review caught and fixed removal of legacy top-up actions.
+- git diff --check passed.
+
+Changed files
+apps/web/src/app/terminal/terminal-app.tsx
+apps/web/src/features/auth/components/onboarding-view.tsx
+apps/web/src/features/auth/hooks.ts
+apps/web/src/features/auth/index.ts
+apps/web/src/features/auth/onboarding.test.tsx
+apps/web/src/features/auth/registration-intent.test.ts
+apps/web/src/features/auth/registration-intent.ts
+apps/web/src/features/bank-transfer/bank-transfer.test.tsx
+apps/web/src/features/bank-transfer/components/bank-details.tsx
+apps/web/src/features/bank-transfer/components/transfer-modal.tsx
+apps/web/src/features/bank-transfer/validation.test.ts
+apps/web/src/features/bank-transfer/validation.ts
+apps/web/src/features/billing/components/payment-flow.tsx
+apps/web/src/features/billing/kyb-payment.test.tsx
+apps/web/src/features/buyer-kyb/buyer-kyb.css
+apps/web/src/features/buyer-kyb/components/help.tsx
+apps/web/src/features/buyer-kyb/components/kyb-content.tsx
+apps/web/src/features/buyer-kyb/components/kyb-form.tsx
+apps/web/src/features/buyer-kyb/components/onboarding-prompt.tsx
+apps/web/src/features/buyer-kyb/consent.test.tsx
+apps/web/src/features/buyer-kyb/index.ts
+apps/web/src/features/buyer-kyb/onboarding.test.tsx
+apps/web/src/features/console-buyer-kyb/decision.tsx
+apps/web/src/features/console-buyer-kyb/hooks.ts
+apps/web/src/features/console-buyer-kyb/page.tsx
+apps/web/src/features/console-buyer-kyb/review.test.tsx
+apps/web/src/features/console-buyer-kyb/review.ts
+apps/web/src/features/console-buyer-kyb/session.test.tsx
+apps/web/src/features/console-payments/access.test.tsx
+apps/web/src/features/console-payments/decision-dialog.tsx
+apps/web/src/features/console-payments/hooks.ts
+apps/web/src/features/console-payments/index.ts
+apps/web/src/features/console-payments/page.tsx
+apps/web/src/features/console-payments/payment-review.css
+apps/web/src/features/console-payments/review.test.tsx
+apps/web/src/features/console-payments/validation.ts
+apps/web/src/features/console-topups/topups-page.tsx
+apps/web/src/features/console-topups/topups.test.tsx
+apps/web/src/features/console/pages/payments.tsx
+apps/web/src/features/instances/components/common.tsx
+apps/web/src/features/instances/components/instance-dialogs.tsx
+apps/web/src/features/instances/components/instance-modals.tsx
+apps/web/src/features/instances/components/instances-page.tsx
+apps/web/src/features/instances/components/usage-chart.tsx
+apps/web/src/features/instances/components/usage-dialogs.tsx
+apps/web/src/features/instances/hooks.ts
+apps/web/src/features/instances/index.ts
+apps/web/src/features/instances/instances.test.tsx
+apps/web/src/features/instances/lifecycle.test.ts
+apps/web/src/features/instances/lifecycle.ts
+apps/web/src/features/instances/usage-api.ts
+apps/web/src/features/instances/usage-render.test.tsx
+apps/web/src/features/instances/usage.css
+apps/web/src/features/instances/usage.test.ts
+apps/web/src/features/instances/usage.ts
+apps/web/src/lib/api/query-keys.ts
+apps/web/src/lib/buyer-kyb.ts
+apps/web/src/lib/instance-usage.ts
+apps/web/src/lib/payment-review.ts
+apps/web/src/lib/topup-pricing.test.ts
+apps/web/src/lib/topup-pricing.ts
+apps/web/src/terminal-kit/services.ts
+apps/web/src/test/instance-usage-fixture.ts
+docs/API_CONTRACT.md
+docs/BUYER_KYB_HANDOFF.md
+docs/PAYMENT_OPERATIONS_HANDOFF.md
+docs/reviews/kyb-payments-instances-production-20261029.txt

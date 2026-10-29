@@ -323,6 +323,12 @@ for frontend-only scope, proposed endpoints, private file transport, ALLScale re
 and server-side payment gates. Optional ports in `src/lib/buyer-kyb.ts` are not wire contracts.
 Never send Buyer data to supplier KYB or disguise bank transfers as card payments.
 
+The 2026-10-29 frontend additions are documented in
+[payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md). These include optional
+review and usage ports, not deployed endpoints or changes to the existing wire schemas.
+Top-ups credit the full transferred amount; the tentative 5% fee is purchase-only. Review receipts
+must acknowledge both notification and email outboxes. Instance charts do not calculate charges.
+
 Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
 (`auth`, `marketplace`, `billing`, `pricing`, `news`, `contact`, `demo`, `admin`, `account`).
 Every call the browser makes is in one place per domain: `apps/web/src/features/*/api.ts`

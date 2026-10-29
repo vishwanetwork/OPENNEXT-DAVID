@@ -77,6 +77,7 @@ export interface BuyerKybAdminService {
   }) => Promise<{ caseId: string; documentId: string; fileName: string; blob: Blob }>;
   decide: (input: {
     caseId: string;
+    accountId: string;
     expectedRevision: number;
     decision: 'Approved' | 'Rejected';
     reason: string;
@@ -85,9 +86,12 @@ export interface BuyerKybAdminService {
   }) => Promise<{
     confirmed: boolean;
     caseId: string;
+    accountId: string;
+    idempotencyKey: string;
     status: BuyerKybStatus;
     revision: number;
     notificationQueued: boolean;
+    emailQueued: boolean;
   }>;
 }
 
@@ -95,6 +99,9 @@ export interface BankTransferRequest {
   purpose: 'topup' | 'order';
   amountCents: number;
   currency: 'USD';
+  pricingVersion?: 'credit-face-value-v1';
+  creditAmountCents?: number;
+  feeAmountCents?: number;
   purchaseReference?: string;
   orderId?: string;
   offerId?: string;
@@ -111,6 +118,15 @@ export interface BankTransferIntent {
   purpose: 'topup' | 'order';
   currency: 'USD';
   amountCents: number;
+  pricingVersion?: 'credit-face-value-v1';
+  creditAmountCents?: number;
+  feeAmountCents?: number;
+  /** Echo the exact creation request, including its linked purchase and pricing scope. */
+  idempotencyKey: string;
+  orderId?: string;
+  offerId?: string;
+  durationHours?: number;
+  purchaseReference?: string;
   reference: string;
   expiresAt: string;
 }

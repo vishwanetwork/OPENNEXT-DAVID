@@ -10,9 +10,10 @@ import { moneyOrNa, sshCommand, timestamp } from '../lifecycle';
 import { localDemo } from '../preview';
 import { IBtn, SshLibrary } from './common';
 import { Cell, OrderField, useInstance } from './instance-shared';
+import { instanceCountry } from '../usage';
 
 export function Manage({ id }: { id?: string }) {
-  const { openModal, closeModal, toast } = useTerminal();
+  const { openModal, toast } = useTerminal();
   const { i, life, e, t, demo, role } = useInstance(id, false);
   const api = useApi();
   const invalidate = useInvalidateWorkspace();
@@ -43,7 +44,7 @@ export function Manage({ id }: { id?: string }) {
         <Cell label="CAPACITY">
           {i.count} × {i.model}
         </Cell>
-        <Cell label="REGION">{i.region || 'Not provided'}</Cell>
+        <Cell label="REGION">{instanceCountry(i.region, i.country)}</Cell>
         <Cell label="UNIT RATE">{moneyOrNa(i.rate)} / GPU-hour</Cell>
         <Cell label="UTILIZATION">
           {life.ended
@@ -104,8 +105,19 @@ export function Manage({ id }: { id?: string }) {
         >
           END
         </IBtn>
-        <IBtn act="close-modal" onClick={closeModal}>
-          Close
+        <IBtn
+          act="instance-billing"
+          id={i.id}
+          onClick={() => openModal('instance-billing', { id: i.id })}
+        >
+          Billing
+        </IBtn>
+        <IBtn
+          act="instance-history"
+          id={i.id}
+          onClick={() => openModal('instance-history', { id: i.id })}
+        >
+          History
         </IBtn>
       </div>
     </>
@@ -203,7 +215,7 @@ export function Access({ id, isExample }: { id?: string; isExample: boolean }) {
         <strong>
           {i.count} × {i.model}
         </strong>
-        <span>{i.region || 'Region not provided'}</span>
+        <span>{instanceCountry(i.region, i.country)}</span>
       </div>
       <p className="form-note instance-access-installation">
         {isExample

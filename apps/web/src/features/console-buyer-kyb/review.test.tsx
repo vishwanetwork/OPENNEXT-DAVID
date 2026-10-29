@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { BuyerKybAdminService, BuyerKybCase } from '@/lib/buyer-kyb';
 import { ApiError } from '@/lib/api/client';
@@ -58,12 +58,18 @@ function adapter() {
       status: 'Approved',
       revision: 2,
       notificationQueued: true,
+      emailQueued: true,
+      accountId: record.accountId,
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
     }),
   };
 }
 async function openDetails() {
   fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
 }
+beforeEach(() => {
+  vi.spyOn(crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -119,7 +125,7 @@ describe('Buyer KYB Console', () => {
     );
     expect(
       await screen.findByText(
-        'KYB decision confirmed. The applicant notification has been queued.',
+        'KYB decision confirmed. The applicant notification and email have been queued.',
       ),
     ).toBeInTheDocument();
   });
@@ -131,6 +137,9 @@ describe('Buyer KYB Console', () => {
       status: 'Approved',
       revision: 2,
       notificationQueued: true,
+      emailQueued: true,
+      accountId: record.accountId,
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
     });
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
@@ -138,7 +147,9 @@ describe('Buyer KYB Console', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not fully confirmed');
     expect(
-      screen.queryByText('KYB decision confirmed. The applicant notification has been queued.'),
+      screen.queryByText(
+        'KYB decision confirmed. The applicant notification and email have been queued.',
+      ),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Buyer KYB details' })).toBeInTheDocument();
   });
@@ -150,6 +161,9 @@ describe('Buyer KYB Console', () => {
       status: 'Rejected',
       revision: 2,
       notificationQueued: true,
+      emailQueued: true,
+      accountId: record.accountId,
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
     });
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
@@ -200,10 +214,15 @@ describe('Buyer KYB Console', () => {
     await screen.findByText('buyer@example.com');
     service.list.mockRejectedValue(new ApiError('Session expired.', 401));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Session expired');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Access is no longer authorized');
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
     expect(screen.queryByText('buyer@example.com')).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(queryClient.getQueriesData({ queryKey: ['admin', 'buyer-kyb'] })).toEqual([]),
+      expect(
+        queryClient
+          .getQueriesData({ queryKey: ['admin', 'buyer-kyb'] })
+          .every(([, value]) => value === undefined),
+      ).toBe(true),
     );
   });
   it('downloads an authorized binary using a temporary object URL', async () => {
@@ -247,28 +266,64 @@ describe('Buyer KYB Console', () => {
         status: 'Approved',
         revision: 2,
         notificationQueued: true,
+        emailQueued: true,
+        accountId: record.accountId,
+        idempotencyKey: '11111111-1111-4111-8111-111111111111',
       });
     });
     expect(
-      screen.queryByText('KYB decision confirmed. The applicant notification has been queued.'),
+      screen.queryByText(
+        'KYB decision confirmed. The applicant notification and email have been queued.',
+      ),
     ).not.toBeInTheDocument();
   });
 });
 
 describe('Buyer KYB acknowledgment and download safety', () => {
-  it('requires the next revision and a queued user notification', () => {
+  it('requires owner, idempotency, next revision and queued notification and email', () => {
     const result = {
       confirmed: true,
       caseId: record.id,
       status: 'Approved' as const,
       revision: 2,
       notificationQueued: true,
+      emailQueued: true,
+      accountId: record.accountId,
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
     };
-    expect(confirmedDecision(result, record, 'Approved')).toBe(true);
-    expect(confirmedDecision({ ...result, notificationQueued: false }, record, 'Approved')).toBe(
-      false,
-    );
-    expect(confirmedDecision({ ...result, revision: 1 }, record, 'Approved')).toBe(false);
+    expect(
+      confirmedDecision(result, record, 'Approved', '11111111-1111-4111-8111-111111111111'),
+    ).toBe(true);
+    expect(
+      confirmedDecision(
+        { ...result, notificationQueued: false },
+        record,
+        'Approved',
+        '11111111-1111-4111-8111-111111111111',
+      ),
+    ).toBe(false);
+    for (const change of [
+      { emailQueued: false },
+      { accountId: 'another-buyer' },
+      { idempotencyKey: 'wrong-key' },
+    ]) {
+      expect(
+        confirmedDecision(
+          { ...result, ...change },
+          record,
+          'Approved',
+          '11111111-1111-4111-8111-111111111111',
+        ),
+      ).toBe(false);
+    }
+    expect(
+      confirmedDecision(
+        { ...result, revision: 1 },
+        record,
+        'Approved',
+        '11111111-1111-4111-8111-111111111111',
+      ),
+    ).toBe(false);
   });
   it('sanitizes a private binary filename and rejects unexpected MIME types or sizes', () => {
     const doc = record.documents[0];
