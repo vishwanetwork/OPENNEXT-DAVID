@@ -25,7 +25,7 @@ from datetime import timedelta
 from email.message import EmailMessage
 
 from spotbot.models import timestamp, utcnow
-from spotbot.opennext_ledger import account_id
+from spotbot.opennext_ledger import MINIMUM_MINUTES, account_id
 from spotbot.rentals import at, identity
 from spotbot.storage.workflows import ConflictError
 
@@ -116,12 +116,14 @@ def due(rental, charge, now, ssh=None):
         )
     if charge["state"] == "billed":
         minutes = math.ceil(charge["service_seconds"] / 60)
+        billed = max(MINIMUM_MINUTES, minutes)
         result.append(
             (
                 "billed",
                 f"Your {name} Spot server has ended",
                 [
-                    f"Time used: {minutes} minutes (billed per minute, 1-hour minimum).",
+                    f"Time used: {minutes} minutes. Billed for {billed} minutes "
+                    "(per minute, with a 1-hour minimum).",
                     f"Billed {money(charge['billed_cents'])} of the {money(charge['cents'])} "
                     f"held; {money(charge['released_cents'])} returned to your Credit.",
                 ],

@@ -661,7 +661,7 @@ async def test_notifier_bills_and_emails_orders_while_the_customer_is_away(env, 
     await notifier.tick(now + timedelta(minutes=70))
     to, subject, text = outbox.messages[-1]
     assert subject == "Your 1 × L4 Spot server has ended"
-    assert "Time used: 50 minutes" in text
+    assert "Time used: 50 minutes. Billed for 60 minutes" in text
     assert "Billed $0.41 of the $0.62 held; $0.21 returned to your Credit." in text
     assert (await balance(client)).json()["availableCredit"] == 1.09
     # Long-closed orders are skipped entirely.
