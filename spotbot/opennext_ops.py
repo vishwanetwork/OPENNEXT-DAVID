@@ -18,13 +18,14 @@ and the email outbox commit together. The notifier delivers the emails.
 import asyncio
 import base64
 import hashlib
-import os
 import secrets
 from datetime import timedelta
-from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
+from cryptography.exceptions import InvalidTag
+
 from spotbot.models import timestamp, utcnow
+from spotbot.opennext_files import Infected, StorageUnavailable
 from spotbot.opennext_ledger import account_id
 from spotbot.opennext_market import order_reference
 from spotbot.rentals import at
@@ -93,6 +94,7 @@ BOTH_REQUIRED = (
 )
 FULL_REQUIRED = ("incorporationDate", "legalForm", "legalAddress", "phone")
 TRANSFER_DAYS = 7
+UNSUBMITTED_RETENTION = timedelta(days=1)
 PENDING = {"Awaiting transfer", "Awaiting payment confirmation"}
 # A held Direct Pay order makes its payment count as Credit (the hold offsets it).
 CREDITED = {"held", "submitted", "failed"}
@@ -236,10 +238,11 @@ def intent_view(transfer):
 
 
 class Operations:
-    def __init__(self, db, files_dir, public_url=""):
+    def __init__(self, db, vault, public_url="", retention_days=365):
         self.db = db
-        self.files = Path(files_dir)
+        self.vault = vault
         self.public_url = public_url.rstrip("/")
+        self.retention = timedelta(days=retention_days)
         self.locks = {}
 
     def lock(self, key):
@@ -294,16 +297,17 @@ class Operations:
         # Browser MIME types are not a boundary: the content must match the declared type.
         if not data.startswith(SIGNATURES[content_type]):
             raise OperationError(400, "The file content does not match its type.")
+        try:
+            scan = await asyncio.to_thread(self.vault.check, data)
+        except Infected as exc:
+            raise OperationError(400, "The file failed the malware scan.") from exc
+        except StorageUnavailable as exc:
+            raise OperationError(
+                503, "Document uploads are temporarily unavailable. Please try again later."
+            ) from exc
         doc_id = "DOC-" + secrets.token_hex(12)
-        folder = self.files / hashlib.sha256(user_id.encode()).hexdigest()[:24]
-        await asyncio.to_thread(folder.mkdir, mode=0o700, parents=True, exist_ok=True)
-        path = folder / doc_id
-
-        def write():
-            with open(path, "xb", opener=lambda p, f: os.open(p, f, 0o600)) as out:
-                out.write(data)
-
-        await asyncio.to_thread(write)
+        relative = f"{hashlib.sha256(user_id.encode()).hexdigest()[:24]}/{doc_id}"
+        await asyncio.to_thread(self.vault.write, relative, doc_id, data)
         doc = dict(
             id=doc_id,
             kind=DOCUMENT,
@@ -314,7 +318,8 @@ class Operations:
             content_type=content_type,
             size_bytes=len(data),
             sha256=hashlib.sha256(data).hexdigest(),
-            path=str(path.relative_to(self.files)),
+            path=relative,
+            scan=scan,
             created_at=timestamp(),
             version=0,
         )
@@ -395,6 +400,9 @@ class Operations:
                 await self._save(dict(d, case_revision=revision))
             return saved
 
+    async def db_get_document(self, document_id):
+        return await self._get(DOCUMENT, document_id)
+
     async def kyb_cases(self):
         cases = await self._list(KYB)
         return sorted(cases, key=lambda c: c["submitted_at"], reverse=True)
@@ -406,10 +414,43 @@ class Operations:
         doc = next((d for d in case["documents"] if d["id"] == document_id), None)
         if not doc:
             raise OperationError(404, "Document not found.")
-        data = await asyncio.to_thread((self.files / doc["path"]).read_bytes)
+        stored = await self._get(DOCUMENT, document_id)
+        if not stored or stored.get("deleted_at"):
+            raise OperationError(410, "This document was deleted under the retention policy.")
+        try:
+            data = await asyncio.to_thread(self.vault.read, doc["path"], document_id)
+        except (StorageUnavailable, InvalidTag, OSError) as exc:
+            raise OperationError(500, "The stored document could not be read.") from exc
         if hashlib.sha256(data).hexdigest() != doc["sha256"]:
             raise OperationError(500, "The stored document failed its integrity check.")
         return doc, data
+
+    async def purge(self, now=None):
+        """Delete documents past retention: unsubmitted after a day, decided cases after
+        `retention` from the decision. Metadata stays, marked deleted, for the audit trail."""
+        now = now or utcnow()
+        removed = 0
+        for doc in await self._list(DOCUMENT):
+            if doc.get("deleted_at"):
+                continue
+            if not doc.get("case_revision"):
+                due = at(doc["created_at"]) + UNSUBMITTED_RETENTION <= now
+            else:
+                case = await self.kyb_case(doc["account"])
+                due = bool(
+                    case
+                    and case["status"] != "Reviewing"
+                    and case.get("reviewed_at")
+                    and at(case["reviewed_at"]) + self.retention <= now
+                )
+            if due:
+                await asyncio.to_thread(self.vault.delete, doc["path"])
+                try:
+                    await self._save(dict(doc, deleted_at=timestamp()))
+                except ConflictError:
+                    continue
+                removed += 1
+        return removed
 
     async def kyb_decide(
         self, case_id, expected_revision, decision, reason, allscale, idempotency_key, operator
@@ -441,9 +482,7 @@ class Operations:
                 )
             else:
                 subject = "Business verification not approved"
-                message = (
-                    f"Your KYB was not approved. Reason: {reason.rstrip('.')}. Please review and resubmit."
-                )
+                message = f"Your KYB was not approved. Reason: {reason.rstrip('.')}. Please review and resubmit."
             receipt = dict(
                 confirmed=True,
                 caseId=case_id,

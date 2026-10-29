@@ -9,7 +9,7 @@ description = "GPU price history and durable multi-provider capacity orders"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.28,<1",
-  "pydantic-settings>=2.7,<3",
+  "pydantic-settings>=2.7,<3", "cryptography>=42,<51",
 ]
 
 [project.optional-dependencies]

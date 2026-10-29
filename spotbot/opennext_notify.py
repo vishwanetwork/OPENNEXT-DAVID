@@ -21,7 +21,7 @@ import math
 import smtplib
 import ssl
 from collections import defaultdict
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
 from spotbot.models import timestamp, utcnow
@@ -37,6 +37,8 @@ CONNECTION_WAIT = timedelta(minutes=2)
 # Closed orders older than this have nothing left to settle or announce.
 SETTLED_AFTER = timedelta(days=2)
 MAX_ATTEMPTS = 5
+# How often KYB documents past retention are deleted.
+PURGE_INTERVAL = timedelta(hours=1)
 # Refunds the customer did not already see as a purchase error.
 REFUND_NOTICES = {"not_delivered", "rental_not_created"}
 
@@ -201,6 +203,7 @@ class Notifier:
         self.public_url = public_url.rstrip("/")
         self.ops, self.provision = ops, provision
         self.sent = set()
+        self.purged_at = datetime.min.replace(tzinfo=UTC)
 
     async def run(self):
         while True:
@@ -218,6 +221,9 @@ class Notifier:
             await self.provision_paid()
             if self.mailer:
                 await self.deliver_outbox()
+            if now - self.purged_at >= PURGE_INTERVAL:
+                self.purged_at = now
+                await self.ops.purge(now)
         customers = defaultdict(list)
         for rental in await self.market.rentals():
             reference = rental["rfq"].get("customer_ref") or ""

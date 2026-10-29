@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from spotbot.opennext import create_opennext_app
+from spotbot.opennext_files import Vault
 from spotbot.opennext_market import (
     Offer,
     SpotMarket,
@@ -229,7 +230,7 @@ async def env(tmp_path):
         store=Store(tmp_path / "b.db"),
         client=upstream,
         market=market,
-        files_dir=tmp_path / "kyb",
+        vault=Vault(tmp_path / "kyb", base64.b64encode(bytes(32)).decode(), allow_unscanned=True),
     )
     for user_id in ("U1", "U2"):
         approve_kyb(app, user_id)

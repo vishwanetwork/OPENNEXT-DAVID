@@ -35,6 +35,7 @@ from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
+from spotbot.opennext_files import Vault
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
 from spotbot.opennext_market import (
@@ -139,7 +140,7 @@ def same_origin(request):
         return False
 
 
-def create_opennext_app(settings, *, origin, store=None, client=None, market=None, files_dir=None):
+def create_opennext_app(settings, *, origin, store=None, client=None, market=None, vault=None):
     origin = legacy_origin(origin)
     db = WorkflowStore(store or create_store(settings))
     own_client = client is None
@@ -155,8 +156,9 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     public_url = settings.spotbot_opennext_public_url if settings else ""
     ops = Operations(
         db,
-        files_dir or (settings.spotbot_opennext_files_dir if settings else "data/opennext-kyb"),
+        vault or Vault.from_settings(settings),
         public_url,
+        settings.spotbot_opennext_kyb_retention_days if settings else 365,
     )
     notifier = (
         Notifier(

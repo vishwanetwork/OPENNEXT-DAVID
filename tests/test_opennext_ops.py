@@ -319,3 +319,93 @@ async def test_usage_snapshot_matches_the_terminal_contract(env):  # noqa: F811
     assert sum(e["feeCents"] for e in entries) == 3
     assert all(e["totalCents"] == e["computeCents"] + e["feeCents"] for e in entries)
     assert billing["startedAt"] == iso(0) and billing["stoppedAt"] == iso(95)
+
+
+def test_documents_are_encrypted_at_rest_and_bound_to_their_id(tmp_path):
+    import os
+
+    import pytest
+    from cryptography.exceptions import InvalidTag
+
+    from spotbot.opennext_files import StorageUnavailable, Vault
+
+    vault = Vault(tmp_path, base64.b64encode(os.urandom(32)).decode(), allow_unscanned=True)
+    assert vault.check(PDF) == "not_scanned"
+    vault.write("a/DOC-1", "DOC-1", PDF)
+    stored = (tmp_path / "a/DOC-1").read_bytes()
+    assert stored.startswith(b"ONX1") and b"%PDF" not in stored
+    assert oct((tmp_path / "a/DOC-1").stat().st_mode & 0o777) == "0o600"
+    assert vault.read("a/DOC-1", "DOC-1") == PDF
+    with pytest.raises(InvalidTag):  # A file moved onto another document does not open.
+        vault.read("a/DOC-1", "DOC-2")
+    # Without a key, or without a scanner outside local testing, nothing is stored.
+    with pytest.raises(StorageUnavailable):
+        Vault(tmp_path, "", allow_unscanned=True).check(PDF)
+    with pytest.raises(StorageUnavailable):
+        Vault(tmp_path, base64.b64encode(bytes(32)).decode()).check(PDF)
+
+
+def test_uploads_are_scanned_by_clamd(tmp_path):
+    import socket
+    import struct
+    import threading
+
+    import pytest
+
+    from spotbot.opennext_files import Infected, StorageUnavailable, Vault
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    seen = []
+
+    def serve():
+        for _ in range(2):
+            conn, _ = server.accept()
+            with conn:
+                buffer = b""
+                while not buffer.endswith(struct.pack(">I", 0)):
+                    buffer += conn.recv(65536)
+                payload = buffer[len(b"zINSTREAM\0") :]
+                seen.append(payload)
+                infected = b"EICAR" in payload
+                conn.sendall(
+                    b"stream: Eicar-Test-Signature FOUND\0" if infected else b"stream: OK\0"
+                )
+
+    threading.Thread(target=serve, daemon=True).start()
+    address = f"127.0.0.1:{server.getsockname()[1]}"
+    vault = Vault(tmp_path, base64.b64encode(bytes(32)).decode(), clamd=address)
+    assert vault.check(PDF) == "clean"
+    with pytest.raises(Infected):
+        vault.check(PDF + b"EICAR")
+    assert seen[0].startswith(struct.pack(">I", len(PDF)) + PDF)
+    server.close()
+    with pytest.raises(StorageUnavailable):  # The scanner is down: refuse, never skip.
+        vault.check(PDF)
+
+
+async def test_retention_deletes_unsubmitted_uploads_and_decided_documents(env):  # noqa: F811
+    client, _, _ = env
+    ops = client._transport.app.state.ops
+    stray = (await upload(client, "legal-presence")).json()["document"]["id"]
+    await submit_kyb(client)
+    queue = (await client.get("/api/admin/buyer-kyb", headers=ADMIN)).json()
+    [row] = [c for c in queue["cases"] if c["accountId"] == "U4"]
+    decision = {
+        "expectedRevision": 1,
+        "decision": "Rejected",
+        "reason": "Blurred certificate",
+        "allscaleApproved": False,
+        "idempotencyKey": "decide-r",
+    }
+    await client.post(f"/api/admin/buyer-kyb/{row['id']}/decision", json=decision, headers=ADMIN)
+    doc = row["documents"][0]
+    url = f"/api/admin/buyer-kyb/{row['id']}/documents/{doc['id']}?revision=2"
+    assert (await client.get(url, headers=ADMIN)).status_code == 200
+    from spotbot.opennext_ops import utcnow
+
+    assert await ops.purge(utcnow() + timedelta(hours=25)) == 1  # Only the stray upload.
+    assert (await ops.db_get_document(stray))["deleted_at"]
+    assert await ops.purge(utcnow() + timedelta(days=366)) == 5
+    assert (await client.get(url, headers=ADMIN)).status_code == 410

@@ -86,8 +86,17 @@ class Settings(BaseSettings):
     spotbot_opennext_smtp_from: str = ""
     # The Terminal's public origin for links in notices, e.g. https://opennext.example.
     spotbot_opennext_public_url: str = ""
-    # Private directory for Buyer KYB documents (0700; files 0600). Use encrypted storage.
+    # Private directory for Buyer KYB documents (0700; files 0600), on a persistent volume.
     spotbot_opennext_files_dir: str = "data/opennext-kyb"
+    # Base64 of 32 random bytes: documents are encrypted with AES-256-GCM. Without it,
+    # uploads are refused. Generate with `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`.
+    spotbot_opennext_files_key: SecretStr = SecretStr("")
+    # ClamAV daemon (`host:port`) that scans every upload. Without it uploads are refused,
+    # unless SPOTBOT_OPENNEXT_ALLOW_UNSCANNED is true (local testing only).
+    spotbot_opennext_clamd: str = ""
+    spotbot_opennext_allow_unscanned: bool = False
+    # Days a decided case keeps its documents; unsubmitted uploads are deleted after a day.
+    spotbot_opennext_kyb_retention_days: int = Field(365, ge=1, le=3650)
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)

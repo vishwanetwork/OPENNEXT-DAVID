@@ -119,6 +119,43 @@ instance through the bot (`PUT /v1/rentals/{id}/ssh-keys`); the guest agent inst
 `ubuntu` within about 15 seconds, also on replacement servers, and `installed` turns true once
 the running server has them. No administrator SSH key is involved.
 
+**Buyer KYB, bank transfers and payment review.** These back the Terminal's and the Console's
+service ports (OPENNEXT-DAVID `docs/BUYER_KYB_HANDOFF.md`, `docs/PAYMENT_OPERATIONS_HANDOFF.md`).
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/api/buyer-kyb/me` | The Buyer's KYB case, or none |
+| POST | `/api/buyer-kyb/documents` | One document as base64 JSON: `{kind, fileName, contentType, dataBase64}` |
+| POST | `/api/buyer-kyb/submissions` | Company, mode, consent and document ids; a new revision, `Reviewing` |
+| POST | `/api/billing/bank-transfer-intents` | A top-up (face value, no fee) or Direct Pay intent: amount, `ONX-…` reference, 7-day expiry |
+| GET | `/api/billing/bank-transfer-intents/{id}` | The owner's intent and its status |
+| POST | `/api/billing/bank-transfer-intents/{id}/report-sent` | The customer's transfer report |
+| GET | `/api/marketplace/instances/{id}/usage` | Intervals, events and hourly billing entries of one Spot instance |
+| GET | `/api/admin/operations/session` | The operator session scope |
+| GET | `/api/admin/payment-requests?kind=topup\|direct_pay` | The payment review queue |
+| POST | `/api/admin/payment-requests/{id}/decision` | Confirm (Add Credit for top-ups) or Fail with a reason |
+| GET | `/api/admin/buyer-kyb` | The Buyer KYB queue |
+| GET | `/api/admin/buyer-kyb/{case}/documents/{doc}?revision=` | One document as base64 JSON, audited |
+| POST | `/api/admin/buyer-kyb/{case}/decision` | Approve (external review confirmed) or Reject with a reason |
+
+Operator routes need the existing administrator session; operator writes must come from the
+same origin. Credit purchases and bank transfers require an approved Buyer KYB. A decision is one
+compare-and-swap write of the case or transfer that also appends the owner notice (shown in
+`GET /api/billing/account` `notifications`) and the email, which the notifier delivers. A
+confirmed top-up adds its full amount to paid Credit. A confirmed Direct Pay queues provisioning:
+the payment is held for the order and the rental is created under a reference derived from the
+payment, retried every 30 seconds until the bot answers. Usage billing returns unused time to
+Credit, and an order that is never delivered leaves the whole payment as Credit.
+
+KYB documents are checked by content signature (PDF, PNG, JPEG; 10 MiB per file, 50 MiB per
+submission), scanned by ClamAV (`SPOTBOT_OPENNEXT_CLAMD`, `host:port`) and stored under
+`SPOTBOT_OPENNEXT_FILES_DIR` encrypted with AES-256-GCM (`SPOTBOT_OPENNEXT_FILES_KEY`, base64 of
+32 bytes; the document id is bound as associated data). Without the key, or without a scanner,
+uploads are refused (`SPOTBOT_OPENNEXT_ALLOW_UNSCANNED=true` is for local testing only).
+Unsubmitted uploads are deleted after a day; a decided case's documents after
+`SPOTBOT_OPENNEXT_KYB_RETENTION_DAYS` (default 365). Back up the files directory and keep the key
+outside it: losing the key makes the documents unreadable.
+
 ## Pass-through
 
 Every other request keeps its method, path, query, body, `Host`, `Origin`, cookies and CSRF header;
