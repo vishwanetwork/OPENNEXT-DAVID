@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/components/providers/app-context';
 import { useToast } from '@/components/ui/toast';
 import { MarketplaceInboxPage } from '@/features/console-marketplace';
-import { describeError } from '@/lib/api/errors';
+import { describeError, isUnauthorized } from '@/lib/api/errors';
 import type { BuyerKybAdminService } from '@/lib/buyer-kyb';
 import { stampUtc } from '@/lib/format';
 import { BuyerKybDetails } from './details';
@@ -36,6 +36,15 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('All');
   const [selectedId, setSelectedId] = useState('');
+  const clear = queue.clear;
+  useEffect(() => {
+    if (accessDenied) clear();
+  }, [accessDenied, clear]);
+  // Stop polling before clearing the cache; cache removal alone would restart the query.
+  if (isUnauthorized(queue.error) && !accessDenied) {
+    setAccessDenied(true);
+    return null;
+  }
   const records = accessDenied ? [] : (queue.data ?? []);
   const rows = filterCases(records, search, status);
   const selected = records.find((row) => row.id === selectedId);
@@ -46,7 +55,7 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
   };
   const confirmed = async () => {
     setSelectedId('');
-    toast('KYB decision confirmed. The applicant notification has been queued.');
+    toast('KYB decision confirmed. The applicant notification and email have been queued.');
     await queue.refetch();
   };
   return (

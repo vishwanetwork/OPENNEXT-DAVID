@@ -21,7 +21,7 @@ export const moneyOrNa = (v: unknown): string =>
     : 'Not available';
 
 export interface Lifecycle {
-  label: 'End' | 'Connecting' | 'Running' | 'Awaiting status';
+  label: 'End' | 'Reconnecting' | 'Running' | 'Awaiting status';
   ended: boolean;
   connecting: boolean;
   running: boolean;
@@ -59,7 +59,7 @@ export function lifecycle(
       ),
     )
   )
-    return { label: 'Connecting', ended: false, connecting: true, running: false };
+    return { label: 'Reconnecting', ended: false, connecting: true, running: false };
   if (['running', 'active'].includes(status))
     return { label: 'Running', ended: false, connecting: false, running: true };
   // Unknown lifecycle data does not prove that a resource is running or interrupted.

@@ -5,6 +5,8 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { CreditTopup } from '@opennext/contracts';
+import type { PaymentReviewService } from '@/lib/payment-review';
+import { PaymentReviewQueue } from '@/features/console-payments';
 import { useApi } from '@/components/providers/api-context';
 import { AdminLoginForm, NativeDialog, isAccessError } from '@/features/console';
 import {
@@ -25,8 +27,13 @@ export type Dialog =
   | { kind: 'review'; token: string; decision: 'Approve' | 'Reject'; scope: TopupScope }
   | { kind: 'login' };
 
-/** Manual credit top-up review (legacy OpenNEXT-console-topups.js). Approval records verified receipt only. */
-export function ConsoleTopupsPage() {
+/** Keep the established review flow until a versioned bank-payment adapter is connected. */
+export function ConsoleTopupsPage({ service }: { service?: PaymentReviewService }) {
+  return service ? <PaymentReviewQueue kind="topup" service={service} /> : <LegacyTopupsPage />;
+}
+
+/** Manual credit top-up review. Approval records verified receipt only. */
+function LegacyTopupsPage() {
   const params = useSearchParams();
   const api = useApi();
   const queryClient = useQueryClient();

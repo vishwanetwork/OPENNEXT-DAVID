@@ -6,9 +6,22 @@ import { useTerminal, useTerminalSlots } from '@/terminal-kit';
 import { useBuyerKyb } from '../hooks';
 import { KybForm } from './kyb-form';
 import type { TopupReturnIntent } from '../return-intent';
+import { BuyerKybHelp } from './help';
 import '../buyer-kyb.css';
 
-export function BuyerKybContent({
+export function BuyerKybContent(props: {
+  returnTo?: BuyerKybReturn;
+  topupReturn?: TopupReturnIntent;
+}) {
+  return (
+    <>
+      <BuyerKybHelp />
+      <LiveBuyerKybContent {...props} />
+    </>
+  );
+}
+
+function LiveBuyerKybContent({
   returnTo,
   topupReturn,
 }: {
@@ -105,7 +118,7 @@ export function BuyerKybContent({
             ? 'KYB has been approved. You can continue to bank transfer instructions for your credit top-up or purchase.'
             : rejected
               ? 'The review was not approved. Check your private notifications for the reason provided by the OpenNEXT review team, then submit updated information.'
-              : 'Your documents have been submitted for OpenNEXT business verification. We will notify you when a decision is available.'}
+              : 'Your KYB has been submitted and is pending team review. We will notify you when the review is complete. Submission does not mean approval.'}
         </p>
         <dl>
           <div>

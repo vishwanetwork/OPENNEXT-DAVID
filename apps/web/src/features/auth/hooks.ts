@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { useSessionStore } from '@/lib/session-store';
 import { authApi } from './api';
 import { allowedRole, roleIntentKey, RoleIntentStore } from './role-intent';
+import { useRegistrationIntent } from './registration-intent';
 
 /**
  * One `RoleIntentStore` per (storage key, URL hint) shared by every component on the page.
@@ -87,6 +88,7 @@ export function useLogout() {
       if (!(reason instanceof ApiError) || reason.status !== 401) throw reason;
     }
     intent.clear();
+    useRegistrationIntent.getState().clear();
     setUser(null);
   }, [api, setUser, intent]);
 }

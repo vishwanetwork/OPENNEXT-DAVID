@@ -2,12 +2,28 @@
 
 import { useState } from 'react';
 import { Dialog } from '@/components/ui/dialog';
+import { PaymentReviewQueue } from '@/features/console-payments';
+import type { PaymentReviewService } from '@/lib/payment-review';
 import { stampUtc } from '@/lib/format';
 import { Btn, DetailGrid, Empty, Head, SearchBox, Status } from '../components/forms';
 import { filterPayments, paymentAmount, type OperationsPayment } from './operations-records';
 
 /** Bank payment confirmation is a distinct workflow from approving credit top-ups. */
-export function PaymentsPage({ payments }: { payments?: readonly OperationsPayment[] }) {
+export function PaymentsPage({
+  payments,
+  service,
+}: {
+  payments?: readonly OperationsPayment[];
+  service?: PaymentReviewService;
+}) {
+  return payments ? (
+    <LegacyPaymentRecords payments={payments} />
+  ) : (
+    <PaymentReviewQueue kind="direct_pay" service={service} />
+  );
+}
+
+function LegacyPaymentRecords({ payments }: { payments: readonly OperationsPayment[] }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('All');
   const [selected, setSelected] = useState<OperationsPayment | null>(null);

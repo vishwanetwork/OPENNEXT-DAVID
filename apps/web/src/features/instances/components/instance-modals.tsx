@@ -12,6 +12,8 @@ import {
 import { ExampleConnect, ExampleManage, ExampleOrder } from './example-dialogs';
 import { EndDialog } from './end-dialog';
 import { Access, Connect, Manage, Resell } from './instance-dialogs';
+import { UsageDialog } from './usage-dialogs';
+import { instanceTitle, purchasedHours } from '../usage';
 
 declare module '@/terminal-kit/modal' {
   interface TerminalModalMap {
@@ -24,6 +26,8 @@ declare module '@/terminal-kit/modal' {
     'instance-resell': { id: string };
     'instance-end-confirm': { id: string };
     'instance-access': { id?: string; example?: boolean };
+    'instance-billing': { id: string };
+    'instance-history': { id: string };
     connect: { id: string };
   }
 }
@@ -38,6 +42,8 @@ type InstanceModalType =
   | 'instance-resell'
   | 'instance-end-confirm'
   | 'instance-access'
+  | 'instance-billing'
+  | 'instance-history'
   | 'connect';
 
 /** One component renders every instance modal (legacy `OpenNEXTInstances.modal` + terminal `connect`). */
@@ -46,9 +52,23 @@ function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; cl
   const id = 'id' in modal ? modal.id : undefined;
   const name = () => {
     const i = instances.find((row) => row.id === id);
-    return i ? i.name || i.model || 'Instance' : 'Instance unavailable';
+    return i ? instanceTitle(i, purchasedHours(i, [])) : 'Instance unavailable';
   };
   switch (modal.type) {
+    case 'instance-billing':
+    case 'instance-history':
+      return (
+        <ModalFrame
+          title={modal.type === 'instance-billing' ? 'Instance billing' : 'Instance history'}
+          wide
+          close={close}
+        >
+          <UsageDialog
+            id={modal.id}
+            view={modal.type === 'instance-billing' ? 'billing' : 'history'}
+          />
+        </ModalFrame>
+      );
     case 'instance-example-order':
       return (
         <ModalFrame title="Example purchase record" wide close={close}>
@@ -119,6 +139,8 @@ const TYPES: InstanceModalType[] = [
   'instance-resell',
   'instance-end-confirm',
   'instance-access',
+  'instance-billing',
+  'instance-history',
   'connect',
 ];
 

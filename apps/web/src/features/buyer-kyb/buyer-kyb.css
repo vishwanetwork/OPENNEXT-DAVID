@@ -1,6 +1,22 @@
 .buyer-kyb {
   color: var(--ink, #17251f);
 }
+.buyer-kyb-heading-help {
+  color: var(--muted, #758277);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+.buyer-kyb-heading-help button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #405b3e;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 .buyer-kyb h3 {
   font-family: inherit;
   font-size: 18px;

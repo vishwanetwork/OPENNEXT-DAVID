@@ -21,7 +21,7 @@ import {
 import { NotificationBell } from '@/features/quotes';
 import { SshKeyLibrary, accountModals } from '@/features/account';
 import { ContactDialog } from '@/features/site';
-import { buyerKybModals } from '@/features/buyer-kyb';
+import { BuyerKybOnboardingPrompt, buyerKybModals } from '@/features/buyer-kyb';
 import { bankTransferModals } from '@/features/bank-transfer';
 
 /**
@@ -83,6 +83,7 @@ export function TerminalApp({
         <>
           <ProcurementIntentResumer />
           <BillingPolling />
+          <BuyerKybOnboardingPrompt />
         </>
       }
     >

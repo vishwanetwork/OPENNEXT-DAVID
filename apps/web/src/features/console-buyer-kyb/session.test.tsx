@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { BuyerKybAdminService, BuyerKybCase } from '@/lib/buyer-kyb';
+import { ApiError } from '@/lib/api/client';
 import { renderConsole } from '@/test/render';
 import { BuyerKybReviewPage } from './page';
 
@@ -81,6 +82,9 @@ function SwitchHarness({
     </>
   );
 }
+beforeEach(() => {
+  vi.spyOn(crypto, 'randomUUID').mockReturnValue('11111111-1111-4111-8111-111111111111');
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -88,6 +92,40 @@ afterEach(() => {
 });
 
 describe('Console Buyer KYB session boundaries', () => {
+  it.each([401, 403])(
+    'latches read-level %s access failures until a new operator session',
+    async (status) => {
+      const first = adapter(),
+        second = adapter();
+      second.sessionScope = 'session-two';
+      second.list.mockResolvedValue({
+        confirmed: true,
+        cases: [{ ...record, email: 'new@example.com' }],
+      });
+      const { queryClient } = renderConsole(<SwitchHarness first={first} second={second} />);
+      expect(await screen.findByText('old@example.com')).toBeInTheDocument();
+      first.list.mockRejectedValue(new ApiError('Session no longer authorized.', status));
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Access is no longer authorized');
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
+      expect(screen.queryByText('old@example.com')).not.toBeInTheDocument();
+      await act(async () => {
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'buyer-kyb'] });
+      });
+      expect(first.list).toHaveBeenCalledTimes(2);
+      expect(
+        queryClient
+          .getQueriesData({ queryKey: ['admin', 'buyer-kyb', 'session-one'] })
+          .every(([, value]) => value === undefined),
+      ).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Switch session' }));
+      expect(await screen.findByText('new@example.com')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled();
+      expect(first.list).toHaveBeenCalledTimes(2);
+      expect(second.list).toHaveBeenCalledOnce();
+    },
+  );
   it('remounts for a new service even with the same scope and discards an old download', async () => {
     const first = adapter(),
       second = adapter();
@@ -156,10 +194,15 @@ describe('Console Buyer KYB session boundaries', () => {
         status: 'Approved',
         revision: 2,
         notificationQueued: true,
+        emailQueued: true,
+        accountId: record.accountId,
+        idempotencyKey: '11111111-1111-4111-8111-111111111111',
       });
     });
     expect(
-      screen.queryByText('KYB decision confirmed. The applicant notification has been queued.'),
+      screen.queryByText(
+        'KYB decision confirmed. The applicant notification and email have been queued.',
+      ),
     ).not.toBeInTheDocument();
     expect(queryClient.getQueriesData({ queryKey: ['admin', 'buyer-kyb', 'session-one'] })).toEqual(
       [],
