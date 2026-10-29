@@ -442,7 +442,7 @@ class Operations:
             else:
                 subject = "Business verification not approved"
                 message = (
-                    f"Your KYB was not approved. Reason: {reason}. Please review and resubmit."
+                    f"Your KYB was not approved. Reason: {reason.rstrip('.')}. Please review and resubmit."
                 )
             receipt = dict(
                 confirmed=True,
@@ -600,7 +600,7 @@ class Operations:
             if not confirmed:
                 subject = "Payment could not be confirmed"
                 message = (
-                    f"Your payment could not be confirmed. Reason: {reason}. "
+                    f"Your payment could not be confirmed. Reason: {reason.rstrip('.')}. "
                     "Please check the details and try again."
                 )
             elif topup:
