@@ -1,5 +1,6 @@
 """Buyer KYB, bank transfers, payment review, Direct Pay provisioning and instance usage."""
 
+import asyncio
 import base64
 from datetime import datetime, timedelta
 
@@ -247,7 +248,11 @@ async def test_direct_pay_provisions_once_and_returns_unused_time_as_credit(env)
     receipt = (await decide(client, record, "Confirm")).json()
     assert (receipt["provisioningQueued"], receipt["ledgerPosted"]) == (True, False)
     assert receipt["creditAmountCents"] == 0
-    # The order was created at once, under the payment's own reference.
+    # The order is created in the background, under the payment's own reference.
+    for _ in range(50):
+        if fakes.created:
+            break
+        await asyncio.sleep(0.01)
     [rfq] = fakes.created
     assert rfq["upstream_order_id"] == record["orderId"] and rfq["service_seconds"] == 5400
     # Retried provisioning finds the rental instead of ordering again.

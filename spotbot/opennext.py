@@ -723,13 +723,24 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             await ledger.settle(charge, rental["id"])
             return await ops.set_provisioning(doc, state="submitted", rental_id=rental["id"])
 
+    background = set()
+
     async def provision_now(transfer_id):
-        try:
-            doc = await ops.get_transfer(transfer_id)
-            if doc:
-                await provision(doc)
-        except Exception:
-            logger.exception("opennext_direct_pay_provisioning_deferred")  # The notifier retries.
+        """Start provisioning in the background; the operator's decision does not wait on the
+        bot, and the notifier retries whatever this attempt does not finish."""
+
+        async def run():
+            try:
+                doc = await ops.get_transfer(transfer_id)
+                if doc:
+                    await provision(doc)
+            except Exception:
+                logger.exception("opennext_direct_pay_provisioning_deferred")
+
+        task = asyncio.create_task(run())
+        background.add(task)
+        task.add_done_callback(background.discard)
+        return task
 
     install_operations(
         app,
