@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     spotbot_opennext_smtp_from: str = ""
     # The Terminal's public origin for links in notices, e.g. https://opennext.example.
     spotbot_opennext_public_url: str = ""
+    # Private directory for Buyer KYB documents (0700; files 0600). Use encrypted storage.
+    spotbot_opennext_files_dir: str = "data/opennext-kyb"
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)

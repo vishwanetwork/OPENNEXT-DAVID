@@ -194,9 +194,12 @@ class Mailer:
 
 
 class Notifier:
-    def __init__(self, db, market, ledger, mailer=None, public_url=""):
+    """Settles charges, provisions paid Direct Pay orders, and delivers notices and emails."""
+
+    def __init__(self, db, market, ledger, mailer=None, public_url="", *, ops=None, provision=None):
         self.db, self.market, self.ledger, self.mailer = db, market, ledger, mailer
         self.public_url = public_url.rstrip("/")
+        self.ops, self.provision = ops, provision
         self.sent = set()
 
     async def run(self):
@@ -211,6 +214,10 @@ class Notifier:
 
     async def tick(self, now=None):
         now = now or utcnow()
+        if self.ops:
+            await self.provision_paid()
+            if self.mailer:
+                await self.deliver_outbox()
         customers = defaultdict(list)
         for rental in await self.market.rentals():
             reference = rental["rfq"].get("customer_ref") or ""
@@ -226,12 +233,59 @@ class Notifier:
             async with self.ledger.lock(user_id):
                 await self.ledger.reconcile(user_id, rows)
                 charges = await self.ledger.charges(user_id)
-            if self.mailer:
-                by_id = {r["id"]: r for r in rows}
-                for charge in charges:
-                    rental = by_id.get(charge.get("rental_id"))
-                    if charge.get("email") and rental:
-                        await self.notify(user_id, rental, charge, now)
+            by_id = {r["id"]: r for r in rows}
+            for charge in charges:
+                rental = by_id.get(charge.get("rental_id"))
+                # Orders from before usage billing get no notices.
+                if charge.get("hourly_cents") and rental:
+                    await self.notify(user_id, rental, charge, now)
+
+    async def provision_paid(self):
+        """Direct Pay orders whose payment was confirmed but not yet turned into a rental."""
+        for doc in await self.ops.transfers("order"):
+            if doc["status"] == "Confirmed" and (doc.get("provisioning") or {}).get("state") in {
+                "queued",
+                "held",
+            }:
+                try:
+                    await self.provision(doc)
+                except Exception:
+                    logger.exception("opennext_direct_pay_provisioning_failed id=%s", doc["id"])
+
+    async def deliver_outbox(self):
+        for kind, doc in await self.ops.outbox():
+            for message in doc["emails"]:
+                if message["state"] != "pending":
+                    continue
+                try:
+                    await asyncio.to_thread(
+                        self.mailer.send, message["to"], message["subject"], message["text"]
+                    )
+                    sent = True
+                except Exception as exc:
+                    logger.warning(
+                        "opennext_email_failed id=%s error_type=%s", doc["id"], type(exc).__name__
+                    )
+                    sent = False
+                await self.ops.email_result(kind, doc["id"], message["id"], sent)
+
+    async def notifications(self, user_id):
+        """Instance notices for the Terminal's notification list."""
+        records = await asyncio.to_thread(self.db.list, KIND, account_id(user_id))
+        return [
+            dict(
+                id="NTF-" + r["id"],
+                ownerId=user_id,
+                subject=r["subject"],
+                message=r["message"],
+                created=r["created_at"],
+                createdAt=r["created_at"],
+                read=False,
+                kind="instance",
+            )
+            for r in records
+            if r.get("subject") and r.get("state") == "sent"
+        ]
 
     async def notify(self, user_id, rental, charge, now):
         pending = [n for n in due(rental, charge, now) if not await self.done(rental, n[0])]
@@ -243,7 +297,7 @@ class Notifier:
             keys = {key for key, *_ in pending}
             pending = [n for n in due(rental, charge, now, ssh) if n[0] in keys]
         for key, subject, lines in pending:
-            await self.send(user_id, rental, charge["email"], key, subject, lines)
+            await self.send(user_id, rental, charge.get("email"), key, subject, lines)
 
     def record_id(self, rental, key):
         return identity("opennext-notice", rental["id"], key)
@@ -272,8 +326,11 @@ class Notifier:
             created_at=timestamp(),
             version=0,
         )
+        # The Terminal lists the notice too; it carries no addresses or commands.
+        record.update(subject=subject, message=lines[0])
         try:
-            await asyncio.to_thread(self.mailer.send, to, subject, text)
+            if self.mailer and to:
+                await asyncio.to_thread(self.mailer.send, to, subject, text)
             state = "sent"
         except Exception as exc:
             # Never log the address or message: both are customer data.

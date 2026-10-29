@@ -95,6 +95,7 @@ class Offer:
     """One public Spot row and the private launch requirements behind it."""
 
     def __init__(self, offer):
+        self.raw = offer  # Kept with Direct Pay orders, which provision after the offer may leave.
         d = offer["details"]
         mib = min(g["MemoryInfo"]["SizeInMiB"] for g in d["gpu_specifications"])
         self.region, self.sku = offer["region"], offer["sku"]

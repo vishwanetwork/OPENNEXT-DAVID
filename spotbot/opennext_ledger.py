@@ -191,11 +191,15 @@ def billing_view(charge, rental, now=None):
     )
 
 
-def adjusted_account(account, charges):
-    """The existing API's Credit view less Spot charges, promotional Credit first."""
+def adjusted_account(account, charges, credited_cents=0, notifications=()):
+    """The existing API's Credit view plus receipts posted here, less Spot charges.
+
+    Promotional Credit is spent first. `credited_cents` are bank receipts confirmed through this
+    adapter (paid Credit); `notifications` are this adapter's owner notices.
+    """
     spent = sum(amount(c) for c in charges)
     promotional = round(float(account.get("promotionalCredit") or 0) * 100)
-    paid = round(float(account.get("paidCredit") or 0) * 100)
+    paid = round(float(account.get("paidCredit") or 0) * 100) + credited_cents
     from_promotional = min(spent, promotional)
     promotional -= from_promotional
     # A paid balance never shows negative (e.g. after an operator reversed a top-up).
@@ -205,6 +209,7 @@ def adjusted_account(account, charges):
         promotionalCredit=promotional / 100,
         paidCredit=paid / 100,
         availableCredit=max(0, promotional + paid) / 100,
+        notifications=[*(account.get("notifications") or []), *notifications],
         spotCharges=[
             dict(
                 orderId=c["rental_id"],

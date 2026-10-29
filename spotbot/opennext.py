@@ -19,11 +19,13 @@ host-routing reverse proxy: the pass-through keeps the browser's `Host` header.
 """
 
 import asyncio
+import hashlib
 import http.cookiejar
 import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 import httpx
@@ -36,6 +38,7 @@ from spotbot.models import timestamp, utcnow
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
 from spotbot.opennext_market import (
+    Offer,
     PurchaseRequest,
     SpotMarket,
     checkout_totals,
@@ -45,6 +48,8 @@ from spotbot.opennext_market import (
     rfq_for,
 )
 from spotbot.opennext_notify import Mailer, Notifier
+from spotbot.opennext_ops import Operations, direct_pay_key
+from spotbot.opennext_ops_api import install as install_operations
 from spotbot.storage import create_store
 from spotbot.storage.workflows import WorkflowStore
 
@@ -134,7 +139,7 @@ def same_origin(request):
         return False
 
 
-def create_opennext_app(settings, *, origin, store=None, client=None, market=None):
+def create_opennext_app(settings, *, origin, store=None, client=None, market=None, files_dir=None):
     origin = legacy_origin(origin)
     db = WorkflowStore(store or create_store(settings))
     own_client = client is None
@@ -147,13 +152,21 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     market = market or SpotMarket.from_settings(settings, client)
     ledger = CreditLedger(db)
     library = KeyLibrary(db)
+    public_url = settings.spotbot_opennext_public_url if settings else ""
+    ops = Operations(
+        db,
+        files_dir or (settings.spotbot_opennext_files_dir if settings else "data/opennext-kyb"),
+        public_url,
+    )
     notifier = (
         Notifier(
             db,
             market,
             ledger,
             Mailer.from_settings(settings) if settings else None,
-            settings.spotbot_opennext_public_url if settings else "",
+            public_url,
+            ops=ops,
+            provision=lambda doc: provision(doc),
         )
         if market
         else None
@@ -202,25 +215,37 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             for row in rows
         ]
 
-    @app.get("/api/admin/instances")
-    async def admin_instances(
-        request: Request, status: str = "", cursor: str = "", limit: int = 50
-    ):
+    async def admin_session(request):
+        """`(scope, None)` for a signed-in administrator, else `(None, error response)`.
+
+        The scope is a non-secret digest of the administrator session cookie, so it changes
+        with every sign-in and cached private views can be tied to one operator session.
+        """
         try:
             session = await client.get(
                 origin + "/api/admin/pricing/session", headers=headers(request)
             )
         except httpx.HTTPError:
-            return error(503, "The administrator session service is unavailable.")
+            return None, error(503, "The administrator session service is unavailable.")
         if session.status_code == 404:
-            return error(404, "Not found")  # Not the admin host.
+            return None, error(404, "Not found")  # Not the admin host.
         if session.status_code != 200:
-            return error(503, "The administrator session service is unavailable.")
+            return None, error(503, "The administrator session service is unavailable.")
         access = session.json().get("access") or {}
         if access.get("mutable") is not True:
-            return error(
+            return None, error(
                 401, access.get("reason") or "Administrator sign-in required", access=access
             )
+        cookie = request.cookies.get("on_pricing_admin", "")
+        return "ops-" + hashlib.sha256(cookie.encode()).hexdigest()[:24], None
+
+    @app.get("/api/admin/instances")
+    async def admin_instances(
+        request: Request, status: str = "", cursor: str = "", limit: int = 50
+    ):
+        _, failed = await admin_session(request)
+        if failed:
+            return failed
         wanted = status.strip().lower()
         if wanted and wanted not in {v.lower() for v in LIFECYCLE.values()}:
             return error(400, "Unknown status filter", code="INVALID_STATUS")
@@ -331,7 +356,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         if account.get("demo") or account.get("accountId") != user_id:
             return None
         charges = await ledger.reconcile(user_id, await market.rentals(customer_ref(user_id)))
-        return adjusted_account(account, charges)
+        return adjusted_account(account, charges, await ops.credits(user_id))
 
     @app.get("/api/billing/account")
     async def billing_account(request: Request):
@@ -349,11 +374,13 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             async with ledger.lock(user_id):
                 rows = await market.rentals(customer_ref(user_id))
                 charges = await ledger.reconcile(user_id, rows)
+            credits = await ops.credits(user_id)
+            notices = [*await ops.notifications(user_id), *await notifier.notifications(user_id)]
         except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
             # Without the charges the balance would overstate what can be spent.
             logger.exception("opennext_credit_unavailable")
             return error(503, "Your available Credit could not be confirmed.")
-        return relay(upstream, adjusted_account(account, charges))
+        return relay(upstream, adjusted_account(account, charges, credits, notices))
 
     def confirmation(rental):
         bought = purchased(rental)
@@ -392,6 +419,12 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             return error(403, "Your session verification failed. Refresh and try again.")
         if user.get("role") != "buyer":
             return error(403, "A Buyer account is required to purchase capacity.")
+        if not await ops.kyb_approved(user["id"]):
+            return error(
+                403,
+                "Complete business verification before purchasing capacity. No order was created.",
+                code="KYB_REQUIRED",
+            )
         try:
             purchase = PurchaseRequest.model_validate_json(await request.body())
         except ValidationError as exc:
@@ -633,6 +666,88 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             }
         )
 
+    async def provision(doc):
+        """Hold a confirmed Direct Pay payment for its order and create the rental.
+
+        Idempotent and retried by the notifier until the bot answers: the RFQ reference is
+        derived from the payment, so a retry finds the rental instead of ordering twice.
+        """
+        state = (doc.get("provisioning") or {}).get("state")
+        if market is None or doc["status"] != "Confirmed" or state not in {"queued", "held"}:
+            return doc
+        user_id, reference = doc["account"], doc["order_reference"]
+        async with ledger.lock(user_id):
+            charge = await ledger.hold(
+                user_id,
+                reference,
+                doc["amount_cents"],
+                doc["offer_id"],
+                hourly_cents=doc["hourly_cents"],
+                email=doc["email"] or None,
+            )
+            if state == "queued":
+                doc = await ops.set_provisioning(doc, state="held")
+            try:
+                rental = await market.find(user_id, reference)
+                if rental is None:
+                    purchase = SimpleNamespace(
+                        durationHours=doc["duration_hours"],
+                        idempotencyKey=direct_pay_key(doc["idempotency_key"]),
+                        sshPublicKey=doc["ssh_public_key"],
+                    )
+                    rfq = rfq_for(
+                        Offer(doc["offer"]), purchase, user_id, utcnow(), market.storage_rate
+                    )
+                    response = await market.create(rfq)
+                    if response.status_code == 409:
+                        rental = await market.find(user_id, reference)
+                    elif response.status_code not in {200, 201}:
+                        logger.error("opennext_direct_pay_rejected status=%s", response.status_code)
+                        await ledger.refund(charge, "rental_rejected")
+                        doc = await ops.set_provisioning(doc, state="failed")
+                        return await ops.add_notice(
+                            doc,
+                            "Instance could not be started",
+                            "We could not start an instance for your payment. The full amount "
+                            "is in your Credit; you can use it for another purchase.",
+                        )
+                    else:
+                        rental = response.json()["rental"]
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                attempts = (doc["provisioning"].get("attempts") or 0) + 1
+                return await ops.set_provisioning(doc, attempts=attempts)
+            if rental is None:
+                return doc
+            await ledger.settle(charge, rental["id"])
+            return await ops.set_provisioning(doc, state="submitted", rental_id=rental["id"])
+
+    async def provision_now(transfer_id):
+        try:
+            doc = await ops.get_transfer(transfer_id)
+            if doc:
+                await provision(doc)
+        except Exception:
+            logger.exception("opennext_direct_pay_provisioning_deferred")  # The notifier retries.
+
+    install_operations(
+        app,
+        SimpleNamespace(
+            ops=ops,
+            ledger=ledger,
+            market=market,
+            error=error,
+            no_store=no_store,
+            customer=customer,
+            own_rental=own_rental,
+            admin_session=admin_session,
+            same_origin=same_origin,
+            provision_now=provision_now,
+            audit=lambda event, **fields: logger.info(
+                "opennext_audit event=%s %s", event, " ".join(f"{k}={v}" for k, v in fields.items())
+            ),
+        ),
+    )
+
     @app.api_route("/api/{path:path}", methods=METHODS)
     async def passthrough(request: Request, path: str):
         target = (
@@ -672,4 +787,5 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         return streamed
 
     app.state.notifier = notifier
+    app.state.ops = ops
     return app

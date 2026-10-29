@@ -36,6 +36,9 @@ USERS = {
     "session=other": {"user": {"id": "U2", "role": "buyer", "csrfToken": "csrf-2"}},
     "session=seller": {"user": {"id": "U3", "role": "seller", "csrfToken": "csrf-3"}},
     "session=demo": {"user": {"id": "D1", "role": "buyer", "csrfToken": "csrf-d"}, "demo": True},
+    "session=fresh": {
+        "user": {"id": "U4", "role": "buyer", "csrfToken": "csrf-4", "email": "u4@example.com"}
+    },
 }
 
 
@@ -87,6 +90,9 @@ class Fakes:
             return httpx.Response(
                 200, json=USERS.get(request.headers.get("cookie"), {"user": None})
             )
+        if path == "/api/admin/pricing/session":
+            signed_in = "on_pricing_admin=ok" in request.headers.get("cookie", "")
+            return httpx.Response(200, json={"access": {"mutable": signed_in, "reason": "Sign in"}})
         if path == "/api/billing/account":
             user = USERS.get(request.headers.get("cookie"), {}).get("user")
             if not user:
@@ -165,6 +171,32 @@ class Fakes:
         return httpx.Response(200, json={"rental_id": rental_id, "ready": True, "ssh": ssh})
 
 
+def approve_kyb(app, user_id):
+    """An approved Buyer KYB case, as an operator decision would leave it."""
+    ops = app.state.ops
+    ops.db.save(
+        dict(
+            id=ops.case_id(user_id),
+            kind="opennext_kyb_case",
+            tenant_id="opennext:" + user_id,
+            account=user_id,
+            email=user_id.lower() + "@example.com",
+            mode="Auto",
+            status="Approved",
+            revision=2,
+            company={},
+            documents=[],
+            submitted_at="2026-10-28T00:00:00+00:00",
+            submission_keys={},
+            decisions=[],
+            notices=[],
+            emails=[],
+            version=0,
+        ),
+        0,
+    )
+
+
 @pytest.fixture
 async def env(tmp_path):
     fakes, calls = Fakes(), []
@@ -197,7 +229,10 @@ async def env(tmp_path):
         store=Store(tmp_path / "b.db"),
         client=upstream,
         market=market,
+        files_dir=tmp_path / "kyb",
     )
+    for user_id in ("U1", "U2"):
+        approve_kyb(app, user_id)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://" + HOST)
     try:
         yield client, fakes, calls
