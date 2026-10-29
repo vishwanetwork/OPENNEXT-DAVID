@@ -2,8 +2,9 @@
 
 - Offers: orderable AWS Spot offers in rental Regions, one row per Region and instance type
   (the cheapest zone), shaped as OpenNEXT public supply rows.
-- Purchases: a Spot purchase becomes a protected rental for the customer's public key. No
-  Credit is charged yet; the price ceiling is the listed price plus 20%.
+- Purchases: a Spot purchase becomes a protected rental for the customer's public key. The
+  paid hours start at delivery (`service_seconds`), and the price ceiling is the listed price
+  plus 20%.
 - Instances: a customer's rentals as OpenNEXT workspace instances.
 
 Prices follow the web app's arithmetic exactly (JavaScript `Math.round` on IEEE doubles), so
@@ -29,6 +30,7 @@ PAGE = 1000
 PRICE_CAP = Decimal("1.2")  # Spot price ceiling: the listed instance price plus 20%.
 ACQUISITION = timedelta(minutes=60)
 MAX_HOURS = 720
+MIN_HOURS = 1  # Usage is billed per minute with a one-hour minimum, so shorter orders are refused.
 ROOT_GIB = 100
 FINAL_RETENTION_SECONDS = 604800  # The RFQ default backup retention after the rental ends.
 BOT_TIMEOUT = 15  # Seconds; page loads must not wait on a slow bot API for long.
@@ -167,7 +169,7 @@ class PurchaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     pricingVersion: Literal["duration-v1"]
     offerId: str = Field(min_length=1, max_length=200)
-    durationHours: float = Field(gt=0, le=MAX_HOURS)
+    durationHours: float = Field(ge=MIN_HOURS, le=MAX_HOURS)
     expectedPricing: ExpectedPricing
     # Optional: keys can be set later from the instance (`PUT .../ssh-keys`).
     sshPublicKey: str | None = Field(None, max_length=4096)
@@ -229,6 +231,7 @@ def rfq_for(offer, purchase, user_id, now, storage_rate):
         "budget_usd": str(budget),
         "acquisition_deadline": deadline.isoformat(),
         "expires_at": (deadline + timedelta(seconds=int(hours * 3600))).isoformat(),
+        "service_seconds": int(hours * 3600),
         "ssh_public_key": purchase.sshPublicKey,
         "ssh_user": "ubuntu",
         "customer_ref": customer_ref(user_id),
@@ -239,7 +242,10 @@ def purchased(rental):
     """Listed instance price, hours and offer of a rental created from a purchase."""
     rfq = rental["rfq"]
     cents = int(Decimal(rfq["max_price_hourly"]) / PRICE_CAP * 100)
-    seconds = (at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])).total_seconds()
+    # Earlier purchases have no `service_seconds`; their window ran from the acquisition deadline.
+    seconds = rfq.get("service_seconds") or (
+        at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])
+    ).total_seconds()
     return {
         "cents": cents,
         "hours": round(seconds / 36) / 100,
@@ -363,7 +369,8 @@ class SpotMarket:
                 self._offers, self._loaded = build_offers(values, self.regions), time.monotonic()
             return self._offers
 
-    async def rentals(self, customer):
+    async def rentals(self, customer=None):
+        """The tenant's rentals; with `customer`, only that customer's."""
         values, offset = [], 0
         while True:
             response = await self.bot("GET", "/v1/rentals", params=dict(limit=PAGE, offset=offset))
@@ -373,6 +380,8 @@ class SpotMarket:
             offset += PAGE
             if not body["items"] or offset >= body["total"]:
                 break
+        if customer is None:
+            return values
         return [r for r in values if r.get("rfq", {}).get("customer_ref") == customer]
 
     async def find(self, user_id, reference):

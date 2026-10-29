@@ -483,7 +483,7 @@ def test_customer_reference_is_part_of_the_idempotent_request(rental_env):
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
     env = rental_env
     old = env.request.model_dump(mode="json")
-    for name in ("initial_image_ids", "ssh_public_key", "customer_ref"):
+    for name in ("initial_image_ids", "ssh_public_key", "customer_ref", "service_seconds"):
         old["rfq"].pop(name)  # A client from before these optional fields existed.
     from spotbot.storage.common import dump
 
@@ -1233,3 +1233,59 @@ async def test_retention_of_the_initial_backup_keeps_a_delivered_rental_active(r
     await cycle(env, 3)
     row = env.engine.get(row["id"], "tenant-a")
     assert row["state"] == "ACTIVE" and row["error"] is None and row["connection"]
+
+
+def test_service_intervals_follow_delivery_replacement_and_end(monkeypatch):
+    from spotbot import rentals as module
+
+    clock = [datetime.fromisoformat("2026-10-29T00:10:00+00:00")]
+    monkeypatch.setattr(module, "utcnow", lambda: clock[0])
+    row = dict(
+        state="PROVISIONING",
+        end_requested=False,
+        rfq=dict(
+            acquisition_deadline="2026-10-29T01:00:00+00:00",
+            expires_at="2026-10-29T03:00:00+00:00",
+            service_seconds=7200,
+        ),
+    )
+
+    def step(minutes, **changes):
+        clock[0] += timedelta(minutes=minutes)
+        row.update(changes)
+        module.track_service(row)
+
+    step(0)
+    assert row["service_intervals"] == [] and "service_started_at" not in row
+    # Handed over 15 minutes in: the two paid hours start now, not at the deadline.
+    step(5, state="DELIVERING")
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:15:00+00:00"
+    step(1, state="ACTIVE")
+    step(30, state="RECOVERING")  # A Spot interruption pauses the service.
+    step(10, state="DELIVERING")
+    step(1, state="ACTIVE")
+    step(20, state="ENDING", end_requested=True)
+    step(5, state="CLOSED")
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:15:00+00:00"  # Set once.
+    assert module.service_seconds(row) == 50 * 60
+
+
+def test_service_window_never_extends_the_requested_expiry(monkeypatch):
+    from spotbot import rentals as module
+
+    monkeypatch.setattr(
+        module, "utcnow", lambda: datetime.fromisoformat("2026-10-29T01:05:00+00:00")
+    )
+    row = dict(
+        state="ACTIVE",
+        end_requested=False,
+        rfq=dict(
+            acquisition_deadline="2026-10-29T01:00:00+00:00",
+            expires_at="2026-10-29T02:00:00+00:00",
+            service_seconds=3600,
+        ),
+    )
+    module.track_service(row)
+    # Launched just before the deadline and delivered after it: capped at the request.
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:00:00+00:00"
+    assert row["service_intervals"][0]["end"] is None

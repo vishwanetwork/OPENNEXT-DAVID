@@ -98,6 +98,9 @@ class RFQ(RulesModel):
     not_before: AwareDatetime | None = None
     acquisition_deadline: AwareDatetime
     expires_at: AwareDatetime
+    # When set, the service window starts at delivery: on first handoff `expires_at` becomes
+    # the delivery time plus this many seconds, never later than the requested `expires_at`.
+    service_seconds: int | None = Field(None, ge=60, le=31536000)
     max_attempts: int = Field(50, ge=1, le=1000)
     retry_seconds: int = Field(30, ge=5, le=3600)
     max_recovery_seconds: int = Field(3600, ge=30, le=86400)

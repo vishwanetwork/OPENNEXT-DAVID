@@ -63,10 +63,13 @@ The adapter verifies the session with `GET /api/auth/session` (a signed-in, non-
 CSRF token and a same-origin `Origin`, then recomputes the totals with the web app's arithmetic
 (duration subtotal plus 5% fee, JavaScript rounding) from the current offer. A mismatch answers
 409 `PRICE_CHANGED`; an offer that left the catalog answers 409 `OFFER_UNAVAILABLE`; too little
-Credit answers 409 `INSUFFICIENT_CREDIT`. The total is charged to the account's Credit (see
-below). `sshPublicKey` is optional: keys can be set on the instance later. The rental's RFQ names the offer's Region and instance type, a price ceiling of the
-listed instance price plus 20%, a 60-minute acquisition deadline, an end time of the deadline
-plus the purchased duration, a 100 GiB root disk, the customer's public key (if any) for `ubuntu`, and
+Credit answers 409 `INSUFFICIENT_CREDIT`. The total is held from the account's Credit as the
+order's maximum and billed by usage (see below). `durationHours` is 1 to 720 hours.
+`sshPublicKey` is optional: keys can be set on the instance later. The rental's RFQ names the
+offer's Region and instance type, a price ceiling of the listed instance price plus 20%, a
+60-minute acquisition deadline, `service_seconds` for the purchased duration (the paid time starts
+at delivery, so the bot moves the end time to the delivery time plus the duration), a 100 GiB root
+disk, the customer's public key (if any) for `ubuntu`, and
 `customer_ref` `opennext:<user id>`. Its budget is a safety bound for the bot (ceiling for the
 whole duration plus storage, with margin). The answer is
 
@@ -82,18 +85,33 @@ duration answers 409 `IDEMPOTENCY_CONFLICT`.
 **Instances.** `GET /api/marketplace/me` appends the signed-in customer's rentals to `instances`:
 `status` `active`, `pending` (first acquisition), `recovering` (replacing an interrupted server),
 `ended`, or the lower-case bot state; `rate` is the listed price per GPU-hour; `serviceEnd` is the
-RFQ end. With `SPOTBOT_OPENNEXT_GATEWAY_URL` and `SPOTBOT_OPENNEXT_GATEWAY_TOKEN` (the gateway's
+RFQ end (the delivery time plus the purchased duration, once delivered). With `SPOTBOT_OPENNEXT_GATEWAY_URL` and `SPOTBOT_OPENNEXT_GATEWAY_TOKEN` (the gateway's
 API key), running rentals include the gateway's SSH entry point (`sshHost`, `sshPort`, `sshUser`);
 server addresses are never returned.
 
 **Credit.** The existing API keeps each account's Credit (approved top-ups plus promotional
 Credit) and has no debits. The adapter records one charge per purchase in the bot database,
 keyed by the purchase reference so a retry never charges twice, and `GET /api/billing/account`
-subtracts open charges, promotional Credit first, listing them in `spotCharges`. A charge is
-refunded in full when the bot refuses the order, when no rental appears within 10 minutes of an
-unanswered order, or when the rental ends before it was ever handed to the customer. Ending a
-delivered rental early is not refunded: the duration is prepaid. Charges for an account are
-serialized in one process, so run a single adapter instance.
+subtracts them, promotional Credit first, listing them in `spotCharges` (`totalCents` is what
+the charge takes now, `heldCents` the purchase total). A charge is refunded in full when the bot
+refuses the order, when no rental appears within 10 minutes of an unanswered order, or when the
+rental ends before the customer ever had a running server.
+
+Usage billing: the purchase total stays held while the order is open. When a delivered rental
+closes, the charge is billed for the bot's service periods (`service_intervals`: the time the
+rental was `ACTIVE`; a Spot replacement pauses it), per started minute with a 1-hour minimum,
+plus the 5% fee, never more than the hold; the rest returns to the Credit. Charges from before
+usage billing have no `hourly_cents` and stay prepaid. Charges for an account are serialized in
+one process, so run a single adapter instance.
+
+**Order notices.** Every 30 seconds the adapter settles every customer's charges, so usage is
+billed without a page visit, and emails the address captured from the session at purchase:
+server running (with the SSH command), being replaced, running again, ending in 30 minutes,
+ended (time used, billed and returned amounts), and not filled (refunded). Each notice is
+recorded in the bot database (`opennext_notice`) once sent and retried up to 5 times. Email
+needs `SPOTBOT_OPENNEXT_SMTP_HOST` and `SPOTBOT_OPENNEXT_SMTP_FROM` (the OpenNEXT API's SMTP
+account; `_PORT` default 587 with required STARTTLS, `_SECURE=true` or port 465 for implicit TLS,
+`_USER`, `_PASSWORD`); `SPOTBOT_OPENNEXT_PUBLIC_URL` adds a Terminal link.
 
 **SSH keys.** The account key library (`/api/account/ssh-keys`, up to 50 keys) only stores keys.
 `PUT` (or `POST`) `/api/marketplace/instances/{id}/ssh-keys` with `{"keys": [...]}` replaces the keys on one

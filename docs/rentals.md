@@ -192,6 +192,7 @@ Important RFQ fields:
 | `price_unit` | Must be explicitly `instance_hour` |
 | `max_price_hourly`, `budget_usd` | USD per-instance compute ceiling and conservative operating budget |
 | `acquisition_deadline`, `expires_at` | Absolute UTC acquisition deadline and lifecycle end |
+| `service_seconds` | Optional: the service window starts at delivery. On the first handoff (`DELIVERING`, or `ACTIVE` without a gateway) `expires_at` becomes the delivery time plus this duration, never later than the requested `expires_at` |
 | `not_before` | Optional earliest acquisition time |
 | `root_volume_gib`, `data_disks` | Root minimum and protected data disks; root may grow to the AMI minimum |
 | `selection` | `lowest_price` or `region_order` within hard constraints |
@@ -335,6 +336,11 @@ using the submitted compute ceiling and provisioned disk/snapshot capacity.
 rate, not a live AWS tariff. Actual invoices, IPv4, transfer, taxes, and provider
 minimums can differ. Upstream billing must use provider billing data for final
 settlement. Snapshot retention and storage remain explicit expenses.
+
+`service_intervals` on the rental lists the periods the customer had a delivered
+server: one `{start, end}` per stretch in `ACTIVE`, ended by a replacement
+(`RECOVERING`), an end request or closing. Upstreams can bill customer time from
+it; it says nothing about provider cost.
 
 Run `ruff check spotbot tests examples` and `pytest -q`. The acceptance tests
 simulate disk contents, multi-volume snapshots, replacement, expiry, unknown

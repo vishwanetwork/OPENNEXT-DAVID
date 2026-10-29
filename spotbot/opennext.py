@@ -44,6 +44,7 @@ from spotbot.opennext_market import (
     purchased,
     rfq_for,
 )
+from spotbot.opennext_notify import Mailer, Notifier
 from spotbot.storage import create_store
 from spotbot.storage.workflows import WorkflowStore
 
@@ -146,10 +147,25 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     market = market or SpotMarket.from_settings(settings, client)
     ledger = CreditLedger(db)
     library = KeyLibrary(db)
+    notifier = (
+        Notifier(
+            db,
+            market,
+            ledger,
+            Mailer.from_settings(settings) if settings else None,
+            settings.spotbot_opennext_public_url if settings else "",
+        )
+        if market
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(_app):
+        # Bills usage and sends order notices while customers are away; one adapter instance.
+        task = asyncio.create_task(notifier.run()) if notifier else None
         yield
+        if task:
+            task.cancel()
         if own_client:
             await client.aclose()
 
@@ -370,15 +386,20 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         try:
             purchase = PurchaseRequest.model_validate_json(await request.body())
         except ValidationError as exc:
-            invalid_key = any(e["loc"] == ("sshPublicKey",) for e in exc.errors())
-            return error(
-                400,
-                "Enter a valid OpenSSH public key, or leave it empty and add one later. "
-                "No order was created."
-                if invalid_key
-                else "The purchase request is invalid. No order was created.",
-                code="INVALID_PURCHASE",
-            )
+            fields = {e["loc"] for e in exc.errors()}
+            if ("sshPublicKey",) in fields:
+                message = (
+                    "Enter a valid OpenSSH public key, or leave it empty and add one later. "
+                    "No order was created."
+                )
+            elif ("durationHours",) in fields:
+                message = (
+                    "Enter a duration from 1 to 720 hours, with up to two decimal places. "
+                    "No order was created."
+                )
+            else:
+                message = "The purchase request is invalid. No order was created."
+            return error(400, message, code="INVALID_PURCHASE")
         reference = order_reference(user["id"], purchase.idempotencyKey)
         async with ledger.lock(user["id"]):
             return await place_order(request, user, purchase, reference)
@@ -426,7 +447,15 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 "Insufficient Credit. Add credit to complete this purchase. No order was created.",
                 code="INSUFFICIENT_CREDIT",
             )
-        charge = await ledger.hold(user["id"], reference, totals["totalCents"], offer.id)
+        email = user.get("email")
+        charge = await ledger.hold(
+            user["id"],
+            reference,
+            totals["totalCents"],
+            offer.id,
+            hourly_cents=offer.cents,
+            email=email if isinstance(email, str) and "@" in email else None,
+        )
         rfq = rfq_for(offer, purchase, user["id"], utcnow(), market.storage_rate)
         try:
             response = await market.create(rfq)
@@ -629,4 +658,5 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         streamed.raw_headers = raw(out)
         return streamed
 
+    app.state.notifier = notifier
     return app

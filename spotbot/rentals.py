@@ -46,6 +46,42 @@ def document(kind, tenant_id, **values):
     )
 
 
+def track_service(row):
+    """Record when the customer has a delivered server, for usage billing.
+
+    `service_intervals` holds one `{start, end}` per period the rental was ACTIVE and not
+    ending; a replacement (RECOVERING), an end request or closing ends the open period. On the
+    first handoff, a `service_seconds` RFQ moves `expires_at` to the delivery time plus that
+    duration, so the paid time starts at delivery rather than at the order.
+    """
+    now = utcnow()
+    rfq = row["rfq"]
+    if row["state"] in {"DELIVERING", "ACTIVE"} and not row.get("service_started_at"):
+        row["service_started_at"] = now.isoformat()
+        if rfq.get("service_seconds"):
+            # The RFQ requires expiry strictly after the acquisition deadline.
+            end = max(
+                now + timedelta(seconds=rfq["service_seconds"]),
+                at(rfq["acquisition_deadline"]) + timedelta(seconds=1),
+            )
+            rfq["expires_at"] = min(at(rfq["expires_at"]), end).isoformat()
+    intervals = row.setdefault("service_intervals", [])
+    serving = row["state"] == "ACTIVE" and not row.get("end_requested")
+    if serving and (not intervals or intervals[-1]["end"]):
+        intervals.append(dict(start=now.isoformat(), end=None))
+    elif not serving and intervals and not intervals[-1]["end"]:
+        intervals[-1]["end"] = now.isoformat()
+
+
+def service_seconds(row, now=None):
+    """Seconds the customer had a delivered server, including an open period up to `now`."""
+    now = now or utcnow()
+    return sum(
+        max(0.0, ((at(i["end"]) if i["end"] else now) - at(i["start"])).total_seconds())
+        for i in row.get("service_intervals") or []
+    )
+
+
 class RentalEngine:
     def __init__(self, service, backend=None):
         self.service = service
@@ -61,6 +97,8 @@ class RentalEngine:
         return self.row_locks.setdefault(rental_id, asyncio.Lock())
 
     def save(self, doc, event=None):
+        if doc["kind"] == "rental":
+            track_service(doc)
         return self.db.save(doc, doc["version"], event=event)
 
     def get(self, rental_id, tenant_id):
@@ -98,7 +136,7 @@ class RentalEngine:
         # Preserve idempotency fingerprints accepted before these optional fields existed.
         if not payload["rfq"]["initial_image_ids"]:
             payload["rfq"].pop("initial_image_ids")
-        for name in ("ssh_public_key", "customer_ref"):
+        for name in ("ssh_public_key", "customer_ref", "service_seconds"):
             if payload["rfq"][name] is None:
                 payload["rfq"].pop(name)
         fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()

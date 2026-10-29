@@ -7,28 +7,50 @@ database and subtracts the open charges from that Credit, promotional Credit fir
 - A charge is held before the rental is requested and becomes `charged` once the bot accepts
   it. Its identity is the purchase reference, so a retried purchase never charges twice.
 - A charge is refunded in full when the bot refuses the rental, when no rental appeared for a
-  held charge, or when the rental ended without ever being handed to the customer. Ending a
-  delivered rental early is not refunded (the duration is prepaid).
+  held charge, or when the rental ended without ever being handed to the customer.
+- Usage billing (charges with `hourly_cents`): the held amount is the order's maximum. When a
+  delivered rental closes, the charge is `billed` for the time the customer had a server, per
+  started minute with a one-hour minimum, plus the 5% fee; the rest of the hold is released.
+  Earlier charges have no `hourly_cents` and stay prepaid.
 
 Charges for one account are serialized in this process; run a single adapter instance.
 """
 
 import asyncio
+import math
 from collections import defaultdict
 from datetime import timedelta
 
 from spotbot.models import timestamp, utcnow
-from spotbot.rentals import at
+from spotbot.opennext_market import js_int
+from spotbot.rentals import at, service_seconds
 from spotbot.storage.workflows import ConflictError
 
 KIND = "opennext_charge"
 OPEN = {"held", "charged"}
+# States that count against the account's Credit: open holds and billed usage.
+COUNTED = OPEN | {"billed"}
+MINIMUM_MINUTES = 60
 # A held charge without a rental after this long was never accepted by the bot.
 HELD_GRACE = timedelta(minutes=10)
 
 
 def account_id(user_id):
     return "opennext:" + user_id
+
+
+def amount(charge):
+    """Cents the charge takes from the account's Credit."""
+    if charge["state"] == "billed":
+        return charge["billed_cents"]
+    return charge["cents"] if charge["state"] in OPEN else 0
+
+
+def usage_cents(hourly_cents, seconds):
+    """Per started minute with a one-hour minimum, plus the checkout's 5% fee."""
+    minutes = max(MINIMUM_MINUTES, math.ceil(seconds / 60))
+    base = math.ceil(hourly_cents * minutes / 60)
+    return base + js_int(base / 20)
 
 
 def undelivered(rental):
@@ -53,8 +75,12 @@ class CreditLedger:
         updated["version"] = charge["version"] + 1
         return updated
 
-    async def hold(self, user_id, reference, cents, offer_id):
-        """Hold `cents` for the purchase `reference`; an existing charge is returned as is."""
+    async def hold(self, user_id, reference, cents, offer_id, *, hourly_cents=None, email=None):
+        """Hold `cents` for the purchase `reference`; an existing charge is returned as is.
+
+        With `hourly_cents`, the hold is the maximum and the charge is billed by usage. `email`
+        is where the customer's order notices go.
+        """
         charge = dict(
             id=reference.removeprefix("opennext-"),
             kind=KIND,
@@ -64,6 +90,8 @@ class CreditLedger:
             cents=cents,
             state="held",
             rental_id=None,
+            hourly_cents=hourly_cents,
+            email=email,
             created_at=timestamp(),
             version=0,
         )
@@ -85,8 +113,24 @@ class CreditLedger:
             return charge
         return await self._save(charge, state="refunded", refunded_at=timestamp(), reason=reason)
 
+    async def bill(self, charge, seconds):
+        if charge["state"] != "charged":
+            return charge
+        billed = min(charge["cents"], usage_cents(charge["hourly_cents"], seconds))
+        return await self._save(
+            charge,
+            state="billed",
+            billed_cents=billed,
+            released_cents=charge["cents"] - billed,
+            service_seconds=round(seconds),
+            billed_at=timestamp(),
+        )
+
     async def reconcile(self, user_id, rentals):
-        """Settle or refund charges against the customer's rentals; returns open charges."""
+        """Settle, bill or refund charges against the customer's rentals.
+
+        Returns the charges that count against the account's Credit.
+        """
         by_reference = {r["rfq"].get("upstream_order_id"): r for r in rentals}
         result = []
         for charge in await self.charges(user_id):
@@ -97,14 +141,25 @@ class CreditLedger:
                 charge = await self.refund(charge, "rental_not_created")
             if charge["state"] == "charged" and rental and undelivered(rental):
                 charge = await self.refund(charge, "not_delivered")
-            if charge["state"] in OPEN:
+            if (
+                charge["state"] == "charged"
+                and charge.get("hourly_cents")
+                and rental
+                and rental["state"] == "CLOSED"
+            ):
+                seconds = service_seconds(rental)
+                # Handed over but never usable (e.g. the gateway refused it): nothing to bill.
+                charge = await (
+                    self.bill(charge, seconds) if seconds else self.refund(charge, "not_delivered")
+                )
+            if charge["state"] in COUNTED:
                 result.append(charge)
         return result
 
 
 def adjusted_account(account, charges):
-    """The existing API's Credit view less open Spot charges, promotional Credit first."""
-    spent = sum(c["cents"] for c in charges if c["state"] in OPEN)
+    """The existing API's Credit view less Spot charges, promotional Credit first."""
+    spent = sum(amount(c) for c in charges)
     promotional = round(float(account.get("promotionalCredit") or 0) * 100)
     paid = round(float(account.get("paidCredit") or 0) * 100)
     from_promotional = min(spent, promotional)
@@ -119,7 +174,9 @@ def adjusted_account(account, charges):
         spotCharges=[
             dict(
                 orderId=c["rental_id"],
-                totalCents=c["cents"],
+                totalCents=amount(c),
+                heldCents=c["cents"],
+                billing="usage" if c.get("hourly_cents") else "prepaid",
                 state=c["state"],
                 createdAt=c["created_at"],
             )

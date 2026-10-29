@@ -74,6 +74,18 @@ class Settings(BaseSettings):
     # Optional gateway API for customer SSH entry points of running rentals.
     spotbot_opennext_gateway_url: str = ""
     spotbot_opennext_gateway_token: SecretStr = SecretStr("")
+    # Customer order notices by email (delivered, replaced, ending soon, billed, refunded),
+    # through the SMTP account the OpenNEXT API uses. Without a host, no email is sent; usage
+    # is still billed. Port 465 or SECURE uses implicit TLS, otherwise STARTTLS is required
+    # (plain SMTP only on loopback, for local testing).
+    spotbot_opennext_smtp_host: str = ""
+    spotbot_opennext_smtp_port: int = Field(587, ge=1, le=65535)
+    spotbot_opennext_smtp_secure: bool = False
+    spotbot_opennext_smtp_user: str = ""
+    spotbot_opennext_smtp_password: SecretStr = SecretStr("")
+    spotbot_opennext_smtp_from: str = ""
+    # The Terminal's public origin for links in notices, e.g. https://opennext.example.
+    spotbot_opennext_public_url: str = ""
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)

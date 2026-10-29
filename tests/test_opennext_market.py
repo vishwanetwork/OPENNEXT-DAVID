@@ -3,7 +3,7 @@
 import base64
 import json
 import struct
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -30,7 +30,9 @@ KEY = (
     + " buyer@laptop"
 )
 USERS = {
-    "session=buyer": {"user": {"id": "U1", "role": "buyer", "csrfToken": "csrf-1"}},
+    "session=buyer": {
+        "user": {"id": "U1", "role": "buyer", "csrfToken": "csrf-1", "email": "u1@example.com"}
+    },
     "session=other": {"user": {"id": "U2", "role": "buyer", "csrfToken": "csrf-2"}},
     "session=seller": {"user": {"id": "U3", "role": "seller", "csrfToken": "csrf-3"}},
     "session=demo": {"user": {"id": "D1", "role": "buyer", "csrfToken": "csrf-d"}, "demo": True},
@@ -310,6 +312,7 @@ async def test_buy_now_creates_a_rental_for_the_customers_key(env):
         rfq["acquisition_deadline"]
     )
     assert window.total_seconds() == 5400
+    assert rfq["service_seconds"] == 5400  # The paid 1.5 hours start at delivery.
     assert Decimal(rfq["budget_usd"]) > Decimal("0.468") * Decimal("1.5")
     # A retry with the same purchase reference returns the same order without a new rental.
     again = await buy(client, body())
@@ -329,8 +332,9 @@ async def test_buy_now_creates_a_rental_for_the_customers_key(env):
         ({}, body(cents=38), 409, "price changed"),
         ({}, body(offer_id="spotbot-us-west-2-g6.2xlarge"), 409, "no longer available"),
         ({}, body(sshPublicKey="ssh-ed25519 AAAA"), 400, "OpenSSH public key"),
-        ({}, body(hours=1.005), 400, "invalid"),
-        ({}, body(hours=721), 400, "invalid"),
+        ({}, body(hours=1.005), 400, "from 1 to 720 hours"),
+        ({}, body(hours=721), 400, "from 1 to 720 hours"),
+        ({}, body(hours=0.5), 400, "from 1 to 720 hours"),  # Below the one-hour minimum.
     ],
 )
 async def test_purchases_are_refused_without_creating_rentals(
@@ -454,8 +458,53 @@ async def test_refused_or_undelivered_orders_are_refunded(env, monkeypatch):
     fakes.rentals[0].update(state="CLOSED")  # Never handed to the customer.
     assert (await balance(client)).json()["availableCredit"] == 1.5
     assert (await buy(client, {**body(), "idempotencyKey": "k-3"})).status_code == 200
+    # Handed to the gateway but never usable: still refunded.
     fakes.rentals[0].update(state="CLOSED", delivering_at="2026-10-28T01:05:00+00:00")
-    assert (await balance(client)).json()["availableCredit"] == 0.88  # Delivered: no refund.
+    assert (await balance(client)).json()["availableCredit"] == 1.5
+
+
+async def test_delivered_orders_are_billed_by_usage_with_a_one_hour_minimum(env):
+    client, fakes, _ = env
+    start = datetime.fromisoformat("2026-10-28T01:06:00+00:00")
+
+    async def order(key, minutes):
+        assert (await buy(client, {**body(), "idempotencyKey": key})).status_code == 200
+        held = (await balance(client)).json()
+        end = start + timedelta(minutes=minutes)
+        fakes.rentals[0].update(  # The newest order.
+            state="CLOSED",
+            delivering_at="2026-10-28T01:05:00+00:00",
+            service_intervals=[dict(start=start.isoformat(), end=end.isoformat())],
+        )
+        return held, (await balance(client)).json()
+
+    # 1.5 h at $0.39 holds 62 cents; 10 minutes of use bills the 1-hour minimum: 39 + 2 fee.
+    held, account = await order("k-1", 10)
+    assert held["availableCredit"] == 0.88 and held["spotCharges"][0]["state"] == "charged"
+    assert account["availableCredit"] == 1.09
+    assert account["spotCharges"][0] == {
+        "orderId": fakes.rentals[0]["id"],
+        "totalCents": 41,
+        "heldCents": 62,
+        "billing": "usage",
+        "state": "billed",
+        "createdAt": account["spotCharges"][0]["createdAt"],
+    }
+    # Usage beyond the hold is never billed: the hold is the order's maximum.
+    _, account = await order("k-2", 180)
+    assert account["availableCredit"] == 0.47
+    assert [(c["state"], c["totalCents"]) for c in account["spotCharges"]] == [
+        ("billed", 62),
+        ("billed", 41),
+    ]
+
+
+def test_usage_is_billed_per_started_minute_after_the_first_hour():
+    from spotbot.opennext_ledger import usage_cents
+
+    assert usage_cents(39, 0) == usage_cents(39, 3600) == 39 + 2
+    assert usage_cents(39, 75 * 60) == 49 + 2  # ceil(39 * 75 / 60)
+    assert usage_cents(39, 3601) == 40 + 2  # A started minute counts: ceil(39 * 61 / 60)
 
 
 async def test_an_unanswered_order_stays_held_until_its_rental_shows_up(env, monkeypatch):
@@ -549,3 +598,87 @@ async def test_instance_keys_and_end_for_the_owner_only(env):
     assert ended.json()["instance"]["id"] == order and ended.json()["instance"]["status"] == "ended"
     late = await write(client, "POST", path, {"keys": [KEY]})  # POST is accepted as PUT.
     assert late.status_code == 409
+
+
+class Outbox:
+    def __init__(self):
+        self.messages, self.fail = [], False
+
+    def send(self, to, subject, text):
+        if self.fail:
+            raise OSError("smtp down")
+        self.messages.append((to, subject, text))
+
+
+async def test_notifier_bills_and_emails_orders_while_the_customer_is_away(env, monkeypatch):
+    from spotbot import opennext_notify
+
+    client, fakes, _ = env
+    notifier = client._transport.app.state.notifier
+    outbox = notifier.mailer = Outbox()
+    notifier.public_url = "https://opennext.example"
+    assert (await buy(client, body())).status_code == 200
+    rental = fakes.rentals[0]
+    now = datetime.fromisoformat("2026-10-28T01:20:00+00:00")
+    start = "2026-10-28T01:10:00+00:00"
+    rental.update(
+        state="ACTIVE",
+        end_requested=False,
+        delivering_at=start,
+        service_intervals=[dict(start=start, end=None)],
+        ssh_keys={"version": 1, "keys": [KEY]},
+    )
+    rental["rfq"]["expires_at"] = "2026-10-28T02:40:00+00:00"
+    await notifier.tick(now)
+    await notifier.tick(now)  # Sent once.
+    [(to, subject, text)] = outbox.messages
+    assert to == "u1@example.com" and subject == "Your 1 × L4 Spot server is running"
+    assert "ssh -p 22105 ubuntu@gw.example.com" in text
+    assert "Paid time ends 2026-10-28 02:40 UTC" in text
+    assert "https://opennext.example/terminal" in text
+
+    # An interruption pauses the service; the replacement is announced too.
+    rental.update(state="RECOVERING")
+    rental["service_intervals"][0]["end"] = "2026-10-28T01:30:00+00:00"
+    await notifier.tick(now + timedelta(minutes=11))
+    rental.update(state="ACTIVE")
+    rental["service_intervals"].append(dict(start="2026-10-28T01:40:00+00:00", end=None))
+    await notifier.tick(now + timedelta(minutes=21))
+    # A failed send is retried on the next pass.
+    outbox.fail = True
+    await notifier.tick(now + timedelta(minutes=65))
+    outbox.fail = False
+    await notifier.tick(now + timedelta(minutes=66))
+    assert [m[1] for m in outbox.messages[1:]] == [
+        "Your 1 × L4 Spot server is being replaced",
+        "Your 1 × L4 Spot server is running again",
+        "Your 1 × L4 Spot server ends soon",
+    ]
+
+    # Closing bills the usage without the customer visiting: 20 + 30 minutes, 1-hour minimum.
+    rental.update(state="CLOSED", end_requested=True, closed_at="2026-10-28T02:10:00+00:00")
+    rental["service_intervals"][1]["end"] = "2026-10-28T02:10:00+00:00"
+    await notifier.tick(now + timedelta(minutes=70))
+    to, subject, text = outbox.messages[-1]
+    assert subject == "Your 1 × L4 Spot server has ended"
+    assert "Time used: 50 minutes" in text
+    assert "Billed $0.41 of the $0.62 held; $0.21 returned to your Credit." in text
+    assert (await balance(client)).json()["availableCredit"] == 1.09
+    # Long-closed orders are skipped entirely.
+    monkeypatch.setattr(opennext_notify, "due", lambda *a, **k: 1 / 0)
+    await notifier.tick(now + timedelta(days=3))
+
+
+async def test_notifier_announces_refunds_and_skips_orders_without_an_email(env):
+    client, fakes, _ = env
+    notifier = client._transport.app.state.notifier
+    outbox = notifier.mailer = Outbox()
+    assert (await buy(client, body())).status_code == 200
+    other = {**body(), "idempotencyKey": "k-2"}
+    assert (await buy(client, other, cookie="session=other", csrf="csrf-2")).status_code == 200
+    for rental in fakes.rentals:
+        rental.update(state="CLOSED", closed_at="2026-10-28T02:01:00+00:00")
+    await notifier.tick(datetime.fromisoformat("2026-10-28T02:02:00+00:00"))
+    [(to, subject, text)] = outbox.messages  # U2's session has no email.
+    assert to == "u1@example.com" and subject == "Your 1 × L4 Spot order was not filled"
+    assert "The full $0.62 was returned to your Credit." in text
