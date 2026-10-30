@@ -12,17 +12,25 @@ import {
   useOpportunity,
 } from '@/features/procurement';
 import { BillingPolling, billingModals } from '@/features/billing';
-import { instanceModals } from '@/features/instances';
+import {
+  instanceModals,
+  useInstanceLifecycleService,
+  useInstanceUsageApiService,
+} from '@/features/instances';
 import {
   SpotCheckoutProvider,
   spotCheckoutModals,
   useSpotPurchaseContext,
 } from '@/features/spot-market';
 import { NotificationBell } from '@/features/quotes';
-import { SshKeyLibrary, accountModals } from '@/features/account';
+import { SshKeyLibrary, accountModals, useAccountApiService } from '@/features/account';
 import { ContactDialog } from '@/features/site';
-import { BuyerKybOnboardingPrompt, buyerKybModals } from '@/features/buyer-kyb';
-import { bankTransferModals } from '@/features/bank-transfer';
+import {
+  BuyerKybOnboardingPrompt,
+  buyerKybModals,
+  useBuyerKybApiService,
+} from '@/features/buyer-kyb';
+import { bankTransferModals, useBankTransferApiService } from '@/features/bank-transfer';
 
 /**
  * Composition root of the Capacity Terminal. This is the only module that knows every
@@ -43,6 +51,11 @@ const MODALS = composeModals(
 function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']): TerminalSlots {
   const { open: openOpportunity } = useOpportunity();
   const purchaseContext = useSpotPurchaseContext();
+  const account = useAccountApiService();
+  const instanceLifecycle = useInstanceLifecycleService();
+  const buyerKyb = useBuyerKybApiService();
+  const bankTransfer = useBankTransferApiService();
+  const instanceUsage = useInstanceUsageApiService();
   return useMemo<TerminalSlots>(
     () => ({
       ...EMPTY_SLOTS,
@@ -53,11 +66,28 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       modals: MODALS,
       openContact,
       openOpportunity,
-      // Backend adapters (account SSH keys, instance termination, Spot purchase) are connected
-      // here once the backend exposes them; until then features fail closed.
-      services: { purchaseContext },
+      // Backend adapters (SpotOrderBot's OpenNEXT adapter): account SSH keys, instance
+      // termination and usage, Buyer KYB and bank transfers. Spot purchases use the Spot
+      // market feature's own endpoint unless a `spotCheckout` service is injected here.
+      services: {
+        purchaseContext,
+        account,
+        instanceLifecycle,
+        instanceUsage,
+        buyerKyb,
+        bankTransfer,
+      },
     }),
-    [openContact, openOpportunity, purchaseContext],
+    [
+      openContact,
+      openOpportunity,
+      purchaseContext,
+      account,
+      instanceLifecycle,
+      instanceUsage,
+      buyerKyb,
+      bankTransfer,
+    ],
   );
 }
 

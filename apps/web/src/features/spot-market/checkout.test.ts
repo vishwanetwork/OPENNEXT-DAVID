@@ -284,9 +284,10 @@ describe('Spot checkout totals', () => {
     expect([fractional.baseCents, fractional.feeCents, fractional.totalCents]).toEqual([
       278, 14, 292,
     ]);
-    const halfCent = checkoutTotals({ instanceHourly: 0.25 }, 0.58);
-    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([15, 1, 16]);
-    expect(() => checkoutTotals({ instanceHourly: 0.01 }, 0.01)).toThrow(/payable total/);
+    // 25 cents x 1.58 h = 39.5 cents, rounded half up (orders are at least 1 hour).
+    const halfCent = checkoutTotals({ instanceHourly: 0.25 }, 1.58);
+    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([40, 2, 42]);
+    expect(() => checkoutTotals({ instanceHourly: 0.001 }, 1)).toThrow(/payable total/);
   });
   it('invalid, zero, overprecise and unsafe durations cannot advance checkout', async () => {
     for (const hours of [
@@ -715,6 +716,33 @@ describe('Spot checkout safety', () => {
     expect(payloads.length).toBe(3);
     expect(payloads[2]).toEqual(payloads[0]);
     expect(restored.ctx.balance).toBe(100);
+  });
+  it('a definite refusal unlocks review; network failures stay pending', async () => {
+    const failures = [
+      Object.assign(new Error('Add a valid SSH public key. No order was created.'), {
+        status: 400,
+      }),
+      Object.assign(new Error('Unable to reach OpenNEXT.'), { status: 0 }),
+    ];
+    const service: SpotCheckoutService = {
+      getCreditBalance: async () => wallet(),
+      beginPurchase: async () => {
+        throw failures.shift();
+      },
+    };
+    const env = setup({ rows: [agent], demo: false, service });
+    await toPayment(env, '', '2');
+    await env.engine.chooseCredit();
+    await env.engine.authorizeCredit();
+    const draft = env.engine.pending()!;
+    expect(draft.paymentSubmitted).toBe(false);
+    expect(draft.error).toMatch(/No order was created/);
+    env.engine.action('spot-checkout-review');
+    expect(env.ctx.modal?.type).toBe('spot-review');
+    await env.engine.reviewPurchase({ durationHours: '2', sshPublicKey: publicKey });
+    await env.engine.chooseCredit();
+    await env.engine.authorizeCredit();
+    expect(env.engine.pending()?.paymentSubmitted).toBe(true);
   });
   it('changed inventory cannot reuse an uncertain purchase against a new price', async () => {
     let calls = 0;

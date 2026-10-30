@@ -4,7 +4,7 @@ import { renderTerminal, signIn } from '@/test/render';
 import { initialWorkspace, useWorkspaceStore } from '@/terminal-kit';
 import { InstancesPage } from './components/instances-page';
 import { Manage } from './components/instance-dialogs';
-import { UsageDialog } from './components/usage-dialogs';
+import { BillingHistory, UsageDialog } from './components/usage-dialogs';
 import { instanceUsageFixture } from '@/test/instance-usage-fixture';
 
 beforeEach(() => {
@@ -80,5 +80,32 @@ describe('instance lifecycle and ledger presentation', () => {
     });
     expect(load).not.toHaveBeenCalled();
     expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('explains the 1-hour minimum when an order ran less than an hour', () => {
+    const snapshot = instanceUsageFixture();
+    const short = {
+      ...snapshot,
+      billing: {
+        ...snapshot.billing!,
+        totalCents: 29,
+        entries: [
+          {
+            id: 'hour-1',
+            startedAt: '2026-10-29T12:02:19Z',
+            endedAt: '2026-10-29T12:10:57Z',
+            billableSeconds: 518,
+            computeCents: 28,
+            feeCents: 1,
+            totalCents: 29,
+          },
+        ],
+      },
+    };
+    const view = renderTerminal(<BillingHistory snapshot={short} />);
+    expect(document.querySelector('[data-instance-billing-minimum]')).not.toBeNull();
+    view.unmount();
+    renderTerminal(<BillingHistory snapshot={snapshot} />);
+    expect(document.querySelector('[data-instance-billing-minimum]')).toBeNull();
   });
 });

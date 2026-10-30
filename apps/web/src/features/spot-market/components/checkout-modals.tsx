@@ -15,7 +15,7 @@ declare module '@/terminal-kit/modal' {
     'spot-review': Record<string, never>;
     'spot-payment-choice': Record<string, never>;
     'spot-credit-confirm': Record<string, never>;
-    'spot-complete': Record<string, never>;
+    'spot-purchase-complete': Record<string, never>;
   }
 }
 
@@ -43,7 +43,7 @@ const CreditConfirmModal: ModalComponent<'spot-credit-confirm'> = ({ close }) =>
   </ModalFrame>
 );
 
-const CompleteModal: ModalComponent<'spot-complete'> = ({ close }) => (
+const CompleteModal: ModalComponent<'spot-purchase-complete'> = ({ close }) => (
   <ModalFrame title={<PendingTitle fallback="Purchase confirmed" />} close={close}>
     <CompleteBody />
   </ModalFrame>
@@ -54,5 +54,5 @@ export const spotCheckoutModals: ModalComponents = {
   'spot-review': ReviewModal,
   'spot-payment-choice': PaymentChoiceModal,
   'spot-credit-confirm': CreditConfirmModal,
-  'spot-complete': CompleteModal,
+  'spot-purchase-complete': CompleteModal,
 };

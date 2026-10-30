@@ -6,7 +6,7 @@
 export { ProfilePage } from './components/profile-page';
 export { SshKeyLibrary, SshKeyList, type SshLibraryScope } from './components/ssh-key-library';
 export { accountModals } from './components/modals';
-export { useAccountRef, useKeyLibrary, useAccountService } from './hooks';
+export { useAccountApiService, useAccountRef, useKeyLibrary, useAccountService } from './hooks';
 export {
   validatePublicKey,
   fingerprint,

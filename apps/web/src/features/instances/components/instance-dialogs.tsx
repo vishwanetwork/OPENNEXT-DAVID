@@ -6,10 +6,11 @@ import { useToast } from '@/components/ui/toast';
 import { useApiErrorToast } from '@/components/hooks/use-api-error-toast';
 import { instancesApi } from '../api';
 import { useInvalidateWorkspace, useTerminal } from '@/terminal-kit';
-import { moneyOrNa, sshCommand, timestamp } from '../lifecycle';
+import { lifecycle, moneyOrNa, sshCommand, timestamp } from '../lifecycle';
 import { localDemo } from '../preview';
 import { IBtn, SshLibrary } from './common';
 import { Cell, OrderField, useInstance } from './instance-shared';
+import { InstanceKeys } from './instance-keys';
 import { instanceCountry } from '../usage';
 
 export function Manage({ id }: { id?: string }) {
@@ -207,8 +208,17 @@ export function Resell({ id }: { id?: string }) {
 
 export function Access({ id, isExample }: { id?: string; isExample: boolean }) {
   const { openModal, closeModal } = useTerminal();
-  const { i } = useInstance(id, isExample);
+  const { i, demo } = useInstance(id, isExample);
   if (!i) return <p>Refresh your instances and try again.</p>;
+  const notConnected = (
+    <p className="form-note instance-access-installation">
+      {isExample
+        ? 'This example has no server to connect to.'
+        : 'Instance-specific key installation is not connected yet.'}{' '}
+      Save a public key below for provisioning. Adding a key here does not install it on an existing
+      instance.
+    </p>
+  );
   return (
     <>
       <div className="instance-access-summary">
@@ -217,13 +227,11 @@ export function Access({ id, isExample }: { id?: string; isExample: boolean }) {
         </strong>
         <span>{instanceCountry(i.region, i.country)}</span>
       </div>
-      <p className="form-note instance-access-installation">
-        {isExample
-          ? 'This example has no server to connect to.'
-          : 'Instance-specific key installation is not connected yet.'}{' '}
-        Save a public key below for provisioning. Adding a key here does not install it on an
-        existing instance.
-      </p>
+      {isExample || localDemo(i, demo) ? (
+        notConnected
+      ) : (
+        <InstanceKeys id={i.id} ended={lifecycle(i).ended} fallback={notConnected} />
+      )}
       <SshLibrary scope="instance-access" />
       <div className="modal-footer">
         <IBtn
@@ -259,6 +267,10 @@ export function Connect({ id }: { id?: string }) {
         Use your registered key in your own SSH client. Never share private keys.
       </p>
       <pre className="modal-code">{command}</pre>
+      <p className="form-note">
+        If the key is not your SSH client&apos;s default key, add its private key file, for example{' '}
+        <code>ssh -i ~/.ssh/your_key …</code>. Keys are managed under Manage → SSH keys.
+      </p>
       <div className="modal-footer">
         <button
           type="button"

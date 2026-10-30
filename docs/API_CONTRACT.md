@@ -91,6 +91,46 @@ availability, observedAt, effectiveAt, sourceUrl, priceKind, stale, currency, op
 | POST   | `/api/marketplace/supplies/:id/agent`                        |                                  | installation status                                          |
 | POST   | `/api/marketplace/instances/:id/resell`                      |                                  | `201 { supply }`                                             |
 | POST   | `/api/marketplace/quote-interest`                            | `{ supplyId }`                   | interest receipt                                             |
+| POST   | `/api/marketplace/spot-purchases`                            | see below                        | `{ confirmed, orderId, totalCents, … }`                      |
+
+`POST /api/marketplace/spot-purchases` (`billing` contracts
+`SpotPurchaseRequest` / `SpotPurchaseResponse`) is Spot "Buy Now" from the Terminal Spot market, served by SpotOrderBot.
+The Terminal calls it only after Buyer KYB is approved (see the Buyer KYB notes below; until
+that backend is connected, checkout stops before this call).
+The body is `{ pricingVersion: "duration-v1", offerId, durationHours, expectedPricing,
+sshPublicKey, idempotencyKey }`, where `expectedPricing` is the checkout's `checkoutTotals` result.
+The server verifies a signed-in, non-demo Buyer session, CSRF and same origin, recomputes the
+totals from the current offer (409 `PRICE_CHANGED`; 409 `OFFER_UNAVAILABLE` when the offer left
+the market; 409 `INSUFFICIENT_CREDIT`), charges the total to the account's Credit and starts
+acquiring a Spot server. `sshPublicKey` is optional (400 only for an invalid key); keys can be
+set on the instance later. A retry with the same `idempotencyKey` returns the same `orderId`
+and charges once; reusing it for another offer or duration is 409 `IDEMPOTENCY_CONFLICT`. Any
+4xx means no order was created and nothing was charged, so the checkout returns to review; other
+failures leave the purchase pending for a retry. The order then appears in
+`GET /api/marketplace/me` `instances` with `id` equal to `orderId`, `status` `pending` → `active`
+(or `recovering`, `ended`), `rate` per GPU-hour, `serviceEnd`, and gateway SSH details
+(`sshHost`, `sshPort`, `sshUser`) once running.
+
+**Credit.** With SpotOrderBot in front, `GET /api/billing/account` returns the account's Credit
+less its open Spot charges (promotional Credit first) and lists them in `spotCharges`
+(`orderId`, `totalCents`, `state`, `createdAt`). A charge is refunded in full when the order was
+refused, never created, or ended before the server was handed over. Ending a delivered instance
+early is not refunded; the duration is prepaid.
+
+**Spot instance actions** (SpotOrderBot; 404 for instances it does not manage):
+
+| Method | Path                                      | Request                   | Response                                                 |
+| ------ | ----------------------------------------- | ------------------------- | -------------------------------------------------------- |
+| GET    | `/api/marketplace/instances/:id/ssh-keys` |                           | `InstanceSshKeysResponse` `{ keys, version, installed }` |
+| POST   | `/api/marketplace/instances/:id/ssh-keys` | `{ keys: [publicKey] }`   | the new set; replaces all keys (max 20)                  |
+| POST   | `/api/marketplace/instances/:id/end`      | `{ confirmation: "END" }` | `{ confirmed: true, instance }`                          |
+| GET    | `/api/account/ssh-keys`                   |                           | `{ keys }` (account key library, max 50)                 |
+| POST   | `/api/account/ssh-keys`                   | `{ label, publicKey }`    | `{ confirmed: true, key }`                               |
+| DELETE | `/api/account/ssh-keys/:id`               |                           | `{ confirmed: true, id }`                                |
+
+The server installs an instance's key set for `ubuntu` within about 15 seconds through its
+guest agent (also on replacement servers); `installed` turns true once the running server has
+the current set. Saved account keys are not installed anywhere until added to an instance.
 
 Record semantics (receipts, revisions, idempotency, fees 5 % each side, review states) are
 specified in `legacy/docs/TERMINAL_CONSOLE_SYNC.md` and `legacy/README.md` ("Order fees").
@@ -142,6 +182,20 @@ Admin, internal, agent, resell, connect and ssh actions are always 403 in demo.
 | PATCH  | `/api/admin/contacts/:id`                     | status update                              | `{ lead }`                                              |
 | GET    | `/api/admin/topups?scope=live\|demo`          |                                            | `{ requests }`                                          |
 | POST   | `/api/admin/topups/:id/review?scope=`         | decision                                   | `{ request }`                                           |
+| GET    | `/api/admin/instances?status=&cursor=`        | lifecycle filter, page cursor              | `{ instances, nextCursor, asOf }` (see below)           |
+
+`GET /api/admin/instances` is served by the Python backend (SpotOrderBot, `spotbot opennext-api`),
+not by `legacy/`. It lists protected Spot rental allocations across accounts, newest first, 50 per
+page by default (`limit` ≤ 200; `cursor` is the opaque `nextCursor` of the previous page; `status`
+is one of `Running`, `Connecting`, `Attention`, `End`). Each item (`AdminInstance`) carries `id`,
+`tenantId`, `orderId`, `rfqId`, `model`, `gpuCount`, `term` (`Spot`), `region`, `zone`,
+`instanceType`, `instanceId`, `generation` (increments on every server replacement), the
+authoritative backend `state`, the console `lifecycle`, `error`, `degraded`, USD decimal strings
+`priceCeilingHourlyUsd`, `estimatedCostUsd` and `budgetUsd`, and `createdAt`, `expiresAt`,
+`closedAt`. `Running` excludes `Connecting` (being obtained, verified, handed off or replaced) and
+`End`; `Attention` needs an operator. No credentials, agent tokens or server addresses are
+returned. Authorization and admin-host scoping are delegated to `GET /api/admin/pricing/session`,
+so the same administrator session applies; invalid filters or pages return 400.
 
 Internal integrations (`POST /api/internal/marketplace/supplies/:id/agent`,
 `POST /api/internal/marketplace/telemetry`) use a bearer integration token and are not called by
@@ -218,7 +272,6 @@ schemas or browser-local customer databases.
 | `GET /api/admin/orders?state=processing&kind=&cursor=` | Instance and RFQ orders across accounts, with stable order/customer IDs, email, model, GPU quantity, country, term, currency, total, status and submitted time. Linkable details must remain permission-checked.                                                       |
 | `GET /api/admin/payment-requests?status=&cursor=`      | Customer-reported bank payments, order link, amount/currency, transfer reference, submitted time and receipt verification state. Reporting a transfer is not confirmation of receipt.                                                                                  |
 | `POST /api/admin/payment-requests/:id/review`          | Authorized Approve/Reject, rejection reason, verified bank evidence reference, expected revision and idempotency key. Atomically update payment/order state and enqueue the owner's notification; never infer a bank receipt from a browser action.                    |
-| `GET /api/admin/instances?status=&cursor=`             | Purchased customer allocations across accounts, linked order/owner, term, model, region and authoritative lifecycle. `Running` excludes `Connecting` and `End`; source-collected offers are not allocations.                                                           |
 | `GET /api/admin/operations/activity?limit=10&cursor=`  | Unified audited events with event ID/type, record ID/type, verified operator ID/display name, UTC timestamp, decision and safe Console destination. An overview response may embed the first page instead of duplicating reads.                                        |
 | `POST /api/admin/marketplace/featured`                 | Nominate an arbitrary eligible RFQ/supply by record ID and expected revision; backend checks publication rights, captures the public snapshot and returns its review ID/fingerprint. Reuse the existing review step only after its new selection semantics are agreed. |
 
@@ -318,6 +371,16 @@ purchase as part of price collection.
 
 ## Notes for the Python backend team
 
+`GET /api/admin/instances` (Instances → Allocations in the Console) is implemented by SpotOrderBot's
+`spotbot opennext-api`. That service answers the routes it owns and passes every other `/api/*`
+request to the legacy API unchanged (`Host`, cookies, CSRF header and `Set-Cookie` intact), so
+pointing `API_ORIGIN` at it keeps every other feature working while routes move to Python one at a
+time. Run it on a private listener the web server reaches directly, not behind a host-routing
+reverse proxy. It also serves the Terminal Spot market: it adds its orderable Spot offers to
+`GET /api/marketplace/public` `supplies` (published rows with `term: "Spot"`, `gpuCount`, `vcpu`,
+`memory`, `perGpuHourly`), answers `POST /api/marketplace/spot-purchases`, and adds the
+customer's Spot orders to `GET /api/marketplace/me` `instances`.
+
 Buyer KYB and bank transfer are **not connected**. See [the Buyer KYB handoff](BUYER_KYB_HANDOFF.md)
 for frontend-only scope, proposed endpoints, private file transport, ALLScale review, notifications
 and server-side payment gates. Optional ports in `src/lib/buyer-kyb.ts` are not wire contracts.
@@ -354,8 +417,8 @@ contract coverage merely because their pages and read-only view models are prese
    socket-derived origin, so `POST /api/demo/start` fails behind TLS unless `secureCookies` is
    set (see `docs/MIGRATION_STATUS.md`). Derive the expected origin from the forwarded protocol
    when `OPENNEXT_TRUST_PROXY=1`.
-6. **Endpoints still missing** (the UI fails closed with the legacy "not connected" copy):
-   credit purchase (`beginPurchase` / `getCreditBalance`), account SSH keys, instance
-   termination. Their expected shapes are in `apps/web/src/terminal-kit/services.ts`.
+6. **Service adapters.** Spot purchases (`beginPurchase` through
+   `/api/marketplace/spot-purchases`, charged to Credit), account SSH keys and Spot instance
+   termination are connected (SpotOrderBot). Shapes are in `apps/web/src/terminal-kit/services.ts`.
 
 Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.

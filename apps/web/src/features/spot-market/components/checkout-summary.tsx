@@ -66,7 +66,7 @@ export function Summary({
             type="number"
             name="durationHours"
             data-spot-hours
-            min={0.01}
+            min={1}
             step={0.01}
             inputMode="decimal"
             required
@@ -79,6 +79,11 @@ export function Summary({
       <div className="onx-spot-checkout-summary" data-spot-checkout-totals aria-live="polite">
         <Totals row={row} hours={draft.hoursRaw} />
       </div>
+      <p className="form-note" data-spot-usage-billing>
+        The total is held from your Credit. You pay per minute for the time your server runs, with a
+        1-hour minimum, and the rest is returned when the order ends. Paid time starts when the
+        server is ready.
+      </p>
     </>
   );
 }

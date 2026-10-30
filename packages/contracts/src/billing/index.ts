@@ -131,7 +131,10 @@ export const SpotCheckoutPricing = z.object({
 });
 export type SpotCheckoutPricing = z.infer<typeof SpotCheckoutPricing>;
 
-/** `beginPurchase` request. Idempotent on `idempotencyKey`; never falls back to metered billing. */
+/**
+ * `beginPurchase` request (`POST /api/marketplace/spot-purchases`). Idempotent on
+ * `idempotencyKey`; never falls back to metered billing.
+ */
 export const SpotPurchaseRequest = z.object({
   pricingVersion: z.literal('duration-v1'),
   offerId: z.string().min(1).max(160),

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AdminInstancesResponse,
   BillingAccount,
   CreditTopup,
   CuratedRfqsResponse,
+  InstanceEndResponse,
+  InstanceSshKeysResponse,
   MarketplaceReceipt,
   OwnedRfq,
   PriceRecord,
   SessionResponse,
   SettlementsResponse,
+  SpotPurchaseRequest,
+  SpotPurchaseResponse,
   TickerResponse,
   WorkspaceResponse,
 } from './index';
@@ -30,6 +35,9 @@ describe('auth', () => {
     expect(SessionResponse.parse({ user }).user?.role).toBe('buyer');
     expect(SessionResponse.parse({ user: null }).user).toBeNull();
     expect(SessionResponse.safeParse({ user: { ...user, role: 'broker' } }).success).toBe(false);
+    // A new account has no role until onboarding; its session must still parse.
+    const fresh = { ...user, role: null, onboardingCompleted: false };
+    expect(SessionResponse.parse({ user: fresh }).user?.role).toBeNull();
   });
 });
 
@@ -60,6 +68,56 @@ describe('marketplace', () => {
       rows: [{ id: 'ORD-1', model: 'H100', settledAt: '2026-10-01T00:00:00Z' }, 42],
     });
     expect(settlements.rows.map((r) => r.id)).toEqual(['ORD-1']);
+  });
+  it('keeps the Spot instance key and END contracts', () => {
+    const keys = InstanceSshKeysResponse.parse({
+      keys: [
+        {
+          publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA buyer@laptop',
+          fingerprint: 'SHA256:jJNmOjNUU4OSP3i5MnmJyUj15vepmU1pYL0Ghj0FXAk',
+          comment: 'buyer@laptop',
+        },
+      ],
+      version: 2,
+      installed: false,
+    });
+    expect(keys.keys[0]?.comment).toBe('buyer@laptop');
+    const ended = InstanceEndResponse.parse({
+      confirmed: true,
+      instance: { id: 'rental-1', status: 'ended', term: 'Spot' },
+    });
+    expect(ended.instance.status).toBe('ended');
+    expect(InstanceEndResponse.safeParse({ confirmed: false, instance: { id: 'x' } }).success).toBe(
+      false,
+    );
+  });
+  it('keeps the Spot purchase contract', () => {
+    const request = {
+      pricingVersion: 'duration-v1',
+      offerId: 'spotbot-us-west-2-g6.xlarge',
+      durationHours: 1.5,
+      expectedPricing: {
+        currency: 'USD',
+        durationHours: 1.5,
+        hourlyCents: 39,
+        baseCents: 59,
+        feeCents: 3,
+        totalCents: 62,
+      },
+      sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA buyer@laptop',
+      idempotencyKey: '7f0c1e9e-2b1d-4c55-9a43-0d6f6a1d2c11',
+    };
+    expect(SpotPurchaseRequest.parse(request).expectedPricing.totalCents).toBe(62);
+    expect(SpotPurchaseRequest.safeParse({ ...request, pricingVersion: 'v0' }).success).toBe(false);
+    const confirmed = SpotPurchaseResponse.parse({
+      confirmed: true,
+      offerId: request.offerId,
+      orderId: '0b7c7a52-55b8-4f0e-8a37-6bb0d1f3c7d2',
+      currency: 'USD',
+      durationHours: 1.5,
+      totalCents: 62,
+    });
+    expect(confirmed.orderId).toHaveLength(36);
   });
 });
 
@@ -104,5 +162,48 @@ describe('pricing', () => {
     expect(record.gpuCount).toBe(8);
     const ticker = TickerResponse.parse({ records: [{ gpuModel: 'H100', term: 'Spot' }, null] });
     expect(ticker.records).toHaveLength(1);
+  });
+});
+
+describe('admin instances', () => {
+  const instance = {
+    id: 'f8dcd7d2-147e-48dc-89b1-18bd7f145499',
+    tenantId: 'integration-partner',
+    orderId: 'order-10001',
+    rfqId: 'order-10001',
+    model: 'L4',
+    gpuCount: 1,
+    term: 'Spot',
+    region: 'us-west-2',
+    zone: 'us-west-2c',
+    instanceType: 'g6.2xlarge',
+    instanceId: 'i-0123456789abcdef0',
+    generation: 3,
+    state: 'ACTIVE',
+    lifecycle: 'Running',
+    error: null,
+    degraded: null,
+    priceCeilingHourlyUsd: '0.95',
+    estimatedCostUsd: '0.420000',
+    budgetUsd: '3.00',
+    createdAt: '2026-10-27T03:00:00+00:00',
+    expiresAt: '2026-10-28T00:00:00+00:00',
+    closedAt: null,
+  };
+
+  it('parses a page of allocations and rejects unknown lifecycles', () => {
+    const page = AdminInstancesResponse.parse({
+      instances: [instance],
+      nextCursor: '50',
+      asOf: '2026-10-27T03:01:00+00:00',
+    });
+    expect(page.instances[0]?.lifecycle).toBe('Running');
+    expect(
+      AdminInstancesResponse.safeParse({
+        instances: [{ ...instance, lifecycle: 'Paused' }],
+        nextCursor: null,
+        asOf: 'x',
+      }).success,
+    ).toBe(false);
   });
 });
