@@ -44,6 +44,15 @@ describe('instance lifecycle and ledger presentation', () => {
     expect(screen.getByText(/Data preservation will be confirmed/)).toBeInTheDocument();
     expect(screen.queryByText(/Your data is preserved/)).toBeNull();
   });
+  it('lists paid Spot orders that wait for capacity first', () => {
+    renderTerminal(<InstancesPage />, {
+      workspace: { instances: [row, { ...row, id: 'ins-5', status: 'pending', term: 'Spot' }] },
+    });
+    const groups = Array.from(document.querySelectorAll('.instance-state-group'));
+    expect(groups).toHaveLength(4);
+    expect(groups[0]?.querySelector('[data-instance-live="ins-5"]')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for capacity')).toBeInTheDocument();
+  });
   it('Manage has Billing and History instead of the duplicate Close button', () => {
     renderTerminal(<Manage id="ins-1" />, { workspace: { instances: [row] } });
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();

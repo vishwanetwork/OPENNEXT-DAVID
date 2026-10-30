@@ -361,6 +361,12 @@
   margin: 0;
   padding: 0;
 }
+.instance-autopilot .autopilot-choice label {
+  font-size: 13px;
+}
+.instance-autopilot .autopilot-choice legend {
+  margin-bottom: 4px;
+}
 .instance-autopilot .autopilot-log {
   max-height: 260px;
   overflow: auto;

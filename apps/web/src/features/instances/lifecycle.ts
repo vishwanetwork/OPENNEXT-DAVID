@@ -21,10 +21,12 @@ export const moneyOrNa = (v: unknown): string =>
     : 'Not available';
 
 export interface Lifecycle {
-  label: 'End' | 'Reconnecting' | 'Running' | 'Awaiting status';
+  label: 'End' | 'Reconnecting' | 'Running' | 'Waiting for capacity' | 'Awaiting status';
   ended: boolean;
   connecting: boolean;
   running: boolean;
+  /** A paid Spot order that has no server yet. */
+  waiting?: boolean;
 }
 
 const ENDED = [
@@ -62,6 +64,14 @@ export function lifecycle(
     return { label: 'Reconnecting', ended: false, connecting: true, running: false };
   if (['running', 'active'].includes(status))
     return { label: 'Running', ended: false, connecting: false, running: true };
+  if (status === 'pending')
+    return {
+      label: 'Waiting for capacity',
+      ended: false,
+      connecting: false,
+      running: false,
+      waiting: true,
+    };
   // Unknown lifecycle data does not prove that a resource is running or interrupted.
   return { label: 'Awaiting status', ended: false, connecting: false, running: false };
 }
