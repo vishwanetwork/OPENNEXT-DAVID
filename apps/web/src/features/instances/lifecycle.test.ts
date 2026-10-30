@@ -19,6 +19,12 @@ describe('lifecycle', () => {
     ).toBe('End');
     expect(lifecycle({ status: 'released' }, now).ended).toBe(true);
     expect(lifecycle({ status: 'Mystery', serviceEnd: future }, now).label).toBe('Awaiting status');
+    // A paid Spot order still waiting for capacity has its own group, so its autopilot is reachable.
+    expect(lifecycle({ status: 'pending', term: 'Spot', serviceEnd: future }, now)).toMatchObject({
+      label: 'Waiting for capacity',
+      waiting: true,
+      running: false,
+    });
   });
   it('telemetry is fresh only within two minutes and the 0–100 range', () => {
     expect(telemetry({ telemetry: fresh }, now)).toMatchObject({ fresh: true, value: 40 });

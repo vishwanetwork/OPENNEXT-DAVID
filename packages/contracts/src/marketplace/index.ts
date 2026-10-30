@@ -681,6 +681,76 @@ export const InstanceSshKeysRequest = z.object({
 });
 export type InstanceSshKeysRequest = z.infer<typeof InstanceSshKeysRequest>;
 
+/* ---------- Spot instance autopilot (SpotOrderBot managed launch) ---------- */
+
+const autopilotChoice = z.enum(['end', 'keep']);
+
+/** How a finished task was handled: `action` is what happened to the server. */
+export const InstanceAutopilotOutcome = z.object({
+  state: z.enum(['succeeded', 'failed', 'stopped', 'interrupted']),
+  exitCode: z.number().int().nullable(),
+  action: z.enum(['end', 'keep', 'none']),
+  finishedAt: z.string().nullable(),
+});
+export type InstanceAutopilotOutcome = z.infer<typeof InstanceAutopilotOutcome>;
+
+/**
+ * The task state on an instance row (`Instance.autopilot`): `waiting` until the server runs,
+ * then `running`, `interrupted` (a Spot replacement cut it short) or the finished state.
+ */
+export const InstanceAutopilotStatus = z.object({
+  state: z.enum(['none', 'waiting', 'running', 'interrupted', 'succeeded', 'failed', 'stopped']),
+  onSuccess: autopilotChoice.nullable(),
+  onFailure: autopilotChoice.nullable(),
+  startedAt: z.string().nullable(),
+  stopRequested: z.boolean(),
+  outcome: InstanceAutopilotOutcome.nullable(),
+});
+export type InstanceAutopilotStatus = z.infer<typeof InstanceAutopilotStatus>;
+
+/**
+ * `GET|POST|DELETE /api/marketplace/instances/:id/autopilot` — the task the server runs once
+ * it is delivered. Secrets are write-only: only their names come back. A POST replaces the task
+ * until its first run starts; `POST …/autopilot/stop` stops it.
+ */
+export const InstanceAutopilotResponse = z.object({
+  task: z
+    .object({
+      version: z.number().int(),
+      script: z.string(),
+      env: z.record(z.string(), z.string()),
+      secretNames: z.array(z.string()),
+      onSuccess: autopilotChoice,
+      onFailure: autopilotChoice,
+      onReplacement: z.enum(['rerun', 'none']),
+      maxMinutes: z.number().int().nullable(),
+    })
+    .nullable(),
+  status: InstanceAutopilotStatus.nullable(),
+  logTail: z.string(),
+});
+export type InstanceAutopilotResponse = z.infer<typeof InstanceAutopilotResponse>;
+
+const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const variables = (max: number) =>
+  z
+    .record(z.string().regex(VARIABLE), z.string().min(1).max(4096))
+    .refine((value) => Object.keys(value).length <= max);
+
+/** A null secret value keeps the stored secret of that name. */
+export const InstanceAutopilotRequest = z.object({
+  script: z.string().min(1).max(65536),
+  env: variables(50),
+  secrets: z
+    .record(z.string().regex(VARIABLE), z.string().min(1).max(4096).nullable())
+    .refine((value) => Object.keys(value).length <= 20),
+  onSuccess: autopilotChoice,
+  onFailure: autopilotChoice,
+  onReplacement: z.enum(['rerun', 'none']),
+  maxMinutes: z.number().int().min(1).max(43200).nullable(),
+});
+export type InstanceAutopilotRequest = z.infer<typeof InstanceAutopilotRequest>;
+
 /** `POST /api/marketplace/instances/:id/end` — ends a Spot instance; prepaid time is not refunded. */
 export const InstanceEndRequest = z.object({ confirmation: z.literal('END') });
 export const InstanceEndResponse = z.object({ confirmed: z.literal(true), instance: Instance });

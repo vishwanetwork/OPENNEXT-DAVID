@@ -198,10 +198,15 @@ export function InstancesPage() {
     instanceView(instance, scope, demo),
   );
   const groups = [
+    {
+      // Paid orders still waiting for Spot capacity; their autopilot can be set from Manage.
+      title: 'Waiting',
+      items: items.filter((instance) => lifecycle(instance).waiting),
+    },
     { title: 'Running', items: items.filter((instance) => lifecycle(instance).running) },
     { title: 'Reconnecting', items: items.filter((instance) => lifecycle(instance).connecting) },
     { title: 'End', items: items.filter((instance) => lifecycle(instance).ended) },
-  ];
+  ].filter((group) => group.title !== 'Waiting' || group.items.length);
   const unknown = items.filter((instance) => lifecycle(instance).label === 'Awaiting status');
   return (
     <>

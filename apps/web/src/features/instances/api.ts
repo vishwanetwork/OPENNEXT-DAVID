@@ -1,4 +1,6 @@
 import {
+  InstanceAutopilotRequest,
+  InstanceAutopilotResponse,
   InstanceEndRequest,
   InstanceEndResponse,
   InstanceSshKeysRequest,
@@ -25,6 +27,26 @@ export const instancesApi = {
         InstanceSshKeysRequest.parse({ keys }),
       )
       .then((r) => InstanceSshKeysResponse.parse(r)),
+  autopilot: (api: ApiClient, id: string, signal?: AbortSignal) =>
+    api
+      .get(`/api/marketplace/instances/${encodeURIComponent(id)}/autopilot`, { signal })
+      .then((r) => InstanceAutopilotResponse.parse(r)),
+  /** Replaces the task; accepted until its first run starts. */
+  setAutopilot: (api: ApiClient, id: string, body: InstanceAutopilotRequest) =>
+    api
+      .post(
+        `/api/marketplace/instances/${encodeURIComponent(id)}/autopilot`,
+        InstanceAutopilotRequest.parse(body),
+      )
+      .then((r) => InstanceAutopilotResponse.parse(r)),
+  removeAutopilot: (api: ApiClient, id: string) =>
+    api
+      .delete(`/api/marketplace/instances/${encodeURIComponent(id)}/autopilot`)
+      .then((r) => InstanceAutopilotResponse.parse(r)),
+  stopAutopilot: (api: ApiClient, id: string) =>
+    api
+      .post(`/api/marketplace/instances/${encodeURIComponent(id)}/autopilot/stop`, {})
+      .then((r) => InstanceAutopilotResponse.parse(r)),
   end: (api: ApiClient, id: string) =>
     api
       .post(
