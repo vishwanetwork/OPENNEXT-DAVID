@@ -662,6 +662,7 @@ export class SpotCheckout {
         return true;
       case 'spot-checkout-instances':
         this.draft = null;
+        this.deps.closeModal();
         this.notify();
         this.deps.go('instances');
         return true;

@@ -17,7 +17,7 @@ beforeEach(() => {
 
 describe('Instances page', () => {
   it('an empty workspace shows a clearly separate example instance with explanatory controls only', () => {
-    renderTerminal(<InstancesPage />);
+    renderTerminal(<InstancesPage />, { workspace: {} });
     expect(screen.getByText('No instances yet')).toBeInTheDocument();
     expect(screen.getByLabelText('Example instance')).toBeInTheDocument();
     expect(screen.getByText('Example only · not an active resource')).toBeInTheDocument();

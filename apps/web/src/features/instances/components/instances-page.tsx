@@ -1,10 +1,12 @@
 'use client';
 
 import type { Instance, Order } from '@opennext/contracts';
-import { useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
-import { lifecycle, moneyOrNa, stampUtcFull } from '../lifecycle';
+import { useEffect, useRef, useState } from 'react';
+import { useTerminal, useWorkspace, useWorkspaceStore } from '@/terminal-kit';
+import { AsyncFeedback } from '@/components/ui/async-feedback';
+import { lifecycle, moneyOrNa, stampUtcFull, isSpot } from '../lifecycle';
 import { example, instanceView } from '../preview';
-import { useInstanceUsage } from '../hooks';
+import { useInstanceUsage, usePrefetchAutopilot, useRefreshInstance } from '../hooks';
 import { instanceTitle, purchasedHours } from '../usage';
 import { IBtn, SshLibrary, StatusTagLive, usePreviewScope, useTick } from './common';
 import { ReconnectingNote, UsageChart } from './usage-chart';
@@ -109,7 +111,34 @@ function ExampleCard() {
 function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[] }) {
   const { openModal, toast } = useTerminal();
   const life = lifecycle(instance);
-  const { snapshot, query } = useInstanceUsage(instance.id);
+  const card = useRef<HTMLElement>(null);
+  const [visible, setVisible] = useState(
+    () => typeof window !== 'undefined' && !('IntersectionObserver' in window),
+  );
+  const prefetch = usePrefetchAutopilot();
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' },
+    );
+    if (card.current) observer.observe(card.current);
+    return () => observer.disconnect();
+  }, []);
+  const { snapshot, query } = useInstanceUsage(instance.id, {
+    enabled: visible && !life.waiting,
+    live: !life.ended,
+  });
+  const prepare = () => {
+    if (isSpot(instance)) void prefetch(instance.id);
+  };
   const connect = () => {
     if (!life.running) return toast('Connection is unavailable until the resource is Running.');
     if (!instance.sshHost) return toast('Verified connection details are not available yet.');
@@ -117,6 +146,7 @@ function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[
   };
   return (
     <article
+      ref={card}
       className="instance-card"
       data-instance-live={instance.id}
       data-instance-life={life.label}
@@ -148,7 +178,12 @@ function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[
         <IBtn
           act="instance-manage"
           id={instance.id}
-          onClick={() => openModal('instance-manage', { id: instance.id })}
+          onPointerEnter={prepare}
+          onFocus={prepare}
+          onClick={() => {
+            prepare();
+            openModal('instance-manage', { id: instance.id });
+          }}
         >
           Manage
         </IBtn>
@@ -191,10 +226,26 @@ function InstanceGroup({
 export function InstancesPage() {
   const { go } = useTerminal();
   const role = useWorkspaceStore((state) => state.role);
-  const workspace = useWorkspaceData();
+  const query = useWorkspace();
+  const workspace = query.data;
+  const refresh = useRefreshInstance();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const reload = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshError('');
+    try {
+      await refresh();
+    } catch {
+      setRefreshError('Instances could not be refreshed. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const { scope, demo } = usePreviewScope();
-  useTick();
-  const items = (workspace.instances as Instance[]).map((instance) =>
+  useTick(30_000);
+  const items = ((workspace?.instances ?? []) as Instance[]).map((instance) =>
     instanceView(instance, scope, demo),
   );
   const groups = [
@@ -221,6 +272,14 @@ export function InstancesPage() {
             </p>
           </div>
           <div className="row">
+            <IBtn
+              act="instances-refresh"
+              busy={refreshing || query.isFetching}
+              busyLabel="Refreshing…"
+              onClick={() => void reload()}
+            >
+              Refresh status
+            </IBtn>
             {role === 'buyer' ? (
               <IBtn act="navigate-market" onClick={() => go('market')}>
                 Find capacity
@@ -228,23 +287,49 @@ export function InstancesPage() {
             ) : null}
           </div>
         </div>
+        {query.isFetching ? (
+          <AsyncFeedback>
+            {workspace ? 'Refreshing instances…' : 'Loading instances…'}
+          </AsyncFeedback>
+        ) : null}
+        {query.isError || refreshError ? (
+          <p role="alert">
+            {refreshError || 'Instances could not be loaded. Please refresh to try again.'}
+          </p>
+        ) : null}
         <div className="instance-access-page">
           <SshLibrary scope="instances" />
         </div>
-        {items.length ? (
+        {!workspace && query.isPending ? (
+          <div
+            className="instance-loading-skeleton"
+            aria-label="Loading instances"
+            aria-busy="true"
+          >
+            {[0, 1, 2].map((key) => (
+              <div key={key} className="instance-card">
+                <p>Loading instance details…</p>
+              </div>
+            ))}
+          </div>
+        ) : items.length ? (
           <>
             {groups.map((group) => (
-              <InstanceGroup key={group.title} {...group} orders={workspace.orders as Order[]} />
+              <InstanceGroup
+                key={group.title}
+                {...group}
+                orders={(workspace?.orders ?? []) as Order[]}
+              />
             ))}
             {unknown.length ? (
               <InstanceGroup
                 title="Awaiting status"
                 items={unknown}
-                orders={workspace.orders as Order[]}
+                orders={(workspace?.orders ?? []) as Order[]}
               />
             ) : null}
           </>
-        ) : (
+        ) : !query.isError ? (
           <>
             <div className="instance-empty-summary">
               <strong>No instances yet</strong>
@@ -256,7 +341,7 @@ export function InstancesPage() {
             </div>
             <ExampleCard />
           </>
-        )}
+        ) : null}
       </div>
     </>
   );

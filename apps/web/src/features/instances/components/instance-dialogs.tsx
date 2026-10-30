@@ -14,15 +14,28 @@ import { Cell, OrderField, useInstance } from './instance-shared';
 import { InstanceKeys } from './instance-keys';
 import { autopilotSummary } from './instance-autopilot';
 import { instanceCountry } from '../usage';
+import { useRefreshInstance, usePrefetchAutopilot } from '../hooks';
+import { AsyncFeedback, AsyncButton } from '@/components/ui/async-feedback';
 
 export function Manage({ id }: { id?: string }) {
   const { openModal, toast } = useTerminal();
   const { i, life, e, t, demo, role } = useInstance(id, false);
-  const api = useApi();
-  const invalidate = useInvalidateWorkspace();
   const toastError = useApiErrorToast();
+  const refreshInstance = useRefreshInstance(id);
+  const prefetch = usePrefetchAutopilot();
+  const [refreshing, setRefreshing] = useState(false);
   if (!i) return <p>Refresh your instances and try again.</p>;
-  const refresh = () => invalidate().catch(toastError);
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refreshInstance();
+    } catch (failure) {
+      toastError(failure);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const parsed = InstanceAutopilotStatus.safeParse(i.autopilot);
   const autopilot = parsed.success ? parsed.data : null;
   const connect = () => {
@@ -35,9 +48,9 @@ export function Manage({ id }: { id?: string }) {
     if (!i.sshHost) return toast('Verified connection details are not available yet.');
     openModal('connect', { id: i.id });
   };
-  void api;
   return (
     <>
+      {refreshing ? <AsyncFeedback>Refreshing instance status…</AsyncFeedback> : null}
       <p className="form-note" data-instance-live-status role="status">
         {e.reason}
       </p>
@@ -89,6 +102,8 @@ export function Manage({ id }: { id?: string }) {
           <IBtn
             act="instance-autopilot"
             id={i.id}
+            onPointerEnter={() => void prefetch(i.id)}
+            onFocus={() => void prefetch(i.id)}
             onClick={() => openModal('instance-autopilot', { id: i.id })}
           >
             Autopilot
@@ -113,7 +128,13 @@ export function Manage({ id }: { id?: string }) {
             Resell
           </IBtn>
         ) : null}
-        <IBtn act="instance-refresh" id={i.id} onClick={refresh}>
+        <IBtn
+          act="instance-refresh"
+          id={i.id}
+          busy={refreshing}
+          busyLabel="Refreshing…"
+          onClick={() => void refresh()}
+        >
           Refresh status
         </IBtn>
         <IBtn
@@ -216,9 +237,9 @@ export function Resell({ id }: { id?: string }) {
         Pending offers pause when utilization reaches 95% or telemetry is stale.
       </p>
       <div className="modal-footer">
-        <button type="submit" className="btn" disabled={busy || !e.allowed}>
+        <AsyncButton busy={busy} type="submit" className="btn" disabled={busy || !e.allowed}>
           Submit resale request
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

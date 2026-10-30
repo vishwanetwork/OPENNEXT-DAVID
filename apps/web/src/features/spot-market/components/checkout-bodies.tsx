@@ -1,9 +1,11 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { type FormEvent } from 'react';
 import { usd } from '../inventory';
 import { useSpotCheckout } from '../hooks';
 import { ErrorLine, Notice, Summary, Unavailable } from './checkout-summary';
+import { AsyncFeedback } from '@/components/ui/async-feedback';
 
 export function ReviewBody() {
   const checkout = useSpotCheckout();
@@ -52,6 +54,7 @@ export function ReviewBody() {
         later in Instances.
       </p>
       <ErrorLine draft={draft} />
+      {draft.busy ? <AsyncFeedback>Checking your order…</AsyncFeedback> : null}
       <div className="modal-footer">
         <button
           type="button"
@@ -61,9 +64,9 @@ export function ReviewBody() {
         >
           Cancel
         </button>
-        <button type="submit" className="btn" disabled={draft.busy}>
+        <AsyncButton busy={draft.busy} type="submit" className="btn" disabled={draft.busy}>
           Proceed to payment
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );
@@ -79,7 +82,8 @@ export function PaymentChoiceBody() {
       <Summary row={draft.row} draft={draft} />
       <Notice draft={draft} />
       <div className="onx-spot-payment-options">
-        <button
+        <AsyncButton
+          busy={draft.busy}
           type="button"
           data-act="spot-checkout-credit"
           disabled={draft.busy}
@@ -94,7 +98,7 @@ export function PaymentChoiceBody() {
             </small>
           </span>
           <span aria-hidden="true">→</span>
-        </button>
+        </AsyncButton>
         <button
           type="button"
           data-act="spot-checkout-direct"
@@ -108,6 +112,7 @@ export function PaymentChoiceBody() {
         </button>
       </div>
       <ErrorLine draft={draft} />
+      {draft.busy ? <AsyncFeedback>Loading payment details…</AsyncFeedback> : null}
       <div className="modal-footer">
         <button
           type="button"
@@ -142,6 +147,9 @@ export function CreditConfirmBody() {
       ) : null}
       <Notice draft={draft} />
       <ErrorLine draft={draft} />
+      {draft.busy ? (
+        <AsyncFeedback>Confirming your payment and order. Please wait…</AsyncFeedback>
+      ) : null}
       <div className="modal-footer">
         <button
           type="button"
@@ -151,7 +159,8 @@ export function CreditConfirmBody() {
         >
           Back
         </button>
-        <button
+        <AsyncButton
+          busy={draft.busy}
           type="button"
           className="btn"
           data-act={short ? 'spot-checkout-deposit' : 'spot-checkout-authorize'}
@@ -161,7 +170,7 @@ export function CreditConfirmBody() {
           }
         >
           {short ? 'Deposit Credit' : 'Confirm Credit payment'}
-        </button>
+        </AsyncButton>
       </div>
     </div>
   );
