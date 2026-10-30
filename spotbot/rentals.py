@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from spotbot import rental_tasks as tasks
 from spotbot.models import gpu_model, timestamp, utcnow
 from spotbot.providers import ProviderError
 from spotbot.rental_aws import AWSRecovery, initial_image
@@ -94,6 +95,7 @@ class RentalEngine:
         )
         self.lock = asyncio.Lock()
         self.row_locks = {}
+        self.sealer = tasks.Sealer(service.settings.spotbot_rental_task_key.get_secret_value())
 
     def row_lock(self, rental_id):
         return self.row_locks.setdefault(rental_id, asyncio.Lock())
@@ -101,6 +103,7 @@ class RentalEngine:
     def save(self, doc, event=None):
         if doc["kind"] == "rental":
             track_service(doc)
+            tasks.scrub(doc)
         return self.db.save(doc, doc["version"], event=event)
 
     def get(self, rental_id, tenant_id):
@@ -261,18 +264,48 @@ class RentalEngine:
             installed=applied == value["version"] and row["state"] != "CLOSED",
         )
 
+    async def set_task(self, rental_id, tenant_id, request):
+        """Set or (with None) remove the managed task, until its first run starts."""
+        async with self.row_lock(rental_id):
+            row = self.get(rental_id, tenant_id)
+            if row["state"] == "CLOSED" or row["end_requested"]:
+                raise ValueError("rental_ended")
+            if not tasks.editable(row):
+                raise ValueError("task_started")
+            if request is None:
+                row.update(task=None, task_outcome=None)
+            else:
+                row["task"] = tasks.build(row, request, self.sealer)
+                row.update(task_seq=row["task"]["version"], task_outcome=None)
+            self.save(row, "task_updated")
+            return tasks.detail(row)
+
+    async def stop_task(self, rental_id, tenant_id):
+        async with self.row_lock(rental_id):
+            row = self.get(rental_id, tenant_id)
+            tasks.stop(row)
+            self.save(row, "task_updated")
+            return tasks.detail(row)
+
+    def task(self, row):
+        gen = self.current(row)
+        return tasks.detail(row, ((gen or {}).get("report") or {}).get("task"))
+
+    def _request_end(self, row):
+        row.update(
+            end_requested=True,
+            state="ENDING",
+            connection=None,
+            error=None,
+            flush_command=str(uuid4()),
+            flush_requested_at=timestamp(),
+        )
+
     async def release(self, rental_id, tenant_id):
         async with self.row_lock(rental_id):
             row = self.get(rental_id, tenant_id)
             if row["state"] != "CLOSED" and not row["end_requested"]:
-                row.update(
-                    end_requested=True,
-                    state="ENDING",
-                    connection=None,
-                    error=None,
-                    flush_command=str(uuid4()),
-                    flush_requested_at=timestamp(),
-                )
+                self._request_end(row)
                 self.save(row, "ending")
             return row
 
@@ -435,8 +468,18 @@ class RentalEngine:
                 if row["state"] == "RECOVERING" and row.get("freeze_generation_id") == gen["id"]
                 else None
             )
+            ending = bool(report.task) and tasks.record(row, gen, report.task) == "end"
+            skipped = not report.task and tasks.skip_replacement(row, gen)
+            if ending:
+                # The customer chose to end the server when the task finished this way.
+                self._request_end(row)
+                row["end_cause"] = "task_" + row["task_outcome"]["state"]
+                self.save(row, "ending")
+            elif report.task or skipped:
+                self._save_task_run(row)
             keys = row.get("ssh_keys")
             return dict(
+                task=tasks.instruction(row, gen, self.sealer),
                 authorized_keys=dict(
                     version=keys["version"],
                     user=row["rfq"].get("ssh_user", "ubuntu"),
@@ -455,6 +498,12 @@ class RentalEngine:
                 if not gen.get("source_backup_id") and not gen.get("verified_at")
                 else [],
             )
+
+    def _save_task_run(self, row):
+        """Save a task report; a report that changed nothing is not written again."""
+        stored = self.db.get("rental", row["id"])
+        if any(stored.get(k) != row.get(k) for k in ("task", "task_runs", "task_outcome")):
+            self.save(row, "task_finished" if row.get("task_outcome") else None)
 
     async def _guest_interruption(self, row, gen):
         """Recover on a guest-reported Spot warning only when AWS confirms it."""

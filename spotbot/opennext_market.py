@@ -22,6 +22,7 @@ from uuid import NAMESPACE_URL, uuid5
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
+from spotbot.opennext_autopilot import summary_view
 from spotbot.rental_models import gpu_memory_sufficient, valid_public_key
 from spotbot.rentals import at, dump
 
@@ -330,6 +331,8 @@ def instance_view(row, ssh=None, billing=None):
         "usage": [{"start": p["start"], "end": p["end"]} for p in periods],
         "history": interruptions(row),
         "billing": billing,
+        "autopilot": summary_view(row.get("task")),
+        "endedBy": "autopilot" if str(row.get("end_cause", "")).startswith("task_") else None,
     }
 
 

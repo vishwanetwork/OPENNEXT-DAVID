@@ -235,6 +235,9 @@ margin; the catalog VRAM constraint itself is strict.
 | `POST /v1/rentals/{id}/renew` | Same revision envelope, with an extended expiry |
 | `GET /v1/rentals/{id}/ssh-keys` | Customer key set, its version, and whether the current server installed it |
 | `PUT /v1/rentals/{id}/ssh-keys` | Replace the customer key set `{"keys": ["ssh-ed25519 AAAA… user@host"]}` (up to 20) |
+| `GET /v1/rentals/{id}/task` | The managed task: script, variables, secret names, choices, state and log tail |
+| `PUT /v1/rentals/{id}/task` | Set the managed task (below); `DELETE` removes it; both only until its first run starts |
+| `POST /v1/rentals/{id}/task/stop` | Stop the task; the server keeps running |
 | `POST /v1/rentals/{id}/release` | Stop the lifecycle, preserve disks, and capture final backup |
 | `POST /v1/rentals/{id}/reconcile` | Resolve an uncertain creation; optionally `confirm_absent` |
 | `POST /v1/rentals/{id}/backups/{backup_id}/reconcile` | Adopt tagged snapshot/image results after uncertainty |
@@ -245,6 +248,27 @@ rental ends. The RFQ's `ssh_public_key` is the initial set; the guest agent keep
 block of `ssh_user`'s `authorized_keys` equal to the current set (other lines are untouched)
 within about 15 seconds, also on replacement servers. `installed` turns true once the current
 server reports the set's version.
+
+**Managed task.** `PUT /v1/rentals/{id}/task` takes `{script, env, secrets, on_success,
+on_failure, on_replacement, max_minutes}`: a bash script (up to 64 KiB) run as `ssh_user` in
+its home directory, up to 50 plain variables and 20 secrets (names `[A-Za-z_][A-Za-z0-9_]*`,
+not `SPOTBOT_*`), `end` or `keep` for success (default `end`) and failure (required),
+`rerun` (default) or `none` after a Spot replacement, and an optional time limit in minutes.
+A null secret value keeps the stored secret of that name. Secrets are sealed with AES-256-GCM
+under `SPOTBOT_RENTAL_TASK_KEY` (without it, tasks with secrets are refused), never returned,
+and deleted once the task has an outcome or the rental closes. Rental rows carry only a `task`
+summary; the script and variables come from `GET …/task`.
+
+Once the server is `ACTIVE`, the guest agent starts the task as a transient systemd unit
+(`spotbot-task-<version>-<generation>`) with the variables, `SPOTBOT_TASK_VERSION`,
+`SPOTBOT_ATTEMPT` (the generation) and `SPOTBOT_RESUMED=1` on a rerun after a replacement. The
+log is `/var/log/spotbot-task/<version>-<generation>.log`; reports carry its last 4 KiB with
+secret values redacted. On a Spot warning the agent sends the task SIGTERM. The first finished
+run on a delivered server sets `task_outcome` exactly once: `succeeded` or `failed` applies the
+customer's `end` (the rental ends with `end_cause` `task_succeeded` or `task_failed`) or `keep`;
+`stopped` changes nothing. A run cut short by a replacement is `interrupted` and runs again on
+the replacement unless `on_replacement` is `none`. A run lost to a reboot counts as `stopped`.
+The task never extends a rental or starts another.
 
 Policy revisions require the same upstream identity and a greater RFQ version.
 Hardware/layout/login changes require a new rental. Tightening price or

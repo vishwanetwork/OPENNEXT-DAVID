@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     spotbot_rental_initial_images: str = "{}"
     spotbot_rental_public_url: str = ""
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
+    # Base64 of 32 random bytes sealing managed-task secrets (AES-256-GCM). Without it, tasks
+    # without secrets still run and tasks with secrets are refused.
+    spotbot_rental_task_key: SecretStr = SecretStr("")
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
     # Bot API for the OpenNEXT Spot market (catalog, purchases, instances); empty disables it.
