@@ -148,6 +148,39 @@ async def test_stop_after_start_reaches_the_agent(env):
     assert row["task_outcome"]["action"] == "none" and row["state"] == "ACTIVE"
 
 
+async def test_dispatch_is_durable_before_first_agent_report(env, monkeypatch):
+    row, _ = env.engine.create(env.request, "tenant-a", "dispatch-fence")
+    await env.engine.set_task(row["id"], "tenant-a", task())
+    row = await deliver(env, row["id"])
+    first = (await env.engine.agent_report(report(env, row["id"])))["task"]
+    stored = env.engine.get(row["id"], "tenant-a")
+    assert stored["task_runs"][0]["state"] == "dispatched"
+    assert tasks.summary(stored)["state"] == "waiting"
+    # The response might be lost, or the bot restarted, before the first running report.
+    for request in (None, task(script="echo replacement")):
+        with pytest.raises(ValueError, match="task_started"):
+            await env.engine.set_task(row["id"], "tenant-a", request)
+    replay = (await env.engine.agent_report(report(env, row["id"])))["task"]
+    assert replay == first
+    assert len(env.engine.get(row["id"], "tenant-a")["task_runs"]) == 1
+    await env.engine.stop_task(row["id"], "tenant-a")
+    assert (await env.engine.agent_report(report(env, row["id"])))["task"]["stop"]
+    await env.engine.agent_report(report(env, row["id"], version=1, attempt=1, state="stopped"))
+    assert env.engine.task(env.engine.get(row["id"], "tenant-a"))["summary"]["state"] == "stopped"
+
+
+async def test_failed_dispatch_commit_returns_no_instruction(env, monkeypatch):
+    row, _ = env.engine.create(env.request, "tenant-a", "dispatch-failure")
+    await env.engine.set_task(row["id"], "tenant-a", task())
+    row = await deliver(env, row["id"])
+    def fail(_row):
+        raise RuntimeError("storage unavailable")
+    monkeypatch.setattr(env.engine, "_save_task_run", fail)
+    with pytest.raises(RuntimeError, match="storage unavailable"):
+        await env.engine.agent_report(report(env, row["id"]))
+    assert tasks.editable(env.engine.get(row["id"], "tenant-a"))
+
+
 async def test_edits_keep_stored_secrets_and_need_a_key(env):
     row, _ = env.engine.create(env.request, "tenant-a", "task-edit")
     await env.engine.set_task(row["id"], "tenant-a", task())
@@ -155,9 +188,6 @@ async def test_edits_keep_stored_secrets_and_need_a_key(env):
         row["id"], "tenant-a", task(script="echo again", secrets={"HF_TOKEN": None})
     )
     assert detail["task"]["version"] == 2 and detail["task"]["script"] == "echo again"
-    row = await deliver(env, row["id"])
-    spec = (await env.engine.agent_report(report(env, row["id"])))["task"]
-    assert spec["version"] == 2 and spec["secrets"] == {"HF_TOKEN": "hf_secret_value"}
     with pytest.raises(ValueError, match="task_secret_not_found"):
         await env.engine.set_task(row["id"], "tenant-a", task(secrets={"OTHER": None}))
     env.engine.sealer = tasks.Sealer("")
@@ -165,6 +195,12 @@ async def test_edits_keep_stored_secrets_and_need_a_key(env):
         await env.engine.set_task(row["id"], "tenant-a", task())
     # Without a key, a task without secrets is still accepted.
     assert (await env.engine.set_task(row["id"], "tenant-a", task(secrets={})))["task"]
+    env.engine.sealer = tasks.Sealer(KEY)
+    detail = await env.engine.set_task(row["id"], "tenant-a", task())
+    row = await deliver(env, row["id"])
+    spec = (await env.engine.agent_report(report(env, row["id"])))["task"]
+    assert spec["version"] == detail["task"]["version"]
+    assert spec["secrets"] == {"HF_TOKEN": "hf_secret_value"}
 
 
 async def test_replacement_reruns_or_skips_the_task(env):

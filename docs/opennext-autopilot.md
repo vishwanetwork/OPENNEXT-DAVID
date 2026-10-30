@@ -213,3 +213,7 @@ billing continues for that time.
 3. P0 channels: email only, or email plus customer webhook.
 4. Whether a customer may still choose `keep` when the task fails and nobody is watching. A
    "keep for at most N hours" option would bound the cost.
+
+Task dispatch is durably reserved before the guest receives its script. Once reserved,
+edits and removal are refused even before the first running report. A lost response is
+replayed with the same task version and attempt; stop remains available.
