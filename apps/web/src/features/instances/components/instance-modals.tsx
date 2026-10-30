@@ -11,8 +11,10 @@ import {
 } from '@/terminal-kit';
 import { ExampleConnect, ExampleManage, ExampleOrder } from './example-dialogs';
 import { EndDialog } from './end-dialog';
+import { InstanceAutopilot } from './instance-autopilot';
 import { Access, Connect, Manage, Resell } from './instance-dialogs';
 import { UsageDialog } from './usage-dialogs';
+import { lifecycle } from '../lifecycle';
 import { instanceTitle, purchasedHours } from '../usage';
 
 declare module '@/terminal-kit/modal' {
@@ -28,6 +30,7 @@ declare module '@/terminal-kit/modal' {
     'instance-access': { id?: string; example?: boolean };
     'instance-billing': { id: string };
     'instance-history': { id: string };
+    'instance-autopilot': { id: string };
     connect: { id: string };
   }
 }
@@ -44,6 +47,7 @@ type InstanceModalType =
   | 'instance-access'
   | 'instance-billing'
   | 'instance-history'
+  | 'instance-autopilot'
   | 'connect';
 
 /** One component renders every instance modal (legacy `OpenNEXTInstances.modal` + terminal `connect`). */
@@ -118,6 +122,14 @@ function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; cl
           <Access id={id} isExample={modal.example === true} />
         </ModalFrame>
       );
+    case 'instance-autopilot': {
+      const row = instances.find((r) => r.id === modal.id);
+      return (
+        <ModalFrame title="Autopilot" wide close={close}>
+          <InstanceAutopilot id={modal.id} ended={row ? lifecycle(row).ended : true} />
+        </ModalFrame>
+      );
+    }
     case 'connect':
       return (
         <ModalFrame title="Connection details" close={close}>
@@ -141,6 +153,7 @@ const TYPES: InstanceModalType[] = [
   'instance-access',
   'instance-billing',
   'instance-history',
+  'instance-autopilot',
   'connect',
 ];
 

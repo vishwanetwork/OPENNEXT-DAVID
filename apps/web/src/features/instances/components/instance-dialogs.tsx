@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { InstanceAutopilotStatus } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
 import { useApiErrorToast } from '@/components/hooks/use-api-error-toast';
 import { instancesApi } from '../api';
 import { useInvalidateWorkspace, useTerminal } from '@/terminal-kit';
-import { lifecycle, moneyOrNa, sshCommand, timestamp } from '../lifecycle';
+import { isSpot, lifecycle, moneyOrNa, sshCommand, timestamp } from '../lifecycle';
 import { localDemo } from '../preview';
 import { IBtn, SshLibrary } from './common';
 import { Cell, OrderField, useInstance } from './instance-shared';
 import { InstanceKeys } from './instance-keys';
+import { autopilotSummary } from './instance-autopilot';
 import { instanceCountry } from '../usage';
 
 export function Manage({ id }: { id?: string }) {
@@ -21,6 +23,8 @@ export function Manage({ id }: { id?: string }) {
   const toastError = useApiErrorToast();
   if (!i) return <p>Refresh your instances and try again.</p>;
   const refresh = () => invalidate().catch(toastError);
+  const parsed = InstanceAutopilotStatus.safeParse(i.autopilot);
+  const autopilot = parsed.success ? parsed.data : null;
   const connect = () => {
     if (!life.running)
       return toast(
@@ -59,6 +63,11 @@ export function Manage({ id }: { id?: string }) {
         <OrderField i={i} isExample={false} />
       </div>
       <p className="form-note">{e.reason}</p>
+      {autopilot ? (
+        <p className="form-note" data-instance-autopilot-status>
+          Autopilot: {autopilotSummary(autopilot)}
+        </p>
+      ) : null}
       <p className="form-note">
         Resale is limited to authorized, independently allocatable idle GPUs within your existing
         service window. Active allocations are never reclaimed automatically.
@@ -76,6 +85,15 @@ export function Manage({ id }: { id?: string }) {
         >
           SSH keys
         </IBtn>
+        {isSpot(i) && !localDemo(i, demo) ? (
+          <IBtn
+            act="instance-autopilot"
+            id={i.id}
+            onClick={() => openModal('instance-autopilot', { id: i.id })}
+          >
+            Autopilot
+          </IBtn>
+        ) : null}
         <IBtn
           act="instance-connect"
           id={i.id}

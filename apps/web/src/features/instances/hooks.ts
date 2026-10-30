@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import type { InstanceAutopilotRequest, InstanceAutopilotResponse } from '@opennext/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
 import type { InstanceLifecycleAdapter } from '@/terminal-kit';
@@ -39,6 +40,40 @@ export function useSetInstanceKeys(id: string) {
     const result = await instancesApi.setSshKeys(api, id, keys);
     client.setQueryData(instanceKeysKey(id), result);
     return result;
+  };
+}
+
+export const instanceAutopilotKey = (id: string) => ['instance', 'autopilot', id] as const;
+
+const SETTLED = new Set(['none', 'succeeded', 'failed', 'stopped']);
+
+/** The instance's autopilot task; polls while it waits or runs. */
+export function useInstanceAutopilot(id: string, enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: instanceAutopilotKey(id),
+    queryFn: ({ signal }) => instancesApi.autopilot(api, id, signal),
+    enabled,
+    retry: false,
+    refetchInterval: (query) => {
+      const state = query.state.data?.status?.state;
+      return state && !SETTLED.has(state) ? 15_000 : false;
+    },
+  });
+}
+
+/** Save, remove and stop actions that store the server's answer. */
+export function useAutopilotActions(id: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  const store = <T extends InstanceAutopilotResponse>(result: T) => {
+    client.setQueryData(instanceAutopilotKey(id), result);
+    return result;
+  };
+  return {
+    save: (body: InstanceAutopilotRequest) => instancesApi.setAutopilot(api, id, body).then(store),
+    remove: () => instancesApi.removeAutopilot(api, id).then(store),
+    stop: () => instancesApi.stopAutopilot(api, id).then(store),
   };
 }
 
