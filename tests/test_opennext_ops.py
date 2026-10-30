@@ -273,7 +273,7 @@ async def test_direct_pay_provisions_once_and_returns_unused_time_as_credit(env)
 
 
 async def test_usage_snapshot_matches_the_terminal_contract(env):  # noqa: F811
-    client, fakes, _ = env
+    client, fakes, calls = env
     assert (await buy(client, body())).status_code == 200
     rental = fakes.rentals[0]
     t = datetime.fromisoformat("2026-10-28T01:06:00+00:00")
@@ -293,11 +293,13 @@ async def test_usage_snapshot_matches_the_terminal_contract(env):  # noqa: F811
         f"/api/marketplace/instances/{rental['id']}/usage", headers={"Cookie": "session=other"}
     )
     assert other.status_code == 404
+    calls.clear()
     snap = (
         await client.get(
             f"/api/marketplace/instances/{rental['id']}/usage", headers={"Cookie": "session=buyer"}
         )
     ).json()
+    assert not any(r.url.path == "/v1/rentals" for r in calls)
     assert (snap["accountId"], snap["instanceId"], snap["purchasedHours"]) == (
         "U1",
         rental["id"],

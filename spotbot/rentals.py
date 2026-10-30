@@ -478,8 +478,11 @@ class RentalEngine:
             elif report.task or skipped:
                 self._save_task_run(row)
             keys = row.get("ssh_keys")
+            instruction = tasks.instruction(row, gen, self.sealer)
+            # Commit dispatch under the same rental lock as edits/stops, before delivery.
+            self._save_task_run(row)
             return dict(
-                task=tasks.instruction(row, gen, self.sealer),
+                task=instruction,
                 authorized_keys=dict(
                     version=keys["version"],
                     user=row["rfq"].get("ssh_user", "ubuntu"),

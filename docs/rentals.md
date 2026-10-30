@@ -377,3 +377,24 @@ Real boot, network reachability, IAM policies, and performance require a
 controlled AWS integration run with an agreed spending limit.
 The [staging acceptance tool](rental-acceptance.md) provides an opt-in end-to-end
 run with file validation, generation switching, release and cleanup reporting.
+
+Task dispatch is durably reserved before the guest receives its script. Once reserved,
+edits and removal are refused even before the first running report. A lost response is
+replayed with the same task version and attempt; stop remains available.
+
+### Rental lookup and pagination
+
+`GET /v1/rentals?customer_ref=...&limit=100&offset=0` filters within the authenticated
+execution tenant before pagination. Add `upstream_order_id` for an exact purchase lookup;
+that filter requires `customer_ref`. Responses advertise `query_version: 1` and include
+`total` and `items`. The tenant header never grants customer authorization by itself;
+the OpenNEXT adapter verifies the signed-in customer on direct instance reads.
+
+SQLite and MySQL use a composite-key `rental_directory` table. DynamoDB uses strongly
+consistent, tenant/customer-specific partitions in the existing table, without a new GSI.
+Lookup entries commit with rental state and outbox events. The first listing backfills
+old rentals in bounded batches and records `rental-directory-v1`; interruption safely
+retries the idempotent backfill. The first query may therefore take longer. Ordinary
+queries count/page only the selected scope and batch-read the selected rental payloads.
+Deploy the bot before the adapter to enable indexed queries. Older bots remain compatible
+through the adapter's legacy idempotency lookup fallback during a rolling upgrade.

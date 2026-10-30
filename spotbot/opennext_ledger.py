@@ -126,7 +126,7 @@ class CreditLedger:
             billed_at=timestamp(),
         )
 
-    async def reconcile(self, user_id, rentals):
+    async def reconcile(self, user_id, rentals, *, complete=True):
         """Settle, bill or refund charges against the customer's rentals.
 
         Returns the charges that count against the account's Credit.
@@ -137,7 +137,7 @@ class CreditLedger:
             rental = by_reference.get(charge["reference"])
             if charge["state"] == "held" and rental:
                 charge = await self.settle(charge, rental["id"])
-            elif charge["state"] == "held" and utcnow() - at(charge["created_at"]) > HELD_GRACE:
+            elif complete and charge["state"] == "held" and utcnow() - at(charge["created_at"]) > HELD_GRACE:
                 charge = await self.refund(charge, "rental_not_created")
             if charge["state"] == "charged" and rental and undelivered(rental):
                 charge = await self.refund(charge, "not_delivered")

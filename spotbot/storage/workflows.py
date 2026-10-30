@@ -43,6 +43,8 @@ class WorkflowStore:
                     );
                     CREATE INDEX IF NOT EXISTS workflow_owner ON workflow_records(kind,tenant_id);
                 """)
+        from spotbot.storage.rental_directory import RentalDirectory
+        self.rental_directory = RentalDirectory(self)
 
     def get(self, kind, identity):
         if hasattr(self.store, "engine"):
@@ -159,6 +161,8 @@ class WorkflowStore:
                             event["next_attempt_at"],
                         ),
                     )
+                from spotbot.storage.rental_directory import entries
+                self.rental_directory.sql_write(c, entries(json.loads(record["payload"])))
         except sqlite3.IntegrityError as exc:
             raise ConflictError() from exc
 
@@ -188,6 +192,8 @@ class WorkflowStore:
                             **dict(event, payload=dump(event["payload"]))
                         )
                     )
+                from spotbot.storage.rental_directory import entries
+                self.rental_directory.sql_write(c, entries(json.loads(record["payload"])))
         except sa.exc.IntegrityError as exc:
             raise ConflictError() from exc
 
@@ -202,6 +208,8 @@ class WorkflowStore:
         ):
             raise ConflictError()
         writes = [self.store._put("WF#" + value["kind"], value["id"], value, old)]
+        from spotbot.storage.rental_directory import entries
+        writes.extend(self.rental_directory.ddb_writes(entries(value)))
         if event:
             sk = event["created_at"] + "#" + event["id"]
             writes.extend(

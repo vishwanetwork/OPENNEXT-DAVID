@@ -100,6 +100,8 @@ def state(row):
     runs = runs_of(row, task["version"])
     if not runs:
         return "waiting"
+    if runs[-1]["state"] == "dispatched":
+        return "waiting"
     return "running" if runs[-1]["state"] == "running" else "interrupted"
 
 
@@ -184,6 +186,13 @@ def instruction(row, gen, sealer):
         # Never let an unreadable task block the rest of the agent's instructions.
         logger.error("rental_task_secrets_unreadable rental=%s", row["id"])
         return None
+    # Reserve the run before the response leaves the bot. A lost response must be
+    # replayed with the same identity, never permit editing a possibly running script.
+    if not any(r["attempt"] == attempt for r in runs_of(row, task["version"])):
+        row.setdefault("task_runs", []).append(dict(
+            version=task["version"], attempt=attempt, state="dispatched",
+            dispatched_at=timestamp(),
+        ))
     return dict(
         version=task["version"],
         attempt=attempt,
