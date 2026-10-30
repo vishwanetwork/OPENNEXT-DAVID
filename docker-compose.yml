@@ -1,6 +1,6 @@
 # One container runs the Next.js front-end (port 4188) and the interim legacy API
-# (127.0.0.1:4189 inside the container). When the Python backend is deployed as its own
-# service, add it here and set API_ORIGIN=http://<service>:<port> on `web`.
+# (127.0.0.1:4189 inside the container). With OPENNEXT_ADAPTER=1 (an image built with
+# SPOTBOT_SOURCE=image) it also runs the SpotOrderBot adapter and ClamAV; see docker/start.cjs.
 services:
   web:
     build: .
@@ -44,6 +44,25 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       OPENNEXT_RFQ_NOTIFY_TO: ${OPENNEXT_RFQ_NOTIFY_TO:-}
       OPENNEXT_ADMIN_URL: ${OPENNEXT_ADMIN_URL:-https://admin.opennextlab.ai/}
+      # Bundled SpotOrderBot adapter (image built with SPOTBOT_SOURCE=image); 1 runs it in front
+      # of the legacy API, with ClamAV for Buyer KYB uploads (OPENNEXT_CLAMAV=0 turns that off).
+      OPENNEXT_ADAPTER: ${OPENNEXT_ADAPTER:-0}
+      OPENNEXT_CLAMAV: ${OPENNEXT_CLAMAV:-1}
+      SPOTBOT_API_KEY: ${SPOTBOT_API_KEY:-}
+      SPOTBOT_OPENNEXT_BOT_URL: ${SPOTBOT_OPENNEXT_BOT_URL:-}
+      SPOTBOT_OPENNEXT_TENANT: ${SPOTBOT_OPENNEXT_TENANT:-opennext}
+      SPOTBOT_OPENNEXT_GATEWAY_URL: ${SPOTBOT_OPENNEXT_GATEWAY_URL:-}
+      SPOTBOT_OPENNEXT_GATEWAY_TOKEN: ${SPOTBOT_OPENNEXT_GATEWAY_TOKEN:-}
+      SPOTBOT_OPENNEXT_FILES_KEY: ${SPOTBOT_OPENNEXT_FILES_KEY:-}
+      SPOTBOT_OPENNEXT_PUBLIC_URL: ${SPOTBOT_OPENNEXT_PUBLIC_URL:-https://terminal.opennextlab.ai}
+      SPOTBOT_OPENNEXT_SMTP_HOST: ${SMTP_HOST:-}
+      SPOTBOT_OPENNEXT_SMTP_PORT: ${SMTP_PORT:-587}
+      SPOTBOT_OPENNEXT_SMTP_SECURE: ${SPOTBOT_OPENNEXT_SMTP_SECURE:-false}
+      SPOTBOT_OPENNEXT_SMTP_USER: ${SMTP_USER:-}
+      SPOTBOT_OPENNEXT_SMTP_PASSWORD: ${SMTP_PASS:-}
+      SPOTBOT_OPENNEXT_SMTP_FROM: ${SMTP_FROM:-}
+      SPOTBOT_AWS_REGIONS: ${SPOTBOT_AWS_REGIONS:-us-west-2,us-east-1,us-east-2}
+      SPOTBOT_RENTAL_REGIONS: ${SPOTBOT_RENTAL_REGIONS:-us-west-2,us-east-1,us-east-2}
     volumes:
       - pricing-data:/app/.opennext-data
     ports:

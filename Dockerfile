@@ -1,5 +1,17 @@
 # syntax=docker/dockerfile:1
 # Builds the Next.js front-end (standalone output) and bundles the interim legacy API.
+# With SPOTBOT_SOURCE=image it also bundles the SpotOrderBot adapter (Spot purchases, Credit
+# charges, Buyer KYB, bank transfers, payment review, instance usage, notices) and ClamAV,
+# taken from the private spot-order-bot image; the container runs them when OPENNEXT_ADAPTER=1.
+ARG SPOTBOT_SOURCE=none
+ARG SPOTBOT_IMAGE=ghcr.io/vishwanetwork/spot-order-bot:latest
+
+# Adapter source: the spot-order-bot image (its /app), or nothing for the plain image.
+FROM ${SPOTBOT_IMAGE} AS spotbot-image
+FROM node:22-alpine AS spotbot-none
+RUN mkdir -p /app
+FROM spotbot-${SPOTBOT_SOURCE} AS spotbot
+
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 WORKDIR /repo
@@ -35,7 +47,16 @@ COPY legacy/package.json ./legacy/
 COPY legacy/*.cjs legacy/*.js legacy/*.html legacy/*.css ./legacy/
 COPY legacy/admin ./legacy/admin
 COPY legacy/data ./legacy/data
-COPY docker/start.cjs ./docker/start.cjs
+COPY docker/start.cjs docker/clamd.conf docker/freshclam.conf ./docker/
+# Bundled adapter (only when built with SPOTBOT_SOURCE=image): Python, the spotbot package in a
+# virtual environment, and ClamAV. Signatures live in the data volume, refreshed by freshclam.
+COPY --from=spotbot /app /opt/spotbot-src
+RUN if [ -f /opt/spotbot-src/pyproject.toml ]; then \
+      apk add --no-cache python3 clamav clamav-daemon freshclam \
+      && python3 -m venv /opt/spotbot \
+      && /opt/spotbot/bin/pip install --no-cache-dir '/opt/spotbot-src[mysql]' \
+      && rm -rf /opt/spotbot-src; \
+    else rm -rf /opt/spotbot-src; fi
 RUN mkdir -p /app/.opennext-data && chown -R node:node /app
 USER node
 EXPOSE 4188

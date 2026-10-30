@@ -54,6 +54,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Repository variable SPOTBOT_SOURCE=image bundles the SpotOrderBot adapter from the
+      # private ghcr.io/vishwanetwork/spot-order-bot package; this workflow needs read access
+      # to it (package settings -> Manage Actions access). Unset, the image is unchanged.
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -61,6 +64,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.image }}
+          build-args: |
+            SPOTBOT_SOURCE=${{ vars.SPOTBOT_SOURCE || 'none' }}
 
   deploy:
     runs-on: ubuntu-latest
