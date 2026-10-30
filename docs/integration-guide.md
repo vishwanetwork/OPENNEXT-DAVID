@@ -68,7 +68,8 @@ The request body is `{"rfq": {...}}`. Common fields:
 | `acquisition_deadline` | Deadline for the first server; the rental ends if none is obtained |
 | `expires_at` | Rental end time (ISO 8601 with time zone) |
 | `root_volume_gib`, `data_disks` | Root disk size; data disks such as `[{"device":"/dev/sdf","size_gib":100}]` |
-| `ssh_key_name` | Login key pair name; see section 6 |
+| `ssh_key_name` | Optional login key pair name; see section 6 |
+| `ssh_public_key` | Optional customer OpenSSH public key, installed for `ssh_user` |
 | `ssh_user` | Login user; `ubuntu` for the default image |
 | `http_port`, `http_health_path` | Optional customer HTTP service; if set, it **must return 200** before delivery |
 | `max_recovery_seconds` | Longest wait for a replacement (default 3600) before an operator is needed |
@@ -107,8 +108,9 @@ notifications.
 
 - AWS Spot only, one Linux server per rental.
 - **SSH public keys**: `ssh_key_name` must be an AWS key pair the platform has imported
-  in **every enabled Region**. Customer public keys cannot yet be passed in the RFQ;
-  contact the platform to import a customer's key.
+  in **every enabled Region**. Alternatively pass the customer's `ssh_public_key`, or none:
+  `PUT /v1/rentals/{id}/ssh-keys` replaces the customer keys at any time and the server picks
+  them up within about 15 seconds (`GET` shows whether they are installed).
 - Replacement stays in the server's Region; cross-region recovery is not enabled.
 - While a server is being replaced, customers cannot connect.
 

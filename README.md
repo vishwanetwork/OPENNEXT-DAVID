@@ -176,6 +176,12 @@ expiry. See [gateway deployment and integration](docs/gateway.md),
 `.env.gateway.example`, and `compose.gateway.yaml`. DNS, TLS, firewall changes,
 and a controlled live GPU acceptance run are required before public deployment.
 
+`spotbot opennext-api` is the Python backend for the OpenNEXT web app: it serves
+`GET /api/admin/instances` (rental allocations for the Operations Console), the
+Terminal Spot market (bot offers, "Buy Now" as a protected rental, the customer's
+instances) and passes every other `/api/*` request unchanged to the existing OpenNEXT API. See
+[OpenNEXT backend adapter](docs/opennext.md).
+
 ## SF Compute and SkyPilot
 
 SkyPilot is not installed or integrated. A future workload executor can use it while preserving independent procurement and workload states.

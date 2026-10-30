@@ -27,6 +27,11 @@ def main():
     collector = commands.add_parser("collect")
     collector.add_argument("--provider", choices=["lambda", "tensordock", "vultr", "shadeform", "aws"])
     commands.add_parser("check-config")
+    opennext = commands.add_parser(
+        "opennext-api", help="Serve OpenNEXT's /api: admin rental instances, the rest passed to its existing API"
+    )
+    opennext.add_argument("--host", default="127.0.0.1")
+    opennext.add_argument("--port", type=int, default=4191)
     gateway = commands.add_parser("gateway", help="Serve stable rental SSH and HTTP entry points")
     gateway.add_argument("--host", default="127.0.0.1")
     gateway.add_argument("--port", type=int, default=18084)
@@ -53,6 +58,17 @@ def main():
         logging.getLogger("httpx").setLevel(logging.WARNING)
         uvicorn.run(
             "spotbot.gateway:create_gateway_app", factory=True,
+            host=args.host, port=args.port, workers=1, access_log=False,
+        )
+    elif args.command == "opennext-api":
+        import uvicorn
+
+        from spotbot.opennext import create_opennext_app
+
+        settings = Settings()
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        uvicorn.run(
+            create_opennext_app(settings, origin=settings.spotbot_opennext_legacy_origin),
             host=args.host, port=args.port, workers=1, access_log=False,
         )
     elif args.command == "collect":

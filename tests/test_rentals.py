@@ -468,10 +468,23 @@ def test_every_rental_region_requires_an_interruption_queue():
     assert Settings(**dict(values, spotbot_rental_regions="us-west-2")).rental_regions == ["us-west-2"]
 
 
+def test_customer_reference_is_part_of_the_idempotent_request(rental_env):
+    env = rental_env
+    request = env.request.model_copy(deep=True)
+    request.rfq.customer_ref = "opennext:user-1"
+    row, created = env.engine.create(request, "tenant-a", "customer-order")
+    assert created and row["rfq"]["customer_ref"] == "opennext:user-1"
+    other = request.model_copy(deep=True)
+    other.rfq.customer_ref = "opennext:user-2"
+    with pytest.raises(ValueError, match="idempotency_key_conflict"):
+        env.engine.create(other, "tenant-a", "customer-order")
+
+
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
     env = rental_env
     old = env.request.model_dump(mode="json")
-    old["rfq"].pop("initial_image_ids")
+    for name in ("initial_image_ids", "ssh_public_key", "customer_ref", "service_seconds"):
+        old["rfq"].pop(name)  # A client from before these optional fields existed.
     from spotbot.storage.common import dump
 
     row, _ = env.engine.create(env.request, "tenant-a", "old-client")
@@ -1199,3 +1212,81 @@ async def test_rejected_snapshot_and_image_requests_are_retried(rental_env):
     assert (backup["state"], backup["error"]) == ("AVAILABLE", None)
     assert calls == {"snapshots": 2, "images": 2}
     assert len(env.cloud.snapshot_sets[backup["id"]]) == len(backup["volumes"])
+
+
+async def test_retention_of_the_initial_backup_keeps_a_delivered_rental_active(rental_env):
+    """Routine backups retire the initial one after `keep` newer points; the rental stays up."""
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "long-running")
+    row = await deliver(env, row["id"])
+    initial = next(b for b in env.engine.backups(row) if b["state"] == "AVAILABLE")
+    for _ in range(12):
+        env.clock.advance(901)
+        await report_ready(env, row["id"])
+        await cycle(env, 3)
+        await report_ready(env, row["id"])
+        await cycle(env, 3)
+        if env.engine.db.get("backup", initial["id"])["state"] == "DELETED":
+            break
+    assert env.engine.db.get("backup", initial["id"])["state"] == "DELETED"
+    await report_ready(env, row["id"])
+    await cycle(env, 3)
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "ACTIVE" and row["error"] is None and row["connection"]
+
+
+def test_service_intervals_follow_delivery_replacement_and_end(monkeypatch):
+    from spotbot import rentals as module
+
+    clock = [datetime.fromisoformat("2026-10-29T00:10:00+00:00")]
+    monkeypatch.setattr(module, "utcnow", lambda: clock[0])
+    row = dict(
+        state="PROVISIONING",
+        end_requested=False,
+        rfq=dict(
+            acquisition_deadline="2026-10-29T01:00:00+00:00",
+            expires_at="2026-10-29T03:00:00+00:00",
+            service_seconds=7200,
+        ),
+    )
+
+    def step(minutes, **changes):
+        clock[0] += timedelta(minutes=minutes)
+        row.update(changes)
+        module.track_service(row)
+
+    step(0)
+    assert row["service_intervals"] == [] and "service_started_at" not in row
+    # Handed over 15 minutes in: the two paid hours start now, not at the deadline.
+    step(5, state="DELIVERING")
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:15:00+00:00"
+    step(1, state="ACTIVE")
+    step(30, state="RECOVERING")  # A Spot interruption pauses the service.
+    step(10, state="DELIVERING")
+    step(1, state="ACTIVE")
+    step(20, state="ENDING", end_requested=True)
+    step(5, state="CLOSED")
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:15:00+00:00"  # Set once.
+    assert module.service_seconds(row) == 50 * 60
+    assert [p["end_reason"] for p in row["service_intervals"]] == ["interrupted", "ended"]
+
+
+def test_service_window_never_extends_the_requested_expiry(monkeypatch):
+    from spotbot import rentals as module
+
+    monkeypatch.setattr(
+        module, "utcnow", lambda: datetime.fromisoformat("2026-10-29T01:05:00+00:00")
+    )
+    row = dict(
+        state="ACTIVE",
+        end_requested=False,
+        rfq=dict(
+            acquisition_deadline="2026-10-29T01:00:00+00:00",
+            expires_at="2026-10-29T02:00:00+00:00",
+            service_seconds=3600,
+        ),
+    )
+    module.track_service(row)
+    # Launched just before the deadline and delivered after it: capped at the request.
+    assert row["rfq"]["expires_at"] == "2026-10-29T02:00:00+00:00"
+    assert row["service_intervals"][0]["end"] is None

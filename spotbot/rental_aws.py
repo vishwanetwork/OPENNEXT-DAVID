@@ -1,6 +1,7 @@
 """AWS primitives for protected servers. Workflow decisions live in rentals.py."""
 
 import base64
+import gzip
 import hashlib
 import json
 from decimal import Decimal
@@ -56,7 +57,7 @@ def initial_disk_layout_allowed(image, rules, *, strict_sizes=False):
     )
 
 
-def bootstrap(base_url, rental_id, generation, token):
+def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", public_key=None):
     source = Path(__file__).with_name("guest_agent.py").read_bytes()
     config = json.dumps(
         dict(url=base_url.rstrip("/"), rental_id=rental_id, generation=generation, token=token)
@@ -73,8 +74,9 @@ def bootstrap(base_url, rental_id, generation, token):
             "#cloud-config",
             "ssh_deletekeys: false",
             "SPOTBOT_SSH_IDENTITY",
-            "base64 -d > /opt/spotbot/agent.py <<'SPOTBOT_AGENT'",
-            base64.b64encode(source).decode(),
+            # Compressed so the agent plus a customer key stay well inside 16 KB of user data.
+            "base64 -d <<'SPOTBOT_AGENT' | gunzip > /opt/spotbot/agent.py",
+            base64.b64encode(gzip.compress(source, 9, mtime=0)).decode(),
             "SPOTBOT_AGENT",
             "base64 -d > /etc/spotbot/agent.json <<'SPOTBOT_CONFIG'",
             base64.b64encode(config).decode(),
@@ -92,8 +94,28 @@ def bootstrap(base_url, rental_id, generation, token):
             "SPOTBOT_UNIT",
             "systemctl daemon-reload",
             "systemctl enable --now spotbot-agent",
+            *authorized_key(ssh_user, public_key),
         ]
     )
+
+
+def authorized_key(user, public_key):
+    """Install the customer's public key at first boot, in the block the guest agent manages
+    (it then keeps that block equal to the rental's key set). Restored disks keep their block."""
+    if not public_key:
+        return []
+    encoded = base64.b64encode(public_key.strip().encode()).decode()
+    return [
+        f"home=$(getent passwd {user} | cut -d: -f6)",
+        f'install -d -m 700 -o {user} -g {user} "$home/.ssh"',
+        f"key=$(echo {encoded} | base64 -d)",
+        'touch "$home/.ssh/authorized_keys"',
+        'grep -qxF "# BEGIN spotbot managed keys" "$home/.ssh/authorized_keys" || printf'
+        """ '%s\\n' '# BEGIN spotbot managed keys' "$key" '# END spotbot managed keys'"""
+        ' >> "$home/.ssh/authorized_keys"',
+        f'chown {user}:{user} "$home/.ssh/authorized_keys"',
+        'chmod 600 "$home/.ssh/authorized_keys"',
+    ]
 
 
 class AWSRecovery:
@@ -326,7 +348,6 @@ class AWSRecovery:
             InstanceType=offer.sku,
             MinCount=1,
             MaxCount=1,
-            KeyName=rules.ssh_key_name,
             ClientToken=generation["id"],
             Placement={"AvailabilityZone": offer.availability_zone},
             InstanceMarketOptions={
@@ -365,8 +386,12 @@ class AWSRecovery:
                 rental["id"],
                 generation["generation"],
                 generation["agent_token"],
+                ssh_user=rules.ssh_user,
+                public_key=rules.ssh_public_key,
             ),
         )
+        if rules.ssh_key_name:
+            payload["KeyName"] = rules.ssh_key_name
         response = await self.call(region, "run_instances", mutation=True, **payload)
         instances = response.get("Instances", [])
         if len(instances) != 1 or not instances[0].get("InstanceId"):

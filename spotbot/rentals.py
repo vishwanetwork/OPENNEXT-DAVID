@@ -46,6 +46,44 @@ def document(kind, tenant_id, **values):
     )
 
 
+def track_service(row):
+    """Record when the customer has a delivered server, for usage billing.
+
+    `service_intervals` holds one `{start, end, end_reason}` per period the rental was ACTIVE
+    and not ending. `end_reason` is `ended` for an end request (the customer, expiry or budget)
+    and `interrupted` otherwise (a Spot replacement or a failed health check). On the
+    first handoff, a `service_seconds` RFQ moves `expires_at` to the delivery time plus that
+    duration, so the paid time starts at delivery rather than at the order.
+    """
+    now = utcnow()
+    rfq = row["rfq"]
+    if row["state"] in {"DELIVERING", "ACTIVE"} and not row.get("service_started_at"):
+        row["service_started_at"] = now.isoformat()
+        if rfq.get("service_seconds"):
+            # The RFQ requires expiry strictly after the acquisition deadline.
+            end = max(
+                now + timedelta(seconds=rfq["service_seconds"]),
+                at(rfq["acquisition_deadline"]) + timedelta(seconds=1),
+            )
+            rfq["expires_at"] = min(at(rfq["expires_at"]), end).isoformat()
+    intervals = row.setdefault("service_intervals", [])
+    serving = row["state"] == "ACTIVE" and not row.get("end_requested")
+    if serving and (not intervals or intervals[-1]["end"]):
+        intervals.append(dict(start=now.isoformat(), end=None))
+    elif not serving and intervals and not intervals[-1]["end"]:
+        intervals[-1]["end"] = now.isoformat()
+        intervals[-1]["end_reason"] = "ended" if row.get("end_requested") else "interrupted"
+
+
+def service_seconds(row, now=None):
+    """Seconds the customer had a delivered server, including an open period up to `now`."""
+    now = now or utcnow()
+    return sum(
+        max(0.0, ((at(i["end"]) if i["end"] else now) - at(i["start"])).total_seconds())
+        for i in row.get("service_intervals") or []
+    )
+
+
 class RentalEngine:
     def __init__(self, service, backend=None):
         self.service = service
@@ -61,6 +99,8 @@ class RentalEngine:
         return self.row_locks.setdefault(rental_id, asyncio.Lock())
 
     def save(self, doc, event=None):
+        if doc["kind"] == "rental":
+            track_service(doc)
         return self.db.save(doc, doc["version"], event=event)
 
     def get(self, rental_id, tenant_id):
@@ -95,9 +135,12 @@ class RentalEngine:
     def create(self, request, tenant_id, key):
         rules = request.rfq
         payload = request.model_dump(mode="json")
-        # Preserve idempotency fingerprints accepted before this optional field existed.
+        # Preserve idempotency fingerprints accepted before these optional fields existed.
         if not payload["rfq"]["initial_image_ids"]:
             payload["rfq"].pop("initial_image_ids")
+        for name in ("ssh_public_key", "customer_ref", "service_seconds"):
+            if payload["rfq"][name] is None:
+                payload["rfq"].pop(name)
         fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()
         rental_id = identity("rental", tenant_id, key)
         existing = self.db.get("rental", rental_id)
@@ -124,6 +167,8 @@ class RentalEngine:
             estimated_cost_usd="0",
             end_requested=False,
             recovery_started_at=None,
+            # Customer keys the guest agent installs; changed later through set_ssh_keys.
+            ssh_keys=dict(version=1, keys=[rules.ssh_public_key] if rules.ssh_public_key else []),
         )
         row["id"] = rental_id
         try:
@@ -154,6 +199,8 @@ class RentalEngine:
                 "root_volume_gib",
                 "data_disks",
                 "ssh_key_name",
+                "ssh_public_key",
+                "customer_ref",
                 "ssh_user",
                 "http_port",
                 "http_health_path",
@@ -190,6 +237,29 @@ class RentalEngine:
                 )
             self.save(row, "policy_updated")
             return row
+
+    async def set_ssh_keys(self, rental_id, tenant_id, keys):
+        async with self.row_lock(rental_id):
+            row = self.get(rental_id, tenant_id)
+            if row["state"] == "CLOSED" or row["end_requested"]:
+                raise ValueError("rental_ended")
+            current = row.get("ssh_keys") or dict(version=0, keys=[])
+            if current["keys"] != keys:
+                row["ssh_keys"] = dict(version=current["version"] + 1, keys=keys)
+                self.save(row, "ssh_keys_updated")
+            return self.ssh_keys(row)
+
+    def ssh_keys(self, row):
+        """The rental's customer key set and whether the current server has installed it."""
+        value = row.get("ssh_keys") or dict(version=0, keys=[])
+        gen = self.current(row)
+        applied = ((gen or {}).get("report") or {}).get("ssh_keys_version")
+        return dict(
+            version=value["version"],
+            keys=value["keys"],
+            applied_version=applied,
+            installed=applied == value["version"] and row["state"] != "CLOSED",
+        )
 
     async def release(self, rental_id, tenant_id):
         async with self.row_lock(rental_id):
@@ -365,7 +435,15 @@ class RentalEngine:
                 if row["state"] == "RECOVERING" and row.get("freeze_generation_id") == gen["id"]
                 else None
             )
+            keys = row.get("ssh_keys")
             return dict(
+                authorized_keys=dict(
+                    version=keys["version"],
+                    user=row["rfq"].get("ssh_user", "ubuntu"),
+                    keys=keys["keys"],
+                )
+                if keys
+                else None,
                 freeze_command=freeze,
                 flush_command=command,
                 create_canaries=not gen.get("source_backup_id") and not gen.get("verified_at"),
@@ -963,7 +1041,10 @@ class RentalEngine:
             row.update(degraded=None, degraded_at=None, error=None)
             self.save(row, "healthy")
         initial = self.request_backup(row, "initial")
-        if initial["state"] != "AVAILABLE":
+        # Routine retention deletes the initial backup of a long-running generation; once the
+        # generation was verified, that is not a reason to take it out of service again.
+        retired = verified and initial["state"] in {"DELETING", "DELETED"}
+        if initial["state"] != "AVAILABLE" and not retired:
             if initial["state"] in {"FAILED", "NEEDS_RECONCILIATION"}:
                 row.update(state="ACTION_REQUIRED", error="initial_backup_unavailable")
             else:
@@ -1005,7 +1086,7 @@ class RentalEngine:
                         "host": ip,
                         "port": 22,
                         "user": rules.ssh_user,
-                        "key_reference": rules.ssh_key_name,
+                        "key_reference": rules.ssh_key_name or "customer-public-key",
                     },
                     http=f"http://{ip}:{rules.http_port}" if rules.http_port else None,
                 ),

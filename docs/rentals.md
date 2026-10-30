@@ -192,6 +192,7 @@ Important RFQ fields:
 | `price_unit` | Must be explicitly `instance_hour` |
 | `max_price_hourly`, `budget_usd` | USD per-instance compute ceiling and conservative operating budget |
 | `acquisition_deadline`, `expires_at` | Absolute UTC acquisition deadline and lifecycle end |
+| `service_seconds` | Optional: the service window starts at delivery. On the first handoff (`DELIVERING`, or `ACTIVE` without a gateway) `expires_at` becomes the delivery time plus this duration, never later than the requested `expires_at` |
 | `not_before` | Optional earliest acquisition time |
 | `root_volume_gib`, `data_disks` | Root minimum and protected data disks; root may grow to the AMI minimum |
 | `selection` | `lowest_price` or `region_order` within hard constraints |
@@ -199,7 +200,8 @@ Important RFQ fields:
 | `max_recovery_seconds`, `allow_cross_region` | Recovery deadline and permitted regional image copies |
 | `allow_older_backup` | Explicit permission for a potentially older recovery point |
 | `backup` | Interval, completed-point count, final retention, and consistency |
-| `ssh_key_name`, `ssh_user` | Already registered regional key name and image login user |
+| `ssh_key_name`, `ssh_public_key`, `ssh_user` | Optional registered regional key name, optional customer public key, and image login user |
+| `customer_ref` | Optional opaque upstream customer reference |
 | `http_port`, `http_health_path` | Optional HTTP readiness probe; no model service is installed automatically |
 | `require_gateway_ack` | Default true: gateway must acknowledge a candidate handoff |
 
@@ -231,10 +233,18 @@ margin; the catalog VRAM constraint itself is strict.
 | `POST /v1/rentals/{id}/recover` | Recover from the latest final disk state; `{}` is sufficient |
 | `POST /v1/rentals/{id}/policy-revisions` | New RFQ plus `expected_version` of the accepted RFQ |
 | `POST /v1/rentals/{id}/renew` | Same revision envelope, with an extended expiry |
+| `GET /v1/rentals/{id}/ssh-keys` | Customer key set, its version, and whether the current server installed it |
+| `PUT /v1/rentals/{id}/ssh-keys` | Replace the customer key set `{"keys": ["ssh-ed25519 AAAA… user@host"]}` (up to 20) |
 | `POST /v1/rentals/{id}/release` | Stop the lifecycle, preserve disks, and capture final backup |
 | `POST /v1/rentals/{id}/reconcile` | Resolve an uncertain creation; optionally `confirm_absent` |
 | `POST /v1/rentals/{id}/backups/{backup_id}/reconcile` | Adopt tagged snapshot/image results after uncertainty |
 | `GET /v1/rentals/{id}/events` | Durable lifecycle events |
+
+Customer keys are not part of the RFQ fingerprint and can change at any time before the
+rental ends. The RFQ's `ssh_public_key` is the initial set; the guest agent keeps a marked
+block of `ssh_user`'s `authorized_keys` equal to the current set (other lines are untouched)
+within about 15 seconds, also on replacement servers. `installed` turns true once the current
+server reports the set's version.
 
 Policy revisions require the same upstream identity and a greater RFQ version.
 Hardware/layout/login changes require a new rental. Tightening price or
@@ -326,6 +336,11 @@ using the submitted compute ceiling and provisioned disk/snapshot capacity.
 rate, not a live AWS tariff. Actual invoices, IPv4, transfer, taxes, and provider
 minimums can differ. Upstream billing must use provider billing data for final
 settlement. Snapshot retention and storage remain explicit expenses.
+
+`service_intervals` on the rental lists the periods the customer had a delivered
+server: one `{start, end}` per stretch in `ACTIVE`, ended by a replacement
+(`RECOVERING`), an end request or closing. Upstreams can bill customer time from
+it; it says nothing about provider cost.
 
 Run `ruff check spotbot tests examples` and `pytest -q`. The acceptance tests
 simulate disk contents, multi-volume snapshots, replacement, expiry, unknown

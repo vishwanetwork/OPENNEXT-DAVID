@@ -65,6 +65,38 @@ class Settings(BaseSettings):
     spotbot_rental_initial_images: str = "{}"
     spotbot_rental_public_url: str = ""
     spotbot_rental_tenant_tokens: SecretStr = SecretStr("{}")
+    # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
+    spotbot_opennext_legacy_origin: str = ""
+    # Bot API for the OpenNEXT Spot market (catalog, purchases, instances); empty disables it.
+    # The adapter authenticates with SPOTBOT_API_KEY and keeps rentals in this tenant.
+    spotbot_opennext_bot_url: str = ""
+    spotbot_opennext_tenant: str = Field("opennext", pattern=r"^[A-Za-z0-9_.-]{1,100}$")
+    # Optional gateway API for customer SSH entry points of running rentals.
+    spotbot_opennext_gateway_url: str = ""
+    spotbot_opennext_gateway_token: SecretStr = SecretStr("")
+    # Customer order notices by email (delivered, replaced, ending soon, billed, refunded),
+    # through the SMTP account the OpenNEXT API uses. Without a host, no email is sent; usage
+    # is still billed. Port 465 or SECURE uses implicit TLS, otherwise STARTTLS is required
+    # (plain SMTP only on loopback, for local testing).
+    spotbot_opennext_smtp_host: str = ""
+    spotbot_opennext_smtp_port: int = Field(587, ge=1, le=65535)
+    spotbot_opennext_smtp_secure: bool = False
+    spotbot_opennext_smtp_user: str = ""
+    spotbot_opennext_smtp_password: SecretStr = SecretStr("")
+    spotbot_opennext_smtp_from: str = ""
+    # The Terminal's public origin for links in notices, e.g. https://opennext.example.
+    spotbot_opennext_public_url: str = ""
+    # Private directory for Buyer KYB documents (0700; files 0600), on a persistent volume.
+    spotbot_opennext_files_dir: str = "data/opennext-kyb"
+    # Base64 of 32 random bytes: documents are encrypted with AES-256-GCM. Without it,
+    # uploads are refused. Generate with `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`.
+    spotbot_opennext_files_key: SecretStr = SecretStr("")
+    # ClamAV daemon (`host:port`) that scans every upload. Without it uploads are refused,
+    # unless SPOTBOT_OPENNEXT_ALLOW_UNSCANNED is true (local testing only).
+    spotbot_opennext_clamd: str = ""
+    spotbot_opennext_allow_unscanned: bool = False
+    # Days a decided case keeps its documents; unsubmitted uploads are deleted after a day.
+    spotbot_opennext_kyb_retention_days: int = Field(365, ge=1, le=3650)
     spotbot_rental_gateway_token: SecretStr = SecretStr("")
     spotbot_rental_interruption_queues: str = "{}"
     spotbot_rental_worker_seconds: int = Field(5, ge=2, le=60)

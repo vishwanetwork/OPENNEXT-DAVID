@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import pwd
 import shutil
 import socket
 import subprocess
@@ -14,6 +15,34 @@ from pathlib import Path
 
 def command(*args, timeout=5):
     return subprocess.check_output(args, timeout=timeout, stderr=subprocess.DEVNULL).decode()
+
+
+KEYS_BEGIN = "# BEGIN spotbot managed keys"
+KEYS_END = "# END spotbot managed keys"
+
+
+def install_keys(spec):
+    """Replace the managed block of the user's authorized_keys; other lines stay as they are."""
+    user = pwd.getpwnam(spec["user"])
+    keys = [k for k in spec["keys"] if isinstance(k, str) and k and "\n" not in k and "\r" not in k]
+    directory = Path(user.pw_dir) / ".ssh"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    os.chown(directory, user.pw_uid, user.pw_gid)
+    path = directory / "authorized_keys"
+    lines = path.read_text().splitlines() if path.exists() else []
+    kept, inside = [], False
+    for line in lines:
+        if line == KEYS_BEGIN:
+            inside = True
+        elif line == KEYS_END:
+            inside = False
+        elif not inside:
+            kept.append(line)
+    staged = directory / ".authorized_keys.spotbot"
+    staged.write_text("\n".join([*kept, KEYS_BEGIN, *keys, KEYS_END]) + "\n")
+    os.chmod(staged, 0o600)
+    os.chown(staged, user.pw_uid, user.pw_gid)
+    os.replace(staged, path)
 
 
 def metadata(path):
@@ -189,6 +218,7 @@ def run():
     # (command, mounts, watchdog deadline). While frozen nothing below may write to disk.
     frozen = None
     thawed = None
+    keys_version = None
     last_report = 0.0
     opener = urllib.request.build_opener(NoRedirect)
     while True:
@@ -212,6 +242,7 @@ def run():
                 report["freeze_supported"] = shutil.which("fsfreeze") is not None
                 report["frozen_command"] = frozen[0] if frozen else None
                 report["thawed_command"] = thawed
+                report["ssh_keys_version"] = keys_version
                 request = urllib.request.Request(
                     config["url"] + "/v1/agents/report",
                     data=json.dumps(report).encode(),
@@ -228,6 +259,11 @@ def run():
                     ):
                         config["create_canaries"] = bool(instructions.get("create_canaries"))
                         config_path.write_text(json.dumps(config))
+                    keys = instructions.get("authorized_keys")
+                    if keys and keys.get("version") != keys_version:
+                        install_keys(keys)
+                        keys_version = keys["version"]
+                        last_report = 0.0
                 identity = instructions.get("flush_command")
                 if identity and identity != flushed:
                     if not frozen:  # A frozen filesystem is already synced; sync would block.
