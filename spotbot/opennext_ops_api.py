@@ -13,7 +13,7 @@ import httpx
 from fastapi import Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from spotbot.opennext_market import MAX_HOURS, MIN_HOURS, checkout_totals, customer_ref
+from spotbot.opennext_market import MAX_HOURS, MIN_HOURS, checkout_totals
 from spotbot.opennext_ops import OperationError, case_view, intent_view, review_record
 from spotbot.opennext_usage import usage_snapshot
 from spotbot.rental_models import valid_public_key
@@ -243,14 +243,10 @@ def install(app, ctx):
         user, rental, failed = await ctx.own_rental(request, rental_id, write=False)
         if failed:
             return failed
-        # Settle first, so a closed order shows its final bill. Reconcile against every rental
-        # of the customer: a held charge missing from the list would count as never created.
-        try:
-            rows = await ctx.market.rentals(customer_ref(user["id"]))
-        except httpx.HTTPError:
-            return error(503, "Instance usage is temporarily unavailable.")
+        # This is a single-instance read. Only reconcile the verified rental; a partial
+        # inventory must never refund other held orders as though they did not exist.
         async with ctx.ledger.lock(user["id"]):
-            await ctx.ledger.reconcile(user["id"], rows)
+            await ctx.ledger.reconcile(user["id"], [rental], complete=False)
             charges = await ctx.ledger.charges(user["id"])
         charge = next((c for c in charges if c.get("rental_id") == rental["id"]), None)
         return no_store(usage_snapshot(user["id"], rental, charge))

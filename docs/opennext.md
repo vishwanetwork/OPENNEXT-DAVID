@@ -226,3 +226,7 @@ Only this explicit development entry point can skip Buyer KYB; it projects Appro
 in memory without changing saved verification records. Production `opennext-api` remains
 unchanged. Sign-in, CSRF, customer ownership and Credit checks remain enabled. Purchases
 against a real bot can still incur cloud charges; the helper never purchases on startup.
+
+Single-instance usage reads settle only the already authorized rental, without fetching the
+customer's whole rental inventory. Partial reconciliation never expires unrelated held
+purchases; full inventory reconciliation remains responsible for missing-order refunds.
