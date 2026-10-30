@@ -6,6 +6,7 @@ import { money } from '@/lib/format';
 import { FEE_LABEL, currentFees, sellerEstimate } from '../fees';
 import { isHardware, isModel, type MarketSide } from '../exchange';
 import { useIsDemo, type Role } from '@/terminal-kit';
+import { AsyncButton } from '@/components/ui/async-feedback';
 
 /** `18 Oct 2026, 08:00 UTC` (legacy procurement `date()`); "To be confirmed" when empty. */
 export const date = (v: unknown): string =>
@@ -46,16 +47,22 @@ export function PBtn({
   className = '',
   children,
   type = 'button',
+  busy,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { primary?: boolean; children: ReactNode }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  primary?: boolean;
+  children: ReactNode;
+  busy?: boolean;
+}) {
   return (
-    <button
+    <AsyncButton
+      busy={busy}
       type={type === 'submit' ? 'submit' : 'button'}
       className={`btn ${primary ? '' : 'secondary'} small ${className}`.trim()}
       {...rest}
     >
       {children}
-    </button>
+    </AsyncButton>
   );
 }
 

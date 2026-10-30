@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent } from 'react';
 import { NativeDialog } from '@/components/ui/dialog';
 import { useApi } from '@/components/providers/api-context';
@@ -160,7 +161,7 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
               {error}
             </p>
             <footer>
-              <button type="submit" className="on-contact-submit" disabled={busy}>
+              <AsyncButton busy={busy} type="submit" className="on-contact-submit" disabled={busy}>
                 {busy ? (
                   'Submitting…'
                 ) : (
@@ -168,7 +169,7 @@ export function ContactDialog({ message = '', onClose }: ContactDialogProps) {
                     Submit request <span aria-hidden="true">↗</span>
                   </>
                 )}
-              </button>
+              </AsyncButton>
             </footer>
           </>
         )}

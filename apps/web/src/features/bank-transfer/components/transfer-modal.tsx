@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { BuyerKybGate } from '@/features/buyer-kyb';
 import { money, stampUtc } from '@/lib/format';
 import { ModalFrame, type ModalComponent, type ModalComponents } from '@/terminal-kit';
@@ -70,14 +71,15 @@ export function BankTransferBody({ id, close }: { id: string; close: () => void 
         <button type="button" className="btn secondary" onClick={close}>
           Close
         </button>
-        <button
+        <AsyncButton
+          busy={transfer.busy}
           type="button"
           className="btn"
           disabled={transfer.busy}
           onClick={() => void transfer.reportSent()}
         >
           {transfer.busy ? 'Submitting…' : 'I have made the transfer'}
-        </button>
+        </AsyncButton>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent } from 'react';
 import type { MarketRecord } from '@opennext/contracts';
 
@@ -60,7 +61,8 @@ export function DecisionForm({
       </p>
       <div className="market-console-decisions">
         {buttons.map((b) => (
-          <button
+          <AsyncButton
+            busy={busy}
             key={b.value}
             type="submit"
             className={`btn ${b.primary ? 'primary' : ''}`}
@@ -69,7 +71,7 @@ export function DecisionForm({
             disabled={busy}
           >
             {b.label}
-          </button>
+          </AsyncButton>
         ))}
       </div>
     </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useWorkspaceStore } from '@/terminal-kit';
@@ -79,9 +80,9 @@ export function KybForm() {
         your business.
       </p>
       <div className="modal-footer">
-        <button className="btn" type="submit" disabled={busy}>
+        <AsyncButton busy={busy} className="btn" type="submit" disabled={busy}>
           Submit for review
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

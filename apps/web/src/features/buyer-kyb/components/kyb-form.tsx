@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { BuyerKybCompany, KybDocumentKind } from '@/lib/buyer-kyb';
@@ -160,13 +161,14 @@ export function KybForm() {
         <button type="button" className="btn secondary" onClick={close}>
           Cancel
         </button>
-        <button
+        <AsyncButton
+          busy={busy}
           type="submit"
           className="btn"
           disabled={!available || !mode || !completeDocuments || !consent || busy}
         >
           {busy ? 'Submitting…' : 'Submit KYB'}
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

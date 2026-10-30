@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { BuyerKybAdminService, BuyerKybCase, BuyerKybDocument } from '@/lib/buyer-kyb';
 import { describeError, isUnauthorized } from '@/lib/api/errors';
@@ -74,7 +75,8 @@ export function KybDocuments({
                 <span>{document.fileName}</span>
                 <small>{Math.ceil(document.sizeBytes / 1024)} KB</small>
               </div>
-              <button
+              <AsyncButton
+                busy={pending === document.id}
                 type="button"
                 className="btn small"
                 disabled={Boolean(pending) || typeof service.download !== 'function'}
@@ -82,7 +84,7 @@ export function KybDocuments({
                 aria-label={`Download ${document.fileName}`}
               >
                 {pending === document.id ? 'Downloading…' : 'Download'}
-              </button>
+              </AsyncButton>
             </li>
           ))}
         </ul>

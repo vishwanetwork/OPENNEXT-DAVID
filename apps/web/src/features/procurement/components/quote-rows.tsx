@@ -83,6 +83,7 @@ export function QuoteRows({ r }: { r: OwnedRfq }) {
               </PBtn>
               <span className="gap"></span>
               <PBtn
+                busy={busy}
                 data-act="proc-reject"
                 data-id={r.id}
                 data-quote={q.id}
