@@ -1,15 +1,14 @@
-# OpenNEXT test site on the bot test host: the OpenNEXT web app (with its bundled legacy API),
-# the SpotOrderBot adapter in front of it, a ClamAV daemon for Buyer KYB uploads, and Mailpit,
-# which receives every email (sign-in codes and notices) and shows it in a protected inbox.
-# The adapter and Mailpit share the web container's network namespace, so the web server reaches
-# the adapter, and both reach the legacy API and Mailpit, on 127.0.0.1 with nothing published.
+# OpenNEXT test site on the bot test host: one OpenNEXT container built with the bundled
+# SpotOrderBot adapter and ClamAV (OPENNEXT_ADAPTER=1), as production would run it, plus Mailpit,
+# which receives every email (sign-in codes and notices) in a protected inbox. Mailpit shares
+# the web container's network namespace so SMTP stays on 127.0.0.1.
 name: opennext-test
 services:
   web:
     image: opennext-test-web:${WEB_RELEASE:?set WEB_RELEASE}
     restart: unless-stopped
     command: ["node", "/opt/test/start-test.cjs"]
-    env_file: [web.env]
+    env_file: [web.env, adapter.env]
     environment:
       SITE_HOST: opennext.test.vishwalab.com
       TERMINAL_HOST: opennext-terminal.test.vishwalab.com
@@ -22,27 +21,9 @@ services:
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: "1025"
       SMTP_FROM: OpenNEXT Test <no-reply@opennext.test.vishwalab.com>
-    volumes:
-      - web-data:/app/.opennext-data
-      - ./start-test.cjs:/opt/test/start-test.cjs:ro
-    ports:
-      - "127.0.0.1:18188:4188" # OpenNEXT, behind OpenResty
-      - "127.0.0.1:18025:8025" # Mailpit inbox, behind OpenResty
-  adapter:
-    image: spot-order-bot:${BOT_RELEASE:?set BOT_RELEASE}
-    restart: unless-stopped
-    network_mode: service:web
-    depends_on: [web, clamav]
-    command: ["spotbot", "opennext-api", "--host", "127.0.0.1", "--port", "4191"]
-    env_file: [adapter.env]
-    environment:
-      SPOTBOT_STORAGE_BACKEND: sqlite
-      SPOTBOT_DATABASE_PATH: /data/adapter.db
-      SPOTBOT_OPENNEXT_LEGACY_ORIGIN: http://127.0.0.1:4189
+      OPENNEXT_ADAPTER: "1"
       SPOTBOT_OPENNEXT_BOT_URL: https://spotbot.test.vishwalab.com
       SPOTBOT_OPENNEXT_GATEWAY_URL: https://gpu-gateway.test.vishwalab.com
-      SPOTBOT_OPENNEXT_FILES_DIR: /data/kyb
-      SPOTBOT_OPENNEXT_CLAMD: clamav:3310
       SPOTBOT_OPENNEXT_SMTP_HOST: 127.0.0.1
       SPOTBOT_OPENNEXT_SMTP_PORT: "1025"
       SPOTBOT_OPENNEXT_SMTP_FROM: OpenNEXT Test <no-reply@opennext.test.vishwalab.com>
@@ -50,7 +31,11 @@ services:
       SPOTBOT_AWS_REGIONS: us-west-2,us-east-1,us-east-2
       SPOTBOT_RENTAL_REGIONS: us-west-2,us-east-1,us-east-2
     volumes:
-      - adapter-data:/data
+      - web-data:/app/.opennext-data
+      - ./start-test.cjs:/opt/test/start-test.cjs:ro
+    ports:
+      - "127.0.0.1:18188:4188" # OpenNEXT, behind OpenResty
+      - "127.0.0.1:18025:8025" # Mailpit inbox, behind OpenResty
   mailpit:
     image: axllent/mailpit:latest
     restart: unless-stopped
@@ -61,12 +46,5 @@ services:
       MP_SMTP_BIND_ADDR: 127.0.0.1:1025
       MP_UI_BIND_ADDR: 0.0.0.0:8025
       MP_MAX_MESSAGES: "2000"
-  clamav:
-    image: clamav/clamav:stable
-    restart: unless-stopped
-    volumes:
-      - clamav-db:/var/lib/clamav
 volumes:
   web-data:
-  adapter-data:
-  clamav-db:
