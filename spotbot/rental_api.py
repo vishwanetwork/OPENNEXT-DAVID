@@ -139,11 +139,15 @@ def install(app, service):
         owner: Annotated[str, Depends(tenant)],
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
+        customer_ref: str | None = Query(None, max_length=200),
+        upstream_order_id: str | None = Query(None, max_length=200),
     ):
-        values = sorted(
-            engine.db.list("rental", owner), key=lambda d: d["created_at"], reverse=True
+        if upstream_order_id is not None and customer_ref is None:
+            raise HTTPException(422, "customer_ref_required_for_order_lookup")
+        page = engine.db.rental_directory.page(
+            owner, customer_ref, upstream_order_id, limit=limit, offset=offset
         )
-        return {"total": len(values), "items": [public(v) for v in values[offset : offset + limit]]}
+        return {"query_version": 1, "total": page["total"], "items": [public(v) for v in page["items"]]}
 
     @router.get("/{rental_id}")
     def get(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):

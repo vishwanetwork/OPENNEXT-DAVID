@@ -161,7 +161,15 @@ class Fakes:
                 keys.update(version=keys["version"] + 1, keys=json.loads(request.content)["keys"])
             return httpx.Response(200, json={**keys, "applied_version": None, "installed": False})
         if request.url.path == "/v1/rentals" and request.method == "GET":
-            return httpx.Response(200, json={"total": len(self.rentals), "items": self.rentals})
+            rows = self.rentals
+            for key in ("customer_ref", "upstream_order_id"):
+                if key in request.url.params:
+                    rows = [r for r in rows if r["rfq"].get(key) == request.url.params[key]]
+            offset, limit = int(request.url.params.get("offset", 0)), int(request.url.params.get("limit", 100))
+            return httpx.Response(200, json={"query_version": 1, "total": len(rows), "items": rows[offset:offset + limit]})
+        if len(parts) == 4 and parts[2] == "rentals" and request.method == "GET":
+            row = next((r for r in self.rentals if r["id"] == parts[3]), None)
+            return httpx.Response(200, json=row) if row else httpx.Response(404)
         if request.url.path == "/v1/rentals":
             rfq = json.loads(request.content)["rfq"]
             assert request.headers["idempotency-key"] == rfq["rfq_id"]
@@ -670,11 +678,14 @@ async def test_account_key_library(env):
 
 
 async def test_instance_keys_and_end_for_the_owner_only(env):
-    client, fakes, _ = env
+    client, fakes, calls = env
     order = (await buy(client, body(sshPublicKey=None))).json()["orderId"]
     path = f"/api/marketplace/instances/{order}/ssh-keys"
+    calls.clear()
     keys = await client.get(path, headers={"Cookie": "session=buyer"})
     assert keys.json() == {"keys": [], "version": 1, "installed": False}
+    assert not any(r.url.path == "/v1/rentals" for r in calls)
+    assert any(r.url.path == f"/v1/rentals/{order}" for r in calls)
     put = await write(client, "PUT", path, {"keys": [KEY, KEY_B, KEY]})
     assert put.status_code == 200 and put.json()["version"] == 2
     assert [k["comment"] for k in put.json()["keys"]] == ["buyer@laptop", "second@laptop"]

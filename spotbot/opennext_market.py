@@ -416,7 +416,10 @@ class SpotMarket:
         """The tenant's rentals; with `customer`, only that customer's."""
         values, offset = [], 0
         while True:
-            response = await self.bot("GET", "/v1/rentals", params=dict(limit=PAGE, offset=offset))
+            params = dict(limit=PAGE, offset=offset)
+            if customer is not None:
+                params["customer_ref"] = customer
+            response = await self.bot("GET", "/v1/rentals", params=params)
             response.raise_for_status()
             body = response.json()
             values += body["items"]
@@ -428,14 +431,33 @@ class SpotMarket:
         return [r for r in values if r.get("rfq", {}).get("customer_ref") == customer]
 
     async def find(self, user_id, reference):
-        for rental in await self.rentals(customer_ref(user_id)):
+        response = await self.bot("GET", "/v1/rentals", params=dict(
+            customer_ref=customer_ref(user_id), upstream_order_id=reference, limit=1,
+        ))
+        response.raise_for_status()
+        body = response.json()
+        # A rolling upgrade can still reach an older bot that ignores query parameters.
+        # Do not mistake its first tenant rental for a missing idempotent purchase.
+        rows = body["items"] if body.get("query_version") == 1 else await self.rentals(customer_ref(user_id))
+        for rental in rows:
+            if rental.get("rfq", {}).get("customer_ref") != customer_ref(user_id):
+                continue
             if rental["rfq"].get("upstream_order_id") == reference:
                 return rental
         return None
 
     async def owned(self, user_id, rental_id):
-        rows = await self.rentals(customer_ref(user_id))
-        return next((r for r in rows if r["id"] == rental_id), None)
+        from uuid import UUID
+        try:
+            rental_id = str(UUID(rental_id))
+        except ValueError:
+            return None
+        response = await self.bot("GET", f"/v1/rentals/{rental_id}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        row = response.json()
+        return row if row.get("rfq", {}).get("customer_ref") == customer_ref(user_id) else None
 
     async def keys(self, rental_id, keys=None):
         """The rental's customer key set; with `keys`, replace it first."""

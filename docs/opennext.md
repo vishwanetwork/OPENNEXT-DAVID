@@ -210,3 +210,8 @@ Topology for the current hosts. The OpenNEXT container (one web server with the 
 - Run ClamAV (`clamav/clamav`) next to it for `SPOTBOT_OPENNEXT_CLAMD`.
 - Reuse the OpenNEXT `SMTP_*` values for `SPOTBOT_OPENNEXT_SMTP_*`.
 - Mount persistent volumes for `SPOTBOT_OPENNEXT_FILES_DIR`.
+
+Customer instance lists send `customer_ref` to the bot; purchase retries also send
+`upstream_order_id`. Individual instance actions read the rental directly and verify its
+`customer_ref`, rather than loading all tenant rentals. Run a bot with `query_version: 1`
+to enable indexed customer lookups; older bots retain a compatibility fallback.
