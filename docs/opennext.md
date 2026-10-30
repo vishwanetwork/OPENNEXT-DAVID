@@ -215,3 +215,14 @@ Customer instance lists send `customer_ref` to the bot; purchase retries also se
 `upstream_order_id`. Individual instance actions read the rental directly and verify its
 `customer_ref`, rather than loading all tenant rentals. Run a bot with `query_version: 1`
 to enable indexed customer lookups; older bots retain a compatibility fallback.
+
+### Local Autopilot testing
+
+`PYTHONPATH=. .venv/bin/python examples/local_opennext.py --skip-kyb --port 4191`
+starts a loopback-only adapter. Set `SPOTBOT_OPENNEXT_LEGACY_ORIGIN` and
+`SPOTBOT_OPENNEXT_PUBLIC_URL` to local HTTP origins, plus the usual bot/gateway credentials
+and a separate local adapter database. Point the local web server's `API_ORIGIN` at it.
+Only this explicit development entry point can skip Buyer KYB; it projects Approved cases
+in memory without changing saved verification records. Production `opennext-api` remains
+unchanged. Sign-in, CSRF, customer ownership and Credit checks remain enabled. Purchases
+against a real bot can still incur cloud charges; the helper never purchases on startup.
