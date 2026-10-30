@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import pwd
+import shlex
 import shutil
 import socket
 import subprocess
@@ -43,6 +44,177 @@ def install_keys(spec):
     os.chmod(staged, 0o600)
     os.chown(staged, user.pw_uid, user.pw_gid)
     os.replace(staged, path)
+
+
+TASK_ROOT = Path("/var/lib/spotbot/task")
+TASK_LOGS = Path("/var/log/spotbot-task")
+TASK_TAIL = 4096
+
+
+def task_unit(spec):
+    return f"spotbot-task-{int(spec['version'])}-{int(spec['attempt'])}"
+
+
+def unit_state(unit):
+    output = subprocess.run(
+        [
+            "systemctl",
+            "show",
+            unit,
+            "-p",
+            "LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus",
+        ],
+        capture_output=True,
+        timeout=10,
+        check=False,
+    ).stdout.decode()
+    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+
+
+def start_task(spec, user, run_dir, log):
+    """Start the customer's script as a transient systemd unit running as the SSH user."""
+    account = pwd.getpwnam(user)
+    run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chown(run_dir, account.pw_uid, account.pw_gid)
+    env = dict(spec.get("env") or {}, **(spec.get("secrets") or {}))
+    env.update(
+        SPOTBOT_TASK_VERSION=str(spec["version"]),
+        SPOTBOT_ATTEMPT=str(spec["attempt"]),
+        SPOTBOT_RESUMED="1" if spec.get("resumed") else "0",
+    )
+    for name, text in (
+        ("run.sh", spec["script"]),
+        ("env.sh", "".join(f"{k}={shlex.quote(v)}\n" for k, v in env.items())),
+    ):
+        path = run_dir / name
+        path.write_text(text)
+        os.chmod(path, 0o600)
+        os.chown(path, account.pw_uid, account.pw_gid)
+    TASK_LOGS.mkdir(mode=0o755, parents=True, exist_ok=True)
+    # The log may hold whatever the script prints: readable by the SSH user, not by everyone.
+    os.close(os.open(log, os.O_CREAT | os.O_WRONLY, 0o640))
+    os.chmod(log, 0o640)
+    os.chown(log, 0, account.pw_gid)
+    args = [
+        "systemd-run",
+        "--unit",
+        task_unit(spec),
+        "--uid",
+        user,
+        "--gid",
+        str(account.pw_gid),
+        "-p",
+        "WorkingDirectory=" + account.pw_dir,
+        "-p",
+        "RemainAfterExit=yes",
+        "-p",
+        f"StandardOutput=append:{log}",
+        "-p",
+        f"StandardError=append:{log}",
+        "-p",
+        "KillMode=mixed",
+    ]
+    if spec.get("max_minutes"):
+        args += ["-p", f"RuntimeMaxSec={int(spec['max_minutes']) * 60}"]
+    args += [
+        "/bin/bash",
+        "-c",
+        'set -a; . "$0"; set +a; exec /bin/bash "$1"',
+        str(run_dir / "env.sh"),
+        str(run_dir / "run.sh"),
+    ]
+    subprocess.run(args, check=True, timeout=30, capture_output=True)
+
+
+def log_tail(log, secrets):
+    try:
+        with open(log, "rb") as handle:
+            handle.seek(max(0, os.path.getsize(log) - TASK_TAIL))
+            text = handle.read().decode(errors="replace")
+    except OSError:
+        return ""
+    for value in sorted(secrets, key=len, reverse=True):
+        if len(value) >= 4:
+            text = text.replace(value, "[redacted]")
+    return "".join(c for c in text if c in "\n\t" or c >= " ")
+
+
+def now_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def step_task(spec, user, interrupted):
+    """Start, watch or stop one task run; returns its report.
+
+    The run's state lives in files beside its directory, so an agent restart neither starts it
+    twice nor loses its result. A run whose unit vanished (the server rebooted) is stopped.
+    """
+    name = f"{int(spec['version'])}-{int(spec['attempt'])}"
+    TASK_ROOT.mkdir(mode=0o755, parents=True, exist_ok=True)
+    result_path, marker = TASK_ROOT / (name + ".json"), TASK_ROOT / (name + ".started")
+    run_dir, log = TASK_ROOT / name, TASK_LOGS / (name + ".log")
+    unit = task_unit(spec)
+    report = dict(version=spec["version"], attempt=spec["attempt"])
+    if result_path.exists():
+        return dict(report, **json.loads(result_path.read_text()))
+    started = json.loads(marker.read_text()) if marker.exists() else None
+    status = unit_state(unit)
+    if started is None and status.get("LoadState") == "loaded":
+        started = dict(started_at=now_iso())  # Started before the marker was written.
+        marker.write_text(json.dumps(started))
+    result = None
+    if started is None:
+        if spec.get("stop"):
+            result = dict(state="stopped", exit_code=None, started_at=None)
+        else:
+            start_task(spec, user, run_dir, log)
+            started = dict(started_at=now_iso())
+            marker.write_text(json.dumps(started))
+            status = unit_state(unit)
+    if result is None:
+        active, sub = status.get("ActiveState"), status.get("SubState")
+        if spec.get("stop") and active in {"active", "activating"} and sub != "exited":
+            subprocess.run(["systemctl", "stop", unit], timeout=120, check=False)
+            result = dict(state="stopped", exit_code=None)
+        elif interrupted and not started.get("interrupted") and sub == "running":
+            # The two-minute Spot notice: let the task checkpoint before the server goes.
+            subprocess.run(["systemctl", "kill", "--signal=SIGTERM", unit], timeout=10, check=False)
+            started["interrupted"] = True
+            marker.write_text(json.dumps(started))
+        elif status.get("LoadState") != "loaded":
+            result = dict(
+                state="interrupted" if started.get("interrupted") else "stopped", exit_code=None
+            )
+        elif (active == "active" and sub == "exited") or active == "failed":
+            code = int(status.get("ExecMainStatus") or 0)
+            exited = status.get("ExecMainCode") == "1"
+            succeeded = active == "active" and exited and code == 0
+            result = dict(
+                state="interrupted"
+                if started.get("interrupted")
+                else "succeeded"
+                if succeeded
+                else "failed",
+                exit_code=code if exited else 128 + code,
+            )
+        if result is None:
+            return dict(
+                report,
+                state="running",
+                exit_code=None,
+                started_at=started["started_at"],
+                log_tail=log_tail(log, (spec.get("secrets") or {}).values()),
+            )
+    result.setdefault("started_at", started and started["started_at"])
+    result.update(
+        finished_at=now_iso(), log_tail=log_tail(log, (spec.get("secrets") or {}).values())
+    )
+    result_path.write_text(json.dumps(result))
+    try:
+        (run_dir / "env.sh").unlink()
+    except OSError:
+        pass
+    return dict(report, **result)
 
 
 def metadata(path):
@@ -219,6 +391,7 @@ def run():
     frozen = None
     thawed = None
     keys_version = None
+    task_spec, task_user, task_report = None, "ubuntu", None
     last_report = 0.0
     opener = urllib.request.build_opener(NoRedirect)
     while True:
@@ -243,6 +416,7 @@ def run():
                 report["frozen_command"] = frozen[0] if frozen else None
                 report["thawed_command"] = thawed
                 report["ssh_keys_version"] = keys_version
+                report["task"] = task_report
                 request = urllib.request.Request(
                     config["url"] + "/v1/agents/report",
                     data=json.dumps(report).encode(),
@@ -264,6 +438,16 @@ def run():
                         install_keys(keys)
                         keys_version = keys["version"]
                         last_report = 0.0
+                    if instructions.get("task"):
+                        task_spec = instructions["task"]
+                        task_user = keys["user"] if keys else "ubuntu"
+                    # A Spot warning moves the rental to recovery, which stops the bot sending
+                    # the task; the run it already started must still get its SIGTERM.
+                    if task_spec and (instructions.get("task") or notice):
+                        previous = (task_report or {}).get("state")
+                        task_report = step_task(task_spec, task_user, notice)
+                        if previous != task_report["state"]:
+                            last_report = 0.0
                 identity = instructions.get("flush_command")
                 if identity and identity != flushed:
                     if not frozen:  # A frozen filesystem is already synced; sync would block.

@@ -17,6 +17,8 @@ keeps every other OpenNEXT feature working.
 | GET    | `/api/billing/account`                  | Existing Credit less open Spot charges (`spotCharges`)        |
 | GET/PUT/POST | `/api/marketplace/instances/{id}/ssh-keys` | The customer keys installed on one of their Spot instances |
 | POST   | `/api/marketplace/instances/{id}/end`   | End one of the customer's Spot instances (`{"confirmation":"END"}`) |
+| GET/PUT/POST/DELETE | `/api/marketplace/instances/{id}/autopilot` | The task the server runs once delivered, and what happens after |
+| POST   | `/api/marketplace/instances/{id}/autopilot/stop` | Stop the running task; the server keeps running |
 | GET/POST | `/api/account/ssh-keys`               | The account's saved SSH public keys (`{label, publicKey}` to add) |
 | DELETE | `/api/account/ssh-keys/{id}`            | Remove a saved key (instances keep keys already installed)    |
 | any    | `/api/*` (everything else)              | Passed to `SPOTBOT_OPENNEXT_LEGACY_ORIGIN` unchanged           |
@@ -118,6 +120,15 @@ account; `_PORT` default 587 with required STARTTLS, `_SECURE=true` or port 465 
 instance through the bot (`PUT /v1/rentals/{id}/ssh-keys`); the guest agent installs them for
 `ubuntu` within about 15 seconds, also on replacement servers, and `installed` turns true once
 the running server has them. No administrator SSH key is involved.
+
+**Autopilot.** `PUT` (or `POST`) `/api/marketplace/instances/{id}/autopilot` with `{script, env,
+secrets, onSuccess, onFailure, onReplacement, maxMinutes}` sets the bot's managed task
+(`docs/rentals.md`); it can change until its first run starts, then only be stopped. Secrets are
+write-only: answers carry `secretNames`, and a null value keeps a stored secret. Instance rows
+gain `autopilot` (state, choices, outcome) and `endedBy: "autopilot"` when the task ended the
+server. The notifier emails the outcome with the exit code, what happened to the server and the
+last lines of the log. The guest agent runs the task on the customer's own server only; the
+adapter and the bot never execute customer code.
 
 **Buyer KYB, bank transfers and payment review.** These back the Terminal's and the Console's
 service ports (OPENNEXT-DAVID `docs/BUYER_KYB_HANDOFF.md`, `docs/PAYMENT_OPERATIONS_HANDOFF.md`).

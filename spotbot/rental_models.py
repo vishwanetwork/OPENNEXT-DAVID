@@ -178,6 +178,70 @@ class SshKeysRequest(RulesModel):
         return list(dict.fromkeys(keys))
 
 
+TASK_NAME = r"^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+
+
+def task_value(value):
+    if len(value) > 4096 or "\0" in value:
+        raise ValueError("invalid_task_value")
+    return value
+
+
+class TaskRequest(RulesModel):
+    """What the guest agent runs once the server is delivered, and what happens after.
+
+    `script` runs with bash as the rental's SSH user in its home directory. `secrets` are
+    stored encrypted and never returned; a null value keeps the stored secret of that name.
+    """
+
+    script: str = Field(min_length=1, max_length=65536)
+    env: dict[str, str] = Field(default_factory=dict, max_length=50)
+    secrets: dict[str, str | None] = Field(default_factory=dict, max_length=20)
+    on_success: Literal["end", "keep"] = "end"
+    on_failure: Literal["end", "keep"]
+    on_replacement: Literal["rerun", "none"] = "rerun"
+    max_minutes: int | None = Field(None, ge=1, le=43200)
+
+    @field_validator("script")
+    @classmethod
+    def script_text(cls, value):
+        if "\0" in value:
+            raise ValueError("invalid_task_script")
+        return value
+
+    @field_validator("env", "secrets")
+    @classmethod
+    def names(cls, values):
+        import re
+
+        for name, value in values.items():
+            if not re.fullmatch(TASK_NAME, name) or name.upper().startswith("SPOTBOT_"):
+                raise ValueError("invalid_task_variable_name")
+            if value is not None:
+                task_value(value)
+        if any(v == "" for v in values.values()):
+            raise ValueError("invalid_task_value")
+        return values
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if set(self.env) & set(self.secrets):
+            raise ValueError("task_variable_defined_twice")
+        return self
+
+
+class TaskReport(RulesModel):
+    """The agent's view of one task run: `attempt` is the generation it runs on."""
+
+    version: int = Field(ge=1)
+    attempt: int = Field(ge=1)
+    state: Literal["running", "succeeded", "failed", "stopped", "interrupted"]
+    exit_code: int | None = Field(None, ge=-1, le=1000)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    log_tail: str = Field("", max_length=8192)
+
+
 class RevisionRequest(RulesModel):
     expected_version: int = Field(ge=1)
     rfq: RFQ
@@ -216,3 +280,5 @@ class AgentReport(RulesModel):
     canaries: dict[str, str] = Field(default_factory=dict, max_length=128)
     # Version of the managed customer key set the agent last installed.
     ssh_keys_version: int | None = Field(None, ge=0)
+    # The managed task run on this server, if any.
+    task: TaskReport | None = None

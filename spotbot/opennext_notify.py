@@ -45,6 +45,17 @@ REFUND_NOTICES = {"not_delivered", "rental_not_created"}
 logger = logging.getLogger(__name__)
 
 
+TASK_NOTICES = {
+    "succeeded": ("Your task on {name} finished", "The autopilot task on your {name} server finished."),
+    "failed": ("Your task on {name} failed", "The autopilot task on your {name} server failed."),
+    "interrupted": (
+        "Your task on {name} was not rerun",
+        "AWS replaced your {name} server while the autopilot task ran. As you chose, the task "
+        "was not started again on the replacement.",
+    ),
+}
+
+
 def money(cents):
     return f"${cents / 100:.2f}"
 
@@ -115,6 +126,25 @@ def due(rental, charge, now, ssh=None):
                     "Copy any results you need before then.",
                 ],
             )
+        )
+    outcome = (rental.get("task") or {}).get("outcome")
+    if outcome and outcome["state"] in TASK_NOTICES:
+        subject, first = TASK_NOTICES[outcome["state"]]
+        lines = [first.format(name=name)]
+        if outcome.get("exit_code") is not None:
+            lines.append(f"Exit code: {outcome['exit_code']}.")
+        if outcome["action"] == "end":
+            lines.append("As you chose, the server is ending; billing stops when it ends.")
+        elif outcome["action"] == "keep":
+            lines.append(
+                f"As you chose, the server keeps running until {when(rfq['expires_at'])} or "
+                "until you end it. You are billed per minute while it runs."
+            )
+        tail = (outcome.get("log_tail") or "").strip()
+        if tail:
+            lines += ["Last lines of the task log:", tail[-1500:]]
+        result.append(
+            (f"task-{outcome['version']}-{outcome['attempt']}", subject.format(name=name), lines)
         )
     if charge["state"] == "billed":
         minutes = math.ceil(charge["service_seconds"] / 60)

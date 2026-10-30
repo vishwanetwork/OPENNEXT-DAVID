@@ -81,6 +81,7 @@ CATALOG = [
 class Fakes:
     def __init__(self):
         self.rentals, self.created, self.bot_up = [], [], True
+        self.tasks = []
         self.create = "ok"  # "ok", "reject" (bot refuses) or "lost" (answer never arrives)
         # Credit in the existing API: approved top-ups and promotional Credit per account.
         self.credit = {"U1": (0.50, 1.00), "U2": (100.0, 0.0)}
@@ -132,6 +133,22 @@ class Fakes:
             groups = [{"provider": "aws", "offers": CATALOG}]
             return httpx.Response(200, json={"total": len(CATALOG), "groups": groups})
         parts = request.url.path.split("/")
+        if len(parts) >= 5 and parts[4] == "task":
+            row = next(r for r in self.rentals if r["id"] == parts[3])
+            if request.method == "PUT":
+                if row.get("task", {}).get("state") == "running":
+                    return httpx.Response(409, json={"detail": "task_started"})
+                body = json.loads(request.content)
+                self.tasks.append(body)
+                row["task"] = dict(
+                    state="waiting", on_success=body["on_success"], on_failure=body["on_failure"]
+                )
+                row["task_detail"] = dict(body, version=1, secret_names=sorted(body["secrets"]))
+            summary = row.get("task")
+            task = row.get("task_detail")
+            if task:
+                task = {k: v for k, v in task.items() if k != "secrets"}
+            return httpx.Response(200, json={"task": task, "summary": summary, "log_tail": None})
         if len(parts) == 5 and parts[4] in {"ssh-keys", "release"}:
             row = next(r for r in self.rentals if r["id"] == parts[3])
             if parts[4] == "release":
@@ -450,6 +467,8 @@ async def test_workspace_adds_the_customers_own_rentals(env):
             "releasedCents": None,
             "startedAt": "2026-10-28T01:06:00+00:00",
         },
+        "autopilot": None,
+        "endedBy": None,
     }
     assert billing["usedSeconds"] > 14 * 60
     theirs = await client.get("/api/marketplace/me", headers={"Cookie": "session=other"})
@@ -674,6 +693,67 @@ async def test_instance_keys_and_end_for_the_owner_only(env):
     assert ended.json()["instance"]["id"] == order and ended.json()["instance"]["status"] == "ended"
     late = await write(client, "POST", path, {"keys": [KEY]})  # POST is accepted as PUT.
     assert late.status_code == 409
+
+
+async def test_autopilot_for_the_owner_only(env):
+    client, fakes, _ = env
+    order = (await buy(client, body())).json()["orderId"]
+    path = f"/api/marketplace/instances/{order}/autopilot"
+    task = {
+        "script": "python train.py",
+        "env": {"EPOCHS": "3"},
+        "secrets": {"HF_TOKEN": "hf_value"},
+        "onFailure": "keep",
+        "maxMinutes": 90,
+    }
+    assert (await client.get(path, headers={"Cookie": "session=other"})).status_code == 404
+    assert (await write(client, "PUT", path, task, cookie="session=other", csrf="csrf-2")).status_code == 404
+    assert (await write(client, "PUT", path, dict(task, onFailure=None))).status_code == 400
+    assert (await write(client, "PUT", path, dict(task, env={"1X": "y"}))).status_code == 400
+    saved = await write(client, "PUT", path, task)
+    assert saved.status_code == 200 and "hf_value" not in saved.text
+    assert saved.json()["task"]["secretNames"] == ["HF_TOKEN"]
+    assert fakes.tasks[-1] == {
+        "script": "python train.py",
+        "env": {"EPOCHS": "3"},
+        "secrets": {"HF_TOKEN": "hf_value"},
+        "on_success": "end",
+        "on_failure": "keep",
+        "on_replacement": "rerun",
+        "max_minutes": 90,
+    }
+    me = await client.get("/api/marketplace/me", headers={"Cookie": "session=buyer"})
+    mine = next(i for i in me.json()["instances"] if i["id"] == order)
+    assert mine["autopilot"]["state"] == "waiting" and mine["autopilot"]["onFailure"] == "keep"
+    fakes.rentals[0]["task"]["state"] = "running"
+    late = await write(client, "PUT", path, task)
+    assert late.status_code == 409 and late.json()["code"] == "TASK_STARTED"
+
+
+async def test_notifier_reports_the_task_outcome(env):
+    from spotbot.opennext_notify import due
+
+    client, fakes, _ = env
+    assert (await buy(client, body())).status_code == 200
+    rental = dict(fakes.rentals[0], state="ACTIVE", service_intervals=[{"start": "x", "end": None}])
+    rental["task"] = {
+        "state": "failed",
+        "outcome": {
+            "version": 1,
+            "attempt": 1,
+            "state": "failed",
+            "exit_code": 2,
+            "action": "keep",
+            "log_tail": "Traceback\nCUDA out of memory\n",
+        },
+    }
+    charge = {"state": "charged"}
+    now = datetime.fromisoformat("2026-10-28T01:20:00+00:00")
+    notices = {key: (subject, lines) for key, subject, lines in due(rental, charge, now)}
+    subject, lines = notices["task-1-1"]
+    assert subject == "Your task on 1 × L4 failed"
+    assert "Exit code: 2." in lines and lines[-1].endswith("CUDA out of memory")
+    assert any("keeps running" in line for line in lines)
 
 
 class Outbox:

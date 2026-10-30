@@ -18,7 +18,9 @@ from spotbot.rental_models import (
     RevisionRequest,
     RulesModel,
     SshKeysRequest,
+    TaskRequest,
 )
+from spotbot.rental_tasks import public
 from spotbot.rentals import identity
 
 
@@ -34,7 +36,7 @@ class DeliveryPrincipal:
 
 def delivery_view(row, principal):
     if not principal.gateway:
-        return row
+        return public(row)
     return {
         "authorization_scope": "gateway_delivery",
         **{
@@ -130,7 +132,7 @@ def install(app, service):
         idempotency_key: Annotated[str, Header(min_length=1, max_length=200)],
     ):
         value, created = guard(lambda: engine.create(request, owner, idempotency_key))
-        return {"created": created, "rental": value}
+        return {"created": created, "rental": public(value)}
 
     @router.get("")
     def listing(
@@ -141,7 +143,7 @@ def install(app, service):
         values = sorted(
             engine.db.list("rental", owner), key=lambda d: d["created_at"], reverse=True
         )
-        return {"total": len(values), "items": values[offset : offset + limit]}
+        return {"total": len(values), "items": [public(v) for v in values[offset : offset + limit]]}
 
     @router.get("/{rental_id}")
     def get(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):
@@ -188,15 +190,35 @@ def install(app, service):
     ):
         return await async_guard(lambda: engine.set_ssh_keys(rental_id, owner, request.keys))
 
+    @router.get("/{rental_id}/task")
+    def get_task(rental_id: str, owner: Annotated[str, Depends(tenant)]):
+        return engine.task(guard(lambda: engine.get(rental_id, owner)))
+
+    @router.put("/{rental_id}/task")
+    async def put_task(
+        rental_id: str, request: TaskRequest, owner: Annotated[str, Depends(tenant)]
+    ):
+        return await async_guard(lambda: engine.set_task(rental_id, owner, request))
+
+    @router.delete("/{rental_id}/task")
+    async def delete_task(rental_id: str, owner: Annotated[str, Depends(tenant)]):
+        return await async_guard(lambda: engine.set_task(rental_id, owner, None))
+
+    @router.post("/{rental_id}/task/stop")
+    async def stop_task(rental_id: str, owner: Annotated[str, Depends(tenant)]):
+        return await async_guard(lambda: engine.stop_task(rental_id, owner))
+
     @router.post("/{rental_id}/release")
     async def release(rental_id: str, owner: Annotated[str, Depends(tenant)]):
-        return await async_guard(lambda: engine.release(rental_id, owner))
+        return public(await async_guard(lambda: engine.release(rental_id, owner)))
 
     @router.post("/{rental_id}/recover")
     async def recover(
         rental_id: str, request: RecoveryRequest, owner: Annotated[str, Depends(tenant)]
     ):
-        return await async_guard(lambda: engine.recover(rental_id, owner, request.backup_id))
+        return public(
+            await async_guard(lambda: engine.recover(rental_id, owner, request.backup_id))
+        )
 
     @router.post("/{rental_id}/gateway-ack")
     async def ack(
@@ -215,20 +237,24 @@ def install(app, service):
     async def revise(
         rental_id: str, request: RevisionRequest, owner: Annotated[str, Depends(tenant)]
     ):
-        return await async_guard(lambda: engine.revise(rental_id, owner, request))
+        return public(await async_guard(lambda: engine.revise(rental_id, owner, request)))
 
     @router.post("/{rental_id}/renew")
     async def renew(
         rental_id: str, request: RevisionRequest, owner: Annotated[str, Depends(tenant)]
     ):
-        return await async_guard(lambda: engine.revise(rental_id, owner, request, renewal=True))
+        return public(
+            await async_guard(lambda: engine.revise(rental_id, owner, request, renewal=True))
+        )
 
     @router.post("/{rental_id}/reconcile")
     async def reconcile(
         rental_id: str, request: Reconciliation, owner: Annotated[str, Depends(tenant)]
     ):
-        return await async_guard(
-            lambda: engine.reconcile(rental_id, owner, confirm_absent=request.confirm_absent)
+        return public(
+            await async_guard(
+                lambda: engine.reconcile(rental_id, owner, confirm_absent=request.confirm_absent)
+            )
         )
 
     @router.post("/{rental_id}/backups")

@@ -35,6 +35,7 @@ from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
+from spotbot.opennext_autopilot import install as install_autopilot
 from spotbot.opennext_files import Vault
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
@@ -742,6 +743,10 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         task.add_done_callback(background.discard)
         return task
 
+    install_autopilot(
+        app,
+        SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental),
+    )
     install_operations(
         app,
         SimpleNamespace(

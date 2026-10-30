@@ -1,6 +1,8 @@
 # OpenNEXT Spot autopilot (design)
 
-Status: P0 (usage billing and email notices) is implemented in the adapter and bot; P1 and later are proposals.
+Status: P0 (usage billing and email notices) and P1 (managed launch) are implemented in the
+adapter, bot and guest agent; P2 and later are proposals. "As built" notes under P1 record where
+the implementation differs from the proposal.
 
 A Spot purchase waits up to 60 minutes for capacity, and the customer has no way to learn
 when it arrives. A server that arrives at night runs idle until its paid hours expire. This
@@ -62,8 +64,9 @@ instruction to the same channel.
 ### Risks
 
 - Revenue per order falls when customers end early. The cost estimate already loses money at
-  Spot price + 5%. The fixed per-order cost (7-day disk retention, about $1.84) must be
-  covered by a minimum charge or a per-order fee, or by shorter retention for finished orders.
+  Spot price + 5%. The largest fixed per-order cost was the 100 GiB root volume kept for the
+  7-day retention (about $1.84). Closed rentals now delete their volumes as soon as the final
+  snapshot is available and keep only the snapshot, which is billed for the blocks written.
 - Settlement currently runs only when the customer opens the Terminal (`/me`). The notifier
   loop (P0.2) reconciles every customer with open charges, so settlement no longer depends on
   page visits.
@@ -170,6 +173,28 @@ billing continues for that time.
   encrypted at rest with `SPOTBOT_OPENNEXT_SECRET_KEY` and deleted when the rental closes.
 - Log tails come from customer code. They are shown as plain text and never interpreted.
 
+### As built
+
+- The Terminal sets the task in Manage → Autopilot, not at checkout. Every purchase waits for
+  capacity first, and the task can be set or changed until its first run starts, also on an
+  order that is already running. Checkout and Direct Pay stay unchanged.
+- The bot's routes are `GET/PUT/DELETE /v1/rentals/{id}/task` and `POST …/task/stop`; the key is
+  `SPOTBOT_RENTAL_TASK_KEY`, held by the bot (the adapter never stores task secrets).
+- The variables file is `/var/lib/spotbot/task/<version>-<attempt>/env.sh` (0600, owned by the
+  SSH user), sourced by the unit's command line and deleted when the run finishes. The log is
+  `/var/log/spotbot-task/<version>-<attempt>.log` (0640, root and the SSH user's group).
+- A run that ends while the server is being replaced or ended is recorded as `interrupted` and
+  never triggers the end-or-keep policy. With `on_replacement=none` its outcome becomes
+  `interrupted` once the replacement is running.
+- A run whose unit disappeared (the server rebooted) is `stopped`: the policy never ends a
+  server because of a reboot.
+- A cost cap for `keep` is not built: `keep` lasts at most until the order's paid time ends,
+  which the customer already chose at purchase.
+- Docker containers started with `-d` outlive Stop and the time limit; scripts should run them in
+  the foreground (`docker run --rm …`), so SIGTERM reaches them.
+- Verified on a real systemd host: success, failure, Stop, SIGTERM before a Spot interruption,
+  the time limit, variable quoting, secret redaction and restart idempotency.
+
 ## Later
 
 - **P2, idle end.** Add GPU utilization to the agent report (`nvidia-smi
@@ -183,8 +208,8 @@ billing continues for that time.
 
 1. ~~Billing granularity and minimum~~ Decided: per minute, with a 1-hour minimum once a
    server was delivered.
-2. Retention for orders ended by autopilot: keep 7 days, or reduce to 24 hours to cut the
-   per-order cost.
+2. ~~Retention for orders ended by autopilot~~ Decided: every closed order keeps only its final
+   snapshot for 7 days; its volumes are deleted once that snapshot is available.
 3. P0 channels: email only, or email plus customer webhook.
 4. Whether a customer may still choose `keep` when the task fails and nobody is watching. A
    "keep for at most N hours" option would bound the cost.
