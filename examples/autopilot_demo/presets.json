@@ -1,0 +1,143 @@
+{
+  "script_file": "script.sh",
+  "presets": {
+    "01-success-inspect": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "01-success-inspect",
+        "DEMO_MODE": "success",
+        "DEMO_STEPS": "12"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 5
+    },
+    "02-success-end": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "02-success-end",
+        "DEMO_MODE": "success",
+        "DEMO_STEPS": "6"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "end",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 5
+    },
+    "03-failure-inspect": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "03-failure-inspect",
+        "DEMO_MODE": "failure",
+        "DEMO_STEPS": "12",
+        "DEMO_FAIL_AT": "4"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 5
+    },
+    "04-failure-end": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "04-failure-end",
+        "DEMO_MODE": "failure",
+        "DEMO_STEPS": "12",
+        "DEMO_FAIL_AT": "4"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "end",
+      "onReplacement": "rerun",
+      "maxMinutes": 5
+    },
+    "05-timeout": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "05-timeout",
+        "DEMO_MODE": "long",
+        "DEMO_STEPS": "600"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 1
+    },
+    "06-stop": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "06-stop",
+        "DEMO_MODE": "long",
+        "DEMO_STEPS": "600"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 10
+    },
+    "07-replacement-rerun": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "07-replacement-rerun",
+        "DEMO_MODE": "long",
+        "DEMO_STEPS": "240"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "rerun",
+      "maxMinutes": 30
+    },
+    "08-replacement-no-rerun": {
+      "env": {
+        "DEMO_REQUIRE_GPU": "1",
+        "DEMO_GPU_WORK": "1",
+        "DEMO_STEP_SECONDS": "5",
+        "DEMO_NAME": "08-replacement-no-rerun",
+        "DEMO_MODE": "long",
+        "DEMO_STEPS": "240"
+      },
+      "secrets": {
+        "DEMO_SECRET": "demo-only-not-a-real-credential"
+      },
+      "onSuccess": "keep",
+      "onFailure": "keep",
+      "onReplacement": "none",
+      "maxMinutes": 30
+    }
+  }
+}
