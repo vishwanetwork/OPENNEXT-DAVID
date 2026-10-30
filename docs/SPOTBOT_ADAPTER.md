@@ -32,17 +32,19 @@ the data volume (`/app/.opennext-data/spotbot`, `/app/.opennext-data/clamav`). W
 5. Add these variables to the `opennext-homepage` container (1Panel → Containers → edit), then
    restart it:
 
-   | Variable                                                             | Value                                                  |
-   | -------------------------------------------------------------------- | ------------------------------------------------------ |
-   | `OPENNEXT_ADAPTER`                                                   | `1`                                                    |
-   | `SPOTBOT_API_KEY`                                                    | the bot API key                                        |
-   | `SPOTBOT_OPENNEXT_BOT_URL`                                           | the bot API, e.g. `https://spotbot.test.vishwalab.com` |
-   | `SPOTBOT_OPENNEXT_GATEWAY_URL`, `SPOTBOT_OPENNEXT_GATEWAY_TOKEN`     | the gateway API and its API key (SSH entry points)     |
-   | `SPOTBOT_OPENNEXT_FILES_KEY`                                         | base64 of 32 random bytes: `openssl rand -base64 32`   |
-   | `SPOTBOT_OPENNEXT_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FROM` | the same account as `SMTP_*`                           |
-   | `SPOTBOT_OPENNEXT_PUBLIC_URL`                                        | `https://terminal.opennextlab.ai`                      |
+   | Variable                                                             | Value                                                     |
+   | -------------------------------------------------------------------- | --------------------------------------------------------- |
+   | `OPENNEXT_ADAPTER`                                                   | `1`                                                       |
+   | `SPOTBOT_API_KEY`                                                    | the bot API key                                           |
+   | `SPOTBOT_OPENNEXT_BOT_URL`                                           | the bot API, e.g. `https://spotbot.test.vishwalab.com`    |
+   | `SPOTBOT_OPENNEXT_GATEWAY_URL`, `SPOTBOT_OPENNEXT_GATEWAY_TOKEN`     | the gateway API and its API key (SSH entry points)        |
+   | `SPOTBOT_OPENNEXT_FILES_KEY`                                         | base64 of 32 random bytes: `openssl rand -base64 32`      |
+   | `SPOTBOT_OPENNEXT_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FROM` | the same account as `SMTP_*`                              |
+   | `SPOTBOT_OPENNEXT_PUBLIC_URL`                                        | `https://terminal.opennextlab.ai`                         |
+   | `SPOTBOT_RENTAL_REGIONS`                                             | the bot's rental Regions: `us-west-2,us-east-1,us-east-2` |
 
-   Keep a copy of `SPOTBOT_OPENNEXT_FILES_KEY` outside the server: without it, the stored KYB
+   Without `SPOTBOT_RENTAL_REGIONS` the market lists only the default Region's offers. Keep a
+   copy of `SPOTBOT_OPENNEXT_FILES_KEY` outside the server: without it, the stored KYB
    documents cannot be read.
 
 6. Check the result:
