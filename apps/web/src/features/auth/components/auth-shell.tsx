@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { Brand } from '@/components/ui/brand';
 import { ArrowIcon } from '@/components/icons';
 import '../auth.css';
@@ -46,10 +47,10 @@ export function AuthShell({ onBack, children }: { onBack: () => void; children: 
 
 export function SubmitButton({ children, disabled }: { children: ReactNode; disabled?: boolean }) {
   return (
-    <button className="onx-auth-submit" type="submit" disabled={disabled}>
+    <AsyncButton className="onx-auth-submit" type="submit" busy={disabled} disabled={disabled}>
       <span>{children}</span>
       <ArrowIcon />
-    </button>
+    </AsyncButton>
   );
 }
 

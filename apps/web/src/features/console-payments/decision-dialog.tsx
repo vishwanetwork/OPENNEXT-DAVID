@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import { describeError, isConflict, isUnauthorized } from '@/lib/api/errors';
@@ -164,9 +165,9 @@ export function PaymentDecisionDialog({
           <button type="button" className="btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button type="submit" className="btn primary" disabled={busy}>
+          <AsyncButton busy={busy} type="submit" className="btn primary" disabled={busy}>
             {busy ? 'Saving…' : fail ? 'Send' : record.kind === 'topup' ? 'Add Credit' : 'Confirm'}
-          </button>
+          </AsyncButton>
         </footer>
       </form>
     </Dialog>

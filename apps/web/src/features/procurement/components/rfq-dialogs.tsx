@@ -58,6 +58,7 @@ export function AcceptReview({ r, q }: { r: OwnedRfq; q: Quote | undefined }) {
           Back to quotes
         </PBtn>
         <PBtn
+          busy={busy}
           primary
           data-act="proc-accept-confirm"
           data-id={r.id}

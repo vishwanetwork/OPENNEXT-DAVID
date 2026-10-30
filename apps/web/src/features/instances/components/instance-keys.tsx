@@ -1,9 +1,11 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type ReactNode } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useKeyLibrary, validatePublicKey } from '@/features/account';
 import { useInstanceKeys, useSetInstanceKeys } from '../hooks';
+import { AsyncFeedback } from '@/components/ui/async-feedback';
 
 /** Two keys are the same when their type and material match; comments may differ. */
 const material = (key: string) => key.trim().split(/\s+/).slice(0, 2).join(' ');
@@ -28,7 +30,7 @@ export function InstanceKeys({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (query.isPending) return <p className="form-note">Loading the keys on this instance…</p>;
+  if (query.isPending) return <AsyncFeedback>Loading the keys on this instance…</AsyncFeedback>;
   if (query.error || !query.data) return <>{fallback}</>;
   const keys = query.data.keys;
   const installed = new Set(keys.map((k) => material(k.publicKey)));
@@ -65,6 +67,7 @@ export function InstanceKeys({
 
   return (
     <div className="instance-keys" data-instance-keys>
+      {busy ? <AsyncFeedback>Updating SSH keys…</AsyncFeedback> : null}
       <p className="form-note instance-access-installation" role="status">
         {ended
           ? 'This instance has ended. Its keys can no longer change.'
@@ -82,7 +85,8 @@ export function InstanceKeys({
                 <strong>{k.comment || 'SSH key'}</strong>
                 <small>{k.fingerprint}</small>
               </div>
-              <button
+              <AsyncButton
+                busy={busy}
                 type="button"
                 className="btn secondary small"
                 disabled={busy || ended}
@@ -94,7 +98,7 @@ export function InstanceKeys({
                 }
               >
                 Remove
-              </button>
+              </AsyncButton>
             </li>
           ))}
         </ul>
@@ -109,14 +113,15 @@ export function InstanceKeys({
                     <strong>{k.label}</strong>
                     <small>{k.fingerprint}</small>
                   </div>
-                  <button
+                  <AsyncButton
+                    busy={busy}
                     type="button"
                     className="btn secondary small"
                     disabled={busy}
                     onClick={() => void add(k.publicKey)}
                   >
                     Add to instance
-                  </button>
+                  </AsyncButton>
                 </li>
               ))}
             </ul>
@@ -135,14 +140,15 @@ export function InstanceKeys({
               onChange={(event) => setText(event.target.value)}
             />
           </label>
-          <button
+          <AsyncButton
+            busy={busy}
             type="button"
             className="btn small"
             disabled={busy || !text.trim()}
             onClick={() => void add(text)}
           >
             Add to instance
-          </button>
+          </AsyncButton>
         </>
       ) : null}
       {error ? (

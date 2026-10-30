@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import './pricing-admin.css';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
@@ -132,14 +133,15 @@ export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
           <button type="button" onClick={() => void refresh()}>
             ↻ Refresh
           </button>
-          <button
+          <AsyncButton
+            busy={busy === 'all'}
             type="button"
             className="pc-primary"
             disabled={!access.mutable || busy === 'all' || blocked}
             onClick={() => void syncAll()}
           >
             Run enabled sources
-          </button>
+          </AsyncButton>
         </div>
       </div>
       <div

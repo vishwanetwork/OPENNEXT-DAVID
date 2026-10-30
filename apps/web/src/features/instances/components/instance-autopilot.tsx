@@ -4,6 +4,8 @@ import { useState, type FormEvent } from 'react';
 import type { InstanceAutopilotResponse, InstanceAutopilotStatus } from '@opennext/contracts';
 import { useToast } from '@/components/ui/toast';
 import { useAutopilotActions, useInstanceAutopilot } from '../hooks';
+import { AsyncButton, AsyncFeedback } from '@/components/ui/async-feedback';
+import { useTerminal, useWorkspaceStore } from '@/terminal-kit';
 
 type Choice = 'end' | 'keep';
 
@@ -98,6 +100,7 @@ function AutopilotForm({
 }) {
   const actions = useAutopilotActions(id);
   const toast = useToast();
+  const { closeModal } = useTerminal();
   const [script, setScript] = useState(current?.script ?? '');
   const [env, setEnv] = useState(
     Object.entries(current?.env ?? {})
@@ -141,6 +144,8 @@ function AutopilotForm({
       await actions.save(body);
       setSecrets('');
       toast('Autopilot saved. The task starts once the server is running.');
+      const modal = useWorkspaceStore.getState().modal;
+      if (modal?.type === 'instance-autopilot' && modal.id === id) closeModal();
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
@@ -161,127 +166,132 @@ function AutopilotForm({
   };
 
   return (
-    <form className="autopilot-form" onSubmit={(event) => void submit(event)}>
-      <label className="form-label">
-        Script · runs with bash as ubuntu in /home/ubuntu
-        <textarea
-          className="field mono"
-          rows={8}
-          maxLength={65536}
-          spellCheck={false}
-          autoCapitalize="none"
-          placeholder={'git clone https://github.com/you/project && cd project\npython train.py'}
-          value={script}
-          onChange={(event) => setScript(event.target.value)}
+    <form className="autopilot-form" aria-busy={busy} onSubmit={(event) => void submit(event)}>
+      {busy ? <AsyncFeedback>Saving your autopilot changes…</AsyncFeedback> : null}
+      <fieldset disabled={busy} className="async-fieldset">
+        <label className="form-label">
+          Script · runs with bash as ubuntu in /home/ubuntu
+          <textarea
+            className="field mono"
+            rows={8}
+            maxLength={65536}
+            spellCheck={false}
+            autoCapitalize="none"
+            placeholder={'git clone https://github.com/you/project && cd project\npython train.py'}
+            value={script}
+            onChange={(event) => setScript(event.target.value)}
+          />
+        </label>
+        <label className="form-label">
+          Environment variables · one NAME=value per line
+          <textarea
+            className="field mono"
+            rows={3}
+            spellCheck={false}
+            autoCapitalize="none"
+            placeholder="EPOCHS=3"
+            value={env}
+            onChange={(event) => setEnv(event.target.value)}
+          />
+        </label>
+        {current?.secretNames.length ? (
+          <fieldset className="autopilot-choice">
+            <legend className="form-label">Stored secrets</legend>
+            {current.secretNames.map((name) => (
+              <label key={name}>
+                <input
+                  type="checkbox"
+                  checked={kept.includes(name)}
+                  onChange={(event) =>
+                    setKept(event.target.checked ? [...kept, name] : kept.filter((k) => k !== name))
+                  }
+                />{' '}
+                Keep {name}
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
+        <label className="form-label">
+          Secrets · one NAME=value per line; stored encrypted and never shown again
+          <textarea
+            className="field mono"
+            rows={2}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoComplete="off"
+            placeholder="HF_TOKEN=hf_…"
+            value={secrets}
+            onChange={(event) => setSecrets(event.target.value)}
+          />
+        </label>
+        <Choices
+          name="onSuccess"
+          label="When the task succeeds (exit code 0)"
+          value={onSuccess}
+          options={[
+            ['end', 'End the server and stop billing'],
+            ['keep', 'Keep the server running'],
+          ]}
+          onChange={(value) => setOnSuccess(value as Choice)}
         />
-      </label>
-      <label className="form-label">
-        Environment variables · one NAME=value per line
-        <textarea
-          className="field mono"
-          rows={3}
-          spellCheck={false}
-          autoCapitalize="none"
-          placeholder="EPOCHS=3"
-          value={env}
-          onChange={(event) => setEnv(event.target.value)}
+        <Choices
+          name="onFailure"
+          label="When the task fails"
+          value={onFailure}
+          options={[
+            ['end', 'End the server and stop billing'],
+            ['keep', 'Keep the server running so I can investigate'],
+          ]}
+          onChange={(value) => setOnFailure(value as Choice)}
         />
-      </label>
-      {current?.secretNames.length ? (
-        <fieldset className="autopilot-choice">
-          <legend className="form-label">Stored secrets</legend>
-          {current.secretNames.map((name) => (
-            <label key={name}>
-              <input
-                type="checkbox"
-                checked={kept.includes(name)}
-                onChange={(event) =>
-                  setKept(event.target.checked ? [...kept, name] : kept.filter((k) => k !== name))
-                }
-              />{' '}
-              Keep {name}
-            </label>
-          ))}
-        </fieldset>
-      ) : null}
-      <label className="form-label">
-        Secrets · one NAME=value per line; stored encrypted and never shown again
-        <textarea
-          className="field mono"
-          rows={2}
-          spellCheck={false}
-          autoCapitalize="none"
-          autoComplete="off"
-          placeholder="HF_TOKEN=hf_…"
-          value={secrets}
-          onChange={(event) => setSecrets(event.target.value)}
+        <Choices
+          name="onReplacement"
+          label="If AWS replaces the server while the task runs"
+          value={onReplacement}
+          options={[
+            ['rerun', 'Run the task again on the replacement (SPOTBOT_RESUMED=1)'],
+            ['none', 'Do not run it again'],
+          ]}
+          onChange={(value) => setOnReplacement(value as 'rerun' | 'none')}
         />
-      </label>
-      <Choices
-        name="onSuccess"
-        label="When the task succeeds (exit code 0)"
-        value={onSuccess}
-        options={[
-          ['end', 'End the server and stop billing'],
-          ['keep', 'Keep the server running'],
-        ]}
-        onChange={(value) => setOnSuccess(value as Choice)}
-      />
-      <Choices
-        name="onFailure"
-        label="When the task fails"
-        value={onFailure}
-        options={[
-          ['end', 'End the server and stop billing'],
-          ['keep', 'Keep the server running so I can investigate'],
-        ]}
-        onChange={(value) => setOnFailure(value as Choice)}
-      />
-      <Choices
-        name="onReplacement"
-        label="If AWS replaces the server while the task runs"
-        value={onReplacement}
-        options={[
-          ['rerun', 'Run the task again on the replacement (SPOTBOT_RESUMED=1)'],
-          ['none', 'Do not run it again'],
-        ]}
-        onChange={(value) => setOnReplacement(value as 'rerun' | 'none')}
-      />
-      <label className="form-label">
-        Time limit · minutes, optional; a task that runs longer is stopped and counts as failed
-        <input
-          className="field"
-          type="number"
-          min={1}
-          max={43200}
-          step={1}
-          value={minutes}
-          onChange={(event) => setMinutes(event.target.value)}
-        />
-      </label>
-      <p className="form-note">
-        Keeping the server is billed per minute until its paid time ends or you end it. On a Spot
-        interruption the task receives SIGTERM about two minutes before the server goes.
-      </p>
-      {error ? (
-        <p className="onx-spot-purchase-error" role="alert">
-          {error}
+        <label className="form-label">
+          Time limit · minutes, optional; a task that runs longer is stopped and counts as failed
+          <input
+            className="field"
+            type="number"
+            min={1}
+            max={43200}
+            step={1}
+            value={minutes}
+            onChange={(event) => setMinutes(event.target.value)}
+          />
+        </label>
+        <p className="form-note">
+          Keeping the server is billed per minute until its paid time ends or you end it. On a Spot
+          interruption the task receives SIGTERM about two minutes before the server goes.
         </p>
-      ) : null}
+        {error ? (
+          <p className="onx-spot-purchase-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </fieldset>
       <div className="modal-footer">
         {current ? (
-          <button
+          <AsyncButton
             type="button"
             className="btn secondary"
             disabled={busy}
+            busy={busy}
+            busyLabel="Removing…"
             onClick={() => void remove()}
           >
             Remove autopilot
-          </button>
+          </AsyncButton>
         ) : null}
-        <button type="submit" className="btn" disabled={busy}>
+        <AsyncButton type="submit" className="btn" busy={busy} busyLabel="Saving…">
           Save autopilot
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );
@@ -297,9 +307,16 @@ export function InstanceAutopilot({ id, ended }: { id: string; ended: boolean })
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (query.isPending) return <p className="form-note">Loading the autopilot…</p>;
-  if (query.error || !query.data)
-    return <p className="form-note">The autopilot is not available for this instance.</p>;
+  if (query.isPending) return <AsyncFeedback>Loading the autopilot…</AsyncFeedback>;
+  if (!query.data)
+    return (
+      <>
+        <p className="form-note">The autopilot is not available for this instance.</p>
+        <AsyncButton busy={query.isFetching} onClick={() => void query.refetch()}>
+          Try again
+        </AsyncButton>
+      </>
+    );
   const { task, status, logTail } = query.data;
   const state = status?.state ?? 'none';
   const editable = !ended && (state === 'none' || state === 'waiting');
@@ -317,6 +334,13 @@ export function InstanceAutopilot({ id, ended }: { id: string; ended: boolean })
   };
   return (
     <div className="instance-autopilot" data-instance-autopilot>
+      {query.isFetching ? <AsyncFeedback>Updating task status…</AsyncFeedback> : null}
+      {query.isError ? (
+        <p role="alert">
+          Showing the last loaded configuration. Its current status could not be refreshed.
+        </p>
+      ) : null}
+      {busy ? <AsyncFeedback>Sending stop request…</AsyncFeedback> : null}
       <p className="form-note" role="status">
         {ended && state === 'none' ? 'This instance has ended.' : autopilotSummary(status)}
       </p>
@@ -337,14 +361,16 @@ export function InstanceAutopilot({ id, ended }: { id: string; ended: boolean })
       ) : null}
       {(state === 'running' || state === 'interrupted') && !ended && !status?.outcome ? (
         <div className="modal-footer">
-          <button
+          <AsyncButton
             type="button"
             className="btn secondary"
             disabled={busy || status?.stopRequested}
+            busy={busy}
+            busyLabel="Stopping…"
             onClick={() => void stop()}
           >
             Stop task
-          </button>
+          </AsyncButton>
         </div>
       ) : null}
       {error ? (

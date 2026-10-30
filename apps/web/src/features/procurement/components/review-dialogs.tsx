@@ -93,6 +93,7 @@ export function SupplyStatus({ id }: { id: string }) {
       <div className="modal-footer">
         {['Pending', 'Failed'].includes(String(r.agentStatus)) ? (
           <PBtn
+            busy={busy}
             primary
             data-act="proc-agent-request"
             data-id={r.id}
@@ -107,7 +108,12 @@ export function SupplyStatus({ id }: { id: string }) {
             Request installation update
           </PBtn>
         ) : null}
-        <PBtn data-act="proc-refresh" disabled={busy} onClick={() => void run(async () => {})}>
+        <PBtn
+          busy={busy}
+          data-act="proc-refresh"
+          disabled={busy}
+          onClick={() => void run(async () => {})}
+        >
           Refresh status
         </PBtn>
       </div>

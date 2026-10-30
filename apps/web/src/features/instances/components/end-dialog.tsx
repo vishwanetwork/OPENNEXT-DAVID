@@ -9,6 +9,7 @@ import { lifecycle } from '../lifecycle';
 import { endDemo, endExample, localDemo } from '../preview';
 import { IBtn } from './common';
 import { Cell, useInstance } from './instance-shared';
+import { AsyncButton, AsyncFeedback } from '@/components/ui/async-feedback';
 
 const ENDED = [
   'end',
@@ -75,9 +76,9 @@ export function EndDialog({ id, isExample }: { id?: string; isExample: boolean }
         throw new Error(
           'Termination has not been confirmed. The allocation was not marked as ended. Refresh its status or contact operations.',
         );
-      await invalidate();
       closeModal();
       toast('Instance ended. The backend confirmed release.');
+      void invalidate().catch((failure: unknown) => toast((failure as Error).message));
     } catch (err) {
       setError((err as Error).message);
       toast((err as Error).message);
@@ -89,6 +90,9 @@ export function EndDialog({ id, isExample }: { id?: string; isExample: boolean }
   void original;
   return (
     <>
+      {busy ? (
+        <AsyncFeedback>Ending the instance. Waiting for release confirmation…</AsyncFeedback>
+      ) : null}
       <p className="instance-end-warning">
         {life.ended
           ? 'This allocation is no longer active.'
@@ -145,13 +149,15 @@ export function EndDialog({ id, isExample }: { id?: string; isExample: boolean }
             >
               Cancel
             </IBtn>
-            <button
+            <AsyncButton
               type="submit"
               className="btn danger"
               disabled={(!local && !configured) || busy || life.ended}
+              busy={busy}
+              busyLabel="Ending…"
             >
               END instance
-            </button>
+            </AsyncButton>
           </div>
         </form>
       ) : (

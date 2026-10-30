@@ -28,6 +28,12 @@ the data volume (`/app/.opennext-data/spotbot`, `/app/.opennext-data/clamav`). W
    go to Package settings → Manage Actions access, and add `OPENNEXT-DAVID` with Read.
 3. Set the repository variable `SPOTBOT_SOURCE=image` (Settings → Secrets and variables → Actions →
    Variables). From the next deploy, the image bundles the adapter; the site does not change yet.
+   The adapter version is pinned by `ARG SPOTBOT_IMAGE` in `Dockerfile`. Deployment reads that
+   exact default; it never resolves the floating `latest` tag. To select another published
+   version, set the repository variable `SPOTBOT_IMAGE` to the full image name with a 40-character
+   commit tag or a `sha256` digest. Mutable tags and malformed overrides fail the build.
+   Publish the selected bot image before deploying OpenNEXT. Deploy that bot version as well
+   to enable its indexed customer queries; an older bot retains the legacy lookup fallback.
 4. Merge, or run the Build and Deploy workflow, so production runs the bundled image.
 5. Add these variables to the `opennext-homepage` container (1Panel → Containers → edit), then
    restart it:
