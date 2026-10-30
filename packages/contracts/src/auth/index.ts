@@ -6,7 +6,8 @@ export const SessionUser = z.object({
   email: z.string(),
   name: z.string().nullish(),
   company: z.string().nullish(),
-  role: z.enum(['buyer', 'seller']),
+  /** Null until the first onboarding choice (a new account has no role yet). */
+  role: z.enum(['buyer', 'seller']).nullable(),
   onboardingCompleted: z.boolean(),
   promotionalCredit: z.number().default(0),
   promotionalCreditGranted: z.number().default(0),

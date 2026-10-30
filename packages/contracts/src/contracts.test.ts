@@ -35,6 +35,9 @@ describe('auth', () => {
     expect(SessionResponse.parse({ user }).user?.role).toBe('buyer');
     expect(SessionResponse.parse({ user: null }).user).toBeNull();
     expect(SessionResponse.safeParse({ user: { ...user, role: 'broker' } }).success).toBe(false);
+    // A new account has no role until onboarding; its session must still parse.
+    const fresh = { ...user, role: null, onboardingCompleted: false };
+    expect(SessionResponse.parse({ user: fresh }).user?.role).toBeNull();
   });
 });
 
