@@ -64,8 +64,9 @@ instruction to the same channel.
 ### Risks
 
 - Revenue per order falls when customers end early. The cost estimate already loses money at
-  Spot price + 5%. The fixed per-order cost (7-day disk retention, about $1.84) must be
-  covered by a minimum charge or a per-order fee, or by shorter retention for finished orders.
+  Spot price + 5%. The largest fixed per-order cost was the 100 GiB root volume kept for the
+  7-day retention (about $1.84). Closed rentals now delete their volumes as soon as the final
+  snapshot is available and keep only the snapshot, which is billed for the blocks written.
 - Settlement currently runs only when the customer opens the Terminal (`/me`). The notifier
   loop (P0.2) reconciles every customer with open charges, so settlement no longer depends on
   page visits.
@@ -207,8 +208,8 @@ billing continues for that time.
 
 1. ~~Billing granularity and minimum~~ Decided: per minute, with a 1-hour minimum once a
    server was delivered.
-2. Retention for orders ended by autopilot: keep 7 days, or reduce to 24 hours to cut the
-   per-order cost.
+2. ~~Retention for orders ended by autopilot~~ Decided: every closed order keeps only its final
+   snapshot for 7 days; its volumes are deleted once that snapshot is available.
 3. P0 channels: email only, or email plus customer webhook.
 4. Whether a customer may still choose `keep` when the task fails and nobody is watching. A
    "keep for at most N hours" option would bound the cost.

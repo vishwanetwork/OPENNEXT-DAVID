@@ -1018,6 +1018,43 @@ async def test_no_warning_termination_recovers_latest_files(rental_env):
     )
 
 
+async def test_closed_rental_keeps_only_its_final_snapshot(rental_env):
+    """Ending deletes the disks as soon as the final snapshot is available; the snapshot is
+    kept for the retention period."""
+    env = rental_env
+    env.request.rfq.backup.final_retention_seconds = 604800
+    row, _ = env.engine.create(env.request, "tenant-a", "close-keeps-snapshot")
+    row = await deliver(env, row["id"])
+    volumes = {v["volume_id"] for v in env.engine.current(row)["volumes"]}
+    await env.engine.release(row["id"], "tenant-a")
+    for _ in range(6):
+        env.clock.advance(11)
+        await cycle(env, 4)
+        env.cloud.finish_shutdown()
+    row = env.engine.get(row["id"], "tenant-a")
+    assert row["state"] == "CLOSED"
+    final = next(b for b in env.engine.backups(row) if b["final"])
+    assert final["state"] == "AVAILABLE" and env.cloud.images
+    assert volumes <= set(env.cloud.deleted_volumes) and not env.cloud.deleted_snapshots
+    env.clock.advance(604801)
+    await cycle(env, 2)
+    assert env.engine.backups(row)[0]["state"] == "DELETED" and env.cloud.deleted_snapshots
+
+
+async def test_closed_rental_without_a_final_snapshot_keeps_its_disks(rental_env):
+    env = rental_env
+    env.request.rfq.backup.final_retention_seconds = 604800
+    row, _ = env.engine.create(env.request, "tenant-a", "close-without-snapshot")
+    row = await deliver(env, row["id"])
+    env.cloud.snapshot_error = ProviderError("aws_AccessDenied")
+    await env.engine.release(row["id"], "tenant-a")
+    for _ in range(6):
+        env.clock.advance(11)
+        await cycle(env, 4)
+        env.cloud.finish_shutdown()
+    assert not env.cloud.deleted_volumes
+
+
 async def test_failed_final_backup_preserves_source_disks(rental_env):
     env = rental_env
     row, _ = env.engine.create(env.request, "tenant-a", "failed-backup")

@@ -1484,19 +1484,20 @@ class RentalEngine:
                 if not instance or instance["State"]["Name"] == "terminated":
                     gen.update(state="STOPPED", ended_at=timestamp())
                     self.save(gen)
-        # Source volumes are retained until a verified replacement or final retention expiry.
+        # A stopped server's volumes go once its final snapshot is available and either the
+        # rental has closed (the snapshot alone is kept for the retention period) or a verified
+        # replacement runs. Without a final snapshot they stay until retention ends.
         current = self.current(row)
         safe_old = current and current.get("verified_at") and row["state"] == "ACTIVE"
         for gen in self.generations(row):
-            if gen["state"] != "STOPPED" or not (
-                retention_ended or (safe_old and gen["id"] != current["id"])
-            ):
+            if gen["state"] != "STOPPED":
                 continue
             complete = any(
                 b["generation_id"] == gen["id"] and b["final"] and b["state"] == "AVAILABLE"
                 for b in self.backups(row)
             )
-            if not complete and not retention_ended:
+            replaced = safe_old and gen["id"] != current["id"]
+            if not (retention_ended or (complete and (final or replaced))):
                 continue
             for volume in gen.get("volumes", []):
                 if volume["volume_id"] not in gen["deleted_volumes"]:

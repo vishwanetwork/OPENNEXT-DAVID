@@ -350,8 +350,11 @@ application buffers and unflushed GPU/RAM state remain outside the backup.
 ## Expiry, accounting, and cleanup
 
 Expiry and explicit release revoke the connection, stop compute, capture a
-final recovery point, and retain storage for the RFQ retention period. A closed
-rental may still have billable retained storage. Cleanup retries cloud failures
+final recovery point, and retain it for the RFQ retention period. Once the
+final snapshot is available, the stopped server's volumes are deleted, so a
+closed rental keeps only its snapshots. Without an available final snapshot the
+volumes stay until the retention period ends. A closed rental may still have
+billable retained storage. Cleanup retries cloud failures
 and exposes errors instead of treating resource deletion as successful early.
 
 Usage records and `estimated_cost_usd` are conservative operating estimates,
