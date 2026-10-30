@@ -74,7 +74,13 @@ function runClamav() {
   });
   update.on('exit', () => {
     if (stopping) return;
-    run('clamd', 'clamd', ['--config-file', path.join(DOCKER, 'clamd.conf')], {}, { required: false });
+    run(
+      'clamd',
+      'clamd',
+      ['--config-file', path.join(DOCKER, 'clamd.conf')],
+      {},
+      { required: false },
+    );
     run(
       'freshclam',
       'freshclam',

@@ -21,4 +21,5 @@ pnpm test && pnpm lint && pnpm typecheck
 
 Production: one container (`Dockerfile`) on port 4188 behind the existing reverse proxy, with
 `SITE_HOST`, `TERMINAL_HOST`, `ADMIN_HOST` selecting the application per host. See
-`docker-compose.yml` and `.env.example`.
+`docker-compose.yml` and `.env.example`. The same container can also run the SpotOrderBot
+adapter (Spot purchases, Buyer KYB, payments, instance usage); see `docs/SPOTBOT_ADAPTER.md`.
