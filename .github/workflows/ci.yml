@@ -35,6 +35,8 @@ jobs:
         run: pnpm --filter @opennext/contracts test
       - name: Legacy API tests
         run: pnpm test:legacy
+      - name: Adapter image pin tests
+        run: node --test scripts/resolve-spotbot-image.test.cjs
       - name: Build
         run: pnpm --filter @opennext/web build
         env:
