@@ -11,6 +11,7 @@ from fastapi import Request
 from spotbot.models import timestamp, utcnow
 from spotbot.opennext_console_data import (
     LegacySnapshots,
+    credit_payment_rows,
     order_rows,
     page,
     rental_summary,
@@ -156,6 +157,23 @@ class ConsoleBackend:
             ]
             result, next_cursor = page(rows, cursor, limit)
             return dict(orders=result, total=len(rows), nextCursor=next_cursor)
+        if section == "creditPayments":
+            rows = credit_payment_rows(
+                await self.documents("opennext_charge"),
+                await asyncio.to_thread(self.snapshots.users),
+                await self.ops.transfers(),
+            )
+            payment_state = request.query_params.get("paymentState", "all")
+            if payment_state not in {"all", "held", "charged", "billed", "refunded"}:
+                raise OperationError(400, "Invalid Credit payment state.")
+            rows = [
+                r
+                for r in rows
+                if (payment_state == "all" or r["state"] == payment_state)
+                and search.lower() in " ".join([r["id"], r["orderId"], r["email"]]).lower()
+            ]
+            result, next_cursor = page(rows, cursor, limit)
+            return dict(payments=result, total=len(rows), nextCursor=next_cursor)
         if section == "activity":
             rows = await self.activity()
             rows = [
@@ -401,7 +419,7 @@ def install(app, ctx):
             limit: int = 50,
             search: str = "",
             role: str = "",
-            state: str = "processing",
+            state: str = "all",
         ):
             _, failed = await guard(request)
             if failed:
@@ -427,6 +445,7 @@ def install(app, ctx):
     for section, path in [
         ("users", "/api/admin/users"),
         ("orders", "/api/admin/orders"),
+        ("creditPayments", "/api/admin/payments/credit"),
         ("activity", "/api/admin/operations/activity"),
         ("overview", "/api/admin/overview"),
         ("agent", "/api/admin/agent"),

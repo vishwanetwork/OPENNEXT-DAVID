@@ -341,3 +341,104 @@ async def test_additional_source_routes_keep_admin_guard_and_public_price_semant
     assert (
         await client.get("/api/pricing/prices?provider=verda&gpuCount=invalid")
     ).status_code == 400
+
+
+async def test_order_history_defaults_to_all_states_and_credit_history_is_read_only(console):
+    client, backend, _, rentals, *_ = console
+    now = timestamp()
+    rentals.extend(
+        [
+            dict(
+                id="ended-rental",
+                state="CLOSED",
+                created_at=now,
+                rfq=dict(upstream_order_id="credit-order", gpu_model="T4", gpu_count=1),
+            ),
+            dict(
+                id="direct-rental",
+                state="CLOSED",
+                created_at=now,
+                rfq=dict(upstream_order_id="bank-order", gpu_model="H100", gpu_count=1),
+            ),
+        ]
+    )
+    for identity, ref, rental, state, cents in [
+        ("credit-charge", "credit-order", "ended-rental", "billed", 100),
+        ("bank-charge", "bank-order", "direct-rental", "refunded", 200),
+        ("orphan-charge", "orphan-order", None, "refunded", 300),
+    ]:
+        backend.db.save(
+            dict(
+                id=identity,
+                kind="opennext_charge",
+                tenant_id="opennext:u1",
+                reference=ref,
+                rental_id=rental,
+                state=state,
+                cents=cents,
+                hourly_cents=100,
+                billed_cents=27 if state == "billed" else None,
+                released_cents=73 if state == "billed" else 0,
+                email="u1@example.test",
+                created_at=now,
+            )
+        )
+    from spotbot.opennext_ops import TRANSFER
+
+    backend.db.save(
+        dict(
+            id="bank-transfer",
+            kind=TRANSFER,
+            tenant_id="opennext:u1",
+            purpose="order",
+            order_reference="bank-order",
+            amount_cents=200,
+            status="Confirmed",
+            created_at=now,
+            email="u1@example.test",
+        )
+    )
+    rentals.append(
+        dict(
+            id="unlinked-rental",
+            state="CLOSED",
+            created_at=now,
+            rfq=dict(gpu_model="T4", gpu_count=1),
+        )
+    )
+    before = backend.db.list("opennext_charge")
+    response = await client.get("/api/admin/orders", headers=ADMIN)
+    orders = response.json()["orders"]
+    assert {"credit-order", "bank-order", "orphan-order"} <= {r["id"] for r in orders}
+    credit = next(r for r in orders if r["id"] == "credit-order")
+    assert (
+        credit["state"] == "completed" and credit["total"] == 1 and credit["settledTotal"] == 0.27
+    )
+    assert credit["paymentMethod"] == "Credit"
+    assert next(r for r in orders if r["id"] == "unlinked-rental")["amountKnown"] is False
+    assert next(r for r in orders if r["id"] == "bank-order")["paymentMethod"] == "Direct Pay"
+    assert (await client.get("/api/admin/orders?state=processing", headers=ADMIN)).json()["orders"][
+        0
+    ]["kind"] == "RFQ"
+    assert (await client.get("/api/admin/payments/credit")).status_code == 401
+    payments = (await client.get("/api/admin/payments/credit", headers=ADMIN)).json()["payments"]
+    assert {r["orderId"] for r in payments} == {"credit-order", "orphan-order"}
+    settled = next(r for r in payments if r["orderId"] == "credit-order")
+    assert (
+        settled["authorizedCents"] == 100
+        and settled["settledCents"] == 27
+        and settled["releasedCents"] == 73
+    )
+    assert (
+        await client.get("/api/admin/payments/credit?paymentState=refunded", headers=ADMIN)
+    ).json()["total"] == 1
+    assert (
+        await client.get("/api/admin/payments/credit?search=orphan-order", headers=ADMIN)
+    ).json()["total"] == 1
+    assert (await client.get("/api/admin/payments/credit?limit=1", headers=ADMIN)).json()[
+        "nextCursor"
+    ] == "1"
+    assert (
+        await client.post("/api/admin/payments/credit", headers=ADMIN, json={})
+    ).status_code in {404, 405}
+    assert backend.db.list("opennext_charge") == before

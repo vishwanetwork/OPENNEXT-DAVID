@@ -70,3 +70,13 @@ The frontend repository includes `scripts/console-flow.test.cjs`. With
 runtime, it starts both services on ephemeral loopback ports and verifies login,
 credential persistence, collection, Terminal catalog reads and restart restoration.
 Provider HTTP responses are fixtures; no real cloud or email service is contacted.
+
+## Order and payment history
+
+Orders default to all lifecycle states. Explicit processing/completed/cancelled filters
+remain available. Historical rentals, orphaned charge records and Direct Pay references
+are joined without hiding ended instances. The agreed order limit is displayed separately
+from the final ledger settlement. Bank-receipt reviews remain in the Direct Pay queue;
+a separate administrator-only, read-only Credit purchase ledger shows holds, settlements
+and released amounts. Direct Pay usage holds are excluded from that Credit projection.
+No reads mutate balances, approval decisions, fees or provisioning state.
