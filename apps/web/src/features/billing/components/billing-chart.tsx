@@ -71,8 +71,8 @@ export function BillingChart({ billing, a }: { billing: BillingData; a: Analytic
           <h2>{billing.role === 'buyer' ? 'Compute spend' : 'Earnings over time'}</h2>
           <p>
             {a.sample
-              ? 'Example analysis · not your balance or transaction history'
-              : 'Posted account activity · USD · UTC'}
+              ? 'Example analysis; not your balance or transaction history'
+              : 'Posted account activity (USD, UTC)'}
           </p>
         </div>
         <div className="bill-segment">
@@ -167,7 +167,7 @@ export function BillingChart({ billing, a }: { billing: BillingData; a: Analytic
                       rx="2"
                       fill={COLORS[key]}
                     >
-                      <title>{`${r.day} · ${label} · ${usd(value)}`}</title>
+                      <title>{`${r.day} ${label} ${usd(value)}`}</title>
                     </rect>
                   );
                 });
@@ -194,7 +194,7 @@ export function BillingChart({ billing, a }: { billing: BillingData; a: Analytic
                       r="3"
                       fill={COLORS[key]}
                     >
-                      <title>{`${r.day} · ${label} · ${usd(r[key])}`}</title>
+                      <title>{`${r.day} ${label} ${usd(r[key])}`}</title>
                     </circle>
                   ))}
                 </g>

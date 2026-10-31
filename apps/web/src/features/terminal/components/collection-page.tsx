@@ -63,7 +63,7 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
       />
       <div className="toolbar">
         <span className="form-note">
-          {items.length} resources · select up to 4 of the same model
+          {items.length} resources. Select up to 4 of the same model.
         </span>
         <span className="gap" />
         <Button data-act="compare-selected" onClick={compareSelected}>
@@ -98,9 +98,9 @@ export function CollectionPage({ type }: { type: 'saved' | 'cart' }) {
               <strong style={{ fontSize: 15 }}>{money(o.price)}/hr</strong>
             </div>
             <p>
-              {o.provider} · {o.region}
+              {o.provider} {o.region}
               <br />
-              {o.count} GPU · {o.term} ·{' '}
+              {o.count} GPU {o.term}{' '}
               {o.delivery != null ? o.delivery + ' min delivery' : 'Delivery to confirm'}
             </p>
             <div className="row">

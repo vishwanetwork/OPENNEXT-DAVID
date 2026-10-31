@@ -17,6 +17,10 @@ export function FilterGroup({ group, rows }: { group: FilterGroupSpec; rows: Spo
   const selected = state.selected[group.key];
   const query = group.searchable ? state.search[group.key as 'model' | 'country'] || '' : '';
   const options = optionsFor(group, rows, state);
+  const noneSelected = state.emptyGroups.includes(group.key);
+  const allSelected =
+    !noneSelected && (!selected.length || options.every((value) => selected.includes(value)));
+  const partiallySelected = !noneSelected && !allSelected && selected.length > 0;
   const needle = query.trim().toLowerCase();
   const matching = options.filter((value) => value.toLowerCase().includes(needle));
   return (
@@ -28,7 +32,7 @@ export function FilterGroup({ group, rows }: { group: FilterGroupSpec; rows: Spo
     >
       <summary>
         {group.label}
-        <span>{selected.length ? selected.length + ' selected' : 'All'}</span>
+        <span>{noneSelected ? 'None' : allSelected ? 'All' : selected.length + ' selected'}</span>
         <LucideIcon name="chevron-down" />
       </summary>
       <div className="onx-spot-filter-options">
@@ -51,8 +55,14 @@ export function FilterGroup({ group, rows }: { group: FilterGroupSpec; rows: Spo
           <input
             type="checkbox"
             data-spot-all={group.key}
-            checked={!selected.length}
-            onChange={() => state.clearGroup(group.key)}
+            checked={allSelected && options.length > 0}
+            ref={(input) => {
+              if (input) input.indeterminate = partiallySelected;
+            }}
+            disabled={options.length === 0}
+            onChange={(event) =>
+              event.target.checked ? state.clearGroup(group.key) : state.selectGroup(group.key, [])
+            }
           />
           <span>All</span>
           <small>{termRows(rows, state.term).length}</small>
@@ -68,8 +78,10 @@ export function FilterGroup({ group, rows }: { group: FilterGroupSpec; rows: Spo
               type="checkbox"
               data-spot-option={group.key}
               value={value}
-              checked={selected.includes(value)}
-              onChange={(event) => state.toggleOption(group.key, value, event.target.checked)}
+              checked={allSelected || selected.includes(value)}
+              onChange={(event) =>
+                state.toggleOption(group.key, value, event.target.checked, options)
+              }
             />
             <span>
               {value}

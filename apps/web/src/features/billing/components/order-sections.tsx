@@ -26,7 +26,7 @@ export const party = (value: unknown, fallback: string) =>
           (value as { email?: string }).email,
         ]
           .filter(Boolean)
-          .join(' · ') || fallback
+          .join(' ') || fallback
       : fallback;
 
 export function OrderFeeRows({ o }: { o: Order }) {
@@ -40,7 +40,7 @@ export function OrderFeeRows({ o }: { o: Order }) {
           value={(seller ? '−' : '+') + usd(seller ? o.sellerFee : o.buyerFee)}
         />
         <Detail
-          label={seller ? 'Net proceeds · USD' : 'Total payable · USD'}
+          label={seller ? 'Net proceeds (USD)' : 'Total payable (USD)'}
           value={usd(seller ? o.sellerNet : o.buyerTotal)}
         />
         <p className="form-note">
@@ -59,7 +59,7 @@ export function OrderFeeRows({ o }: { o: Order }) {
       {o.fees != null ? <Detail label="Recorded fee" value={usd(o.fees)} /> : null}
       {o.tax != null ? <Detail label="Recorded tax" value={usd(o.tax)} /> : null}
       <Detail
-        label={seller ? 'Recorded proceeds · USD' : 'Recorded order total · USD'}
+        label={seller ? 'Recorded proceeds (USD)' : 'Recorded order total (USD)'}
         value={usd(orderAmount(o))}
       />
       <p className="form-note">
@@ -128,7 +128,7 @@ export function OrderDelivery({ o }: { o: Order }) {
         <Detail label="Order created" value={stamp(o.createdAt || o.created)} />
         <Detail
           label="Delivery method"
-          value={o.deliveryMethod || (physical ? 'Shipment · to be confirmed' : 'To be confirmed')}
+          value={o.deliveryMethod || (physical ? 'Shipment to be confirmed' : 'To be confirmed')}
         />
         <Detail label="Expected delivery" value={eta} />
         {physical ? (

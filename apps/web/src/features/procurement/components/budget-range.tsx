@@ -64,7 +64,7 @@ export function BudgetRange({
         <span>High {money(max)}</span>
       </div>
       <p className="form-note">
-        USD / GPU-hour · Observed market prices, not a guaranteed quote. You may enter a higher
+        USD / GPU-hour. Observed market prices, not a guaranteed quote. You may enter a higher
         maximum for urgent requirements.
       </p>
     </div>

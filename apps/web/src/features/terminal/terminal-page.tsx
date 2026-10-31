@@ -49,7 +49,12 @@ export function TerminalPage({ children }: { children: ReactNode }) {
         initialMode={requestedMode}
         onLogin={verifiedLogin}
         onBack={back}
-        onMode={(mode) => router.replace(mode === 'signup' ? '?auth=signup' : '?')}
+        onMode={(mode) => {
+          const query = new URLSearchParams(params.toString());
+          if (mode === 'signup') query.set('auth', 'signup');
+          else query.delete('auth');
+          router.replace(query.size ? `?${query.toString()}` : '?');
+        }}
       />
     );
   }

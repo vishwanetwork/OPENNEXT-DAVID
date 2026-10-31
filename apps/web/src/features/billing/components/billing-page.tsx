@@ -12,7 +12,11 @@ import { Activity, CapacityPanel, DailyTable, Payouts } from './billing-panels';
 
 /** Billing & usage / Earnings & payouts page (legacy `OpenNEXTBilling.page`). */
 export function BillingPage() {
-  const billing = useBillingData();
+  const accountBilling = useBillingData();
+  const billing = {
+    ...accountBilling,
+    billingUI: { ...accountBilling.billingUI, sample: false },
+  };
   const ui = useBillingUi();
   const { openModal } = useTerminal();
   const toast = useToast();
@@ -22,11 +26,7 @@ export function BillingPage() {
   const onExport = (type: string, id?: string) => {
     const rows = exportRows(billing, type, id);
     if (!rows.length) return toast('No records to export in this period');
-    downloadText(
-      'OpenNEXT-' + (type === 'daily' && ui.sample ? 'example-' : '') + type + '.csv',
-      csv(rows),
-      'text/csv;charset=utf-8',
-    );
+    downloadText('OpenNEXT-' + type + '.csv', csv(rows), 'text/csv;charset=utf-8');
   };
   const applyFilter = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -77,7 +77,7 @@ export function BillingPage() {
             <section className="bill-wallet">
               <span>Available to withdraw</span>
               <strong>{usd(earningsBalance)}</strong>
-              <p>Settled earnings · excludes prepaid credit</p>
+              <p>Settled earnings, excluding prepaid credit</p>
             </section>
             <section className="bill-wallet">
               <span>Payouts in progress</span>
@@ -115,22 +115,7 @@ export function BillingPage() {
             Apply
           </button>
         </form>
-        <button
-          type="button"
-          className="btn secondary small"
-          data-act="bill-sample"
-          aria-pressed={a.sample}
-          onClick={() => ui.patch({ sample: !ui.sample })}
-        >
-          {a.sample ? 'Return to my activity' : 'Preview example analytics'}
-        </button>
       </div>
-      {a.sample ? (
-        <div className="bill-example-banner">
-          <strong>Example analytics</strong>These illustrative charts show the reporting layout.
-          Your credit, earnings and account activity below are unchanged.
-        </div>
-      ) : null}
       <div className="bill-metrics">
         {metrics(billing, a).map((card) => (
           <div key={card.label} className="bill-metric">

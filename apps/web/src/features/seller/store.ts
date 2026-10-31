@@ -19,6 +19,8 @@ export interface SellerUi {
   term: InsightTerm;
   showFilters: boolean;
   selected: Selected;
+  /** An empty selected array is unrestricted unless its group is explicitly empty. */
+  emptyGroups: GroupKey[];
   tradeModel: string | null;
   search: Record<'model' | 'tradeModel' | 'country', string>;
   openGroups: string[];
@@ -33,7 +35,8 @@ export interface SellerUi {
 interface SellerActions {
   setTerm: (term: string) => void;
   toggleFilters: () => void;
-  toggleOption: (key: GroupKey, value: string, checked: boolean) => void;
+  toggleOption: (key: GroupKey, value: string, checked: boolean, options: string[]) => void;
+  selectGroup: (key: GroupKey, values: string[]) => void;
   clearGroup: (key: GroupKey) => void;
   setSelected: (selected: Selected) => void;
   setTradeModel: (model: string | null) => void;
@@ -56,6 +59,7 @@ const initial = (): SellerUi => ({
     typeof window.innerWidth !== 'number' ||
     window.innerWidth > 650,
   selected: emptySelected(),
+  emptyGroups: [],
   tradeModel: null,
   search: { model: '', tradeModel: '', country: '' },
   openGroups: ['model', 'tradeModel'],
@@ -74,19 +78,35 @@ export const useSellerStore = create<SellerUi & SellerActions>((set, get) => ({
   setTerm: (term) =>
     set({ term: (TERMS as readonly string[]).includes(term) ? (term as InsightTerm) : 'All' }),
   toggleFilters: () => set({ showFilters: !get().showFilters }),
-  toggleOption: (key, value, checked) => {
-    const current = get().selected[key];
-    set({
-      selected: {
-        ...get().selected,
-        [key]: checked
-          ? [...new Set([...current, value])]
-          : current.filter((item) => item !== value),
-      },
-    });
+  toggleOption: (key, value, checked, options) => {
+    const state = get();
+    const current =
+      !state.selected[key].length && !state.emptyGroups.includes(key)
+        ? options
+        : state.selected[key];
+    const next = checked
+      ? [...new Set([...current, value])]
+      : current.filter((item) => item !== value);
+    if (options.length > 0 && options.every((option) => next.includes(option))) {
+      state.clearGroup(key);
+    } else {
+      state.selectGroup(key, next);
+    }
   },
-  clearGroup: (key) => set({ selected: { ...get().selected, [key]: [] } }),
-  setSelected: (selected) => set({ selected }),
+  selectGroup: (key, values) =>
+    set({
+      selected: { ...get().selected, [key]: [...new Set(values)] },
+      emptyGroups: values.length
+        ? get().emptyGroups.filter((group) => group !== key)
+        : [...new Set([...get().emptyGroups, key])],
+    }),
+  clearGroup: (key) =>
+    set({
+      selected: { ...get().selected, [key]: [] },
+      emptyGroups: get().emptyGroups.filter((group) => group !== key),
+    }),
+  setSelected: (selected) =>
+    set({ selected, emptyGroups: get().emptyGroups.filter((key) => !selected[key].length) }),
   setTradeModel: (tradeModel) => set({ tradeModel }),
   setSearch: (key, value) => set({ search: { ...get().search, [key]: value } }),
   setGroupOpen: (key, open) =>
@@ -127,6 +147,7 @@ export const useSellerStore = create<SellerUi & SellerActions>((set, get) => ({
     set({
       term: 'All',
       selected: emptySelected(),
+      emptyGroups: [],
       search: { model: '', tradeModel: '', country: '' },
     }),
   setInjected: (rows) => set({ injected: rows }),

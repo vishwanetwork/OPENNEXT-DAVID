@@ -79,6 +79,6 @@ export const orderActionTitle = (type: string, o: Order | undefined) =>
           : type === 'proc-verify'
             ? 'Verify delivery'
             : 'Manage service') +
-      ' · ' +
+      ' ' +
       o.id
     : 'Order unavailable';

@@ -126,11 +126,11 @@ function MatchCard({ r, kind }: { r: Row; kind: 'best' | 'recent' }) {
         </strong>
       </div>
       <p>
-        {r.external ? externalName(r) : r.provider} · {r.region}
+        {r.external ? externalName(r) : r.provider} {r.region}
         <br />
         {r.external
-          ? externalQuantity(r) + ' · ' + externalCommitment(r)
-          : r.count + ' GPU · ' + r.term + ' · ' + r.hours + 'h'}
+          ? externalQuantity(r) + ' ' + externalCommitment(r)
+          : r.count + ' GPU ' + r.term + ' ' + r.hours + 'h'}
       </p>
       <div className="match-bottom">
         <span className="fit">
@@ -209,7 +209,7 @@ export function MatchesPanel({ kind }: { kind: 'best' | 'recent' }) {
             {kind === 'best' ? 'Best Matches' : hasReference ? 'Recent Matches' : 'Recent Settled'}
           </h3>
           <small>
-            {model} · {region}
+            {model} {region}
           </small>
         </div>
         {kind === 'best' ? (

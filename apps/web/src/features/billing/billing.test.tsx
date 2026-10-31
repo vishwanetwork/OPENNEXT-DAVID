@@ -24,10 +24,16 @@ describe('Billing page', () => {
     expect(screen.getByRole('button', { name: 'Add credit' })).toBeInTheDocument();
     expect(screen.getByText('No spent history yet')).toBeInTheDocument();
     expect(screen.getByText('No posted activity in this period')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Preview example analytics' }));
-    expect(screen.getByText('Example analytics')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview example analytics' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add credit' }));
     expect(useWorkspaceStore.getState().modal?.type).toBe('pay-start');
+  });
+  it('ignores an old saved example toggle and reports account records only', () => {
+    useBillingUi.setState({ sample: true });
+    renderTerminal(<BillingPage />);
+    expect(screen.queryByText('Example analytics')).toBeNull();
+    expect(screen.getByText('No spent history yet')).toBeInTheDocument();
+    expect(screen.getByText('No posted activity in this period')).toBeInTheDocument();
   });
   it('sellers see earnings, payouts and role-specific columns', () => {
     useWorkspaceStore.getState().patch({ role: 'seller' });

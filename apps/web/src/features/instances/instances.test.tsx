@@ -16,16 +16,13 @@ beforeEach(() => {
 });
 
 describe('Instances page', () => {
-  it('an empty workspace shows a clearly separate example instance with explanatory controls only', () => {
+  it('an empty account shows an honest empty state without example resources', () => {
     renderTerminal(<InstancesPage />, { workspace: {} });
     expect(screen.getByText('No instances yet')).toBeInTheDocument();
-    expect(screen.getByLabelText('Example instance')).toBeInTheDocument();
-    expect(screen.getByText('Example only · not an active resource')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
-    expect(useWorkspaceStore.getState().modal?.type).toBe('instance-example-manage');
-    expect(
-      document.querySelector('[data-instance-example-live]')?.getAttribute('data-instance-life'),
-    ).toBe('Running');
+    expect(screen.queryByLabelText('Example instance')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Find capacity' })).toBeInTheDocument();
   });
   it('delivered allocations show live cards with region metadata and no supplier identity', () => {
     renderTerminal(<InstancesPage />, {

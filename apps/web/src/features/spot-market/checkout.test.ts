@@ -318,7 +318,7 @@ describe('Spot checkout safety', () => {
     await toPayment(env);
     expect(env.engine.pending()?.sshPublicKey).toBe('');
     env.engine.action('spot-checkout-direct');
-    expect(env.ctx.messages.at(-1)).toMatch(/unavailable for Demo/);
+    expect(env.ctx.messages.at(-1)).toMatch(/unavailable for this inventory/);
     expect(env.ctx.balance).toBe(100);
   });
   it('invalid/private SSH stays on review; valid public key persists across modal navigation', async () => {

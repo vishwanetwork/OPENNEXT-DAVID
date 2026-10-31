@@ -87,7 +87,7 @@ function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; cl
       );
     case 'instance-example-manage':
       return (
-        <ModalFrame title="Training workspace · example" close={close}>
+        <ModalFrame title="Training workspace (example)" close={close}>
           <ExampleManage />
         </ModalFrame>
       );

@@ -14,7 +14,7 @@ export function ExampleOrder() {
   return (
     <>
       <p className="instance-example-record-note">
-        Example only · no purchase, payment or active resource
+        Example only. No purchase, payment or active resource.
       </p>
       <div className="details-grid">
         <Cell label="ORDER">ORDER-EXAMPLE-1024</Cell>
@@ -26,7 +26,7 @@ export function ExampleOrder() {
         <Cell label="START">{stampUtcFull(i.createdAt)}</Cell>
         <Cell label="END">{stampUtcFull(i.endedAt || i.serviceEnd)}</Cell>
         <Cell label="RESOURCE STATUS">{lifecycle(i).label}</Cell>
-        <Cell label="PAYMENT">Not charged · example only</Cell>
+        <Cell label="PAYMENT">Not charged (example only)</Cell>
       </div>
       <div className="instance-example-pricing">
         <div>

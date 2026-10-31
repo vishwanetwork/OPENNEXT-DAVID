@@ -1,0 +1,259 @@
+/* Buyer Agent presentation. Message generation and workspace actions remain unchanged. */
+.buyer-terminal-root {
+  --agent-shell-mid: #e3edf7;
+  --agent-shell-base: #9eb7d2;
+  --agent-glass-top: #335a7e;
+  --agent-glass-mid: #14324e;
+  --agent-glass-base: #0a1d30;
+  --agent-rim-base: #6c8daf;
+  --agent-shadow: #102c46;
+  --agent-ear: #8ca6bf;
+  --agent-screen-rim: #6c91b7;
+  --agent-screen-shine: #d4e9ff;
+  --agent-eyes: #b9dcff;
+  --agent-detail: #6e8fae;
+  --agent-status: #83b3e6;
+}
+
+.buyer-terminal-root .agent-drawer {
+  inset: 12px 12px 12px auto;
+  width: 448px;
+  max-width: calc(100vw - 24px);
+  height: calc(100dvh - 24px);
+  overflow: hidden;
+  border: 1px solid #dce4ed;
+  border-radius: 20px;
+  background: #f5f7fa;
+  box-shadow:
+    0 20px 80px #102c4629,
+    0 4px 16px #102c4612;
+  color: #111e2d;
+  z-index: 60;
+}
+
+.buyer-terminal-root .agent-drawer .drawer-head {
+  flex: 0 0 auto;
+  min-height: 94px;
+  height: auto;
+  padding: 20px 22px;
+  border: 0;
+  background: #102c46;
+  color: #fff;
+}
+.buyer-terminal-root .agent-drawer-identity {
+  gap: 13px;
+  min-width: 0;
+}
+.buyer-terminal-root .agent-drawer-identity strong {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.45px;
+}
+.buyer-terminal-root .agent-drawer-identity > .agent-avatar-mark {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border: 1px solid #7d9db54d;
+  border-radius: 16px;
+  background: #ffffff12;
+}
+.buyer-terminal-root .agent-drawer .drawer-head .icon-btn {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #ffffff2b;
+  border-radius: 10px;
+  background: #ffffff0d;
+  color: #e6f1fc;
+  font-size: 24px;
+  line-height: 1;
+}
+.buyer-terminal-root .agent-drawer .drawer-head .icon-btn:hover {
+  background: #ffffff20;
+}
+.buyer-terminal-root .agent-drawer .drawer-body {
+  min-height: 0;
+  padding: 24px 22px;
+  overscroll-behavior: contain;
+  scrollbar-color: #c9d5e2 transparent;
+}
+.buyer-terminal-root .agent-drawer .bubble {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border: 1px solid #e1e7ef;
+  border-radius: 16px 16px 16px 4px;
+  background: #fff;
+  color: #344b61;
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.buyer-terminal-root .agent-drawer .bubble:first-child {
+  margin-bottom: 24px;
+  padding: 2px 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #233c53;
+  font-size: 17px;
+  line-height: 1.65;
+  letter-spacing: -0.25px;
+}
+.buyer-terminal-root .agent-drawer .bubble.user {
+  margin-left: 38px;
+  border-color: #d2e2f6;
+  border-radius: 16px 16px 4px 16px;
+  background: #eaf2fc;
+  color: #173e6e;
+}
+.buyer-terminal-root .agent-drawer .quick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin: 8px 0;
+}
+.buyer-terminal-root .agent-drawer .quick button {
+  min-height: 46px;
+  padding: 13px 16px;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #fff;
+  color: #234768;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.45;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+.buyer-terminal-root .agent-drawer .quick button:hover {
+  border-color: #a9c3e5;
+  background: #edf4fc;
+}
+.buyer-terminal-root .agent-drawer .composer {
+  flex: 0 0 auto;
+  padding: 16px;
+  gap: 10px;
+  border-top: 1px solid #dce4ed;
+  background: #fff;
+}
+.buyer-terminal-root .agent-drawer .composer input {
+  min-height: 48px;
+  padding: 12px 15px;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #f5f7fa;
+  color: #111e2d;
+  font-size: 14px;
+  box-shadow: none;
+}
+.buyer-terminal-root .agent-drawer .composer input::placeholder {
+  color: #708397;
+}
+.buyer-terminal-root .agent-drawer .composer button {
+  flex: 0 0 48px;
+  height: 48px;
+  width: 48px;
+  border: 1px solid #205fba;
+  border-radius: 12px;
+  background: #205fba;
+  color: #fff;
+  font-size: 24px;
+}
+.buyer-terminal-root .agent-drawer .composer button:hover {
+  background: #194f9d;
+}
+.buyer-terminal-root .agent-drawer :is(button, input):focus-visible,
+.buyer-terminal-root .agent-companion :is(button):focus-visible {
+  outline: 2px solid #6b9cda;
+  outline-offset: 3px;
+}
+.buyer-terminal-root .agent-companion-launch {
+  height: 68px;
+  border-color: #cbd9e8;
+  background: linear-gradient(145deg, #fff, #e6eff9);
+  color: #205fba;
+  box-shadow:
+    0 8px 24px #102c461c,
+    inset 0 1px 0 #fff;
+}
+.buyer-terminal-root .agent-companion-launch .agent-avatar-mark {
+  margin: 0;
+  filter: drop-shadow(0 2px 2px #102c4618);
+}
+.buyer-terminal-root .agent-avatar-halo {
+  inset: 9px;
+  border-color: #bbd0e680;
+  background: radial-gradient(ellipse, #c5ddf455, transparent 70%);
+}
+.buyer-terminal-root .agent-companion-launch:hover {
+  box-shadow: 0 14px 32px #102c4624;
+}
+.buyer-terminal-root .agent-companion-launch:hover .agent-avatar-eyes {
+  fill: #e2f0ff;
+}
+.buyer-terminal-root .agent-context-hint {
+  border-color: #dce4ed;
+  border-radius: 16px;
+  background: #fffffffa;
+  box-shadow: 0 12px 40px #102c461c;
+}
+.buyer-terminal-root .agent-context-hint p {
+  margin-top: 0;
+  color: #233c53;
+  font-size: 14px;
+}
+.buyer-terminal-root .agent-context-hint > span {
+  color: #647b91;
+  font-size: 12px;
+}
+.buyer-terminal-root .agent-hint-dismiss {
+  color: #647b91;
+}
+.buyer-terminal-root .agent-hint-action {
+  border-color: #e1e7ef;
+  color: #205fba;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .buyer-terminal-root .agent-drawer {
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .buyer-terminal-root .agent-drawer .drawer-head {
+    min-height: 84px;
+    padding: 16px 18px;
+  }
+  .buyer-terminal-root .agent-drawer .drawer-head .icon-btn {
+    width: 42px;
+    height: 42px;
+  }
+  .buyer-terminal-root .agent-drawer .drawer-body {
+    padding: 22px 18px;
+  }
+  .buyer-terminal-root .agent-drawer .composer {
+    padding: 12px 14px max(12px, env(safe-area-inset-bottom));
+  }
+  .buyer-terminal-root .agent-drawer .composer input {
+    font-size: 16px;
+  }
+  .buyer-terminal-root .agent-companion-launch {
+    height: 58px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buyer-terminal-root .agent-drawer.open {
+    animation: none;
+  }
+  .buyer-terminal-root .agent-drawer .quick button {
+    transition: none;
+  }
+}

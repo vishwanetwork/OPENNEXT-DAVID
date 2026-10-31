@@ -2,6 +2,7 @@
 
 import { LucideIcon } from '@/components/icons';
 import { formatSpec, usd, type SpotRow } from '../inventory';
+import { GpuThumbnail } from './gpu-thumbnail';
 
 export interface RowActions {
   onBuy: (row: SpotRow) => void;
@@ -65,7 +66,10 @@ export function TableView({ rows, actions }: { rows: SpotRow[]; actions: RowActi
             rows.map((row) => (
               <tr key={row._key}>
                 <td>
-                  <strong className="onx-spot-model">{row.model}</strong>
+                  <strong className="onx-spot-model">
+                    <GpuThumbnail model={row.model} />
+                    {row.model}
+                  </strong>
                 </td>
                 <td className="onx-spot-number">{row.gpuCount} GPUs</td>
                 <td>
@@ -103,7 +107,10 @@ export function CardView({ rows, actions }: { rows: SpotRow[]; actions: RowActio
             <div className="onx-spot-card-main">
               <div className="onx-spot-card-identity">
                 <div className="onx-spot-card-model">
-                  <h2 title={row.model}>{row.model}</h2>
+                  <h2 title={row.model}>
+                    <GpuThumbnail model={row.model} />
+                    {row.model}
+                  </h2>
                   <span>{row.gpuCount} GPUs</span>
                 </div>
                 <p>

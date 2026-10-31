@@ -51,7 +51,7 @@ export function BillingHistory({ snapshot }: { snapshot: InstanceUsageSnapshot }
         <table className="instance-ledger">
           <thead>
             <tr>
-              <th>Usage period · UTC</th>
+              <th>Usage period (UTC)</th>
               <th>Billable time</th>
               <th>Compute</th>
               <th>Fee</th>
@@ -112,7 +112,7 @@ export function InterruptionHistory({ snapshot }: { snapshot: InstanceUsageSnaps
               <span className={`instance-event-dot ${event.type}`} />
               <div>
                 <strong>
-                  {event.type === 'interrupted' ? 'Interrupted · billing paused' : 'Reconnected'}
+                  {event.type === 'interrupted' ? 'Interrupted (billing paused)' : 'Reconnected'}
                 </strong>
                 <time dateTime={event.at}>{stampUtcFull(event.at)}</time>
                 <p>{event.description}</p>

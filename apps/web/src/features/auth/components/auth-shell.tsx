@@ -1,8 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { TerminalBrand } from '@/components/ui/terminal-brand';
 import { AsyncButton } from '@/components/ui/async-feedback';
-import { Brand } from '@/components/ui/brand';
 import { ArrowIcon } from '@/components/icons';
 import '../auth.css';
 
@@ -11,17 +11,13 @@ export function AuthShell({ onBack, children }: { onBack: () => void; children: 
   return (
     <main className="onx-auth-root" data-onx-auth-root>
       <aside className="onx-auth-story">
-        <Brand />
+        <TerminalBrand light />
         <div className="onx-auth-story-copy">
-          <div className="onx-auth-kicker">AI capacity, on your terms</div>
           <h2>
             A clearer market.
             <br />A better match.
           </h2>
-          <p>
-            Discover GPU capacity, compare market signals and connect with providers in one focused
-            workspace.
-          </p>
+          <p>Your next compute opportunity starts here.</p>
         </div>
         <div className="onx-auth-orbits" aria-hidden="true">
           <i />
@@ -36,7 +32,7 @@ export function AuthShell({ onBack, children }: { onBack: () => void; children: 
         </button>
         <div className="onx-auth-card">
           <div className="onx-auth-mobile-brand">
-            <Brand />
+            <TerminalBrand />
           </div>
           {children}
         </div>

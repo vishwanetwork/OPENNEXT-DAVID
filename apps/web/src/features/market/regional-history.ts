@@ -36,9 +36,12 @@ export const timeLabel = (time: number | string, daily: boolean): string =>
     timeZone: 'UTC',
   }) + (daily ? '' : ' UTC');
 
-export const seriesColor = (index: number): string =>
-  ['#315f49', '#678bad', '#b18843', '#9671a7', '#298986', '#b36762'][index] ||
-  `hsl(${Math.round(index * 137.508) % 360} 48% 38%)`;
+export const seriesColor = (index: number): string => {
+  const fallback = ['#315f49', '#678bad', '#b18843', '#9671a7', '#298986', '#b36762'][index];
+  return fallback
+    ? `var(--history-series-${index}, ${fallback})`
+    : `hsl(${Math.round(index * 137.508) % 360} 48% 38%)`;
+};
 export const seriesDash = (index: number): string =>
   ['', '8 4', '2 4', '10 3 2 3'][Math.floor(index / 6) % 4] ?? '';
 
@@ -98,8 +101,8 @@ export function presentation(
   );
   const distinction =
     peers.length > 1 ? 'Series ' + (peers.findIndex((item) => item.id === series.id) + 1) : '';
-  const description = [detail, distinction].filter(Boolean).join(' · ');
-  return { name, description, label: [name, description].filter(Boolean).join(' · ') };
+  const description = [detail, distinction].filter(Boolean).join(' ');
+  return { name, description, label: [name, description].filter(Boolean).join(' ') };
 }
 
 export const metricText = (selection: HistorySelection): string =>

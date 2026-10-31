@@ -43,7 +43,7 @@ describe('RFQ status presentation', () => {
       rfqStatus(
         rfq({ status: 'Quoted', reviewStatus: 'Approved', visibility: 'Private RFQ' }) as never,
       ),
-    ).toBe('Approved · Private RFQ');
+    ).toBe('Approved (Private RFQ)');
     expect(rfqStatus(rfq({ status: 'Completed', reviewStatus: 'Approved' }) as never)).toBe(
       'Completed',
     );
@@ -223,11 +223,11 @@ describe('Supply page', () => {
       },
     });
     expect(screen.getByRole('heading', { name: 'My Supply' })).toBeInTheDocument();
-    expect(document.querySelector('.proc-review-steps')?.textContent).toContain('KYB · Reviewing');
+    expect(document.querySelector('.proc-review-steps')?.textContent).toContain('KYB Reviewing');
     expect(screen.getByRole('button', { name: 'View submission' })).toBeInTheDocument();
     expect(screen.getByText('$2.20')).toBeInTheDocument();
     expect(screen.getByText('OpenNEXT Fee 5%')).toBeInTheDocument();
     expect(screen.getByText('Agent: Pending')).toBeInTheDocument();
-    expect(screen.getByText('H100 · RFQ-1')).toBeInTheDocument();
+    expect(screen.getByText('H100 RFQ-1')).toBeInTheDocument();
   });
 });

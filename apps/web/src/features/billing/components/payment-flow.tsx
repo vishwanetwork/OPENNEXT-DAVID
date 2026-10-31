@@ -86,7 +86,7 @@ export function PaymentAmount({
         </label>
       </div>
       <label className="form-label">
-        Other amount · USD
+        Other amount (USD)
         <input
           className="field"
           type="number"
@@ -150,7 +150,7 @@ export function PaymentMethod() {
               <input type="radio" name="method" value={value} checked readOnly />
               <span>
                 <strong>{label}</strong>
-                <small>USD · subject to KYB approval</small>
+                <small>USD subject to KYB approval</small>
               </span>
             </label>
           ))}

@@ -1037,9 +1037,6 @@
   font-size: 10px;
   line-height: 1.3;
 }
-.onx-sa-index-chart .history-legend-chip small::before {
-  content: '· ';
-}
 .onx-sa-index-chart .history-footnote {
   font-size: 10px;
 }

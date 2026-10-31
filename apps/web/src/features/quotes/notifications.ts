@@ -109,7 +109,7 @@ export function quoteRequests(rfqs: Record_[]): Record_[] {
 export function visibleStatus(r: Record_): string {
   return r.reviewStatus === 'Approved' && ['Open', 'Quoted'].includes(String(r.status))
     ? r.visibility === 'Private RFQ'
-      ? 'Approved · Private RFQ'
+      ? 'Approved (Private RFQ)'
       : 'Live RFQ'
     : String(r.status || 'Status unavailable');
 }

@@ -32,3 +32,15 @@
   --orange: #b47b21;
   --sidebar: 226px;
 }
+
+/* Buyer Terminal redesign; public website and Operations Console keep their own tokens. */
+.buyer-terminal-root {
+  --ink: #183247;
+  --muted: #627787;
+  --line: #e4eaf0;
+  --soft: #f6f8fa;
+  --green: #315e7c;
+  --mint: #edf3f7;
+  --blue: #315e7c;
+  --shadow: 0 18px 60px #16344920;
+}

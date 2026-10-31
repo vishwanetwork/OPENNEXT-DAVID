@@ -71,13 +71,13 @@ export function RfqForm({
       ) : null}
       {r.originSupply ? (
         <div className="callout">
-          Selected supply · {chosen?.provider || String(r.originSupply)}. This request goes to this
+          Selected supply {chosen?.provider || String(r.originSupply)}. This request goes to this
           supplier, not to the public RFQ board.
         </div>
       ) : null}
       {model && chosen ? (
         <p className="form-note">
-          Listed rates: input ${Number(chosen.price)} / 1M tokens · output $
+          Listed rates: input ${Number(chosen.price)} / 1M tokens output $
           {Number(chosen.outputPrice)} / 1M tokens. Total depends on your input and output volumes;
           final terms require a quote.
         </p>
@@ -265,7 +265,7 @@ export function RfqForm({
             <Input
               label="Incoterms / shipping responsibility"
               name="incoterms"
-              defaultValue={r.incoterms || 'DAP · taxes and fees to confirm'}
+              defaultValue={r.incoterms || 'DAP taxes and fees to confirm'}
             />
             <Input
               label="Warranty and return requirements"

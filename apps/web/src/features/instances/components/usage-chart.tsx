@@ -37,7 +37,7 @@ export function UsageChart({
     <div className="instance-usage">
       <div className="row spread">
         <span>GPU utilization</span>
-        <small>Recorded history · UTC</small>
+        <small>Recorded history (UTC)</small>
       </div>
       <div
         className="instance-usage-bars"
@@ -48,7 +48,7 @@ export function UsageChart({
           <span
             key={bar.start}
             className={`instance-usage-bucket ${bar.interrupted > 0 ? 'has-interruption' : ''}`}
-            title={`${stampUtcFull(new Date(bar.start).toISOString())} – ${clock(bar.end)} UTC · ${bar.interrupted ? `${Math.round(bar.interrupted * 100)}% interrupted; ` : ''}${bar.connected ? (bar.utilization === null ? 'Connected; utilization not recorded' : `${bar.utilization.toFixed(1)}% GPU utilization`) : 'No connected usage recorded'}`}
+            title={`${stampUtcFull(new Date(bar.start).toISOString())} – ${clock(bar.end)} UTC ${bar.interrupted ? `${Math.round(bar.interrupted * 100)}% interrupted; ` : ''}${bar.connected ? (bar.utilization === null ? 'Connected; utilization not recorded' : `${bar.utilization.toFixed(1)}% GPU utilization`) : 'No connected usage recorded'}`}
           >
             {bar.connected > 0 ? (
               <i
@@ -65,7 +65,7 @@ export function UsageChart({
             key={event.id}
             className="instance-reconnect-marker"
             style={{ left: `${((Date.parse(event.at) - from) / (to - from)) * 100}%` }}
-            title={`Reconnected · ${stampUtcFull(event.at)}`}
+            title={`Reconnected ${stampUtcFull(event.at)}`}
           >
             <span aria-hidden="true">↻</span>
           </b>
