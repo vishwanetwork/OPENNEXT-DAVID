@@ -40,7 +40,7 @@ class ConsoleBackend:
             ctx.client,
             ctx.headers,
         )
-        self.sources = PriceSources(self.db, ctx.client, self.bridge.sealer)
+        self.sources = PriceSources(self.db, ctx.client, self.bridge.sealer, settings)
         self.lock = asyncio.Lock()
         self.worker_error = None
 

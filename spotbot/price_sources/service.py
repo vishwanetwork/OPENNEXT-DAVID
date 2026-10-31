@@ -20,10 +20,11 @@ KEY = "price_source_key"
 
 
 class PriceSources:
-    def __init__(self, db, client, sealer):
+    def __init__(self, db, client, sealer, settings=None):
         self.db, self.client, self.sealer = db, client, sealer
         self.slots = asyncio.Semaphore(2)
         self.worker_error = None
+        self.settings = settings
 
     async def config(self, provider):
         current = await asyncio.to_thread(self.db.get, CONFIG, "price-" + provider)
@@ -52,6 +53,9 @@ class PriceSources:
                 raise OperationError(
                     503, "The Console key cannot unlock this source credential."
                 ) from exc
+        field = (SOURCES[provider].credential_env or "").lower()
+        if self.settings is not None and field and hasattr(self.settings, field):
+            return getattr(self.settings, field).get_secret_value()
         return os.environ.get(SOURCES[provider].credential_env or "", "")
 
     async def credential(self, provider, value):

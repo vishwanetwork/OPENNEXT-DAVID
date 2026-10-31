@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     lambda_api_key: SecretStr = SecretStr("")
     tensordock_api_key: SecretStr = SecretStr("")
+    # Read-only Console pricing; this does not register a fulfillment provider.
+    digitalocean_api_key: SecretStr = SecretStr("")
     vultr_api_key: SecretStr = SecretStr("")
     shadeform_api_key: SecretStr = SecretStr("")
     spotbot_api_key: SecretStr = SecretStr("")
@@ -193,7 +195,9 @@ class Settings(BaseSettings):
             for r, v in images.items()
         ):
             raise ValueError("Rental initial images must map rental Regions to AMI IDs")
-        if (self.spotbot_rentals_enabled and not self.rental_regions) or set(self.rental_regions) - set(self.aws_order_regions):
+        if (self.spotbot_rentals_enabled and not self.rental_regions) or set(
+            self.rental_regions
+        ) - set(self.aws_order_regions):
             raise ValueError("Rental Regions must be a nonempty subset of AWS order Regions")
         if not isinstance(queues, dict) or any(
             r not in self.rental_regions

@@ -335,3 +335,18 @@ async def test_tensordock_uses_only_read_only_location_quote():
         and rows[0]["priceKind"] == "estimated"
         and rows[0]["orderable"] is False
     )
+
+
+async def test_settings_dotenv_credentials_work_without_process_environment(sources, tmp_path):
+    from spotbot.config import Settings
+
+    dotenv = tmp_path / "source.env"
+    dotenv.write_text(
+        "DIGITALOCEAN_API_KEY=dotenv-private-token\nTENSORDOCK_API_KEY=tensor-private-token\n"
+    )
+    settings = Settings(_env_file=dotenv)
+    reader = PriceSources(sources.db, sources.client, sources.sealer, settings)
+    assert await reader.secret("digitalocean") == "dotenv-private-token"
+    assert await reader.secret("tensordock") == "tensor-private-token"
+    await reader.credential("digitalocean", "database-private-token")
+    assert await reader.secret("digitalocean") == "database-private-token"
