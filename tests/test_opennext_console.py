@@ -280,3 +280,165 @@ async def test_overview_keeps_authoritative_counts_when_a_dependency_is_down(con
     assert response.json()["metrics"]["pendingKyb"] == 1
     assert response.json()["metrics"]["liveInstances"] is None
     assert response.json()["metrics"]["pendingContacts"] is None
+
+
+async def test_additional_source_routes_keep_admin_guard_and_public_price_semantics(
+    console, monkeypatch
+):
+    client, backend, *_ = console
+    assert (await client.post("/api/admin/pricing/providers/verda/run", json={})).status_code == 401
+    assert (
+        await client.post(
+            "/api/admin/pricing/providers/verda/run",
+            json={},
+            headers=dict(ADMIN, Origin="https://other.example.test"),
+        )
+    ).status_code == 403
+    assert (
+        await client.post(
+            "/api/admin/pricing/providers/digitalocean/credential",
+            json={"credential": "private-price-token"},
+            headers=ADMIN,
+        )
+    ).json()["storage"] == "encrypted_database"
+    registry = (await client.get("/api/admin/pricing/providers", headers=ADMIN)).json()
+    assert "private-price-token" not in str(registry)
+    source = next(p for p in registry["providers"] if p["id"] == "digitalocean")
+    assert source["credentialConfigured"] and source["validationStatus"] == "not_live_verified"
+    from spotbot.price_sources.collectors import quote
+
+    async def collect(*_):
+        return [
+            quote("verda", "sku", "H100", 8, 16, "zone-a", "Spot"),
+            quote("verda", "other", "A100", 1, 1, "zone-b", "On-demand"),
+        ]
+
+    monkeypatch.setattr("spotbot.price_sources.service.collect", collect)
+    job = (
+        await client.post("/api/admin/pricing/providers/verda/run", json={}, headers=ADMIN)
+    ).json()
+    assert job["phase"] == "queued"
+    assert (
+        await client.post("/api/admin/pricing/providers/verda/run", json={}, headers=ADMIN)
+    ).json()["id"] == job["id"]
+    await backend.sources._process("verda")
+    response = await client.get(
+        "/api/pricing/prices?provider=verda&gpuModel=H100&gpuCount=8&region=zone-a&term=Spot"
+    )
+    assert response.status_code == 200
+    assert len(response.json()["records"]) == 1
+    assert response.json()["records"][0]["perGpuHourly"] == 2
+    assert response.json()["records"][0]["orderable"] is False
+    assert (await client.get("/api/admin/pricing/runs/" + job["id"])).status_code == 401
+    assert (await client.get("/api/admin/pricing/runs/" + job["id"], headers=ADMIN)).json()[
+        "status"
+    ] == "completed"
+    registry = (await client.get("/api/admin/pricing/providers", headers=ADMIN)).json()
+    assert (
+        next(p for p in registry["providers"] if p["id"] == "verda")["validationStatus"]
+        == "live_verified"
+    )
+    assert (
+        await client.get("/api/pricing/prices?provider=verda&gpuCount=invalid")
+    ).status_code == 400
+
+
+async def test_order_history_defaults_to_all_states_and_credit_history_is_read_only(console):
+    client, backend, _, rentals, *_ = console
+    now = timestamp()
+    rentals.extend(
+        [
+            dict(
+                id="ended-rental",
+                state="CLOSED",
+                created_at=now,
+                rfq=dict(upstream_order_id="credit-order", gpu_model="T4", gpu_count=1),
+            ),
+            dict(
+                id="direct-rental",
+                state="CLOSED",
+                created_at=now,
+                rfq=dict(upstream_order_id="bank-order", gpu_model="H100", gpu_count=1),
+            ),
+        ]
+    )
+    for identity, ref, rental, state, cents in [
+        ("credit-charge", "credit-order", "ended-rental", "billed", 100),
+        ("bank-charge", "bank-order", "direct-rental", "refunded", 200),
+        ("orphan-charge", "orphan-order", None, "refunded", 300),
+    ]:
+        backend.db.save(
+            dict(
+                id=identity,
+                kind="opennext_charge",
+                tenant_id="opennext:u1",
+                reference=ref,
+                rental_id=rental,
+                state=state,
+                cents=cents,
+                hourly_cents=100,
+                billed_cents=27 if state == "billed" else None,
+                released_cents=73 if state == "billed" else 0,
+                email="u1@example.test",
+                created_at=now,
+            )
+        )
+    from spotbot.opennext_ops import TRANSFER
+
+    backend.db.save(
+        dict(
+            id="bank-transfer",
+            kind=TRANSFER,
+            tenant_id="opennext:u1",
+            purpose="order",
+            order_reference="bank-order",
+            amount_cents=200,
+            status="Confirmed",
+            created_at=now,
+            email="u1@example.test",
+        )
+    )
+    rentals.append(
+        dict(
+            id="unlinked-rental",
+            state="CLOSED",
+            created_at=now,
+            rfq=dict(gpu_model="T4", gpu_count=1),
+        )
+    )
+    before = backend.db.list("opennext_charge")
+    response = await client.get("/api/admin/orders", headers=ADMIN)
+    orders = response.json()["orders"]
+    assert {"credit-order", "bank-order", "orphan-order"} <= {r["id"] for r in orders}
+    credit = next(r for r in orders if r["id"] == "credit-order")
+    assert (
+        credit["state"] == "completed" and credit["total"] == 1 and credit["settledTotal"] == 0.27
+    )
+    assert credit["paymentMethod"] == "Credit"
+    assert next(r for r in orders if r["id"] == "unlinked-rental")["amountKnown"] is False
+    assert next(r for r in orders if r["id"] == "bank-order")["paymentMethod"] == "Direct Pay"
+    assert (await client.get("/api/admin/orders?state=processing", headers=ADMIN)).json()["orders"][
+        0
+    ]["kind"] == "RFQ"
+    assert (await client.get("/api/admin/payments/credit")).status_code == 401
+    payments = (await client.get("/api/admin/payments/credit", headers=ADMIN)).json()["payments"]
+    assert {r["orderId"] for r in payments} == {"credit-order", "orphan-order"}
+    settled = next(r for r in payments if r["orderId"] == "credit-order")
+    assert (
+        settled["authorizedCents"] == 100
+        and settled["settledCents"] == 27
+        and settled["releasedCents"] == 73
+    )
+    assert (
+        await client.get("/api/admin/payments/credit?paymentState=refunded", headers=ADMIN)
+    ).json()["total"] == 1
+    assert (
+        await client.get("/api/admin/payments/credit?search=orphan-order", headers=ADMIN)
+    ).json()["total"] == 1
+    assert (await client.get("/api/admin/payments/credit?limit=1", headers=ADMIN)).json()[
+        "nextCursor"
+    ] == "1"
+    assert (
+        await client.post("/api/admin/payments/credit", headers=ADMIN, json={})
+    ).status_code in {404, 405}
+    assert backend.db.list("opennext_charge") == before
