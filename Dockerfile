@@ -4,7 +4,7 @@
 # charges, Buyer KYB, bank transfers, payment review, instance usage, notices) and ClamAV,
 # taken from the private spot-order-bot image; the container runs them when OPENNEXT_ADAPTER=1.
 ARG SPOTBOT_SOURCE=none
-ARG SPOTBOT_IMAGE=ghcr.io/vishwanetwork/spot-order-bot:aae6c2811ce153012d4b3882f139a298ad8b6e1c
+ARG SPOTBOT_IMAGE=ghcr.io/vishwanetwork/spot-order-bot:4b6b8d5ace885fddc23c3d1d8c7a857dfa33b453
 
 # Adapter source: the spot-order-bot image (its /app), or nothing for the plain image.
 FROM ${SPOTBOT_IMAGE} AS spotbot-image
