@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Dialog } from '@/components/ui/dialog';
 import type { BuyerKybAdminService, BuyerKybCase } from '@/lib/buyer-kyb';
@@ -112,7 +113,8 @@ export function KybDecision({
         </p>
       )}
       <div className="buyer-kyb-actions">
-        <button
+        <AsyncButton
+          busy={busy}
           type="button"
           className="btn"
           disabled={busy}
@@ -122,15 +124,16 @@ export function KybDecision({
           }}
         >
           Reject
-        </button>
-        <button
+        </AsyncButton>
+        <AsyncButton
+          busy={busy}
           type="button"
           className="btn primary"
           disabled={busy || !allscaleApproved}
           onClick={() => void decide('Approved')}
         >
           {busy && !rejecting ? 'Saving…' : 'Approve'}
-        </button>
+        </AsyncButton>
       </div>
       {rejecting && (
         <Dialog
@@ -181,9 +184,9 @@ export function KybDecision({
               >
                 Cancel
               </button>
-              <button type="submit" className="btn primary" disabled={busy}>
+              <AsyncButton busy={busy} type="submit" className="btn primary" disabled={busy}>
                 {busy ? 'Saving…' : 'Confirm rejection'}
-              </button>
+              </AsyncButton>
             </div>
           </form>
         </Dialog>

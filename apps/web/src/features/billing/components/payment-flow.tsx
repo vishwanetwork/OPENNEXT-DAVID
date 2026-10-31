@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent } from 'react';
 import { useStartBankTransfer } from '@/features/bank-transfer';
 import { useToast } from '@/components/ui/toast';
@@ -180,9 +181,14 @@ export function PaymentMethod() {
           >
             Back
           </Btn>
-          <button className="btn" type="submit" disabled={transfer.busy || !transfer.connected}>
+          <AsyncButton
+            busy={transfer.busy}
+            className="btn"
+            type="submit"
+            disabled={transfer.busy || !transfer.connected}
+          >
             {transfer.busy ? 'Checking…' : 'Proceed to payment'}
-          </button>
+          </AsyncButton>
         </div>
       </form>
     </>

@@ -17,7 +17,7 @@ beforeEach(() => {
 
 describe('Instances page', () => {
   it('an empty account shows an honest empty state without example resources', () => {
-    renderTerminal(<InstancesPage />);
+    renderTerminal(<InstancesPage />, { workspace: {} });
     expect(screen.getByText('No instances yet')).toBeInTheDocument();
     expect(screen.queryByLabelText('Example instance')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();

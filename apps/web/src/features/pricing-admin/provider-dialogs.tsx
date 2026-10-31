@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { PricingProvider } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
@@ -112,8 +113,11 @@ function ProviderDetail({
 }) {
   const api = useApi();
   const [credential, setCredential] = useState('');
+  const [saving, setSaving] = useState<'settings' | 'credential' | null>(null);
   const saveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
+    setSaving('settings');
     const data = new FormData(event.currentTarget);
     try {
       await pricingAdminApi.settings(api, p.id, {
@@ -128,10 +132,14 @@ function ProviderDetail({
         error instanceof Error ? error.message : 'The pricing operation could not be completed.',
         true,
       );
+    } finally {
+      setSaving(null);
     }
   };
   const saveCredential = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
+    setSaving('credential');
     const value = credential;
     setCredential('');
     try {
@@ -144,6 +152,8 @@ function ProviderDetail({
         error instanceof Error ? error.message : 'The pricing operation could not be completed.',
         true,
       );
+    } finally {
+      setSaving(null);
     }
   };
   return (
@@ -219,16 +229,23 @@ function ProviderDetail({
           />
         </label>
         <div className="pc-dialog-actions">
-          <button type="submit" className="pc-primary" disabled={!access.mutable}>
+          <AsyncButton
+            type="submit"
+            className="pc-primary"
+            disabled={!access.mutable || Boolean(saving)}
+            busy={saving === 'settings'}
+            busyLabel="Saving…"
+          >
             Save settings
-          </button>
-          <button
+          </AsyncButton>
+          <AsyncButton
+            busy={busy === p.id}
             type="button"
             disabled={!access.mutable || p.adapterStatus !== 'implemented' || busy === p.id}
             onClick={() => void onRun(p.id, true)}
           >
             Test &amp; collect
-          </button>
+          </AsyncButton>
           <button type="button" onClick={() => onOpen({ kind: 'prices', id: p.id })}>
             View prices
           </button>
@@ -254,9 +271,15 @@ function ProviderDetail({
               onChange={(e) => setCredential(e.target.value)}
             />
           </label>
-          <button type="submit" className="pc-primary" disabled={!access.mutable}>
+          <AsyncButton
+            type="submit"
+            className="pc-primary"
+            disabled={!access.mutable || Boolean(saving)}
+            busy={saving === 'credential'}
+            busyLabel="Saving…"
+          >
             Save to server memory
-          </button>
+          </AsyncButton>
         </form>
       ) : null}
       <div className="pc-api-list">

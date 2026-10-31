@@ -72,7 +72,7 @@ describe('Buyer sign-in navigation', () => {
     expect(navigation.replace).toHaveBeenLastCalledWith(
       '?role=buyer&listing=offer-1&intent=buy&auth=signup',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /^Sign in$/ }));
     expect(navigation.replace).toHaveBeenLastCalledWith('?role=buyer&listing=offer-1&intent=buy');
     expect(screen.queryByRole('heading', { name: 'Buyer workspace' })).not.toBeInTheDocument();
   });

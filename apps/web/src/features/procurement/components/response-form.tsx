@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent } from 'react';
 import type { OwnedRfq, OwnedSupply } from '@opennext/contracts';
 import { useToast } from '@/components/ui/toast';
@@ -102,9 +103,9 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
         installed capacity can be quoted.
       </p>
       <div className="modal-footer">
-        <button className="btn" type="submit" disabled={busy}>
+        <AsyncButton busy={busy} className="btn" type="submit" disabled={busy}>
           Submit quote
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

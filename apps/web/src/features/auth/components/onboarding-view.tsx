@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState } from 'react';
 import type { SessionUser } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
@@ -116,7 +117,8 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
         Signed in as <strong>{user.email}</strong>. Set up your Buyer workspace.
       </p>
       <div className="onx-auth-roles" role="group" aria-label="Choose your role">
-        <button
+        <AsyncButton
+          busy={busy}
           type="button"
           className="onx-auth-role"
           data-onboarding-role="buyer"
@@ -127,8 +129,9 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
           <strong>Buyer</strong>
           <span>Find GPU capacity, request quotes and manage your resources.</span>
           <i aria-hidden="true" />
-        </button>
-        <button
+        </AsyncButton>
+        <AsyncButton
+          busy={busy}
           type="button"
           className="onx-auth-role"
           data-onboarding-role="seller"
@@ -139,7 +142,7 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
           <strong>Seller</strong>
           <span>Verify your business, list available capacity and respond to demand.</span>
           <i aria-hidden="true" />
-        </button>
+        </AsyncButton>
         <button type="button" className="onx-auth-role" disabled aria-disabled="true">
           <strong>
             Broker <small>Coming soon</small>
@@ -148,7 +151,8 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
         </button>
       </div>
       <AuthError message={error} />
-      <button
+      <AsyncButton
+        busy={busy}
         className="onx-auth-submit"
         type="button"
         data-onboarding-next
@@ -156,7 +160,7 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
         onClick={next}
       >
         Next <ArrowIcon />
-      </button>
+      </AsyncButton>
       <p className="onx-auth-smallnote">
         Complete setup to receive a one-time $100 promotional credit. Promotional credit cannot be
         withdrawn.

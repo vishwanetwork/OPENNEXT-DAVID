@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -86,9 +87,9 @@ function AddKeyModal() {
         <button type="button" className="btn secondary" data-act="close-modal" onClick={closeModal}>
           Cancel
         </button>
-        <button type="submit" className="btn" disabled={!available || busy}>
+        <AsyncButton busy={busy} type="submit" className="btn" disabled={!available || busy}>
           Add key
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );
@@ -139,9 +140,9 @@ function RemoveKeyModal({ id }: { id: string }) {
         <button type="button" className="btn secondary" data-act="close-modal" onClick={closeModal}>
           Cancel
         </button>
-        <button type="submit" className="btn danger" disabled={busy}>
+        <AsyncButton busy={busy} type="submit" className="btn danger" disabled={busy}>
           Remove key
-        </button>
+        </AsyncButton>
       </div>
     </form>
   );

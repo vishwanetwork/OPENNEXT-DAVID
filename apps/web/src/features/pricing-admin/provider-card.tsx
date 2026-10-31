@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import type { PricingProvider } from '@opennext/contracts';
 import { credentialReady, fmt, providerRun, providerState, providerTerms } from './api';
 import { ProviderLogo, StatusBadge } from './provider-card-ui';
@@ -58,13 +59,14 @@ export function ProviderCard({
         <button type="button" onClick={onOpen}>
           Configure &amp; API
         </button>
-        <button
+        <AsyncButton
+          busy={busy}
           type="button"
           disabled={!mutable || !implemented || !credentialReady(p) || state === 'running' || busy}
           onClick={onRun}
         >
           {state === 'running' ? 'Running…' : 'Run now'}
-        </button>
+        </AsyncButton>
       </div>
     </article>
   );

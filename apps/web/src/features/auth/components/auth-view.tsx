@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { SessionUser } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
@@ -163,7 +164,8 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
         Sign in securely to source, compare and manage AI capacity.
       </p>
       <div className="onx-auth-providers">
-        <button
+        <AsyncButton
+          busy={busy}
           className="onx-auth-provider onx-auth-google"
           type="button"
           data-auth-provider="google"
@@ -172,8 +174,9 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
         >
           <GoogleIcon />
           <span>Continue with Google</span>
-        </button>
-        <button
+        </AsyncButton>
+        <AsyncButton
+          busy={busy}
           className="onx-auth-provider onx-auth-github"
           type="button"
           data-auth-provider="github"
@@ -182,7 +185,7 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
         >
           <GitHubIcon />
           <span>Continue with GitHub</span>
-        </button>
+        </AsyncButton>
       </div>
       <div className="onx-auth-divider">or continue with email</div>
       <form data-auth-email noValidate onSubmit={submitEmail}>

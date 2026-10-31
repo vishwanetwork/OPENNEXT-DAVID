@@ -74,7 +74,6 @@ export function useWorkspace() {
     queryFn: () => workspaceApi.mine(api),
     enabled: Boolean(identity),
     staleTime: 15_000,
-    placeholderData: keepPreviousData,
     ...REFRESH,
   });
 }

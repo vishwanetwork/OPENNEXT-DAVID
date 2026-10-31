@@ -1,5 +1,6 @@
 'use client';
 
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { ApiError } from '@/lib/api/client';
@@ -73,9 +74,14 @@ export function AdminLoginForm({
       <p className={errorClassName} role="alert" hidden={!login.isError}>
         {login.error instanceof Error ? login.error.message : ''}
       </p>
-      <button type="submit" className={buttonClassName} disabled={login.isPending}>
+      <AsyncButton
+        busy={login.isPending}
+        type="submit"
+        className={buttonClassName}
+        disabled={login.isPending}
+      >
         Connect
-      </button>
+      </AsyncButton>
     </form>
   );
 }

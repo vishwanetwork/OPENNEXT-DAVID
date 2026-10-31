@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { describe, expect, it } from 'vitest';
-import { act, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test/render';
 import { useWorkspaceStore } from '@/terminal-kit';
 import { CHECKOUT_MODALS, durationHours, type SpotCheckout } from './checkout';
@@ -8,6 +8,7 @@ import { spotCheckoutModals } from './components/checkout-modals';
 import type { SpotRow } from './inventory';
 import { serviceFixture } from '@/features/buyer-kyb/test-fixtures';
 import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
+import { CreditConfirmBody } from './components/checkout-bodies';
 
 const offer = {
   id: 'spotbot-us-west-2-g6.xlarge',
@@ -39,6 +40,74 @@ function Probe() {
 }
 
 describe('Spot purchase', () => {
+  it('shows payment progress while the order is uncertain and blocks a duplicate confirmation', async () => {
+    const gate = Promise.withResolvers<Response>();
+    let posts = 0;
+    mockFetch((path) => {
+      if (path.includes('/api/marketplace/public'))
+        return json(200, { rfqs: [], supplies: [offer] });
+      if (path.includes('/api/billing/account'))
+        return json(200, {
+          confirmed: true,
+          accountId: 'u1',
+          currency: 'USD',
+          availableCredit: 100,
+          paidCredit: 0,
+          promotionalCredit: 100,
+        });
+      if (path.includes('/api/marketplace/spot-purchases')) {
+        posts += 1;
+        return gate.promise;
+      }
+      return json(200, {});
+    });
+    signIn();
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+        <CreditConfirmBody />
+      </SpotCheckoutProvider>,
+      {
+        workspace: {},
+        billing: { availableCredit: 100, promotionalCredit: 100 },
+        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+      },
+    );
+    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+    const engine = seen.engine;
+    const row = seen.rows[0];
+    if (!engine || !row) throw new Error('Expected checkout engine and offer');
+    act(() => engine.beginCheckout(row));
+    await act(async () => engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
+    await act(async () => engine.chooseCredit());
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
+    expect(
+      await screen.findByText('Confirming your payment and order. Please wait…'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(posts).toBe(1));
+    expect(screen.getByRole('button', { name: 'Confirm Credit payment' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
+    expect(posts).toBe(1);
+    await act(async () =>
+      gate.resolve(
+        json(200, {
+          confirmed: true,
+          offerId: offer.id,
+          orderId: 'rental-1',
+          currency: 'USD',
+          durationHours: 2,
+          totalCents: 82,
+        }),
+      ),
+    );
+    await waitFor(() => expect(engine.pending()?.stage).toBe('completed'));
+  });
   it('orders at least one hour, since usage has a 1-hour minimum', () => {
     expect(durationHours('1')).toBe(1);
     expect(durationHours('2.25')).toBe(2.25);
@@ -127,5 +196,7 @@ describe('Spot purchase', () => {
     const workspace = queryClient.getQueryCache().findAll({ queryKey: ['account', 'workspace'] });
     expect(workspace.length).toBeGreaterThan(0);
     expect(workspace.every((query) => query.state.isInvalidated)).toBe(true);
+    act(() => seen.engine!.action('spot-checkout-instances'));
+    expect(useWorkspaceStore.getState().modal).toBeNull();
   });
 });

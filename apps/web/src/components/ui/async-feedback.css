@@ -1,0 +1,39 @@
+.async-feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-block: 12px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.async-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: async-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+.async-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: contents;
+}
+@keyframes async-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .async-spinner {
+    animation: none;
+  }
+}

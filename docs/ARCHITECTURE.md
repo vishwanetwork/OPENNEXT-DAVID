@@ -311,3 +311,22 @@ runs both in one container on port 4188 (same container name, port and volume as
 the 1Panel reverse proxy and the GitHub deploy workflow are unchanged. Set `API_ORIGIN` to
 switch the container to an external backend and keep `OPENNEXT_TRUST_PROXY=1` behind the TLS
 proxy.
+
+### Terminal asynchronous feedback and instance reads
+
+Use the shared `AsyncButton` and `AsyncFeedback` components for asynchronous actions:
+show progress immediately, disable duplicate submissions, keep errors visible, and avoid
+page-wide interaction locks. A successful Autopilot save closes only its matching dialog;
+an outstanding response cannot dismiss another dialog the customer opened later.
+
+Autopilot responses are cached in memory by account/role/demo identity and rental ID for
+30 minutes, prefetched on Manage intent, and revalidated in the background when opened.
+No scripts, secret values or logs are persisted to browser local/session storage by this
+cache. The server remains authoritative. Cold reads show a progress panel; cached reads
+remain usable while status updates, with an explicit warning if revalidation fails.
+
+Instances distinguish first load, background refresh, empty results and failed requests.
+History reads start near the visible viewport, share a two-request queue, and abort queued
+work on unmount. Cached history lives for ten minutes; ended instances do not poll. These
+reads do not occupy every browser connection needed for navigation or payment actions.
+The Terminal route loading boundary streams progress while retaining its shared navigation.

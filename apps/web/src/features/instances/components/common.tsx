@@ -6,6 +6,7 @@ import { useApp } from '@/components/providers/app-context';
 import { useTerminalSlots, useWorkspaceStore } from '@/terminal-kit';
 import type { Lifecycle } from '../lifecycle';
 import { previewScope, usePreviewStore } from '../preview';
+import { AsyncButton } from '@/components/ui/async-feedback';
 
 /**
  * Re-renders every second (legacy `syncModal` 1 s refresh) so lifecycle labels stay current,
@@ -53,6 +54,10 @@ export function IBtn({
   children,
   onClick,
   example,
+  busy,
+  busyLabel,
+  onPointerEnter,
+  onFocus,
 }: {
   act: string;
   id?: string;
@@ -61,20 +66,28 @@ export function IBtn({
   children: ReactNode;
   onClick?: () => void;
   example?: boolean;
+  busy?: boolean;
+  busyLabel?: string;
+  onPointerEnter?: () => void;
+  onFocus?: () => void;
 }) {
   return (
-    <button
+    <AsyncButton
       className="btn secondary small"
       type="button"
       data-act={act}
       data-id={id}
       data-example={example ? 'true' : undefined}
       disabled={disabled}
+      busy={busy}
+      busyLabel={busyLabel}
+      onPointerEnter={onPointerEnter}
+      onFocus={onFocus}
       title={title}
       onClick={onClick}
     >
       {children}
-    </button>
+    </AsyncButton>
   );
 }
 
