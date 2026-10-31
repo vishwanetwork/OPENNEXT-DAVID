@@ -66,6 +66,27 @@ class ConsoleBackend:
 
     async def activity(self):
         rows = await self.documents("console_audit")
+        if self.snapshots.directory is not None:
+            legacy = await asyncio.to_thread(self.snapshots.read, "marketplace.json")
+            for event in legacy.get("audit", []):
+                if not isinstance(event, dict) or not event.get("at"):
+                    continue
+                identity = str(
+                    uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        str(event.get("at")) + str(event.get("event")) + str(event.get("id")),
+                    )
+                )
+                rows.append(
+                    dict(
+                        id=identity,
+                        at=str(event["at"]),
+                        actor=str(event.get("actor") or "Operations"),
+                        action=str(event.get("event") or "Marketplace action"),
+                        target=str(event.get("id") or "marketplace"),
+                        detail="Marketplace operations record",
+                    )
+                )
         for kind in [TRANSFER, KYB]:
             for doc in await self.documents(kind):
                 decision = doc.get("decision")
@@ -111,6 +132,7 @@ class ConsoleBackend:
                 await self.documents("opennext_charge"),
                 legacy["orders"],
                 users,
+                await self.ops.transfers(),
             )
             kind = request.query_params.get("kind", "")
             if kind not in {"", "All", "Instance", "RFQ"}:
@@ -140,13 +162,55 @@ class ConsoleBackend:
             result, next_cursor = page(rows, cursor, limit)
             return dict(events=result, total=len(rows), nextCursor=next_cursor)
         if section == "overview":
-            transfers, cases, rentals = (
-                await self.ops.transfers(),
-                await self.ops.kyb_cases(),
-                await self.rentals(),
+            transfers, cases = await self.ops.transfers(), await self.ops.kyb_cases()
+            rentals, providers, contacts = await asyncio.gather(
+                self.rentals(),
+                self.bridge.providers(request),
+                self.bridge.call(request, "GET", "/api/admin/contacts"),
+                return_exceptions=True,
             )
+            sources = None
+            if isinstance(providers, dict):
+                sources = 0
+                for provider in providers["providers"]:
+                    run = provider.get("latestRun") or provider.get("lastRun") or {}
+                    last = run.get("finishedAt") or run.get("startedAt")
+                    try:
+                        fresh = last and timedelta(0) <= utcnow() - at(last) <= timedelta(
+                            minutes=2 * provider.get("intervalMinutes", 60)
+                        )
+                    except ValueError:
+                        fresh = False
+                    if (
+                        provider.get("enabled")
+                        and provider.get("adapterStatus") == "implemented"
+                        and provider.get("recordCount", 0) > 0
+                        and fresh
+                    ):
+                        sources += 1
+            rfqs, offers = None, None
+            try:
+                legacy = await asyncio.to_thread(self.snapshots.read, "marketplace.json")
+                if isinstance(legacy.get("rfqs"), list):
+                    rfqs = sum(
+                        not r.get("external") and r.get("status") in {"Reviewing", "Open", "Quoted"}
+                        for r in legacy["rfqs"]
+                    )
+            except OperationError:
+                pass
+            if self.market is not None and hasattr(self.market, "offers"):
+                try:
+                    offers = len(await self.market.offers())
+                except (httpx.HTTPError, ValueError, KeyError):
+                    pass
             return dict(
                 metrics={
+                    "priceSources": sources,
+                    "spotOffers": offers,
+                    "pendingContacts": sum(r.get("status") == "New" for r in contacts["leads"])
+                    if isinstance(contacts, dict) and isinstance(contacts.get("leads"), list)
+                    else None,
+                    "pendingRfqs": rfqs,
                     "pendingTopups": sum(
                         d["purpose"] == "topup"
                         and d["status"] in {"Awaiting transfer", "Awaiting payment confirmation"}
@@ -160,7 +224,9 @@ class ConsoleBackend:
                     "pendingKyb": sum(d.get("status") == "Reviewing" for d in cases),
                     "liveInstances": sum(
                         r["state"] == "ACTIVE" and not r.get("end_requested") for r in rentals
-                    ),
+                    )
+                    if isinstance(rentals, list)
+                    else None,
                 },
                 events=(await self.activity())[:10],
             )
@@ -292,13 +358,15 @@ class ConsoleBackend:
 
     async def run(self):
         while True:
-            try:
-                await self.bridge.restore()
-                await self.tick()
-                self.worker_error = None
-            except Exception:
-                # Never log upstream bodies or credential material.
-                self.worker_error = "Console maintenance could not complete its last cycle."
+            # A collector outage must not block reconciliation of already-paid orders.
+            results = await asyncio.gather(
+                self.bridge.restore(), self.tick(), return_exceptions=True
+            )
+            self.worker_error = (
+                "Console maintenance could not complete its last cycle."
+                if any(isinstance(r, Exception) for r in results)
+                else None
+            )
             await asyncio.sleep(30)
 
 
@@ -398,7 +466,10 @@ def install(app, ctx):
                 )
             )
             await backend.audit(actor, "Price source " + operation, provider)
-            return ctx.no_store(value)
+            response = ctx.no_store(value)
+            if operation == "run":
+                response.status_code = 202
+            return response
         except OperationError as exc:
             return ctx.error(exc.status, exc.message)
         except (ValueError, TypeError, AttributeError):

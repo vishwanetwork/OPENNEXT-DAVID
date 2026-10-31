@@ -68,7 +68,7 @@ def user_growth(rows):
     }
 
 
-def order_rows(rentals, charges, legacy_orders, users):
+def order_rows(rentals, charges, legacy_orders, users, transfers=()):
     accounts = {row["id"]: row for row in users}
     by_rental = {row.get("rental_id"): row for row in charges if row.get("rental_id")}
     result = []
@@ -79,7 +79,7 @@ def order_rows(rentals, charges, legacy_orders, users):
         state = rental["state"]
         result.append(
             dict(
-                id=rental["id"],
+                id=rfq.get("upstream_order_id") or rental["id"],
                 kind="Instance",
                 email=charge.get("email") or accounts.get(user_id, {}).get("email", ""),
                 model=rfq.get("gpu_model", ""),
@@ -91,11 +91,33 @@ def order_rows(rentals, charges, legacy_orders, users):
                 currency="USD",
                 status=state,
                 state="completed"
-                if state == "CLOSED" and rental.get("delivered_at")
+                if state == "CLOSED" and rental.get("service_intervals")
                 else "cancelled"
                 if state == "CLOSED"
                 else "processing",
                 submittedAt=rental["created_at"],
+            )
+        )
+    known = {row["id"] for row in result}
+    for transfer in transfers:
+        reference = transfer.get("order_reference")
+        if transfer.get("purpose") != "order" or not reference or reference in known:
+            continue
+        offer = transfer.get("offer") or {}
+        result.append(
+            dict(
+                id=reference,
+                kind="Instance",
+                email=transfer.get("email") or "",
+                model=offer.get("gpu_model") or "",
+                gpuCount=offer.get("gpu_count") or 0,
+                country=offer.get("region") or "",
+                term="Spot",
+                total=transfer["amount_cents"] / 100,
+                currency="USD",
+                status=transfer["status"],
+                state="cancelled" if transfer["status"] == "Failed" else "processing",
+                submittedAt=transfer["created_at"],
             )
         )
     for order in legacy_orders:

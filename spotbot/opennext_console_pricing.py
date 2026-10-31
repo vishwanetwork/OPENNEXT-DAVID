@@ -153,12 +153,17 @@ class CollectorBridge:
             return
         origin = urlsplit(self.origin)
         token = os.environ.get("OPENNEXT_ADMIN_TOKEN", "")
-        if origin.hostname not in {"localhost", "127.0.0.1", "::1"} and not token:
+        admin_host = os.environ.get("ADMIN_HOST", "")
+        if (admin_host or origin.hostname not in {"localhost", "127.0.0.1", "::1"}) and not token:
             raise OperationError(
                 503,
                 "Configure an administrator service credential for remote collector restoration.",
             )
-        headers = [(b"host", origin.netloc.encode())]
+        headers = [(b"host", (admin_host or origin.netloc).encode())]
+        if admin_host:
+            # The legacy listener is private and already trusts this reverse-proxy hop.
+            # The bearer token remains mandatory; a forged forwarding header is not auth.
+            headers.append((b"x-forwarded-proto", b"https"))
         if token:
             headers.append((b"authorization", ("Bearer " + token).encode()))
         request = Request(

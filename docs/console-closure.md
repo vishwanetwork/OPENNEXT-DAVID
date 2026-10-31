@@ -49,8 +49,10 @@ provider keys continue to work. Database-saved keys override those environment k
 
 The single adapter maintenance loop restores keys into the existing collector every
 30 seconds, including after an independent collector restart. Local private legacy
-listeners use their existing loopback policy. A remote legacy service additionally
-requires `OPENNEXT_ADMIN_TOKEN` in the adapter environment. No browser cookie is saved
+listeners without configured host routing use their existing loopback policy. A
+deployment with `ADMIN_HOST`, or a remote legacy service, requires
+`OPENNEXT_ADMIN_TOKEN` in the adapter environment. The production host route uses
+that configured administrator Host and its existing trusted proxy transport. No browser cookie is saved
 for background use. Provider enablement, cadence, observations and run history remain
 owned by the existing collector and its persistent data directory.
 
@@ -58,3 +60,13 @@ owned by the existing collector and its persistent data directory.
 It queues a durable job that retries already-paid work and settles existing usage;
 it cannot create a fresh purchase or alter a running RFQ. Customer billing summaries
 are ledger projections, not provider invoices. The current fee policy is unchanged.
+
+Overview counters are calculated from complete records. Collector, contact, market
+and rental dependencies fail independently; unavailable figures are null, never zero.
+The audit projection includes legacy marketplace events and server review decisions.
+
+The frontend repository includes `scripts/console-flow.test.cjs`. With
+`SPOTBOT_TEST_ROOT` and `SPOTBOT_TEST_PYTHON` pointing at this checkout and its Python
+runtime, it starts both services on ephemeral loopback ports and verifies login,
+credential persistence, collection, Terminal catalog reads and restart restoration.
+Provider HTTP responses are fixtures; no real cloud or email service is contacted.

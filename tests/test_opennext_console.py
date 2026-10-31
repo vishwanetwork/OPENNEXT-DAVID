@@ -244,3 +244,39 @@ async def test_maintenance_is_durable_idempotent_and_reports_real_health(console
         "/api/admin/agent/actions", headers=ADMIN, json={**body, "action": "replace_code"}
     )
     assert invalid.status_code == 400
+
+
+async def test_overview_keeps_authoritative_counts_when_a_dependency_is_down(console):
+    client, backend, *_ = console
+    backend.db.save(
+        dict(
+            id="payment",
+            kind="opennext_transfer",
+            tenant_id="opennext:u1",
+            account="u1",
+            purpose="order",
+            status="Awaiting payment confirmation",
+            created_at=timestamp(),
+        )
+    )
+    backend.db.save(
+        dict(
+            id="kyb",
+            kind="opennext_kyb_case",
+            tenant_id="opennext:u1",
+            status="Reviewing",
+            submitted_at=timestamp(),
+        )
+    )
+
+    async def unavailable():
+        raise httpx.ConnectError("down")
+
+    backend.market.rentals = unavailable
+    response = await client.get("/api/admin/overview", headers=ADMIN)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json()["metrics"]["pendingPayments"] == 1
+    assert response.json()["metrics"]["pendingKyb"] == 1
+    assert response.json()["metrics"]["liveInstances"] is None
+    assert response.json()["metrics"]["pendingContacts"] is None
