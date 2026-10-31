@@ -127,7 +127,7 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
               <tr>
                 {[
                   'Email',
-                  'Received amount',
+                  'Payment amount',
                   ...(kind === 'topup' ? ['Credit'] : ['Order']),
                   'Reference',
                   'Submitted',
@@ -255,7 +255,7 @@ function PaymentDetails({ record, onClose }: { record: PaymentReviewRecord; onCl
           ['Email', record.email],
           ['Request', record.id],
           ['Order', record.orderId ?? '—'],
-          ['Received amount', money(record.amountCents / 100)],
+          ['Payment amount', money(record.amountCents / 100)],
           ['Pricing basis', record.pricingVersion],
           ['Reference', record.reference],
           ['Submitted', stampUtc(record.submittedAt)],

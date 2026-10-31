@@ -64,10 +64,11 @@ export function LiveOrdersPage() {
   const [cursors, setCursors] = useState(['']);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState('All');
+  const [orderState, setOrderState] = useState('all');
   const state = useConsoleResource('orders', {
     cursor: cursors[cursors.length - 1] ?? '',
     limit: '50',
-    state: 'processing',
+    state: orderState,
     search,
     kind,
   });
@@ -78,6 +79,11 @@ export function LiveOrdersPage() {
         filters={{
           search,
           kind,
+          state: orderState,
+          onState: (value) => {
+            setCursors(['']);
+            setOrderState(value);
+          },
           onSearch: (value) => {
             setCursors(['']);
             setSearch(value);
@@ -88,7 +94,7 @@ export function LiveOrdersPage() {
           },
         }}
       />
-      <p className="muted">{state.data?.total ?? 0} in-progress orders across all customers.</p>
+      <p className="muted">{state.data?.total ?? 0} matching orders across all customers.</p>
       <LivePagination
         next={state.data?.nextCursor ?? null}
         previous={cursors.length > 1}

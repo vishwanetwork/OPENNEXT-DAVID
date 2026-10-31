@@ -490,3 +490,23 @@ have null `instanceHourly` and must be excluded from full-machine market compari
 No Reserved prices, inventory or quota availability are inferred. The price endpoint merges
 and filters additional snapshots, balances providers before applying the limit, and reports
 truncation. Existing AWS historical charts and purchasable capacity keep their current sources.
+
+### Order history and Credit payment records
+
+`GET /api/admin/orders` defaults to `state=all`. `processing`, `completed` and `cancelled`
+remain supported filters, alongside type, search and pagination. Completed/ended purchases
+must not be removed by a second client-side processing-only filter. Orders include optional
+`paymentMethod`, `rentalId`, `amountKnown` and `settledTotal`; `total` remains the agreed order limit, while
+`settledTotal` is the final ledger charge or null until settled. Refunded orders settle to zero.
+Charge records without a visible rental remain in order history rather than disappearing.
+When no payment record is linked, `amountKnown=false` and the UI shows an unknown amount
+rather than interpreting a compatibility zero as a free order.
+
+`GET /api/admin/payments/credit` is an administrator-only read-only ledger projection. It
+returns `{payments,total,nextCursor,asOf}`, supports `search`, `paymentState` (all, held,
+charged, billed, refunded), `cursor` and `limit`. Rows have `id`, `orderId`, nullable `rentalId`,
+`email`, USD `currency`, `state`, `authorizedCents`, nullable `settledCents`, `releasedCents`,
+`submittedAt` and `paymentMethod=Credit`. A usage hold is not a final charge. Direct Pay
+orders also create usage holds; their references are excluded from Credit purchase rows.
+The existing `/api/admin/payment-requests?kind=direct_pay` remains the bank-receipt review
+queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules change.

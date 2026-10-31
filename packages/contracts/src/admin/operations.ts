@@ -31,6 +31,10 @@ export const OperationsOrder = z.object({
   status: z.string(),
   state: z.enum(['processing', 'completed', 'cancelled']),
   submittedAt: z.string(),
+  paymentMethod: z.enum(['Credit', 'Direct Pay', 'Unknown']).optional(),
+  amountKnown: z.boolean().optional(),
+  settledTotal: z.number().nonnegative().nullable().optional(),
+  rentalId: z.string().nullable().optional(),
 });
 export const OperationsOrders = z.object({
   orders: z.array(OperationsOrder),
@@ -107,4 +111,25 @@ export const OperationsBilling = z.object({
     }),
   ),
   asOf: z.string(),
+});
+
+/** Read-only Credit purchase ledger; never accepts bank-receipt decisions. */
+export const OperationsCreditPayments = z.object({
+  payments: z.array(
+    z.object({
+      id: z.string(),
+      orderId: z.string(),
+      rentalId: z.string().nullable(),
+      email: z.string(),
+      currency: z.literal('USD'),
+      state: z.enum(['held', 'charged', 'billed', 'refunded']),
+      authorizedCents: count,
+      settledCents: count.nullable(),
+      releasedCents: count,
+      submittedAt: z.string(),
+      paymentMethod: z.literal('Credit'),
+    }),
+  ),
+  total: count,
+  ...page,
 });

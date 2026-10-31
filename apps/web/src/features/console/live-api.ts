@@ -5,6 +5,7 @@ import {
   OperationsBilling,
   OperationsJob,
   OperationsOrders,
+  OperationsCreditPayments,
   OperationsOverview,
   OperationsUsers,
 } from '@opennext/contracts';
@@ -13,6 +14,7 @@ import type { ApiClient } from '@/lib/api/client';
 export const liveSchemas = {
   users: OperationsUsers,
   orders: OperationsOrders,
+  creditPayments: OperationsCreditPayments,
   overview: OperationsOverview,
   activity: OperationsActivity,
   agent: OperationsAgent,
@@ -23,6 +25,7 @@ export type LiveData<K extends LiveResource> = z.infer<(typeof liveSchemas)[K]>;
 const paths: Record<LiveResource, string> = {
   users: '/api/admin/users',
   orders: '/api/admin/orders',
+  creditPayments: '/api/admin/payments/credit',
   overview: '/api/admin/overview',
   activity: '/api/admin/operations/activity',
   agent: '/api/admin/agent',

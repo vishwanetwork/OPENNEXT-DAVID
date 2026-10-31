@@ -80,8 +80,16 @@ describe('operations record selectors', () => {
     expect(growthValue(users, '1M')).toBe(12);
   });
 
-  it('only includes in-progress orders and filters by type and search', () => {
-    expect(filterOrders(orders, '', 'All').map((row) => row.id)).toEqual(['order-1', 'order-2']);
+  it('includes order history by default and supports an explicit processing filter', () => {
+    expect(filterOrders(orders, '', 'All').map((row) => row.id)).toEqual([
+      'order-1',
+      'order-2',
+      'order-closed',
+    ]);
+    expect(filterOrders(orders, '', 'All', 'processing').map((row) => row.id)).toEqual([
+      'order-1',
+      'order-2',
+    ]);
     expect(filterOrders(orders, 'singapore', 'RFQ').map((row) => row.id)).toEqual(['order-2']);
     expect(filterOrders(orders, 'B200', 'Instance')).toHaveLength(0);
     expect(orders).toHaveLength(3);
@@ -141,8 +149,10 @@ describe('Orders page', () => {
     expect(screen.queryByRole('button', { name: 'Manage' })).not.toBeInTheDocument();
   });
 
-  it('filters supplied in-progress records by type and search', () => {
+  it('shows ended orders by default and filters by status, type and search', () => {
     renderConsole(<OrdersPage orders={orders} />);
+    expect(screen.getByText('order-closed')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Order status'), { target: { value: 'processing' } });
     expect(screen.queryByText('order-closed')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Order type'), { target: { value: 'RFQ' } });
     expect(screen.getByText('order-2')).toBeInTheDocument();
@@ -150,7 +160,7 @@ describe('Orders page', () => {
     fireEvent.change(screen.getByLabelText('Search order, email, model or country…'), {
       target: { value: 'H100' },
     });
-    expect(screen.getByText('No matching in-progress orders')).toBeInTheDocument();
+    expect(screen.getByText('No matching orders')).toBeInTheDocument();
   });
 });
 
@@ -176,4 +186,16 @@ describe('Payment Requests page', () => {
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'Confirmed' } });
     expect(screen.getByText('No matching payment requests')).toBeInTheDocument();
   });
+});
+
+it('does not present a missing historical payment link as a free order', () => {
+  renderConsole(
+    <OrdersPage
+      orders={[{ ...baseOrder, total: 0, amountKnown: false, paymentMethod: 'Unknown' }]}
+    />,
+  );
+  expect(
+    screen.getByText(/Some historical orders have no linked payment record/),
+  ).toBeInTheDocument();
+  expect(screen.queryByText('0.00 USD')).not.toBeInTheDocument();
 });

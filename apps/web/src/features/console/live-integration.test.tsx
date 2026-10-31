@@ -119,6 +119,7 @@ describe('Live Console integration', () => {
     );
     renderConsole(<LiveOrdersPage />);
     expect(await screen.findByText('paid-order')).toBeInTheDocument();
+    expect(request.mock.calls.some(([path]) => String(path).includes('state=all'))).toBe(true);
     fireEvent.change(screen.getByPlaceholderText('Search order, email, model or country…'), {
       target: { value: 'buyer' },
     });
