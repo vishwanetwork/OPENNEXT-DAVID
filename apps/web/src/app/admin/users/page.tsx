@@ -1,4 +1,4 @@
-import { UsersPage } from '@/features/console';
+import { LiveUsersPage } from '@/features/console';
 export default function Page() {
-  return <UsersPage />;
+  return <LiveUsersPage />;
 }

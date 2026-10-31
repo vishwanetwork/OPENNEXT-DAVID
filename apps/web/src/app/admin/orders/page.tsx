@@ -1,4 +1,4 @@
-import { OrdersPage } from '@/features/console';
+import { LiveOrdersPage } from '@/features/console';
 export default function Page() {
-  return <OrdersPage />;
+  return <LiveOrdersPage />;
 }

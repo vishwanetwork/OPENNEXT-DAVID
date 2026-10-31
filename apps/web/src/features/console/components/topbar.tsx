@@ -7,6 +7,7 @@ import { CONSOLE_PAGES, HIDDEN_PAGES } from '../pages';
 import { useConsoleStore } from '../store';
 import { initials } from '../helpers';
 import { useConsoleNav } from './shell';
+import { ConsoleSessionStatus } from './session-status';
 
 export function Topbar({ page }: { page: string }) {
   const db = useConsoleStore((s) => s.db);
@@ -45,6 +46,7 @@ export function Topbar({ page }: { page: string }) {
         </div>
         <div className="top-actions">
           <span className="env-pill">OPERATIONS</span>
+          <ConsoleSessionStatus />
           <button
             type="button"
             className="icon-button"

@@ -96,6 +96,7 @@ function runAdapter() {
   const dir = path.join(DATA_DIR, 'spotbot');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   run('adapter', SPOTBOT, ['opennext-api', '--host', '127.0.0.1', '--port', ADAPTER_PORT], {
+    SPOTBOT_OPENNEXT_LEGACY_DATA_DIR: process.env.SPOTBOT_OPENNEXT_LEGACY_DATA_DIR || DATA_DIR,
     SPOTBOT_STORAGE_BACKEND: process.env.SPOTBOT_STORAGE_BACKEND || 'sqlite',
     SPOTBOT_DATABASE_PATH: process.env.SPOTBOT_DATABASE_PATH || path.join(dir, 'adapter.db'),
     SPOTBOT_OPENNEXT_LEGACY_ORIGIN: `http://127.0.0.1:${API_PORT}`,

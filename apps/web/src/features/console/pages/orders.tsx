@@ -5,10 +5,25 @@ import { stampUtc } from '@/lib/format';
 import { Empty, Head, SearchBox, Status } from '../components/forms';
 import { filterOrders, paymentAmount, type OperationsOrder } from './operations-records';
 
-/** Data is supplied by a future administrator order adapter, not the legacy preview store. */
-export function OrdersPage({ orders }: { orders?: readonly OperationsOrder[] }) {
-  const [search, setSearch] = useState('');
-  const [kind, setKind] = useState('All');
+/** Read-only order table. The live route supplies authoritative orders from both backends. */
+export function OrdersPage({
+  orders,
+  filters,
+}: {
+  orders?: readonly OperationsOrder[];
+  filters?: {
+    search: string;
+    kind: string;
+    onSearch: (value: string) => void;
+    onKind: (value: string) => void;
+  };
+}) {
+  const [localSearch, setLocalSearch] = useState('');
+  const [localKind, setLocalKind] = useState('All');
+  const search = filters?.search ?? localSearch;
+  const kind = filters?.kind ?? localKind;
+  const setSearch = filters?.onSearch ?? setLocalSearch;
+  const setKind = filters?.onKind ?? setLocalKind;
   const list = filterOrders(orders ?? [], search, kind);
   return (
     <>

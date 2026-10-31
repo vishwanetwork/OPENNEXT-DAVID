@@ -422,3 +422,49 @@ contract coverage merely because their pages and read-only view models are prese
    termination are connected (SpotOrderBot). Shapes are in `apps/web/src/terminal-kit/services.ts`.
 
 Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.
+
+## Live Console operations adapter
+
+The updated SpotOrderBot OpenNEXT adapter owns these administrator endpoints. Each
+requires the existing administrator session and returns `Cache-Control: no-store`.
+Writes additionally require the Console's own Origin. Frontend contracts are in
+`packages/contracts/src/admin/operations.ts`; customer billing policy is unchanged.
+
+| Endpoint                                                    | Result / operation                                                                                                                                                      |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/users?cursor=&limit=&search=&role=`         | Allowlisted users, platform total, filtered total, rolling registration growth, next cursor and as-of time.                                                             |
+| `GET /api/admin/orders?cursor=&limit=&search=&kind=&state=` | Actual RFQ orders and Spot rentals, including Direct Pay awaiting confirmation; aggregate total and next cursor.                                                        |
+| `GET /api/admin/overview`                                   | Full pending top-up, Direct Pay and Buyer KYB counts, active rentals and recent audited events.                                                                         |
+| `GET /api/admin/operations/activity?cursor=&limit=&search=` | Durable operations events and historical customer review decisions.                                                                                                     |
+| `GET /api/admin/agent`                                      | Allowlisted Bot health, real rental lifecycle counts and maintenance job history.                                                                                       |
+| `POST /api/admin/agent/actions`                             | `{ action: "reconcile", idempotencyKey }` queues one durable, audited reconciliation of existing paid work. It cannot replace Agent code or create a new purchase.      |
+| `GET /api/admin/agent/billing`                              | Integer-cent customer usage ledger totals and the latest 200 entries. Provider invoices remain explicitly unavailable.                                                  |
+| `POST /api/admin/pricing/providers/:id/credential`          | `{ credential }` stores an encrypted provider-bound value and returns `{ ok: true, configured: true, storage: "encrypted_database" }`. It never returns the credential. |
+
+User and RFQ order projections temporarily read the legacy backend's private
+`auth-state.json` and `marketplace.json` snapshots from a shared volume, without
+changing those files. Missing snapshots return 503 instead of fabricated empty
+results. The frontend filters before pagination on the server. User growth and
+ledger totals cover all records, not the displayed page. Private queries are keyed
+by the server-issued administrator session scope and disappear after access denial.
+
+Source capabilities remain truthful: AWS, Vultr, Lambda and Shadeform have existing
+collectors; other registered providers remain pending. The legacy collector retains
+price observations, history, schedules and run records. A 30-second adapter loop
+restores encrypted credentials after either service restarts, without requiring an
+open browser. Collection does not provision instances or promise stock or quota.
+
+### Deployment requirements
+
+Use an image containing the updated adapter, set `OPENNEXT_ADAPTER=1`, and retain the
+private data volume. The bundled launcher sets `SPOTBOT_OPENNEXT_LEGACY_DATA_DIR` to
+that volume. For a separate adapter, configure that shared directory explicitly.
+Set `SPOTBOT_OPENNEXT_CONSOLE_KEY` to a separately generated, stable base64-encoded
+32-byte key in the deployment secret manager. Keep `OPENNEXT_ADMIN_TOKEN` configured
+for remote operator login. Existing provider environment keys continue to work;
+database-saved credentials take precedence. No secret belongs in browser storage.
+
+Console Schedules now directs operators to actual Price Source schedules. Platform
+Agent and Agent billing use real backend records instead of browser-local policies
+or illustrative cost charts. The existing Terminal payment, notification, rental,
+SSH and Autopilot endpoints remain unchanged.
