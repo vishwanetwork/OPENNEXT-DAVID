@@ -102,12 +102,14 @@ def test_verda_only_supported_usd_nonzero_prices():
         model="H100",
         currency="usd",
         gpu={"number_of_gpus": 8},
+        gpu_memory={"size_in_gigabytes": 640},
         price_per_hour="16",
         spot_price="8",
     )
     rows = verda([row, dict(row, currency="eur"), dict(row, price_per_hour="NaN", spot_price="0")])
     assert len(rows) == 2 and rows[0]["perGpuHourly"] == 2 and rows[1]["perGpuHourly"] == 1
     assert rows[0]["region"] == "unspecified" and rows[0]["availability"] is None
+    assert rows[0]["gpuMemoryGb"] == 80
 
 
 def test_digitalocean_explicit_gpu_specs():
@@ -254,3 +256,82 @@ async def test_errors_redact_upstream_secrets(sources, monkeypatch):
     await sources.enqueue("verda")
     await sources._process("verda")
     assert "private-token" not in json.dumps(await sources.runs())
+
+
+async def test_provider_document_sizes_are_bounded_for_dynamodb(sources, monkeypatch):
+    async def collect_rows(*_):
+        return [
+            dict(
+                quote("verda", str(i), "H100", 1, 2, "region", "On-demand"),
+                gpuDescription="x" * 4000,
+            )
+            for i in range(160)
+        ]
+
+    monkeypatch.setattr("spotbot.price_sources.service.collect", collect_rows)
+    await sources.enqueue("verda")
+    await sources._process("verda")
+    chunks = sources.db.list("price_source_chunk", "operations")
+    assert len(chunks) > 2
+    assert all(len(json.dumps(c).encode()) < 400000 for c in chunks)
+    assert len(await sources.prices("verda")) == 160
+
+
+async def test_cannot_enable_credential_source_without_a_token(sources):
+    with pytest.raises(OperationError, match="credential"):
+        await sources.settings("digitalocean", dict(enabled=True, intervalMinutes=60))
+
+
+async def test_console_worker_cancellation_cleans_independent_pricing_worker(sources, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from spotbot.opennext_console import ConsoleBackend
+
+    started, stopped, reconciled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def pricing():
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            stopped.set()
+
+    async def tick():
+        reconciled.set()
+
+    async def restore():
+        return None
+
+    monkeypatch.setattr(sources, "run", pricing)
+    ctx = SimpleNamespace(
+        sources=sources, bridge=SimpleNamespace(restore=restore), tick=tick, worker_error=None
+    )
+    task = asyncio.create_task(ConsoleBackend.run(ctx))
+    await asyncio.wait_for(started.wait(), 1)
+    await asyncio.wait_for(reconciled.wait(), 1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert stopped.is_set()
+
+
+async def test_tensordock_uses_only_read_only_location_quote():
+    from tests.conftest import TENSOR_CATALOG
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=TENSOR_CATALOG)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        rows = await collect("tensordock", client, "read-only-token")
+    assert len(calls) == 1 and calls[0].method == "GET" and calls[0].url.path == "/api/v2/locations"
+    assert calls[0].headers["authorization"] == "Bearer read-only-token"
+    assert rows[0]["instanceHourly"] == pytest.approx(2.233)
+    assert (
+        rows[0]["vCpu"] == 4
+        and rows[0]["priceKind"] == "estimated"
+        and rows[0]["orderable"] is False
+    )

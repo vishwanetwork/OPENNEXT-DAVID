@@ -364,17 +364,22 @@ class ConsoleBackend:
                 await self.audit(doc["actor"], "Reconciliation " + doc["state"], doc["id"])
 
     async def run(self):
-        while True:
-            # A collector outage must not block reconciliation of already-paid orders.
-            results = await asyncio.gather(
-                self.bridge.restore(), self.tick(), self.sources.tick(), return_exceptions=True
-            )
-            self.worker_error = (
-                "Console maintenance could not complete its last cycle."
-                if any(isinstance(r, Exception) for r in results)
-                else None
-            )
-            await asyncio.sleep(30)
+        # Price HTTP requests can be slow. Keep them outside the paid-order maintenance clock.
+        pricing_task = asyncio.create_task(self.sources.run())
+        try:
+            while True:
+                results = await asyncio.gather(
+                    self.bridge.restore(), self.tick(), return_exceptions=True
+                )
+                self.worker_error = (
+                    "Console maintenance could not complete its last cycle."
+                    if any(isinstance(r, Exception) for r in results)
+                    else self.sources.worker_error
+                )
+                await asyncio.sleep(30)
+        finally:
+            pricing_task.cancel()
+            await asyncio.gather(pricing_task, return_exceptions=True)
 
 
 def install(app, ctx):

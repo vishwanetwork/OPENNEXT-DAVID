@@ -1,6 +1,7 @@
 """Durable schedules, encrypted credentials and atomic publication of collected prices."""
 
 import asyncio
+import json
 import os
 import uuid
 from datetime import timedelta
@@ -22,6 +23,7 @@ class PriceSources:
     def __init__(self, db, client, sealer):
         self.db, self.client, self.sealer = db, client, sealer
         self.slots = asyncio.Semaphore(2)
+        self.worker_error = None
 
     async def config(self, provider):
         current = await asyncio.to_thread(self.db.get, CONFIG, "price-" + provider)
@@ -103,7 +105,9 @@ class PriceSources:
                 credentialStorage="encrypted_database",
                 supportedTerms=list(source.terms),
                 capabilities=list(source.terms),
-                pendingTerms=["Reserved"],
+                pendingTerms=[
+                    t for t in ["On-demand", "Spot", "Reserved"] if t not in source.terms
+                ],
                 endpoints=[
                     dict(
                         method="GET",
@@ -138,6 +142,10 @@ class PriceSources:
             or not 10 <= body["intervalMinutes"] <= 1440
         ):
             raise OperationError(400, "Use an interval between 10 and 1440 minutes.")
+        if body["enabled"] and SOURCES[provider].credential_env and not await self.secret(provider):
+            raise OperationError(
+                409, "Configure a read-only credential before enabling this source."
+            )
         config = await self.config(provider)
         config.update(body)
         await self.save(config)
@@ -187,6 +195,15 @@ class PriceSources:
                 records.extend(dict(r, stale=stale) for r in chunk["records"])
         return records
 
+    async def run(self):
+        while True:
+            try:
+                await self.tick()
+                self.worker_error = None
+            except Exception:
+                self.worker_error = "Price-source maintenance could not complete its last cycle."
+            await asyncio.sleep(30)
+
     async def tick(self):
         async def process(provider):
             async with self.slots:
@@ -234,7 +251,19 @@ class PriceSources:
                 )
             rows = list({r["recordId"]: r for r in rows}.values())
             chunks = []
-            for index in range(0, len(rows), 150):
+            batches, batch, size = [], [], 0
+            for row in rows:
+                row_size = len(json.dumps(row, ensure_ascii=False).encode())
+                if row_size > 280000:
+                    raise SourceError("A price record exceeds the supported document size.")
+                if batch and (size + row_size > 280000 or len(batch) >= 150):
+                    batches.append(batch)
+                    batch, size = [], 0
+                batch.append(row)
+                size += row_size
+            if batch:
+                batches.append(batch)
+            for index, batch in enumerate(batches):
                 chunk_id = str(uuid.uuid5(uuid.NAMESPACE_URL, job["id"] + ":" + str(index)))
                 await self.save(
                     dict(
@@ -243,7 +272,7 @@ class PriceSources:
                         tenant_id="operations",
                         provider=provider,
                         runId=job["id"],
-                        records=rows[index : index + 150],
+                        records=batch,
                     )
                 )
                 chunks.append(chunk_id)

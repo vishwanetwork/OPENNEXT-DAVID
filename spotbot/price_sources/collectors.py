@@ -177,12 +177,17 @@ def verda(items):
                     quote(
                         "verda",
                         item["instance_type"],
-                        item["model"],
+                        item.get("name") or item["model"],
                         item["gpu"]["number_of_gpus"],
                         item[field],
                         "unspecified",
                         term,
-                        memory=item.get("gpu_memory", {}).get("size_in_gigabytes"),
+                        memory=(
+                            number(item["gpu_memory"]["size_in_gigabytes"])
+                            / number(item["gpu"]["number_of_gpus"])
+                        )
+                        if item.get("gpu_memory", {}).get("size_in_gigabytes")
+                        else None,
                         cpu=item.get("cpu", {}).get("number_of_cores"),
                     )
                 )
@@ -272,7 +277,14 @@ async def collect(provider, client, credential=""):
     if provider == "tensordock":
         # Reuse only the existing read-only pricing operation, never provisioning methods.
         adapter = TensorDockProvider(
-            Settings(_env_file=None, tensordock_api_key=credential), client
+            Settings(
+                _env_file=None,
+                tensordock_api_key=credential,
+                spotbot_tensordock_vcpus=4,
+                spotbot_tensordock_ram_gb=8,
+                spotbot_tensordock_storage_gb=100,
+            ),
+            client,
         )
         offers = await adapter.collect()
         return [
