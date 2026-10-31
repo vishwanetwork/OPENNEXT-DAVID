@@ -46,7 +46,10 @@ logger = logging.getLogger(__name__)
 
 
 TASK_NOTICES = {
-    "succeeded": ("Your task on {name} finished", "The autopilot task on your {name} server finished."),
+    "succeeded": (
+        "Your task on {name} finished",
+        "The autopilot task on your {name} server finished.",
+    ),
     "failed": ("Your task on {name} failed", "The autopilot task on your {name} server failed."),
     "interrupted": (
         "Your task on {name} was not rerun",
@@ -233,6 +236,7 @@ class Notifier:
         self.public_url = public_url.rstrip("/")
         self.ops, self.provision = ops, provision
         self.sent = set()
+        self.lock = asyncio.Lock()
         self.purged_at = datetime.min.replace(tzinfo=UTC)
 
     async def run(self):
@@ -246,6 +250,10 @@ class Notifier:
             await asyncio.sleep(INTERVAL_SECONDS)
 
     async def tick(self, now=None):
+        async with self.lock:
+            await self._tick(now)
+
+    async def _tick(self, now=None):
         now = now or utcnow()
         if self.ops:
             await self.provision_paid()
