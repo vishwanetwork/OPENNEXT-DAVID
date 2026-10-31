@@ -1,0 +1,269 @@
+.opennext-landing .agents-section {
+  background: #0e1b26;
+  color: #f6fafc;
+  padding-block: 86px 64px;
+  overflow: hidden;
+}
+.opennext-landing .agents-heading {
+  display: grid;
+  grid-template-columns: 1.35fr 0.85fr;
+  align-items: end;
+  gap: 64px;
+}
+.opennext-landing .agents-heading h2 {
+  font-size: clamp(42px, 4.4vw, 66px);
+  line-height: 1.1;
+}
+.opennext-landing .agents-heading > p {
+  font-size: 17px;
+  line-height: 1.7;
+  color: #a8becd;
+  max-width: 410px;
+  padding-bottom: 3px;
+}
+.opennext-landing .agent-experience {
+  display: grid;
+  grid-template-columns: 1.35fr 0.75fr;
+  gap: 54px;
+  align-items: center;
+  margin-top: 24px;
+}
+.opennext-landing .agent-visual {
+  position: relative;
+  min-width: 0;
+  height: 520px;
+  isolation: isolate;
+}
+.opennext-landing .compute-image {
+  position: absolute;
+  left: -12%;
+  top: 1%;
+  width: 114%;
+  height: 98%;
+  max-width: none;
+  object-fit: contain;
+  mix-blend-mode: lighten;
+  filter: brightness(0.96);
+  mask-image: radial-gradient(ellipse 64% 58% at 60% 50%, #000 58%, transparent 100%);
+  animation: cinematic-routing-hardware 9s ease-in-out infinite;
+  pointer-events: none;
+}
+.opennext-landing .routing-network {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.opennext-landing [data-network-playing='false'] .compute-image {
+  animation-play-state: paused;
+}
+.opennext-landing .agent-narrative {
+  min-width: 0;
+  padding-block: 20px;
+}
+.opennext-landing .agent-copy-stack {
+  display: grid;
+}
+.opennext-landing .agent-slide {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.45s ease,
+    transform 0.65s var(--ease),
+    visibility 0.45s;
+  pointer-events: none;
+}
+.opennext-landing .agent-slide-active {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+.opennext-landing .agent-slide h3 {
+  font-size: clamp(29px, 2.7vw, 40px);
+  line-height: 1.14;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.opennext-landing .agent-slide p {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #a8becd;
+  margin-top: 22px;
+  max-width: 355px;
+}
+.opennext-landing .agent-tabs {
+  margin-top: 36px;
+}
+.opennext-landing .agent-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  min-height: 65px;
+  padding: 17px 0;
+  background: none;
+  border-top: 1px solid #526e8055;
+  color: #839eaf;
+  font-size: 18px;
+  text-align: left;
+  transition:
+    color 0.35s,
+    border-color 0.35s;
+}
+.opennext-landing .agent-tabs button[aria-pressed='true'] {
+  color: #f1f9ff;
+  border-color: #9ccbe1;
+}
+.opennext-landing .agent-tabs button:hover {
+  color: #f1f9ff;
+}
+.opennext-landing .agent-tabs button svg {
+  opacity: 0.5;
+  transition:
+    transform 0.35s,
+    opacity 0.35s;
+}
+.opennext-landing .agent-tabs button[aria-pressed='true'] svg {
+  transform: translateX(3px);
+  opacity: 1;
+}
+@keyframes cinematic-routing-hardware {
+  0%,
+  100% {
+    transform: translateY(3px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+@media (min-width: 1600px) {
+  .opennext-landing .agent-visual {
+    height: 610px;
+  }
+  .opennext-landing .agent-experience {
+    gap: 72px;
+  }
+}
+@media (max-width: 1100px) {
+  .opennext-landing .agents-heading {
+    gap: 42px;
+  }
+  .opennext-landing .agents-heading > p {
+    font-size: 16px;
+  }
+  .opennext-landing .agent-experience {
+    grid-template-columns: 1.25fr 0.85fr;
+    gap: 36px;
+  }
+  .opennext-landing .agent-visual {
+    height: 470px;
+  }
+}
+@media (max-width: 900px) {
+  .opennext-landing .agents-section {
+    padding-block: 72px 56px;
+  }
+  .opennext-landing .agents-heading {
+    grid-template-columns: 1fr;
+    gap: 25px;
+  }
+  .opennext-landing .agents-heading h2 {
+    font-size: 52px;
+  }
+  .opennext-landing .agents-heading > p {
+    max-width: 620px;
+    font-size: 17px;
+  }
+  .opennext-landing .agent-experience {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .opennext-landing .agent-visual {
+    height: 500px;
+    width: 100%;
+    max-width: 730px;
+    margin-inline: auto;
+  }
+  .opennext-landing .agent-narrative {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 42px;
+    padding: 0;
+  }
+  .opennext-landing .agent-slide h3 {
+    font-size: 34px;
+  }
+  .opennext-landing .agent-slide p {
+    font-size: 16px;
+  }
+  .opennext-landing .agent-tabs {
+    margin-top: 0;
+  }
+}
+@media (max-width: 560px) {
+  .opennext-landing .agents-section {
+    padding-block: 58px 48px;
+  }
+  .opennext-landing .agents-heading {
+    gap: 23px;
+  }
+  .opennext-landing .agents-heading h2 {
+    font-size: clamp(33px, 8.8vw, 44px);
+  }
+  .opennext-landing .agents-heading > p {
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .opennext-landing .agent-experience {
+    gap: 18px;
+    margin-top: 10px;
+  }
+  .opennext-landing .agent-visual {
+    height: clamp(300px, 93vw, 480px);
+  }
+  .opennext-landing .compute-image {
+    left: -15%;
+    width: 119%;
+  }
+  .opennext-landing .agent-narrative {
+    display: block;
+  }
+  .opennext-landing .agent-slide h3 {
+    font-size: 32px;
+  }
+  .opennext-landing .agent-slide p {
+    font-size: 16px;
+    margin-top: 17px;
+  }
+  .opennext-landing .agent-tabs {
+    display: flex;
+    gap: 20px;
+    margin-top: 27px;
+  }
+  .opennext-landing .agent-tabs button {
+    flex: 1;
+    min-width: 0;
+    min-height: 54px;
+    padding-block: 15px;
+    font-size: 16px;
+    justify-content: flex-start;
+  }
+  .opennext-landing .agent-tabs button svg {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .opennext-landing .compute-image {
+    animation: none;
+    transform: none;
+  }
+  .opennext-landing .agent-slide {
+    transition: none;
+    transform: none;
+  }
+}

@@ -1,7 +1,7 @@
-# Buyer Terminal redesign — iteration 6
+# Buyer Terminal and landing integration
 
-The redesigned UI is implemented inside OPENNEXT-DAVID, based on commit
-`b2165cc48b0d4e9b709901f000d8764b9426dadb`. It uses the original Next.js application,
+The redesigned UI is implemented inside OPENNEXT-DAVID, including the upstream
+changes through `f086fa53e897c38b420d5e1cda549bc1a36a4bc6`. It uses the original Next.js application,
 feature components, API adapters, contracts, and backend. The earlier standalone
 React prototype is not the production implementation.
 
@@ -34,9 +34,11 @@ payment method or provision a real instance.
 | Account and utilities | Profile, KYB, settings, notifications, saved capacity, quote cart, comparison, help and Agent                                              |
 | Backend migration     | Existing same-origin `/api/*` proxy and Zod contract package; no replacement endpoints or changed payloads                                 |
 
-No changes were made to `legacy/`, `packages/contracts/`, feature `api.ts` files,
+No changes were made to `legacy/`, `packages/contracts/`,
 API client/demo routing, CSRF forwarding, production host routing, or deployment
 configuration. Server-owned identity, balances, orders and RFQs remain server-owned.
+The auth adapter now rejects an email-verification response with a null user instead
+of reporting a successful login; its endpoint and response schema are unchanged.
 
 The Buyer/Seller control is available in the narrow-screen navigation and account
 menus; Seller remains visible and disabled, including onboarding. This is a
@@ -55,7 +57,8 @@ consistent blue-led palette. It keeps OpenNEXT's own content and original flows.
   title and separate OpenNEXT home button are removed.
 - The selected E logo package supplies navy and white wordmark variants plus the
   favicon. TerminalBrand applies them to the terminal and sign-in surfaces. The
-  public landing page is unchanged, and the brand link keeps its existing action.
+  public landing page now uses the same approved branding and is integrated in the
+  same Next.js application; the brand link keeps its existing action.
 - A dark GPU feature uses the previously approved GPU artwork from the landing
   page. Its Agent action opens the existing assistant rather than a new workflow.
 - Three model shortcuts show the current term's offer count and minimum price per
@@ -111,13 +114,28 @@ consistent blue-led palette. It keeps OpenNEXT's own content and original flows.
 
 ## Validation
 
-- `pnpm format`
-- `pnpm lint`: zero errors; three existing max-lines warnings in catalog/model-quotes/checkout.
-- `pnpm typecheck`
-- `pnpm test`: full suite passed 426 tests (418 web, 8 contracts). An additional
-  regional-history backend-label regression test was added afterward and passed
-  with its focused 12-test suite, bringing current coverage to 427 tests.
-- `pnpm build`: production build passed; verification is recorded in `design-qa.md`.
+Current landing, Buyer Terminal and authentication integration checks passed:
+
+- Formatting passed.
+- Lint passed with zero errors and three pre-existing max-lines warnings in
+  catalog/model-quotes/checkout.
+- Typecheck passed.
+- Web coverage passed all 78 test files and 437 tests: statements 69.58%, branches
+  77.36%, functions 63.34%.
+- Contracts passed 8 tests; the legacy backend passed 668 tests; the adapter
+  passed 3 tests.
+- `pnpm build` passed the production build.
+- The standalone production server at `http://localhost:5197` rendered the new
+  homepage, its Open Terminal link reached the actual authentication gate, and
+  the isolated Buyer Market rendered correctly. Buyer Sign out returned to the
+  new homepage, and Seller remained disabled in the account menu. At 390×844,
+  mobile navigation also reached the new login page. Development-server checks also
+  covered Buy capacity, sign-in/sign-up query retention and return to the homepage.
+  Authentication tests cover email verification, session handling, logout and
+  onboarding.
+
+Current results and screenshot evidence are recorded under Current integration QA
+in `design-qa.md`; the earlier iteration 6 record remains as historical evidence.
 
 On this machine Node 25 exposes experimental global Web Storage, which conflicts
 with jsdom. Tests run with `NODE_OPTIONS=--no-experimental-webstorage`; this is a
@@ -143,7 +161,11 @@ The page presentation now follows the production product. The local review URL
 still uses `/terminal/demo/` so review actions remain isolated; the route name is
 not displayed as product chrome. Real sessions continue through the existing login
 and production APIs. Removing UI labels does not enable real payments or GPU
-provisioning for isolated inventory. No live deployment or GitHub push was made.
+provisioning for isolated inventory. The connected release is prepared as a PR;
+production changes take effect only after the existing main-branch deployment.
+
+See [Landing and authentication integration](LANDING_TERMINAL_INTEGRATION.md) for
+the release routes, approved homepage implementation and navigation verification.
 
 Regression coverage includes headless session boot, a recoverable startup error,
 neutral account display without identity mutation, stale example-analytics
