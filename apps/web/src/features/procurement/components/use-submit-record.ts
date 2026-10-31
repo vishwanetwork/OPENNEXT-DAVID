@@ -54,7 +54,7 @@ export function useSubmitRecord() {
                 requestKind === 'quote_request' ? 'quote request' : 'capacity request',
               ]
                 .filter(Boolean)
-                .join(' · '),
+                .join(' '),
           ).slice(0, 140),
         };
         if (data.selectedOffer)
@@ -103,7 +103,7 @@ export function useSubmitRecord() {
       toast(
         modal.receipt
           ? modal.demo
-            ? 'Saved to the isolated Demo workspace.'
+            ? 'Request saved.'
             : 'Submission received by OpenNEXT operations.'
           : 'Saved to your account. Operations receipt has not been confirmed.',
       );

@@ -75,7 +75,7 @@ function AddKeyModal() {
         automatically added to any running instance.
       </p>
       {account.demo ? (
-        <p className="form-note">Stored only in this Demo workspace on this browser.</p>
+        <p className="form-note">Stored only in this browser workspace.</p>
       ) : !available ? (
         <p className="onx-account-service-note">{UNCONFIGURED}</p>
       ) : null}
@@ -125,8 +125,7 @@ function RemoveKeyModal({ id }: { id: string }) {
       onSubmit={submit}
     >
       <p>
-        Remove <strong>{key.label}</strong> from{' '}
-        {account.demo ? 'this Demo workspace' : 'your account'}?
+        Remove <strong>{key.label}</strong> from {account.demo ? 'this workspace' : 'your account'}?
       </p>
       <code className="onx-account-remove-fingerprint">{key.fingerprint}</code>
       <p className="form-note">

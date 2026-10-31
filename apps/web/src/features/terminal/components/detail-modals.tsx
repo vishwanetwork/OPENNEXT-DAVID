@@ -52,11 +52,11 @@ export const DetailModal: ModalComponent<'detail'> = ({ modal, close }) => {
     ['Price type', o.priceKind || 'Saved quote reference'],
   ];
   return (
-    <ModalFrame title={o.model + ' · ' + o.provider} close={close}>
+    <ModalFrame title={o.model + ' ' + o.provider} close={close}>
       <div className="row spread">
         <div>
           <span className="form-note">
-            {o.region} · {o.term}
+            {o.region} {o.term}
           </span>
           <div className="detail-price">
             {money(o.price)}{' '}

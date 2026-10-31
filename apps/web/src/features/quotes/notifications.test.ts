@@ -86,7 +86,7 @@ describe('notifications', () => {
     ];
     const list = quoteRequests(accountRows(rfqs, 'rfqs', 'u1', owner));
     expect(list.map((r) => r.id)).toEqual(['R3', 'R1']);
-    expect(visibleStatus(at(list, 0))).toBe('Approved · Private RFQ');
+    expect(visibleStatus(at(list, 0))).toBe('Approved (Private RFQ)');
     expect(visibleStatus(at(list, 1))).toBe('Live RFQ');
     expect(visibleStatus({ status: 'Reviewing' })).toBe('Reviewing');
   });

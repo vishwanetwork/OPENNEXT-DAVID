@@ -13,8 +13,8 @@ export function AgentAvatar({ id = 'companion' }: { id?: string }) {
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#fff" />
-          <stop offset=".42" stopColor="#e6ece8" />
-          <stop offset="1" stopColor="#a8b9b0" />
+          <stop offset=".42" stopColor="var(--agent-shell-mid, #e6ece8)" />
+          <stop offset="1" stopColor="var(--agent-shell-base, #a8b9b0)" />
         </linearGradient>
         <linearGradient
           id={`agent-glass-${id}`}
@@ -24,9 +24,9 @@ export function AgentAvatar({ id = 'companion' }: { id?: string }) {
           y2="42"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="#304d42" />
-          <stop offset=".52" stopColor="#122c23" />
-          <stop offset="1" stopColor="#071a14" />
+          <stop stopColor="var(--agent-glass-top, #304d42)" />
+          <stop offset=".52" stopColor="var(--agent-glass-mid, #122c23)" />
+          <stop offset="1" stopColor="var(--agent-glass-base, #071a14)" />
         </linearGradient>
         <linearGradient
           id={`agent-rim-${id}`}
@@ -37,13 +37,13 @@ export function AgentAvatar({ id = 'companion' }: { id?: string }) {
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#fff" stopOpacity=".95" />
-          <stop offset="1" stopColor="#718c7e" stopOpacity=".5" />
+          <stop offset="1" stopColor="var(--agent-rim-base, #718c7e)" stopOpacity=".5" />
         </linearGradient>
       </defs>
-      <ellipse cx="32" cy="54" rx="16" ry="2" fill="#071c14" opacity=".16" />
+      <ellipse cx="32" cy="54" rx="16" ry="2" fill="var(--agent-shadow, #071c14)" opacity=".16" />
       <path
         d="M13 25c-2 0-3 2-3 6s1 6 3 6m38-12c2 0 3 2 3 6s-1 6-3 6"
-        stroke="#92a99c"
+        stroke="var(--agent-ear, #92a99c)"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -69,16 +69,26 @@ export function AgentAvatar({ id = 'companion' }: { id?: string }) {
         height="21"
         rx="9"
         fill={`url(#agent-glass-${id})`}
-        stroke="#647e70"
+        stroke="var(--agent-screen-rim, #647e70)"
         strokeWidth=".7"
       />
-      <path d="M23 23h18" stroke="#d4ebdf" strokeOpacity=".16" strokeLinecap="round" />
-      <g className="agent-avatar-eyes" fill="#b8e8cc">
+      <path
+        d="M23 23h18"
+        stroke="var(--agent-screen-shine, #d4ebdf)"
+        strokeOpacity=".16"
+        strokeLinecap="round"
+      />
+      <g className="agent-avatar-eyes" fill="var(--agent-eyes, #b8e8cc)">
         <rect x="25" y="27" width="3" height="6" rx="1.5" />
         <rect x="36" y="27" width="3" height="6" rx="1.5" />
       </g>
-      <path d="M29 45h6" stroke="#6e8879" strokeWidth="1.2" strokeLinecap="round" />
-      <circle cx="45" cy="45" r="1" fill="#5b9270" />
+      <path
+        d="M29 45h6"
+        stroke="var(--agent-detail, #6e8879)"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <circle cx="45" cy="45" r="1" fill="var(--agent-status, #5b9270)" />
     </svg>
   );
 }

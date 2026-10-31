@@ -9,7 +9,7 @@ export type SshLibraryScope = 'profile' | 'instances' | 'instance-access';
 
 function addedOn(createdAt: string | null) {
   return createdAt
-    ? ' · Added ' +
+    ? ' Added ' +
         new Date(createdAt).toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'short',

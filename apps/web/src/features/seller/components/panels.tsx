@@ -59,7 +59,7 @@ export function AnalyticsPanel({ rows }: { rows: Settlement[] }) {
           ))}
         </div>
         <span className="onx-sa-concentration">
-          Largest band · {(stats.topShare * 100).toFixed(1)}% of GPUs
+          Largest band: {(stats.topShare * 100).toFixed(1)}% of GPUs
         </span>
       </div>
       <div className="onx-sa-band-head" aria-hidden="true">
@@ -148,8 +148,8 @@ export function ActivitiesPanel({ rows }: { rows: Settlement[] }) {
                 </strong>
                 <small>
                   {row.term}
-                  {row.vcpu === null ? '' : ' · ' + integer(row.vcpu) + ' vCPU'}
-                  {row.memory === null ? '' : ' · ' + row.memory + ' GB/GPU'}
+                  {row.vcpu === null ? '' : ' ' + integer(row.vcpu) + ' vCPU'}
+                  {row.memory === null ? '' : ' ' + row.memory + ' GB/GPU'}
                 </small>
               </div>
               <div>

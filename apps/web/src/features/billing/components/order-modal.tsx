@@ -42,8 +42,8 @@ export function OrderModal({ id }: { id?: string }) {
         <div>
           <h3>{o.title || o.model}</h3>
           <p>
-            {o.status} · {o.paymentStatus || 'Unpaid'}
-            {o.sample ? ' · Sample order' : ''}
+            {o.status} {o.paymentStatus || 'Unpaid'}
+            {o.sample ? ' Sample order' : ''}
           </p>
         </div>
         <strong>{usd(total)}</strong>
@@ -57,7 +57,7 @@ export function OrderModal({ id }: { id?: string }) {
         <Detail label="Region" value={o.region} />
         <Detail label="Market terms" value={o.term} />
         <Detail label="Duration" value={duration} />
-        <Detail label="Trade method" value={o.tradeMethod || 'RFQ · accepted supplier quote'} />
+        <Detail label="Trade method" value={o.tradeMethod || 'RFQ (accepted supplier quote)'} />
         <Detail label="RFQ" value={o.rfqId} />
         <Detail label="Quote" value={o.quoteId} />
         <Detail label="Quote valid until" value={stamp(o.quoteValidUntil)} />

@@ -163,7 +163,7 @@ function AutopilotForm({
   return (
     <form className="autopilot-form" onSubmit={(event) => void submit(event)}>
       <label className="form-label">
-        Script · runs with bash as ubuntu in /home/ubuntu
+        Script runs with bash as ubuntu in /home/ubuntu
         <textarea
           className="field mono"
           rows={8}
@@ -176,7 +176,7 @@ function AutopilotForm({
         />
       </label>
       <label className="form-label">
-        Environment variables · one NAME=value per line
+        Environment variables (one NAME=value per line)
         <textarea
           className="field mono"
           rows={3}
@@ -205,7 +205,7 @@ function AutopilotForm({
         </fieldset>
       ) : null}
       <label className="form-label">
-        Secrets · one NAME=value per line; stored encrypted and never shown again
+        Secrets (one NAME=value per line; stored encrypted and never shown again)
         <textarea
           className="field mono"
           rows={2}
@@ -248,7 +248,7 @@ function AutopilotForm({
         onChange={(value) => setOnReplacement(value as 'rerun' | 'none')}
       />
       <label className="form-label">
-        Time limit · minutes, optional; a task that runs longer is stopped and counts as failed
+        Time limit (minutes, optional). A task that runs longer is stopped and counts as failed.
         <input
           className="field"
           type="number"

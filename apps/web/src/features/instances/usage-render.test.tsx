@@ -78,7 +78,7 @@ describe('instance lifecycle and ledger presentation', () => {
       slots: { services: { instanceUsage: { load } } },
     });
     await waitFor(() =>
-      expect(screen.getByText('Interrupted · billing paused')).toBeInTheDocument(),
+      expect(screen.getByText('Interrupted (billing paused)')).toBeInTheDocument(),
     );
     expect(screen.getByText('Reconnected', { selector: 'strong' })).toBeInTheDocument();
     mounted.unmount();

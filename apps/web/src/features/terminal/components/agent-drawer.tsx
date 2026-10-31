@@ -102,7 +102,6 @@ export function AgentDrawer() {
           <AgentAvatar id="drawer" />
           <div>
             <strong>OpenNEXT Agent</strong>
-            <small>Capacity procurement assistant</small>
           </div>
         </div>
         <button

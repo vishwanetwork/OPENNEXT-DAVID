@@ -19,6 +19,7 @@ import { useSpotCheckout, useSpotInventory, usePrunedSelections } from '../hooks
 import { useSpotMarketStore } from '../store';
 import { FilterGroup, PriceFilter } from './filters';
 import { CardView, TableView } from './listings';
+import { MarketOverview } from './market-overview';
 import '../spot-market.css';
 
 /** Buyer GPU Market page (legacy `OpenNEXTSpotMarket.render`). */
@@ -44,7 +45,7 @@ export function SpotMarketPage() {
     onBuy: (row: SpotRow) => {
       const current = allRows.find((item) => item._key === row._key);
       if (!current || current.term !== 'Spot')
-        return toast('This Spot offer is no longer available in the preview.');
+        return toast('This Spot offer is no longer available.');
       checkout.beginCheckout(current);
     },
     onQuote: (row: SpotRow) => {
@@ -65,38 +66,24 @@ export function SpotMarketPage() {
       data-spot-market
       data-source-kind={inventory.kind}
     >
-      <div className="onx-spot-market-head">
-        <div>
-          <span className="eyebrow">AI CAPACITY MARKET</span>
-          <h1>GPU Market</h1>
-        </div>
-        <div className="onx-spot-market-actions">
-          <div className="onx-spot-tabs" role="tablist" aria-label="GPU market terms">
-            {TERMS.map((term) => (
-              <button
-                key={term}
-                type="button"
-                role="tab"
-                data-spot-term={term}
-                aria-selected={ui.term === term}
-                className={ui.term === term ? 'active' : ''}
-                onClick={() => ui.setTerm(term)}
-              >
-                {term}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="btn small onx-spot-post-rfq"
-            data-act="new-rfq"
-            onClick={newRfq}
-          >
-            Post RFQ
-          </button>
-        </div>
-      </div>
+      <MarketOverview rows={allRows} term={ui.term} onNewRfq={newRfq} />
       <div className="onx-spot-toolbar">
+        <div className="onx-spot-tabs" role="tablist" aria-label="GPU market terms">
+          {TERMS.map((term) => (
+            <button
+              key={term}
+              type="button"
+              role="tab"
+              data-spot-term={term}
+              aria-selected={ui.term === term}
+              className={ui.term === term ? 'active' : ''}
+              onClick={() => ui.setTerm(term)}
+            >
+              {term}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           className="btn secondary small"
@@ -105,10 +92,10 @@ export function SpotMarketPage() {
           onClick={ui.toggleFilters}
         >
           <LucideIcon name="sliders-horizontal" />
-          Filters{count ? ' · ' + count : ''}
+          Filters{count ? ` (${count})` : ''}
         </button>
         <span className="onx-spot-result-count" role="status">
-          {filtered.length} offer{filtered.length === 1 ? '' : 's'} · {ui.term}
+          {filtered.length} offer{filtered.length === 1 ? '' : 's'}
         </span>
         <select
           className="field"

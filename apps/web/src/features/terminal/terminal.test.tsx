@@ -136,11 +136,46 @@ describe('terminal pages', () => {
     useWorkspaceStore.getState().applySession(useSessionStore.getState().user);
     renderTerminal(<TerminalHeader onSignOut={() => {}} onRole={() => {}} onContact={() => {}} />);
     expect(screen.getByRole('button', { name: 'GPU Market' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'OpenNEXT home' })).toBeNull();
     expect(screen.getByRole('button', { name: 'RFQs & Quote' })).toBeInTheDocument();
-    expect(screen.getByText('BUYER')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buyer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Seller' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'User menu' }));
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Broker' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Broker' })).toBeNull();
+  });
+  it('keeps the original server balance and agent action while disabling seller entry', () => {
+    signIn();
+    useWorkspaceStore.getState().applySession(useSessionStore.getState().user);
+    const switchRole = vi.fn();
+    const signOut = vi.fn();
+    renderTerminal(
+      <TerminalHeader onSignOut={signOut} onRole={switchRole} onContact={() => {}} />,
+      {
+        billing: { availableCredit: 125 },
+      },
+    );
+    expect(screen.getByRole('button', { name: /Credit/ })).toHaveTextContent('$125');
+    fireEvent.click(screen.getByRole('button', { name: 'Seller' }));
+    expect(switchRole).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(document.body.style.overflow).not.toBe('hidden');
+    fireEvent.click(screen.getByRole('button', { name: /OpenNEXT Agent/ }));
+    expect(useWorkspaceStore.getState().agentOpen).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'User menu' }));
+    expect(
+      screen
+        .getAllByRole('button', { name: 'Seller' })
+        .every((button) => button.hasAttribute('disabled')),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(signOut).toHaveBeenCalledOnce();
   });
   it('renders the market page with filters, chart summary, news and matches', async () => {
     signIn();

@@ -48,7 +48,7 @@ export function RegionPicker({
         Compare regions <span className="history-count">{state.selected.length} selected</span>⌄
       </button>
       <span>
-        All {regionsList.length} regions available · Hover or focus a legend to isolate prices
+        All {regionsList.length} regions available. Hover or focus a legend to isolate prices.
       </span>
       {state.open ? (
         <section
@@ -101,7 +101,7 @@ export function RegionPicker({
             >
               Clear
             </button>
-            <span>{state.selected.length} selected · No limit</span>
+            <span>{state.selected.length} selected (no limit)</span>
           </div>
           <div className="history-options">
             {regionsList.map((region) => {

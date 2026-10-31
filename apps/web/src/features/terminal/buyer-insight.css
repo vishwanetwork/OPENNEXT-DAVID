@@ -1,0 +1,498 @@
+/* Buyer research surfaces share the terminal palette; chart data and behavior are unchanged. */
+.buyer-terminal-root .onx-seller-activities {
+  --sa-border: #dfe5ec;
+  --sa-muted: #68788a;
+  --sa-accent: #205fba;
+  --sa-accent-dark: #102c46;
+  --sa-accent-soft: #edf3fc;
+  --sa-surface: #fff;
+  --history-series-0: #205fba;
+  --history-series-1: #8c7bd6;
+  --history-series-2: #3d8c91;
+  --history-series-3: #6e9ddb;
+  --history-series-4: #5d728d;
+  --history-series-5: #a282b5;
+  --history-grid: #e6ebf1;
+  --history-crosshair: #8a9aaf;
+  color: #111e2d;
+}
+.buyer-terminal-root .onx-sa-termbar {
+  margin-bottom: 12px;
+}
+.buyer-terminal-root .onx-sa-tabs {
+  background: #edf1f6;
+  border-color: transparent;
+  border-radius: 10px;
+  padding: 4px;
+}
+.buyer-terminal-root .onx-sa-tabs button {
+  min-height: 36px;
+  border-radius: 7px;
+  color: #68788a;
+}
+.buyer-terminal-root .onx-sa-tabs button.active {
+  color: #102c46;
+  background: white;
+  box-shadow: 0 2px 6px #102c4610;
+}
+.buyer-terminal-root .onx-sa-toolbar {
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.buyer-terminal-root .onx-sa-panel-controls {
+  background: #edf1f6;
+  border-color: transparent;
+  border-radius: 10px;
+}
+.buyer-terminal-root .onx-sa-panel-controls button,
+.buyer-terminal-root .onx-sa-ranges button {
+  color: #68788a;
+  border-radius: 6px;
+}
+.buyer-terminal-root .onx-sa-panel-controls button[aria-pressed='true'] {
+  background: white;
+  color: #102c46;
+  box-shadow: 0 1px 4px #102c4610;
+}
+.buyer-terminal-root .onx-sa-panel-marker {
+  background: transparent;
+  border-color: #bfcbd9;
+  color: #68788a;
+}
+.buyer-terminal-root .onx-sa-panel-controls button[aria-pressed='true'] .onx-sa-panel-marker {
+  background: #205fba;
+  border-color: #205fba;
+  color: white;
+}
+.buyer-terminal-root .onx-sa-ranges button.active,
+.buyer-terminal-root .onx-sa-ranges button[aria-pressed='true'] {
+  background: #102c46;
+  color: white;
+}
+.buyer-terminal-root .onx-sa-tabs button:hover:not(.active),
+.buyer-terminal-root .onx-sa-ranges button:hover:not(.active),
+.buyer-terminal-root .onx-sa-panel-controls button:hover:not([aria-pressed='true']) {
+  background: #e5ecf6;
+  color: #205fba;
+}
+.buyer-terminal-root .onx-sa-panels {
+  gap: 20px;
+}
+.buyer-terminal-root .onx-sa-filters,
+.buyer-terminal-root .onx-sa-panel {
+  border-color: #dfe5ec;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 3px 12px #132c4508;
+}
+.buyer-terminal-root .onx-sa-filters {
+  top: 84px;
+  box-shadow: none;
+}
+.buyer-terminal-root .onx-sa-filter-head {
+  background: #f8fafd;
+  min-height: 54px;
+}
+.buyer-terminal-root .onx-sa-filter-head strong {
+  color: #111e2d;
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-sa-filter-head button {
+  color: #205fba;
+  font-size: 12px;
+}
+.buyer-terminal-root .onx-sa-filter-group {
+  border-color: #e9edf3;
+}
+.buyer-terminal-root .onx-sa-filter-group summary {
+  color: #22374e;
+  min-height: 46px;
+}
+.buyer-terminal-root .onx-sa-filter-group summary:hover,
+.buyer-terminal-root .onx-sa-check:hover {
+  background: #f1f5fb;
+}
+.buyer-terminal-root .onx-sa-filter-group summary > span,
+.buyer-terminal-root .onx-sa-filter-group summary svg,
+.buyer-terminal-root .onx-sa-search svg,
+.buyer-terminal-root .onx-sa-check small,
+.buyer-terminal-root .onx-sa-filter-scope {
+  color: #68788a;
+}
+.buyer-terminal-root .onx-sa-search input {
+  border-color: #dfe5ec;
+  border-radius: 7px;
+  background: #f8fafd;
+  color: #111e2d;
+  height: 36px;
+}
+.buyer-terminal-root .onx-sa-check {
+  color: #40546b;
+  min-height: 34px;
+}
+.buyer-terminal-root .onx-sa-check small {
+  font-size: 11px;
+}
+.buyer-terminal-root .onx-sa-check input,
+.buyer-terminal-root .onx-sa-check input[type='radio'] {
+  accent-color: #205fba;
+}
+.buyer-terminal-root .onx-sa-panel-head {
+  padding: 20px 22px;
+  background: #fff;
+  border-color: #e5ebf2;
+}
+.buyer-terminal-root .onx-sa-panel-head h2 {
+  color: #111e2d;
+  font-size: 20px;
+  font-weight: 650;
+}
+.buyer-terminal-root .onx-sa-panel-head p,
+.buyer-terminal-root .onx-sa-panel-head p strong,
+.buyer-terminal-root .onx-sa-panel-model,
+.buyer-terminal-root .onx-sa-price-unit,
+.buyer-terminal-root .onx-sa-show-control {
+  color: #68788a;
+  font-size: 12px;
+}
+.buyer-terminal-root .onx-sa-index .onx-sa-panel-head {
+  background: #102c46;
+  border-color: #25435f;
+  padding: 22px 24px;
+}
+.buyer-terminal-root .onx-sa-index .onx-sa-panel-head h2 {
+  color: white;
+  font-size: 22px;
+}
+.buyer-terminal-root .onx-sa-index .onx-sa-panel-head p {
+  color: #bdd0e5;
+}
+.buyer-terminal-root .onx-sa-index-controls {
+  padding: 18px 22px 12px;
+  background: #f8fafd;
+  border-bottom: 1px solid #e5ebf2;
+  margin-bottom: 14px;
+}
+.buyer-terminal-root .onx-sa-index-controls label,
+.buyer-terminal-root .onx-sa-index-term {
+  color: #68788a;
+}
+.buyer-terminal-root .onx-sa-index-controls select,
+.buyer-terminal-root .onx-sa-show-control select {
+  color: #22374e;
+  background: #fff;
+  border-color: #d8e1ed;
+  border-radius: 7px;
+  min-height: 35px;
+}
+.buyer-terminal-root .onx-sa-index-metrics button {
+  color: #68788a;
+  background: #fff;
+  border-color: #dfe5ec;
+  border-radius: 7px;
+  min-height: 35px;
+}
+.buyer-terminal-root .onx-sa-index-metrics button[aria-pressed='true'] {
+  background: #205fba;
+  color: white;
+  border-color: #205fba;
+}
+.buyer-terminal-root .onx-sa-metrics {
+  background: #102c46;
+  border-color: #25435f;
+}
+.buyer-terminal-root .onx-sa-metrics > div {
+  border-color: #2b4762;
+  padding: 18px 16px;
+}
+.buyer-terminal-root .onx-sa-metrics small {
+  color: #bdd0e5;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.buyer-terminal-root .onx-sa-metrics strong {
+  color: white;
+  font-size: 25px;
+  font-weight: 550;
+  margin-top: 10px;
+}
+.buyer-terminal-root .onx-sa-band-toolbar {
+  background: white;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #68788a;
+}
+.buyer-terminal-root .onx-sa-band-toolbar > div {
+  background: #edf1f6;
+  border-color: transparent;
+  border-radius: 7px;
+}
+.buyer-terminal-root .onx-sa-band-toolbar button {
+  color: #68788a;
+  font-size: 12px;
+}
+.buyer-terminal-root .onx-sa-band-toolbar button.active {
+  color: #205fba;
+  background: white;
+  box-shadow: 0 1px 3px #102c4612;
+}
+.buyer-terminal-root .onx-sa-concentration {
+  color: #68788a;
+  font-size: 11px;
+}
+.buyer-terminal-root .onx-sa-band-head,
+.buyer-terminal-root .onx-sa-activity-head {
+  background: #f6f8fc;
+  color: #68788a;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  min-height: 38px;
+}
+.buyer-terminal-root .onx-sa-band-list,
+.buyer-terminal-root .onx-sa-activity-list {
+  scrollbar-color: #c8d5e5 transparent;
+  background: white;
+}
+.buyer-terminal-root .onx-sa-band-row,
+.buyer-terminal-root .onx-sa-activity-row {
+  border-color: #e9edf3;
+  min-height: 56px;
+}
+.buyer-terminal-root .onx-sa-band-row:hover,
+.buyer-terminal-root .onx-sa-activity-row:hover {
+  background: #f4f7fc;
+}
+.buyer-terminal-root .onx-sa-band-price strong,
+.buyer-terminal-root .onx-sa-band-number,
+.buyer-terminal-root .onx-sa-activity-row strong {
+  color: #22374e;
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-sa-band-price small,
+.buyer-terminal-root .onx-sa-activity-row small,
+.buyer-terminal-root .onx-sa-activity-row time,
+.buyer-terminal-root .onx-sa-activity-row code {
+  color: #68788a;
+  font-size: 11px;
+}
+.buyer-terminal-root .onx-sa-activity-price strong {
+  color: #205fba;
+  font-size: 16px;
+}
+.buyer-terminal-root .onx-sa-depth {
+  height: 24px;
+  border-radius: 5px;
+  background: #edf2fa;
+}
+.buyer-terminal-root .onx-sa-depth > span {
+  background: linear-gradient(90deg, #dce9fc, #9dbfeb);
+  border-color: #6e9ddb;
+}
+.buyer-terminal-root .onx-sa-depth b {
+  color: #244c7c;
+  padding: 5px 7px;
+  font-size: 11px;
+}
+.buyer-terminal-root .onx-sa-panel-foot {
+  color: #68788a;
+  background: #f8fafd;
+  font-size: 12px;
+  padding: 12px 16px;
+}
+.buyer-terminal-root .onx-sa-panel-foot .text-link {
+  color: #205fba;
+}
+.buyer-terminal-root .onx-sa-empty strong,
+.buyer-terminal-root .onx-sa-index-chart .aws-history-empty h3 {
+  color: #22374e;
+}
+.buyer-terminal-root .onx-sa-empty span,
+.buyer-terminal-root .onx-sa-index-scope,
+.buyer-terminal-root .onx-sa-index-chart .aws-history-empty p {
+  color: #68788a;
+  font-size: 12px;
+}
+.buyer-terminal-root .onx-sa-index-scope {
+  background: #f8fafd;
+  padding: 12px 22px;
+}
+.buyer-terminal-root
+  :is(
+    .history-selection > span,
+    .history-range,
+    .history-footnote,
+    .history-picker-hint,
+    .history-picker-notice,
+    .history-picker-empty,
+    .history-region-empty,
+    .history-zone-row small,
+    .history-legend-chip small,
+    .regional-method p,
+    .history-metric-key,
+    .history-metric-key small,
+    .capacity-unit
+  ) {
+  color: #68788a;
+  font-size: 12px;
+}
+.buyer-terminal-root .onx-sa-index-chart :is(.history-footnote, .history-legend-chip small) {
+  color: #68788a;
+  font-size: 11px;
+}
+.buyer-terminal-root .history-axis {
+  fill: #68788a;
+  font-family: inherit;
+}
+.buyer-terminal-root .history-count {
+  background: #eaf1fc;
+  color: #205fba;
+  font-size: 11px;
+  border-radius: 4px;
+}
+.buyer-terminal-root :is(.history-legend-chip, .history-metric-chip) {
+  color: #40546b;
+  background: white;
+  border-color: #dfe5ec;
+  border-radius: 7px;
+}
+.buyer-terminal-root
+  :is(
+    .history-legend-chip.primary,
+    .history-metric-chip.primary,
+    .history-legend-chip[aria-pressed='true'],
+    .history-metric-chip[aria-pressed='true']
+  ) {
+  background: #edf3fc;
+  border-color: #b6cdee;
+  color: #205fba;
+}
+.buyer-terminal-root .history-picker {
+  border-color: #d8e1ed;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 48px #102c4626;
+  color: #111e2d;
+}
+.buyer-terminal-root .history-picker input[type='search'] {
+  border-color: #d8e1ed;
+  border-radius: 7px;
+  color: #22374e;
+}
+.buyer-terminal-root :is(.history-picker-head button, .history-picker-actions) {
+  color: #68788a;
+}
+.buyer-terminal-root .history-picker-actions button {
+  color: #205fba;
+  background: #edf3fc;
+  border-color: #d8e1ed;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.buyer-terminal-root .history-region-group {
+  border-color: #e5ebf2;
+}
+.buyer-terminal-root :is(.history-region-name, .history-zone-row) {
+  color: #40546b;
+  font-size: 12px;
+}
+.buyer-terminal-root .history-zone-row:hover {
+  background: #f1f5fb;
+}
+.buyer-terminal-root .history-zone-row input {
+  accent-color: #205fba;
+}
+.buyer-terminal-root .history-tooltip {
+  background: #102c46;
+  color: #dce8f5;
+  border-color: #315475;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px #102c4630;
+  font-size: 12px;
+}
+.buyer-terminal-root .history-tooltip :is(strong small, time, span) {
+  color: #bdd0e5;
+  font-size: 11px;
+}
+.buyer-terminal-root .history-tooltip > div {
+  border-color: #315475;
+}
+.buyer-terminal-root :is(.regional-method, .regional-table, .history-comparison table) {
+  color: #40546b;
+  border-color: #e5ebf2;
+  font-size: 12px;
+}
+.buyer-terminal-root .history-comparison th {
+  background: #f6f8fc;
+  color: #68788a;
+  border-color: #e5ebf2;
+  font-size: 11px;
+}
+.buyer-terminal-root .history-comparison td {
+  border-color: #e9edf3;
+}
+.buyer-terminal-root .history-comparison small {
+  color: #68788a;
+  font-size: 11px;
+}
+.buyer-terminal-root .onx-sa-modal-overlay {
+  background: #102c4666;
+}
+.buyer-terminal-root .onx-sa-modal {
+  border-color: #d8e1ed;
+  border-radius: 16px;
+  box-shadow: 0 24px 72px #102c4630;
+  color: #111e2d;
+}
+.buyer-terminal-root .onx-sa-modal-body > p {
+  color: #68788a;
+  font-size: 14px;
+}
+.buyer-terminal-root .onx-seller-activities :is(button, input, select):focus-visible {
+  outline: 2px solid #6e9ddb;
+  outline-offset: 3px;
+}
+@media (max-width: 1400px) {
+  .buyer-terminal-root .onx-sa-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .buyer-terminal-root .onx-sa-filters {
+    position: static;
+  }
+}
+@media (max-width: 560px) {
+  .buyer-terminal-root .onx-sa-panel-head,
+  .buyer-terminal-root .onx-sa-index-controls {
+    padding-inline: 16px;
+  }
+  .buyer-terminal-root .onx-sa-index-controls label {
+    flex: 1;
+    justify-content: space-between;
+  }
+  .buyer-terminal-root .onx-sa-index-controls select {
+    max-width: 132px;
+  }
+  .buyer-terminal-root .onx-sa-index-metrics {
+    margin-left: 0;
+    width: 100%;
+  }
+  .buyer-terminal-root .onx-sa-index-metrics button {
+    flex: 1;
+  }
+  .buyer-terminal-root .onx-sa-metrics > div {
+    padding: 14px 10px;
+  }
+  .buyer-terminal-root .onx-sa-metrics small {
+    white-space: normal;
+    line-height: 1.4;
+  }
+  .buyer-terminal-root .onx-sa-activity-list {
+    background: #f6f8fc;
+  }
+  .buyer-terminal-root .onx-sa-activity-row {
+    background: white;
+    border-radius: 9px;
+  }
+}

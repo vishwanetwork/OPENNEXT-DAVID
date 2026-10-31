@@ -54,7 +54,7 @@ export function ListingTable() {
           {hasExternal
             ? 'Marketplace & sourced requirements'
             : hasReference
-              ? 'Reference listings · confirmation required'
+              ? 'Reference listings (confirmation required)'
               : 'Verified marketplace records'}
         </small>
       </div>
@@ -82,7 +82,7 @@ export function ListingTable() {
                 <tbody>
                   {rows.map((r) => {
                     const quantity = r.external ? externalQuantity(r) : r.count + ' GPU';
-                    const terms = r.external ? externalCommitment(r) : r.hours + 'h · ' + r.term;
+                    const terms = r.external ? externalCommitment(r) : r.hours + 'h ' + r.term;
                     const actionable =
                       canAct &&
                       !r.referenceOnly &&

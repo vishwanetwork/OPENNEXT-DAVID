@@ -79,6 +79,34 @@ describe('selection', () => {
     expect(again.selected.map((s) => s.id)).toEqual(['b']);
     expect(again.changed).toBe(false);
   });
+  it('cleans backend separators from Jakarta display labels without changing series identity', () => {
+    const response = data({
+      regions: [{ code: 'ap-southeast-3', name: 'Jakarta · Indonesia', city: 'Jakarta' }],
+      series: ['jakarta-a', 'jakarta-b'].map((id) => ({
+        id,
+        region: 'ap-southeast-3',
+        name: 'Jakarta · ap-southeast-3',
+        configuration: 'p5.48xlarge · 8 × H100 · 80 GB',
+        gpuCount: 8,
+        points: [{ time: '2026-10-20T00:00:00Z', min: 2, avg: 2.5, max: 3 }],
+      })),
+    });
+    const { known, selected } = reconcileSelection(selection, response, emptyChoice());
+    expect(selected.map((series) => series.id)).toEqual(['jakarta-a', 'jakarta-b']);
+    const first = at(known, 0);
+    expect(first.name).toBe('Jakarta · ap-southeast-3');
+    expect(first.configuration).toBe('p5.48xlarge · 8 × H100 · 80 GB');
+    expect(presentation(first, known, response, BASE_REGIONS)).toEqual({
+      name: 'Jakarta',
+      description: '8 × H100 80 GB Series 1',
+      label: 'Jakarta 8 × H100 80 GB Series 1',
+    });
+    for (const series of known) {
+      const display = presentation(series, known, response, BASE_REGIONS);
+      for (const text of [display.name, display.description, display.label])
+        expect(text).not.toContain('·');
+    }
+  });
   it('keeps a series that only reports the requested metric as value', () => {
     expect(valueOf({ time: 't', value: 2.95 }, selection, { metric: 'avg' })).toBe(2.95);
     expect(valueOf({ time: 't', value: 2.95 }, selection, { metric: 'min' })).toBeNull();
@@ -90,10 +118,10 @@ describe('selection', () => {
     const c = known.find((s) => s.id === 'c')!;
     expect(presentation(b, known, data(), BASE_REGIONS)).toEqual({
       name: 'Ireland',
-      description: '8 × H100 · Series 1',
-      label: 'Ireland · 8 × H100 · Series 1',
+      description: '8 × H100 Series 1',
+      label: 'Ireland 8 × H100 Series 1',
     });
-    expect(presentation(c, known, data(), BASE_REGIONS).description).toBe('8 × H100 · Series 2');
+    expect(presentation(c, known, data(), BASE_REGIONS).description).toBe('8 × H100 Series 2');
     const a = known.find((s) => s.id === 'a')!;
     expect(presentation(a, known, data(), BASE_REGIONS).name).toBe('US East');
     expect(presentation(a, known, data(), BASE_REGIONS).description).toBe('8 × H100');

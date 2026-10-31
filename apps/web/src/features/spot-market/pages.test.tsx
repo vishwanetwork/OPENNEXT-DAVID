@@ -50,9 +50,7 @@ describe('Spot market page', () => {
       'Memory',
     ]);
     await waitFor(() =>
-      expect(document.querySelector('.onx-spot-result-count')?.textContent).toMatch(
-        /18 offers · Spot/,
-      ),
+      expect(document.querySelector('.onx-spot-result-count')?.textContent).toMatch(/^18 offers$/),
     );
     expect(screen.getAllByText('8 GPUs').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /^Buy Now/ }).length).toBe(12);

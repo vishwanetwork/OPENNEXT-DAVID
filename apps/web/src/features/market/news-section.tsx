@@ -33,9 +33,9 @@ export function NewsSection() {
           <strong>Latest GPU market news</strong>
         </div>
         <small>
-          {checked} · {cadence}
-          {stale ? ' · Cached data' : ''}
-          {status === 'partial' ? ' · Some sources unavailable' : ''}
+          {checked} {cadence}
+          {stale ? ' Cached data' : ''}
+          {status === 'partial' ? ' Some sources unavailable' : ''}
         </small>
       </div>
       <div className="news-grid">
@@ -51,7 +51,7 @@ export function NewsSection() {
                 rel="noopener noreferrer"
               >
                 <small>
-                  {n.source} ·{' '}
+                  {n.source}{' '}
                   {date && Number.isFinite(Date.parse(date))
                     ? new Date(date).toLocaleDateString('en-GB', {
                         day: 'numeric',

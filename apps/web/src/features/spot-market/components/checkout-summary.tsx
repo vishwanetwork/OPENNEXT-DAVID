@@ -50,11 +50,11 @@ export function Summary({
     <>
       <div className="onx-spot-purchase-resource">
         <h3>
-          {row.model} · {row.country}
+          {row.model} / {row.country}
         </h3>
         <p>
-          {row.gpuCount} GPUs ·{' '}
-          {row.memory === null ? 'Memory to confirm' : row.memory + ' GB / GPU'} ·{' '}
+          {row.gpuCount} GPUs,{' '}
+          {row.memory === null ? 'Memory to confirm' : row.memory + ' GB / GPU'},{' '}
           {row.vcpu === null ? 'vCPU to confirm' : row.vcpu + ' vCPU'}
         </p>
       </div>

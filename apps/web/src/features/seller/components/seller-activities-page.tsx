@@ -62,14 +62,15 @@ export function SellerActivitiesPage() {
     range: range.key,
     days: range.days,
     term: ui.term,
+    emptyGroups: ui.emptyGroups,
     selected: Object.fromEntries(
       GROUPS.map((group) => [group.key, ui.selected[group.key].slice()]),
     ) as Record<'model' | 'country' | 'vcpu' | 'memory', string[]>,
   };
-  const matching = tradeFiltered(rows, ui.term, ui.selected, ui.tradeModel);
+  const matching = tradeFiltered(rows, ui.term, ui.selected, ui.tradeModel, ui.emptyGroups);
   const windowed = recentWindow(matching, now, range.days);
   const visible = PANELS.filter((panel) => ui.panels.includes(panel));
-  const count = selectedCount(ui.selected, ui.panels, ui.tradeModel);
+  const count = selectedCount(ui.selected, ui.panels, ui.tradeModel, ui.emptyGroups);
   const listSupply = () => {
     if (review.status !== 'Approved') {
       patch({ afterReview: 'supply-form' });
@@ -130,7 +131,7 @@ export function SellerActivitiesPage() {
           onClick={ui.toggleFilters}
         >
           <LucideIcon name="sliders-horizontal" />
-          Filters{count ? ' · ' + count : ''}
+          Filters{count ? ' (' + count + ')' : ''}
         </button>
         <div className="onx-sa-panel-controls" role="group" aria-label="Visible insight panels">
           {PANELS.map((panel) => {

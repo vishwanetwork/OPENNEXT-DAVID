@@ -46,7 +46,7 @@ export function SupplyDemand() {
     <section className="panel">
       <h2>{reference ? 'Buyer requirement references' : 'Buyer requirements'}</h2>
       <p className="form-note">
-        Matched to {model} · {region}.{' '}
+        Matched to {model} {region}.{' '}
         {sourced
           ? externalNotice(rows.find((r) => r.external))
           : reference
@@ -57,11 +57,10 @@ export function SupplyDemand() {
         <div key={r.id} className="proc-notice">
           <div>
             <strong>
-              {r.model} · {r.external ? externalQuantity(r) : r.count + ' GPU'}
+              {r.model} {r.external ? externalQuantity(r) : r.count + ' GPU'}
             </strong>
             <p>
-              {r.region} · {r.external ? externalCommitment(r) : r.hours + 'h'} · target{' '}
-              {rowPrice(r)}
+              {r.region} {r.external ? externalCommitment(r) : r.hours + 'h'} target {rowPrice(r)}
               {r.price == null ? '' : '/GPU-hour'}
             </p>
           </div>
@@ -98,11 +97,11 @@ export function SupplyExtra() {
             <div key={r.id} className="proc-notice">
               <div>
                 <strong>
-                  {r.model} · {r.rfqId}
+                  {r.model} {r.rfqId}
                 </strong>
                 <p>
                   {money(r.rate)}
-                  {unitSuffix(r)} · {r.status} · valid {date(r.validUntil)}
+                  {unitSuffix(r)} {r.status} valid {date(r.validUntil)}
                 </p>
               </div>
               <PBtn
@@ -164,7 +163,7 @@ export function SupplyPage() {
             <span key={label} className={reviewed ? 'approved' : pending ? 'reviewing' : ''}>
               {reviewed ? '✓ ' : pending ? '◷ ' : ''}
               {label}
-              {label === 'KYB' && pending ? ' · Reviewing' : ''}
+              {label === 'KYB' && pending ? ' Reviewing' : ''}
             </span>
           ))}
         </div>
@@ -202,7 +201,7 @@ export function SupplyPage() {
                   <td>
                     <strong>{r.model || r.name}</strong>
                     <small className="proc-sub">
-                      {r.count} GPU · {r.hours} hours
+                      {r.count} GPU {r.hours} hours
                     </small>
                   </td>
                   <td>{r.region}</td>

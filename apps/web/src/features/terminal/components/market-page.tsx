@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -48,7 +48,9 @@ export function useCurrentOffers(): Offer[] {
     () => offersFor(prices.data?.records || [], { model, region, term, count }, regions),
     [prices.data, model, region, term, count, regions],
   );
-  useMemo(() => offers.length && indexOffers(offers), [offers, indexOffers]);
+  useEffect(() => {
+    if (offers.length) indexOffers(offers);
+  }, [offers, indexOffers]);
   return offers;
 }
 
@@ -176,7 +178,7 @@ export function MarketPage() {
       <div className="workspace">
         <div>
           <div className="market-tabs">
-            <span className="form-note">GPU market · research, compare and procure</span>
+            <span className="form-note">GPU market: research, compare and procure</span>
             <span className="gap" />
             <Button
               cls="small"
@@ -191,7 +193,7 @@ export function MarketPage() {
               <div className="market-name">
                 <h2>{state.model}</h2>
                 <p>
-                  {m?.memory} GB · {state.region} ·{' '}
+                  {m?.memory} GB {state.region}{' '}
                   {Number(state.count) === 0 ? 'Fractional GPU' : state.count + ' GPU'}
                 </p>
               </div>
@@ -204,7 +206,7 @@ export function MarketPage() {
                   <strong id="marketPrice">{info ? '$' + info.latest.toFixed(2) : '—'}</strong>
                   <span id="historyPrimaryCaption">
                     {info
-                      ? info.region + ' · ' + dateLabel(info.last)
+                      ? info.region + ' ' + dateLabel(info.last)
                       : history.data && choice.selected.length
                         ? 'No observations for the selected metric or period'
                         : history.data
@@ -237,7 +239,7 @@ export function MarketPage() {
               {chart()}
             </section>
             <div className="chart-footer">
-              <span>Spot / On-demand / Reserved · UTC · USD per GPU-hour</span>
+              <span>Spot / On-demand / Reserved (UTC, USD per GPU-hour)</span>
               <button
                 type="button"
                 className="text-link"

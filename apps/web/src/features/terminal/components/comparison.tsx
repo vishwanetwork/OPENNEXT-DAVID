@@ -48,11 +48,11 @@ export function Comparison({
   return (
     <div className="compare">
       <div className="compare-title">
-        <span>Same-model comparison · {offers[0]?.model || model}</span>
+        <span>Same-model comparison {offers[0]?.model || model}</span>
         <small className="muted" style={{ fontSize: 9, fontWeight: 400 }}>
           {offers.some((o) => o.side === 'supply')
-            ? 'Selected marketplace listings · confirm terms in quote'
-            : 'Provider API observations · not firm quotes'}
+            ? 'Selected marketplace listings; confirm terms in quote'
+            : 'Provider API observations; not firm quotes'}
         </small>
       </div>
       <table>

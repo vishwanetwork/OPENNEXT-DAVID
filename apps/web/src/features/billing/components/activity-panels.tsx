@@ -18,7 +18,7 @@ export function Activity({
       <div className="bill-panel-head">
         <div>
           <h2>Activity</h2>
-          <p>Your account records · test transactions are identified individually</p>
+          <p>Your account transactions</p>
         </div>
         <Btn act="bill-export" value="activity" onClick={() => onExport('activity')}>
           Export CSV
@@ -30,7 +30,7 @@ export function Activity({
             <tr>
               <th>Order</th>
               <th>Description</th>
-              <th>Date · UTC</th>
+              <th>Date (UTC)</th>
               <th>Status</th>
               <th>Amount</th>
               <th></th>

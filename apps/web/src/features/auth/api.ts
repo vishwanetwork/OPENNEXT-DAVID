@@ -12,10 +12,12 @@ export const authApi = {
   config: (api: ApiClient) => api.get('/api/auth/config').then((v) => AuthConfig.parse(v)),
   requestEmailCode: (api: ApiClient, email: string) =>
     api.post('/api/auth/email/request', { email }).then((v) => EmailRequestResponse.parse(v)),
-  verifyEmailCode: (api: ApiClient, challengeId: string, code: string) =>
-    api
-      .post('/api/auth/email/verify', { challengeId, code })
-      .then((v) => SessionResponse.parse(v).user as SessionUser),
+  verifyEmailCode: (api: ApiClient, challengeId: string, code: string): Promise<SessionUser> =>
+    api.post('/api/auth/email/verify', { challengeId, code }).then((v) => {
+      const user = SessionResponse.parse(v).user;
+      if (!user) throw new Error('Sign-in was not confirmed. Please request a new code.');
+      return user;
+    }),
   logout: (api: ApiClient) => api.post('/api/auth/logout', {}),
   switchRole: (api: ApiClient, role: 'buyer' | 'seller') =>
     api.post('/api/auth/role', { role }).then((v) => SessionResponse.parse(v).user),

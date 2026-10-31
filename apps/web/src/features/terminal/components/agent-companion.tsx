@@ -33,13 +33,10 @@ export function AgentCompanion({ onHintAction }: { onHintAction: (hint: AgentHin
             >
               ×
             </button>
-            <small>OPENNEXT AGENT</small>
             <p>{prompt}</p>
             <span>
               {hint.model}
-              {Number.isFinite(hint.price as number)
-                ? ' · ' + money(hint.price) + ' / GPU-hour'
-                : ''}
+              {Number.isFinite(hint.price as number) ? ' ' + money(hint.price) + ' / GPU-hour' : ''}
             </span>
             <button
               type="button"
@@ -68,9 +65,6 @@ export function AgentCompanion({ onHintAction }: { onHintAction: (hint: AgentHin
       >
         <span className="agent-avatar-halo" aria-hidden="true" />
         <AgentAvatar />
-        <span className="agent-companion-caption" aria-hidden="true">
-          AGENT
-        </span>
       </button>
     </aside>
   );

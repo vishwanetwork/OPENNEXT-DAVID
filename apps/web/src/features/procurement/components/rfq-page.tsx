@@ -37,7 +37,7 @@ function RfqRow({ r, hidden }: { r: OwnedRfq; hidden: boolean }) {
       <td>
         <strong>{r.model}</strong>
         <small className="proc-sub">
-          {r.region} · {r.term || 'Model capacity'}
+          {r.region} {r.term || 'Model capacity'}
           <br />
           {volume(r)}
         </small>

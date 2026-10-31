@@ -145,7 +145,7 @@ export function RfqDetails({ record, money = defaultMoney, date = defaultDate }:
             numeric(offer.gpuCount) ? offer.gpuCount + ' GPUs' : '',
           ]
             .filter(Boolean)
-            .join(' · ')}
+            .join(' ')}
         </p>
         <dl>
           <Field name="selectedOfferId" label="Resource reference" value={offer.id} />

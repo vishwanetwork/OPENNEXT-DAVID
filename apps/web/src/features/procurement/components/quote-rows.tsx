@@ -42,7 +42,7 @@ export function QuoteRows({ r }: { r: OwnedRfq }) {
                 <strong>{q.provider}</strong>
                 <small className="proc-sub">
                   {q.id}
-                  {q.sample ? ' · Preview quote' : ''}
+                  {q.sample ? ' Preview quote' : ''}
                 </small>
               </div>
               <strong>
@@ -52,14 +52,14 @@ export function QuoteRows({ r }: { r: OwnedRfq }) {
             </div>
             {isModel(r) && q.input != null && q.output != null ? (
               <p className="form-note">
-                Input {tokenPrice(q.input)} / 1M tokens · Output {tokenPrice(q.output)} / 1M tokens
+                Input {tokenPrice(q.input)} / 1M tokens Output {tokenPrice(q.output)} / 1M tokens
               </p>
             ) : null}
             <div className="proc-quote-meta">
               <span>Base {money(q.subtotal ?? q.total)}</span>
               <span>
                 {currentFees(q)
-                  ? FEE_LABEL + ' ' + money(q.buyerFee) + ' · Total payable ' + money(q.buyerTotal)
+                  ? FEE_LABEL + ' ' + money(q.buyerFee) + ' Total payable ' + money(q.buyerTotal)
                   : 'Updated fee breakdown required'}
               </span>
               <span>Delivery {deliveryTime(q.delivery, r)}</span>
@@ -69,8 +69,7 @@ export function QuoteRows({ r }: { r: OwnedRfq }) {
               <span>{expired(q) ? 'Expired' : 'Valid until ' + date(q.validUntil)}</span>
             </div>
             <p className="form-note">
-              {q.deliveryMethod || r.deliveryMethod} ·{' '}
-              {q.notes || 'Terms attached to the quotation.'}
+              {q.deliveryMethod || r.deliveryMethod} {q.notes || 'Terms attached to the quotation.'}
             </p>
             <div className="row">
               <PBtn

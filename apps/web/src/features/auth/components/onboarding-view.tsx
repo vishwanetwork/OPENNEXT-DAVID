@@ -23,7 +23,7 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   const setUser = useSessionStore((s) => s.setUser);
   const intent = useRoleIntent();
   const [stage, setStage] = useState<'role' | 'reward'>('role');
-  const [role, setRole] = useState<Role | ''>(intent.preferred(user));
+  const [role, setRole] = useState<Role | ''>(intent.preferred(user) === 'buyer' ? 'buyer' : '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -79,7 +79,7 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
   const next = async () => {
     setError('');
     if (user.onboardingCompleted || !allowedRole(role))
-      return setError('Choose Buyer or Seller for your first workspace setup.');
+      return setError('Choose Buyer for your first workspace setup.');
     setBusy(true);
     try {
       const result = await authApi.onboarding(api, role as Role);
@@ -113,8 +113,7 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
         use OpenNEXT?
       </h1>
       <p className="onx-auth-subtitle">
-        Signed in as <strong>{user.email}</strong>. Choose your primary role. You can switch between
-        Buyer and Seller later.
+        Signed in as <strong>{user.email}</strong>. Set up your Buyer workspace.
       </p>
       <div className="onx-auth-roles" role="group" aria-label="Choose your role">
         <button
@@ -134,8 +133,8 @@ export function OnboardingView({ user, onComplete, onBack }: OnboardingViewProps
           className="onx-auth-role"
           data-onboarding-role="seller"
           aria-pressed={role === 'seller'}
-          disabled={busy}
-          onClick={() => choose('seller')}
+          disabled
+          aria-disabled="true"
         >
           <strong>Seller</strong>
           <span>Verify your business, list available capacity and respond to demand.</span>

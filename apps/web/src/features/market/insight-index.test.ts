@@ -81,6 +81,15 @@ describe('insight index', () => {
       filterData(history, optionsCopy({ range: '7D', term: 'On-demand' }), 'H100').data.series,
     ).toEqual([]);
   });
+  it('returns no historical series for an explicitly empty shared filter', () => {
+    for (const group of ['model', 'country', 'vcpu', 'memory']) {
+      const options = optionsCopy({ range: '7D', term: 'Spot', emptyGroups: [group] });
+      expect(filterData(history, options, 'H100').data.series).toEqual([]);
+    }
+    expect(
+      filterData(history, optionsCopy({ range: '7D', term: 'Spot' }), 'H100').data.series,
+    ).toHaveLength(2);
+  });
   it('builds a catalog of distinct configurations and request queries', () => {
     const catalog = buildCatalog(null, history);
     expect(catalog.models).toEqual(['A100', 'H100']);

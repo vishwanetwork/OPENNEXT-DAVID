@@ -16,6 +16,7 @@ describe('confirmed first onboarding signal', () => {
     if (!user) throw new Error('Expected test session');
     mockFetch(() => jsonResponse({ user: { ...user, onboardingCompleted: true } }));
     renderTerminal(<OnboardingView user={user} onComplete={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^Seller/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /^Buyer/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(useRegistrationIntent.getState().buyerKybAccount).toBe('u1'));
@@ -25,6 +26,7 @@ describe('confirmed first onboarding signal', () => {
     if (!user) throw new Error('Expected test session');
     mockFetch(() => jsonResponse({ user: { ...user, id: 'other', onboardingCompleted: true } }));
     renderTerminal(<OnboardingView user={user} onComplete={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^Seller/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /^Buyer/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText(/Account setup was not confirmed/)).toBeInTheDocument();

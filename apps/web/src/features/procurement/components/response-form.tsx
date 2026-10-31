@@ -67,7 +67,7 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
           <select className="field" name="supplyId" required defaultValue={choices[0]?.id}>
             {choices.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.model} · {s.count} GPU · {s.id}
+                {s.model} {s.count} GPU {s.id}
               </option>
             ))}
           </select>

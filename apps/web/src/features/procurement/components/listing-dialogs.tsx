@@ -182,8 +182,8 @@ export const listingTitle = (item: (MarketRow & Partial<SettlementRow>) | null |
     : item.external
       ? externalTitle(item)
       : item.referenceOnly
-        ? item.model + ' · Reference details'
-        : item.model + ' · ' + item.provider;
+        ? item.model + ' Reference details'
+        : item.model + ' ' + item.provider;
 
 export function ResponseDialog({ req }: { req: OwnedRfq | MarketRow | undefined }) {
   if (!req) return <>This RFQ is no longer available.</>;
@@ -192,7 +192,7 @@ export function ResponseDialog({ req }: { req: OwnedRfq | MarketRow | undefined 
   return (
     <>
       <p className="form-note">
-        {r.model} · {r.count} GPU · {r.region}
+        {r.model} {r.count} GPU {r.region}
       </p>
       <ResponseForm req={r} />
     </>

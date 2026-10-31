@@ -116,7 +116,6 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
   if (mode === 'verify')
     return (
       <AuthShell onBack={onBack}>
-        <div className="onx-auth-kicker">Verify your email</div>
         <h1>Check your inbox.</h1>
         <p className="onx-auth-subtitle">
           Enter the verification code sent to <strong>{email}</strong>. The code expires in 10
@@ -159,7 +158,6 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
 
   return (
     <AuthShell onBack={onBack}>
-      <div className="onx-auth-kicker">Your capacity workspace</div>
       <h1>{mode === 'signup' ? 'Start with OpenNEXT.' : 'Welcome back.'}</h1>
       <p className="onx-auth-subtitle">
         Sign in securely to source, compare and manage AI capacity.
@@ -186,10 +184,6 @@ export function AuthView({ initialMode = 'signin', onLogin, onBack, onMode }: Au
           <span>Continue with GitHub</span>
         </button>
       </div>
-      <p className="onx-auth-smallnote">
-        Your account is verified by your sign-in provider. OpenNEXT never asks for your Google or
-        GitHub password.
-      </p>
       <div className="onx-auth-divider">or continue with email</div>
       <form data-auth-email noValidate onSubmit={submitEmail}>
         <label className="onx-auth-field">

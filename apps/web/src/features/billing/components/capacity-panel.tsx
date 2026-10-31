@@ -34,7 +34,7 @@ export function CapacityPanel({ billing }: { billing: BillingData }) {
         <div>
           <h2>
             {seller ? 'Supply performance' : 'Capacity efficiency'}
-            {sample ? ' · example' : ''}
+            {sample ? ' example' : ''}
           </h2>
           <p>
             {sample
@@ -109,7 +109,7 @@ export function CapacityPanel({ billing }: { billing: BillingData }) {
           </div>
           <div>
             <span>Unutilized allocation</span>
-            <strong>3,600 GPU-hours · 31.3%</strong>
+            <strong>3,600 GPU-hours (31.3%)</strong>
             <div className="bill-resource-bar">
               <i style={{ width: '31.25%', background: '#c5ac78' }}></i>
             </div>

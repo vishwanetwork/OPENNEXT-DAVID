@@ -17,6 +17,10 @@ export function FilterGroup({ group, rows }: { group: GroupSpec; rows: Filterabl
   const query = group.searchable ? ui.search[group.key as 'model' | 'country'] || '' : '';
   const needle = query.trim().toLowerCase();
   const options = optionsFor(group, rows, ui.term, ui.selected);
+  const noneSelected = ui.emptyGroups.includes(group.key);
+  const allSelected =
+    !noneSelected && (!selected.length || options.every((value) => selected.includes(value)));
+  const partiallySelected = !noneSelected && !allSelected && selected.length > 0;
   const matching = options.filter((value) => value.toLowerCase().includes(needle));
   const label = group.key === 'model' ? 'Index models' : group.label;
   return (
@@ -28,12 +32,12 @@ export function FilterGroup({ group, rows }: { group: GroupSpec; rows: Filterabl
     >
       <summary>
         {label}
-        <span>{selected.length ? selected.length + ' selected' : 'All'}</span>
+        <span>{noneSelected ? 'None' : allSelected ? 'All' : selected.length + ' selected'}</span>
         <LucideIcon name="chevron-down" />
       </summary>
       <div className="onx-sa-filter-options">
         {group.key === 'model' ? (
-          <p className="onx-sa-filter-scope">Index only · Multiple selections</p>
+          <p className="onx-sa-filter-scope">Index only. Multiple selections</p>
         ) : null}
         {group.searchable ? (
           <label className="onx-sa-search">
@@ -54,8 +58,14 @@ export function FilterGroup({ group, rows }: { group: GroupSpec; rows: Filterabl
           <input
             type="checkbox"
             data-sa-all={group.key}
-            checked={!selected.length}
-            onChange={() => ui.clearGroup(group.key)}
+            checked={allSelected && options.length > 0}
+            ref={(input) => {
+              if (input) input.indeterminate = partiallySelected;
+            }}
+            disabled={options.length === 0}
+            onChange={(event) =>
+              event.target.checked ? ui.clearGroup(group.key) : ui.selectGroup(group.key, [])
+            }
           />
           <span>All</span>
           <small>{termFiltered(rows, ui.term).length}</small>
@@ -71,14 +81,14 @@ export function FilterGroup({ group, rows }: { group: GroupSpec; rows: Filterabl
               type="checkbox"
               data-sa-option={group.key}
               value={value}
-              checked={selected.includes(value)}
-              onChange={(event) => ui.toggleOption(group.key, value, event.target.checked)}
+              checked={allSelected || selected.includes(value)}
+              onChange={(event) => ui.toggleOption(group.key, value, event.target.checked, options)}
             />
             <span>
               {value}
               {group.suffix || ''}
             </span>
-            <small>{optionCount(group, value, rows, ui.term, ui.selected)}</small>
+            <small>{optionCount(group, value, rows, ui.term, ui.selected, ui.emptyGroups)}</small>
           </label>
         ))}
         <p className="onx-sa-no-options" hidden={matching.length > 0}>
@@ -105,7 +115,7 @@ export function TradeModelFilter({ rows }: { rows: FilterableRow[] }) {
         <LucideIcon name="chevron-down" />
       </summary>
       <div className="onx-sa-filter-options">
-        <p className="onx-sa-filter-scope">Analytics &amp; Activities · Select one model</p>
+        <p className="onx-sa-filter-scope">Analytics &amp; Activities. Select one model</p>
         <label className="onx-sa-search">
           <LucideIcon name="search" />
           <span className="onx-sa-sr-only">Search trade models</span>

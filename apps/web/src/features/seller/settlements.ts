@@ -299,10 +299,13 @@ export function attributeFiltered<T extends FilterableRow>(
   term: InsightTerm,
   selected: Selected,
   skippedKey: GroupKey | null = null,
+  emptyGroups: GroupKey[] = [],
 ): T[] {
   return termFiltered(rows, term).filter((row) =>
     GROUPS.every((group) => {
-      if (group.key === skippedKey || !selected[group.key]?.length) return true;
+      if (group.key === skippedKey) return true;
+      if (emptyGroups.includes(group.key)) return false;
+      if (!selected[group.key]?.length) return true;
       return selected[group.key].includes(String(row[group.key]));
     }),
   );
@@ -330,21 +333,29 @@ export function optionCount(
   rows: FilterableRow[],
   term: InsightTerm,
   selected: Selected,
+  emptyGroups: GroupKey[] = [],
 ): number {
-  return attributeFiltered(rows, term, { ...selected, model: [] }, group.key).filter(
-    (row) => String(row[group.key]) === String(value),
-  ).length;
+  return attributeFiltered(
+    rows,
+    term,
+    { ...selected, model: [] },
+    group.key,
+    emptyGroups.filter((key) => key !== 'model'),
+  ).filter((row) => String(row[group.key]) === String(value)).length;
 }
 export function selectedCount(
   selected: Selected,
   panels: readonly Panel[],
   tradeModel: string | null,
+  emptyGroups: GroupKey[] = [],
 ): number {
   return (
     GROUPS.reduce(
       (total, group) =>
         total +
-        (group.key === 'model' && !panels.includes('index') ? 0 : selected[group.key].length),
+        (group.key === 'model' && !panels.includes('index')
+          ? 0
+          : selected[group.key].length + (emptyGroups.includes(group.key) ? 1 : 0)),
       0,
     ) + (tradeModel && panels.some((panel) => panel !== 'index') ? 1 : 0)
   );
@@ -378,9 +389,16 @@ export function tradeFiltered(
   term: InsightTerm,
   selected: Selected,
   tradeModel: string | null,
+  emptyGroups: GroupKey[] = [],
 ): Settlement[] {
   if (!tradeModel) return [];
-  return attributeFiltered(rows, term, { ...selected, model: [tradeModel] });
+  return attributeFiltered(
+    rows,
+    term,
+    { ...selected, model: [tradeModel] },
+    null,
+    emptyGroups.filter((key) => key !== 'model'),
+  );
 }
 export function recentWindow(
   rows: Settlement[],
@@ -476,8 +494,6 @@ export function formatTime(timestamp: number): string {
       minute: '2-digit',
       hourCycle: 'h23',
       timeZone: 'UTC',
-    })
-      .format(date)
-      .replace(',', ' ·') + ' UTC'
+    }).format(date) + ' UTC'
   );
 }

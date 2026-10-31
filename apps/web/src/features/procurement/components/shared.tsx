@@ -34,8 +34,8 @@ export const volume = (r: {
   isModel(r)
     ? `${r.inputMillion || 0}M input / ${r.outputMillion || 0}M output`
     : isHardware(r)
-      ? `${r.count} GPUs · physical delivery`
-      : `${r.count} GPU · ${r.hours} hours`;
+      ? `${r.count} GPUs physical delivery`
+      : `${r.count} GPU ${r.hours} hours`;
 export const deliveryTime = (minutes: unknown, r: { kind?: unknown }): string =>
   isHardware(r) ? `${Math.ceil(Number(minutes) / 1440)} days` : `${minutes} min`;
 export const numberLabel = (value: unknown): string => Number(value).toLocaleString('en-US');
@@ -151,7 +151,7 @@ export function SellerEstimate({
       data-hours={String(hours ?? '')}
       aria-live="polite"
     >
-      <p className="form-note">Estimated settlement · based on the quoted quantity and duration</p>
+      <p className="form-note">Estimated settlement based on the quoted quantity and duration</p>
       <div className="details-grid">
         <div>
           <small>Base order amount</small>
@@ -199,9 +199,9 @@ export function ReceiptDetails({
   if (!receipt) return null;
   return (
     <section className="callout">
-      <strong>{demo ? 'Demo submission received' : 'Received by OpenNEXT operations'}</strong>
+      <strong>{demo ? 'Submission received' : 'Received by OpenNEXT operations'}</strong>
       <p className="form-note">
-        {receipt.receiptId} · {date(receipt.receivedAt)} · Revision {receipt.revision || 1}
+        {receipt.receiptId} {date(receipt.receivedAt)} Revision {receipt.revision || 1}
       </p>
       <p className="form-note">
         Receipt confirms submission, not approval, publication or payment.
@@ -215,7 +215,7 @@ export function ReceiptDetails({
 export function rfqStatus(r: Pick<OwnedRfq, 'reviewStatus' | 'status' | 'visibility'>): string {
   return r.reviewStatus === 'Approved' && ['Open', 'Quoted'].includes(r.status)
     ? r.visibility === 'Private RFQ'
-      ? 'Approved · Private RFQ'
+      ? 'Approved (Private RFQ)'
       : 'Live RFQ'
     : r.status;
 }
@@ -224,14 +224,14 @@ export function RfqReviewNote({ r }: { r: OwnedRfq }) {
   if (r.status === 'Reviewing')
     return (
       <div className="callout proc-reviewing">
-        Reviewing · Operations is reviewing your RFQ. It is not visible in the public market yet.
-        You will receive a notification when the decision is ready.
+        Operations is reviewing your RFQ. It is not visible in the public market yet. You will
+        receive a notification when the decision is ready.
       </div>
     );
   if (r.status === 'Rejected')
     return (
       <div className="callout">
-        Not approved ·{' '}
+        Not approved.{' '}
         {r.reviewReason || 'Review the requirements and resubmit for operations approval.'}
       </div>
     );
@@ -274,7 +274,7 @@ export function externalQuantity(row: MarketRow): string {
   else if (q.totalGpusMin != null) parts.push(numberLabel(q.totalGpusMin) + '+ GPUs');
   else if (q.totalGpusMax != null) parts.push('Up to ' + numberLabel(q.totalGpusMax) + ' GPUs');
   else if (!parts.length && row.count != null) parts.push(numberLabel(row.count) + ' GPUs');
-  return parts.join(' · ') || 'Quantity to confirm';
+  return parts.join(' ') || 'Quantity to confirm';
 }
 
 export function externalCommitment(row: MarketRow): string {
@@ -291,7 +291,7 @@ export function externalCommitment(row: MarketRow): string {
         : term.max != null
           ? 'Up to ' + numberLabel(term.max)
           : '';
-  return 'Commitment · ' + (months ? months + ' months' : 'Term to confirm');
+  return 'Commitment ' + (months ? months + ' months' : 'Term to confirm');
 }
 
 export const sideOf = (row: MarketRow): MarketSide => (row.side === 'demand' ? 'demand' : 'supply');
