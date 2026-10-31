@@ -112,7 +112,7 @@ export function PricesDialog({
               <tr>
                 <th>SKU / GPU</th>
                 <th>Region</th>
-                <th>Terms</th>
+                <th>Terms / basis</th>
                 <th>GPUs</th>
                 <th>USD / GPU-h</th>
                 <th>USD / instance-h</th>
@@ -127,10 +127,18 @@ export function PricesDialog({
                       <small>{r.gpuModel}</small>
                     </td>
                     <td>{r.region}</td>
-                    <td>{r.term}</td>
+                    <td>
+                      {r.term}
+                      <small>
+                        {r.priceBasis === 'gpu_component_hour'
+                          ? 'GPU component only'
+                          : 'Machine price'}
+                        {r.sourceType === 'catalog_reference' ? ' · Catalog reference' : ''}
+                      </small>
+                    </td>
                     <td>{r.gpuCount}</td>
                     <td>{Number(r.perGpuHourly).toFixed(4)}</td>
-                    <td>{Number(r.instanceHourly).toFixed(4)}</td>
+                    <td>{r.instanceHourly == null ? '—' : Number(r.instanceHourly).toFixed(4)}</td>
                   </tr>
                 ))
               ) : (

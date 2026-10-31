@@ -26,6 +26,19 @@ const row = (over: Partial<PriceRecord>): PriceRecord => ({
 });
 
 describe('offersFor', () => {
+  it('excludes accelerator components and non-USD quotes from machine comparisons', () => {
+    const records = [
+      row({
+        recordId: 'machine',
+        sourceType: 'catalog_reference',
+        priceBasis: 'instance_hour',
+        currency: 'USD',
+      }),
+      row({ recordId: 'component', priceBasis: 'gpu_component_hour', instanceHourly: null }),
+      row({ recordId: 'foreign', currency: 'CNY' }),
+    ];
+    expect(offersFor(records, {}, BASE_REGIONS).map((o) => o.id)).toEqual(['machine']);
+  });
   it('matches model, memory, form factor, region, term and count separately', () => {
     const records = [
       row({ recordId: 'a' }),

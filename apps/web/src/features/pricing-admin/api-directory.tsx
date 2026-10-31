@@ -12,7 +12,10 @@ export function ProviderReference({ id }: { id: string }) {
   return (
     <section className="pc-api-list pc-reference">
       <h3>Official API reference</h3>
-      <p>Reviewed 27 Oct 2026. Documentation is not an active OpenNEXT connector.</p>
+      <p>
+        API documentation may cover more products than the configured collector. Check source
+        settings for the active transport and verification status.
+      </p>
       {reference.endpoints.length ? (
         reference.endpoints.map((endpoint) => <code key={endpoint}>{endpoint}</code>)
       ) : (

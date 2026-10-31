@@ -62,6 +62,10 @@ export const PricingProvider = z
     name: z.string(),
     adapter: z.string().nullish(),
     adapterStatus: z.string().nullish(),
+    sourceType: z.enum(['provider_api', 'catalog_reference']).optional(),
+    validationStatus: z
+      .enum(['live_verified', 'not_live_verified', 'needs_credentials'])
+      .optional(),
     enabled: z.boolean(),
     intervalMinutes: z.number(),
     credentialRequired: z.boolean().nullish(),

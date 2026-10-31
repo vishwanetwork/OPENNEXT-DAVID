@@ -75,6 +75,17 @@ export const PROVIDER_NAMES: Record<string, string> = {
   vultr: 'Vultr',
   lambda: 'Lambda',
   shadeform: 'Shadeform',
+  gcp: 'Google Cloud',
+  azure: 'Azure',
+  hyperstack: 'Hyperstack',
+  vast: 'Vast.ai',
+  runpod: 'RunPod',
+  nebius: 'Nebius',
+  oci: 'Oracle Cloud',
+  paperspace: 'Paperspace',
+  verda: 'Verda',
+  digitalocean: 'DigitalOcean',
+  tensordock: 'TensorDock',
 };
 
 export const ALL_REGIONS = 'All regions';
@@ -129,6 +140,8 @@ export function matchesRecord(
   filters: OfferFilters,
   regions: readonly Region[],
 ): boolean {
+  if (row.priceBasis === 'gpu_component_hour' || (row.currency && row.currency !== 'USD'))
+    return false;
   const model = filters.model || filters.gpuModel;
   const m = modelOf(model);
   if (filters.model && row.gpuModel !== m.canonical) return false;

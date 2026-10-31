@@ -34,6 +34,17 @@ export function ProviderCard({
         </span>
       </button>
       <p className="pc-cadence">Incremental · every {p.intervalMinutes} minutes</p>
+      {p.sourceType ? (
+        <p className="pc-cadence">
+          {p.sourceType === 'catalog_reference'
+            ? 'SkyPilot catalog reference'
+            : 'Provider pricing API'}
+          {' · '}
+          {p.validationStatus === 'live_verified'
+            ? 'Collection verified'
+            : 'Live verification pending'}
+        </p>
+      ) : null}
       <div className="pc-terms" aria-label={`${p.name} adapter price types`}>
         {providerTerms(p).map(({ term, supported }) => (
           <span

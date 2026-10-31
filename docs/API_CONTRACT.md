@@ -468,3 +468,25 @@ Console Schedules now directs operators to actual Price Source schedules. Platfo
 Agent and Agent billing use real backend records instead of browser-local policies
 or illustrative cost charts. The existing Terminal payment, notification, rental,
 SSH and Autopilot endpoints remain unchanged.
+
+### Additional read-only pricing sources
+
+The Python adapter extends the existing pricing endpoints with eleven sources: Verda,
+DigitalOcean, TensorDock, GCP, Azure, Hyperstack, Vast.ai, RunPod, Nebius, OCI and Paperspace.
+The final eight use SkyPilot's official reference catalog rather than authenticated provider
+APIs. New sources default to disabled. Pending adapters remain explicitly unimplemented.
+
+Optional provider fields `sourceType` (`provider_api` / `catalog_reference`) and
+`validationStatus` (`live_verified` / `not_live_verified` / `needs_credentials`) distinguish
+transport and actual successful collection. Credential presence is not live verification.
+New-source `/test` returns an enqueued real read-only run (`mode=test`), polled through the
+existing run endpoint. Provider configuration, credentials and collected snapshots persist
+in the adapter's configured database. Existing four collectors retain their behavior.
+
+Price records may include `sourceType`, `sourceRevision` (Git blob SHA), `upstreamUpdatedAt`,
+`priceBasis` (`instance_hour` / `gpu_component_hour`) and `orderable=false`. Catalog fetch
+time does not establish the upstream price's effective date. Accelerator-only GCP records
+have null `instanceHourly` and must be excluded from full-machine market comparisons.
+No Reserved prices, inventory or quota availability are inferred. The price endpoint merges
+and filters additional snapshots, balances providers before applying the limit, and reports
+truncation. Existing AWS historical charts and purchasable capacity keep their current sources.
