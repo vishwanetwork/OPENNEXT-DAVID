@@ -286,7 +286,7 @@ export function metrics(billing: BillingData, a: Analytics): MetricCard[] {
               orderSide(o) === 'buy' && o.paymentStatus !== 'Paid' && !/cancelled/i.test(o.status),
           )
           .reduce((sum, o) => sum + num(o.total || o.amount), 0),
-        note: 'Current unpaid orders · not date-filtered',
+        note: 'Current unpaid orders (not date-filtered)',
       },
       {
         label: 'Completed purchases',
@@ -301,12 +301,12 @@ export function metrics(billing: BillingData, a: Analytics): MetricCard[] {
       {
         label: 'Pending settlement',
         value: pending,
-        note: 'Current paid orders · not date-filtered',
+        note: 'Current paid orders (not date-filtered)',
       },
       {
         label: FEE_LABEL,
         value: -settledPlatformFees(billing),
-        note: 'Recorded settlement fees · already deducted from net proceeds',
+        note: 'Recorded settlement fees already deducted from net proceeds',
       },
       {
         label: 'Paid out',

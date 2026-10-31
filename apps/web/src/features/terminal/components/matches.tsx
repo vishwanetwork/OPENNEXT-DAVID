@@ -25,9 +25,9 @@ function MatchCard({
         </strong>
       </div>
       <p>
-        {o.provider} · {regionText(regions, o.regionCode || o.region)}
+        {o.provider} {regionText(regions, o.regionCode || o.region)}
         <br />
-        {o.count} GPU · {o.term}
+        {o.count} GPU {o.term}
       </p>
       <div className="match-bottom">
         <span className="fit">
@@ -111,7 +111,7 @@ export function Matches({
         <div>
           <h3>{kind === 'best' ? 'Best Matches' : 'Recent Observations'}</h3>
           <small>
-            {model} · {region} · {count} GPU
+            {model} {region} {count} GPU
           </small>
         </div>
         <button

@@ -46,7 +46,7 @@ export function NotificationsPanel() {
                 <strong>{n.subject}</strong>
                 <small>
                   {date(n.created || n.createdAt)}
-                  {n.supplier ? ' · ' + n.supplier : ''}
+                  {n.supplier ? ' ' + n.supplier : ''}
                 </small>
                 <p>{n.message}</p>
               </div>

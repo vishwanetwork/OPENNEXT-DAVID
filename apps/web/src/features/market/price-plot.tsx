@@ -53,7 +53,7 @@ export function PricePlot({
               x2={geo.w - geo.right}
               y1={g.y}
               y2={g.y}
-              stroke="#e3ebe5"
+              stroke="var(--history-grid, #e3ebe5)"
               strokeDasharray="4 7"
             />
             <text x={geo.w - geo.right + 10} y={g.y + 4} className="history-axis">
@@ -107,7 +107,7 @@ export function PricePlot({
             y2={geo.h - geo.bottom}
             x1={hover?.point.x ?? 0}
             x2={hover?.point.x ?? 0}
-            stroke="#8aa48f"
+            stroke="var(--history-crosshair, #8aa48f)"
             strokeDasharray="3 5"
           />
           <circle
@@ -131,13 +131,13 @@ export function PricePlot({
               {moneyShort(hover.point.value)} <small>/ GPU-hour</small>
             </strong>
             <span>
-              {hover.series.display.name} · {METRIC_SHORT[hover.series.metric]}
+              {hover.series.display.name} {METRIC_SHORT[hover.series.metric]}
             </span>
             {hover.series.display.description ? (
               <span>{hover.series.display.description}</span>
             ) : null}
             <div>
-              Low {moneyShort(hover.point.min)} · Average {moneyShort(hover.point.avg)} · High{' '}
+              Low {moneyShort(hover.point.min)} Average {moneyShort(hover.point.avg)} High{' '}
               {moneyShort(hover.point.max)}
             </div>
             <time>{timeLabel(hover.point.time, geo.daily)}</time>

@@ -5,6 +5,8 @@ import { listModelQuotes, type ModelQuote } from '@/data/model-quotes';
 import { Button, EmptyState, PageHeading, useTerminal, useToast } from '@/terminal-kit';
 import { MarketSwitcher } from './market-switcher';
 
+const modelLabel = (value: string) => value.replace(/\s*·\s*/g, ' ');
+
 export const tokenMoney = (value: unknown): string =>
   Number.isFinite(Number(value))
     ? Number(value).toLocaleString('en-US', {
@@ -36,7 +38,7 @@ export function ModelRateSummary({ q }: { q: ModelQuote | null | undefined }) {
         </div>
       </div>
       <p className="form-note">
-        {q.context} · Cache billing treatment requires quote confirmation.
+        {modelLabel(q.context)}. Cache billing treatment requires quote confirmation.
       </p>
     </>
   );
@@ -55,7 +57,7 @@ export function ModelsPage() {
         <MarketSwitcher />
         <div className="model-market-context">
           <strong>Model Capacity</strong>
-          <span>Input / output / cache rates · USD per 1M tokens</span>
+          <span>Input / output / cache rates (USD per 1M tokens)</span>
         </div>
       </section>
       <div className="page-content">
@@ -97,9 +99,9 @@ export function ModelsPage() {
                 hidden={q ? !text.includes(q) : false}
               >
                 <span className="tag">Indicative supplier quote</span>
-                <h3 style={{ marginTop: 15 }}>{item.name}</h3>
+                <h3 style={{ marginTop: 15 }}>{modelLabel(item.name)}</h3>
                 <span className="muted" style={{ fontSize: 11 }}>
-                  {item.brand} · {item.modelId}
+                  {item.brand} {item.modelId}
                 </span>
                 <ModelRateSummary q={item} />
                 <div className="model-meta">

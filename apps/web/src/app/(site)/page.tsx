@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { LandingPage } from '@/features/site';
+import { CinematicLandingPage } from '@/features/site';
 
-export const metadata: Metadata = { title: 'OpenNEXT — Capacity Terminal' };
+export const metadata: Metadata = { title: 'OpenNEXT — An always-on compute market' };
 
 export default function SitePage() {
-  return <LandingPage />;
+  return <CinematicLandingPage />;
 }

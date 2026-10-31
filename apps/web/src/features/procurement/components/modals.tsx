@@ -280,7 +280,7 @@ function ProcurementModal({
       const response = (workspace.responses as SupplierResponse[]).find((x) => x.id === id);
       return (
         <ModalFrame
-          title={response ? 'Supplier response · ' + response.id : 'Response unavailable'}
+          title={response ? 'Supplier response ' + response.id : 'Response unavailable'}
           close={close}
         >
           <ResponseRecord response={response} />

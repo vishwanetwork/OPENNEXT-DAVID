@@ -59,7 +59,7 @@ export const CATALOG: readonly CatalogModel[] = RAW_CATALOG.map(([name, memory, 
 
 export const BASE_REGIONS: readonly Region[] = [
   { name: 'US East', code: 'us-east-1', city: 'N. Virginia' },
-  { name: 'US East · Ohio', code: 'us-east-2', city: 'Ohio' },
+  { name: 'US East Ohio', code: 'us-east-2', city: 'Ohio' },
   { name: 'US West', code: 'us-west-2', city: 'Oregon' },
   { name: 'Singapore', code: 'ap-southeast-1', city: 'Singapore' },
   { name: 'Frankfurt', code: 'eu-central-1', city: 'Frankfurt' },
@@ -204,7 +204,7 @@ export function offersFor(
       model: filters.model || row.gpuModel || '',
       provider:
         (PROVIDER_NAMES[row.provider] || row.provider) +
-        (row.underlyingProvider ? ' · ' + row.underlyingProvider : ''),
+        (row.underlyingProvider ? ' ' + row.underlyingProvider : ''),
       sourceProvider: row.provider,
       region: regionLabel(regions, row.region),
       regionCode: row.region,
@@ -375,6 +375,7 @@ export const cleanLabel = (value: unknown): string =>
     .replace(/\(\s*\)|\[\s*\]/g, '')
     .replace(/\s*[·|,]\s*(?=[·|,]|$)/g, '')
     .replace(/^[\s·|,–—-]+|[\s·|,–—-]+$/g, '')
+    .replace(/[ \t]*·[ \t]*/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 

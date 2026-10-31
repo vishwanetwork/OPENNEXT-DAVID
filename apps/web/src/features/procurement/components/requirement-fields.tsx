@@ -27,7 +27,7 @@ export function RequirementFields({ r }: { r: OwnedRfq }) {
       'Budget',
       money(r.budget) +
         unitSuffix(r) +
-        (model ? '' : ' · ' + money(totalFor(r, r.budget)) + ' maximum'),
+        (model ? '' : ' ' + money(totalFor(r, r.budget)) + ' maximum'),
     ],
     ['Quote deadline', date(r.quoteDeadline)],
     ['Delivery method', r.deliveryMethod || deliveryMethod(r)],
@@ -41,7 +41,7 @@ export function RequirementFields({ r }: { r: OwnedRfq }) {
           'Shipping address / destination',
           txt(r.shippingAddress) || 'Confirm securely before shipment',
         ],
-        ['Incoterms', txt(r.incoterms) || 'DAP · confirm fees'],
+        ['Incoterms', txt(r.incoterms) || 'DAP confirm fees'],
         ['Warranty', txt(r.warranty) || 'Confirm in quotation'],
       ]
     : model

@@ -17,6 +17,8 @@ export interface SpotMarketUi {
   showFilters: boolean;
   page: number;
   selected: Selected;
+  /** Explicitly empty groups; an empty selected array otherwise means unrestricted. */
+  emptyGroups: GroupKey[];
   search: Record<'model' | 'country', string>;
   openGroups: string[];
   maxPrice: number | null;
@@ -31,7 +33,8 @@ interface SpotMarketActions {
   toggleFilters: () => void;
   movePage: (delta: number) => void;
   setPage: (page: number) => void;
-  toggleOption: (key: GroupKey, value: string, checked: boolean) => void;
+  toggleOption: (key: GroupKey, value: string, checked: boolean, options: string[]) => void;
+  selectGroup: (key: GroupKey, values: string[]) => void;
   clearGroup: (key: GroupKey) => void;
   setSearch: (key: 'model' | 'country', value: string) => void;
   setGroupOpen: (key: string, open: boolean) => void;
@@ -51,6 +54,7 @@ const initialUi = (): SpotMarketUi => ({
     window.innerWidth > 650,
   page: 0,
   selected: emptySelected(),
+  emptyGroups: [],
   search: { model: '', country: '' },
   openGroups: ['model'],
   maxPrice: null,
@@ -70,19 +74,35 @@ export const useSpotMarketStore = create<SpotMarketUi & SpotMarketActions>((set,
   toggleFilters: () => set({ showFilters: !get().showFilters }),
   movePage: (delta) => set({ page: get().page + delta }),
   setPage: (page) => set({ page }),
-  toggleOption: (key, value, checked) => {
-    const current = get().selected[key];
-    set({
-      selected: {
-        ...get().selected,
-        [key]: checked
-          ? [...new Set([...current, value])]
-          : current.filter((item) => item !== value),
-      },
-      page: 0,
-    });
+  toggleOption: (key, value, checked, options) => {
+    const state = get();
+    const current =
+      !state.selected[key].length && !state.emptyGroups.includes(key)
+        ? options
+        : state.selected[key];
+    const next = checked
+      ? [...new Set([...current, value])]
+      : current.filter((item) => item !== value);
+    if (options.length > 0 && options.every((option) => next.includes(option))) {
+      state.clearGroup(key);
+    } else {
+      state.selectGroup(key, next);
+    }
   },
-  clearGroup: (key) => set({ selected: { ...get().selected, [key]: [] }, page: 0 }),
+  selectGroup: (key, values) =>
+    set({
+      selected: { ...get().selected, [key]: [...new Set(values)] },
+      emptyGroups: values.length
+        ? get().emptyGroups.filter((group) => group !== key)
+        : [...new Set([...get().emptyGroups, key])],
+      page: 0,
+    }),
+  clearGroup: (key) =>
+    set({
+      selected: { ...get().selected, [key]: [] },
+      emptyGroups: get().emptyGroups.filter((group) => group !== key),
+      page: 0,
+    }),
   setSearch: (key, value) => set({ search: { ...get().search, [key]: value } }),
   setGroupOpen: (key, open) =>
     set({
@@ -92,7 +112,14 @@ export const useSpotMarketStore = create<SpotMarketUi & SpotMarketActions>((set,
     }),
   setMaxPrice: (value) => set({ maxPrice: value, page: 0 }),
   reset: () =>
-    set({ selected: emptySelected(), search: { model: '', country: '' }, maxPrice: null, page: 0 }),
-  setSelected: (selected) => set({ selected }),
+    set({
+      selected: emptySelected(),
+      emptyGroups: [],
+      search: { model: '', country: '' },
+      maxPrice: null,
+      page: 0,
+    }),
+  setSelected: (selected) =>
+    set({ selected, emptyGroups: get().emptyGroups.filter((key) => !selected[key].length) }),
   setInjected: (rows) => set({ injected: rows, page: 0 }),
 }));

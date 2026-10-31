@@ -21,10 +21,16 @@ import {
 import { AgentHintProvider } from './components/agent-drawer';
 import { TerminalHeader } from './components/terminal-header';
 import { TerminalOverlays } from './components/terminal-overlays';
-import { DemoToolbar } from './demo-toolbar';
+import { DemoSessionBoot } from './demo-session-boot';
 import { LegacyHashRedirect } from './legacy-hash-redirect';
 import './terminal.css';
 import './preview-shell.css';
+import './buyer-design.css';
+import './buyer-polish.css';
+import './buyer-insight.css';
+import './buyer-agent.css';
+import './buyer-navigation.css';
+import './buyer-inputs.css';
 
 /** Boot-time query handling: `?gpu=&count=&role=&listing=&intent=&opportunity=`. */
 function BootQuery() {
@@ -140,7 +146,7 @@ export interface TerminalShellProps {
 
 /**
  * Client shell mounted by the terminal layout: session boot, preferences, header, overlays,
- * demo toolbar. Which features fill the slots is decided by the composition root.
+ * and isolated workspace boot. Feature slots are decided by the composition root.
  */
 export function TerminalShell({
   children,
@@ -160,7 +166,7 @@ export function TerminalShell({
             <SessionSync initialUser={initialUser} />
             {integrations}
             <Chrome>{children}</Chrome>
-            {demo ? <DemoToolbar /> : null}
+            {demo ? <DemoSessionBoot /> : null}
           </AgentHintProvider>
         </Providers>
       </SlotsBoundary>

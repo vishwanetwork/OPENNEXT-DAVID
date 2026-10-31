@@ -58,9 +58,7 @@ const BillOrderModal: ModalComponent<'bill-order'> = ({ modal, close }) => {
   const id = modal.id;
   return (
     <ModalFrame
-      title={
-        billing.orders.some((o) => o.id === id) ? 'Order details · ' + id : 'Order unavailable'
-      }
+      title={billing.orders.some((o) => o.id === id) ? 'Order details ' + id : 'Order unavailable'}
       wide
       close={close}
     >
@@ -142,7 +140,7 @@ const CashoutDetailModal: ModalComponent<'cashout-detail'> = ({ modal, close }) 
   const payout = billing.payouts.find((item) => item.id === modal.id);
   if (!payout) return null;
   return (
-    <ModalFrame title={'Payout details · ' + payout.id} close={close}>
+    <ModalFrame title={'Payout details ' + payout.id} close={close}>
       <CashoutDetail payout={payout} />
     </ModalFrame>
   );
@@ -154,12 +152,12 @@ const RecordDetailModal: ModalComponent<'bill-record' | 'receipt'> = ({ modal, c
   if (!l) return null;
   if (l.orderId)
     return (
-      <ModalFrame title={'Order details · ' + l.orderId} wide close={close}>
+      <ModalFrame title={'Order details ' + l.orderId} wide close={close}>
         <OrderModal id={l.orderId} />
       </ModalFrame>
     );
   return (
-    <ModalFrame title={'Activity details · ' + l.id} close={close}>
+    <ModalFrame title={'Activity details ' + l.id} close={close}>
       <RecordModal l={l} />
     </ModalFrame>
   );

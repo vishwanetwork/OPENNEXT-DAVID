@@ -24,7 +24,7 @@ export function RecordView({ r }: { r: OwnedRfq | undefined }) {
       <div className="row spread">
         <span className="form-note">
           {r.id}
-          {r.sample ? ' · Preview requirement' : ''}
+          {r.sample ? ' Preview requirement' : ''}
         </span>
         <Tag>{rfqStatus(r)}</Tag>
       </div>
@@ -33,9 +33,9 @@ export function RecordView({ r }: { r: OwnedRfq | undefined }) {
       {['Open', 'Quoted'].includes(r.status) ? <QuoteRows r={r} /> : null}
       {order ? (
         <section className="proc-award">
-          <h3>Selected supplier · {order.provider}</h3>
+          <h3>Selected supplier {order.provider}</h3>
           <p>
-            {order.id} · {money(order.total)} · {order.status}
+            {order.id} {money(order.total)} {order.status}
           </p>
           <div className="row">
             <PBtn
@@ -114,7 +114,7 @@ export function RecordView({ r }: { r: OwnedRfq | undefined }) {
         {(r.audit || []).length ? (
           (r.audit || []).map((a, i) => (
             <p key={i}>
-              {date(a.at)} · {a.event}
+              {date(a.at)} {a.event}
             </p>
           ))
         ) : (
@@ -124,7 +124,7 @@ export function RecordView({ r }: { r: OwnedRfq | undefined }) {
           .filter((q) => q.status !== 'Pending')
           .map((q) => (
             <p key={q.id}>
-              {q.provider} · {q.status} · {money(q.price)}
+              {q.provider} {q.status} {money(q.price)}
             </p>
           ))}
       </details>

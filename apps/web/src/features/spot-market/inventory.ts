@@ -242,17 +242,17 @@ export function inventoryState(input: {
       rows: input.injected,
       scope:
         hasAgent && hasPreview
-          ? 'Mixed connected and preview feed · checkout remains disabled'
+          ? 'Mixed connected and preview feed. checkout remains disabled'
           : hasAgent
-            ? 'Connected inventory preview · checkout remains disabled'
-            : 'Injected preview feed · no live availability claim',
+            ? 'Connected inventory preview. checkout remains disabled'
+            : 'Injected preview feed. no live availability claim',
       kind: hasAgent && !hasPreview ? 'agent' : 'preview',
     };
   }
   if (input.agentRows.length)
     return {
       rows: input.agentRows,
-      scope: 'Connected marketplace records · checkout remains preview-only',
+      scope: 'Connected marketplace records. checkout remains preview-only',
       kind: 'agent',
     };
   if (input.demoActive) return { rows: FALLBACK_ROWS, scope: 'Demo inventory', kind: 'fixture' };
@@ -265,6 +265,7 @@ export const emptySelected = (): Selected => ({ model: [], country: [], vcpu: []
 export interface FilterState {
   term: MarketTerm;
   selected: Selected;
+  emptyGroups?: GroupKey[];
   maxPrice: number | null;
   sort: SortKey;
 }
@@ -290,10 +291,13 @@ export function attributeFiltered(
   rows: SpotRow[],
   selected: Selected,
   skippedKey: GroupKey | null = null,
+  emptyGroups: GroupKey[] = [],
 ): SpotRow[] {
   return rows.filter((row) =>
     GROUPS.every((group) => {
-      if (group.key === skippedKey || !selected[group.key].length) return true;
+      if (group.key === skippedKey) return true;
+      if (emptyGroups.includes(group.key)) return false;
+      if (!selected[group.key].length) return true;
       return selected[group.key].includes(String(row[group.key]));
     }),
   );
@@ -302,9 +306,14 @@ export function attributeFiltered(
 /** Price bounds follow the term and attribute filters; the price filter never feeds its own range. */
 export function boundsFor(
   rows: SpotRow[],
-  state: Pick<FilterState, 'term' | 'selected'>,
+  state: Pick<FilterState, 'term' | 'selected' | 'emptyGroups'>,
 ): { min: number | null; max: number | null; rows: SpotRow[] } {
-  const candidates = attributeFiltered(termRows(rows, state.term), state.selected);
+  const candidates = attributeFiltered(
+    termRows(rows, state.term),
+    state.selected,
+    null,
+    state.emptyGroups,
+  );
   const prices = candidates.map((row) => row.perGpuHourly).filter(positive);
   if (!prices.length) return { min: null, max: null, rows: candidates };
   return { min: round(Math.min(...prices)), max: round(Math.max(...prices)), rows: candidates };
@@ -338,7 +347,7 @@ export function filteredRows(rows: SpotRow[], state: FilterState): SpotRow[] {
 export function optionsFor(
   group: FilterGroupSpec,
   rows: SpotRow[],
-  state: Pick<FilterState, 'term' | 'selected'>,
+  state: Pick<FilterState, 'term' | 'selected' | 'emptyGroups'>,
 ): string[] {
   const values = new Set(
     termRows(rows, state.term)
@@ -356,16 +365,22 @@ export function optionCount(
   group: FilterGroupSpec,
   value: string,
   rows: SpotRow[],
-  state: Pick<FilterState, 'term' | 'selected'>,
+  state: Pick<FilterState, 'term' | 'selected' | 'emptyGroups'>,
 ): number {
-  return attributeFiltered(termRows(rows, state.term), state.selected, group.key).filter(
-    (row) => String(row[group.key]) === String(value),
-  ).length;
+  return attributeFiltered(
+    termRows(rows, state.term),
+    state.selected,
+    group.key,
+    state.emptyGroups,
+  ).filter((row) => String(row[group.key]) === String(value)).length;
 }
 
-export function selectedCount(state: Pick<FilterState, 'selected' | 'maxPrice'>): number {
+export function selectedCount(
+  state: Pick<FilterState, 'selected' | 'maxPrice' | 'emptyGroups'>,
+): number {
   return (
     GROUPS.reduce((sum, group) => sum + state.selected[group.key].length, 0) +
+    (state.emptyGroups?.length ?? 0) +
     (state.maxPrice === null ? 0 : 1)
   );
 }

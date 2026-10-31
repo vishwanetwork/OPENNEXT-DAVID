@@ -573,7 +573,7 @@ export class SpotCheckout {
       if (draft.stage !== 'payment' || draft.paymentSubmitted || draft.reviewRequired)
         throw new Error('Review the purchase before choosing bank transfer.');
       if (this.deps.isDemo() || row.previewOnly || row.sourceKind !== 'agent')
-        throw new Error('Bank transfers are unavailable for Demo inventory.');
+        throw new Error('Bank transfers are unavailable for this inventory.');
       if (!(await this.deps.verifyKyb?.()))
         throw new Error('Complete Buyer KYB approval before purchasing capacity.');
       if (this.pending() !== draft || this.deps.owner() !== draft.owner) return;

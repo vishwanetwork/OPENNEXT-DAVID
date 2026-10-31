@@ -72,7 +72,7 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
   const history = useQuery({
     queryKey: marketKeys.regional(query),
     queryFn: () => marketApi.regionalHistory(api, query),
-    enabled: Boolean(options.range),
+    enabled: Boolean(options.range) && !options.emptyGroups?.length,
     staleTime: 300_000,
     retry: false,
   });
@@ -81,6 +81,11 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
     : null;
 
   const chart = () => {
+    if (options.emptyGroups?.length)
+      return empty(
+        'No matching historical prices',
+        'Select at least one option in each filter to compare recorded prices.',
+      );
     if (!options.range)
       return empty(
         'Use the shared time-range control',
@@ -124,10 +129,13 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
       <header className="onx-sa-panel-head">
         <div>
           <h2>
-            Index <span data-insight-focus>{session.model}</span>
+            Index{' '}
+            <span data-insight-focus>
+              {options.emptyGroups?.includes('model') ? '' : session.model}
+            </span>
           </h2>
           <p>
-            Recorded regional prices · USD / GPU-hour · <span data-insight-term-label>{term}</span>
+            Recorded regional prices USD / GPU-hour <span data-insight-term-label>{term}</span>
           </p>
         </div>
       </header>
@@ -138,11 +146,13 @@ export function InsightIndex({ options: input = {}, role = 'Seller' }: InsightIn
             <select
               data-insight-model
               aria-label="Index GPU model"
-              value={session.model}
+              value={models.length ? session.model : ''}
+              disabled={!models.length}
               onChange={(e) => {
                 if (models.includes(e.target.value)) update({ model: e.target.value });
               }}
             >
+              {!models.length ? <option value="">No models selected</option> : null}
               {models.map((model) => (
                 <option key={model} value={model}>
                   {model}

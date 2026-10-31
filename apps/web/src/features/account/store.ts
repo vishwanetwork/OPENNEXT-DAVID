@@ -95,7 +95,7 @@ export async function loadKeys(deps: KeyLibraryDeps, { force = false } = {}): Pr
             (error as Error).message === UNCONFIGURED
               ? UNCONFIGURED
               : account.demo
-                ? 'Demo SSH keys could not be loaded. Please check browser storage access.'
+                ? 'SSH keys could not be loaded. Please check browser storage access.'
                 : 'SSH keys could not be loaded. Refresh your session and try again.',
         });
     } finally {
@@ -200,8 +200,8 @@ export async function changeKey(
       ok: true,
       message: account.demo
         ? input.removing
-          ? 'Public key removed from this Demo browser workspace.'
-          : 'Public key saved only to this Demo browser workspace.'
+          ? 'Public key removed from this browser workspace.'
+          : 'Public key saved only to this browser workspace.'
         : input.removing
           ? 'Public key removed. Existing instance access is unchanged.'
           : 'Public key saved to your account.',

@@ -76,7 +76,7 @@ export function prefillFromRow(item: MarketRow): Record<string, unknown> {
   return {
     ...item,
     kind,
-    title: item.model + ' · ' + item.provider,
+    title: item.model + ' ' + item.provider,
     originSupply: item.id,
     selectedSupplier: item.provider,
     sku: item.sku,

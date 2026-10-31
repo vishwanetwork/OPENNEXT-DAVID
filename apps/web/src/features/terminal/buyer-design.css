@@ -1,0 +1,1225 @@
+/* Buyer presentation layer. API hooks, contracts and state machines remain in their features. */
+.buyer-terminal-root {
+  min-height: 100vh;
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.buyer-terminal-root button,
+.buyer-terminal-root input,
+.buyer-terminal-root select,
+.buyer-terminal-root textarea {
+  font-family: inherit;
+}
+.buyer-terminal-root .terminal.preview-terminal {
+  background: var(--soft);
+}
+.buyer-terminal-root .terminal-main {
+  margin-left: 208px;
+  min-width: 0;
+}
+.buyer-terminal-root .preview-terminal .preview-terminal-head {
+  height: 64px;
+  padding: 0 28px;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  background: #fff;
+  box-shadow: none;
+}
+.buyer-workspace-title {
+  margin-right: auto;
+  font-size: 15px;
+  font-weight: 600;
+}
+.buyer-terminal-root .preview-terminal-head .credit {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 13px;
+  font-size: 13px;
+  color: var(--muted);
+  background: #fff;
+}
+.buyer-terminal-root .preview-terminal-head .credit strong {
+  font-size: 14px;
+  color: var(--ink);
+  margin-left: 5px;
+}
+.buyer-terminal-root .preview-terminal-head .user-button {
+  color: var(--ink);
+  font-size: 13px;
+}
+.buyer-terminal-root .avatar {
+  background: #eaf0f5;
+  color: #517186;
+}
+.buyer-sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: 208px;
+  padding: 24px 14px 18px;
+  background: #fff;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.buyer-sidebar .preview-terminal-brand {
+  margin: 0 4px 26px;
+}
+.buyer-sidebar .onx-brand {
+  font-family: inherit;
+  font-weight: 750;
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--ink);
+  letter-spacing: -1px;
+}
+.buyer-sidebar .onx-brand svg {
+  width: 28px;
+  height: 31px;
+  fill: currentColor;
+}
+.buyer-role-switch {
+  display: flex;
+  padding: 4px;
+  margin-bottom: 20px;
+  background: #f5f7f9;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.buyer-role-switch button {
+  width: 50%;
+  padding: 8px;
+  background: transparent;
+  border: 0;
+  font-size: 13px;
+  color: var(--muted);
+  border-radius: 4px;
+}
+.buyer-role-switch button.active {
+  background: #fff;
+  box-shadow: 0 1px 4px #18384e10;
+  color: var(--ink);
+  font-weight: 600;
+}
+.buyer-terminal-root button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.buyer-sidebar .preview-terminal-nav {
+  display: flex;
+  flex: 0;
+  flex-direction: column;
+  gap: 5px;
+  align-self: stretch;
+}
+.buyer-sidebar .preview-terminal-nav button,
+.buyer-collections button {
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 13px;
+  background: transparent;
+  font-weight: 500;
+}
+.buyer-sidebar .preview-terminal-nav button[aria-current='page'],
+.buyer-collections button[aria-current='page'] {
+  background: #edf3f7;
+  color: #1d4563;
+  font-weight: 650;
+  border: 0;
+}
+.buyer-sidebar nav button:hover {
+  background: #f4f7fa;
+}
+.buyer-collections {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.buyer-collections button {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+}
+.buyer-collections span {
+  color: #6b8ca3;
+  font-size: 12px;
+}
+.buyer-sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: auto;
+  padding-top: 25px;
+}
+.buyer-sidebar-bottom button {
+  padding: 9px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.buyer-sidebar-bottom .buyer-agent-button {
+  padding: 15px 11px;
+  background: linear-gradient(130deg, #f5f8fb, #eaf1f6);
+  border: 1px solid #dce6ee;
+  border-radius: 8px;
+  color: #315c7b;
+  margin-bottom: 10px;
+  font-weight: 650;
+}
+.buyer-sidebar-bottom span {
+  float: right;
+}
+.buyer-mobile-nav,
+.buyer-nav-scrim {
+  display: none;
+}
+.buyer-terminal-root .page-content,
+.buyer-terminal-root .onx-spot-market {
+  padding: 24px 28px 36px;
+  max-width: 1640px;
+  margin: 0 auto;
+}
+.buyer-terminal-root .page-heading {
+  margin-bottom: 22px;
+  align-items: center;
+}
+.buyer-terminal-root .page-heading h1,
+.buyer-terminal-root .onx-spot-market h1 {
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -1.1px;
+  margin: 0;
+  color: var(--ink);
+}
+.buyer-terminal-root .page-heading > div > p {
+  display: none;
+}
+.buyer-terminal-root .btn,
+.buyer-terminal-root .onx-spot-action {
+  border-radius: 7px;
+  min-height: 38px;
+  font-size: 13px;
+  padding: 9px 13px;
+  box-shadow: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.buyer-terminal-root .btn:not(.secondary):not(.ghost):not(.danger),
+.buyer-terminal-root .onx-spot-action.is-buy {
+  background: #17364d;
+  border-color: #17364d;
+  color: #fff;
+}
+.buyer-terminal-root .btn.secondary,
+.buyer-terminal-root .onx-spot-action.is-quote {
+  background: #fff;
+  color: #264e6b;
+  border-color: #dce5ec;
+}
+.buyer-terminal-root .btn:hover:not(:disabled),
+.buyer-terminal-root .onx-spot-action:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+.buyer-terminal-root :is(.panel, .stat-card, .procurement-card, .bill-metric, .onx-instance-card) {
+  border-color: var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.buyer-terminal-root .field {
+  border-color: #dce5ec;
+  border-radius: 7px;
+  font-size: 14px;
+  min-height: 40px;
+  background: #fff;
+  color: var(--ink);
+}
+.buyer-terminal-root input:focus-visible,
+.buyer-terminal-root select:focus-visible,
+.buyer-terminal-root textarea:focus-visible {
+  outline: 2px solid #acc9dd;
+  outline-offset: 2px;
+}
+.buyer-terminal-root button:focus-visible,
+.buyer-terminal-root a:focus-visible {
+  outline: 2px solid #658fab;
+  outline-offset: 3px;
+}
+.buyer-terminal-root .onx-spot-market {
+  --spot-accent: #244e6d;
+  --spot-accent-strong: #17364d;
+  --spot-accent-soft: #edf3f7;
+  --spot-subtle: #fbfcfd;
+  --spot-muted: #627787;
+}
+.buyer-terminal-root .onx-spot-market-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.buyer-terminal-root .onx-spot-market-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.buyer-terminal-root .onx-spot-tabs {
+  border-color: var(--line);
+  padding: 4px;
+  background: white;
+}
+.buyer-terminal-root .onx-spot-tabs button {
+  font-size: 13px;
+  min-height: 35px;
+  padding: 7px 14px;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-spot-tabs button.active {
+  background: #edf3f7;
+  color: #204762;
+  box-shadow: none;
+}
+.buyer-terminal-root .onx-spot-toolbar {
+  margin-bottom: 17px;
+  gap: 12px;
+}
+.buyer-terminal-root .onx-spot-result-count {
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-spot-toolbar > .field {
+  font-size: 13px;
+  height: 39px;
+}
+.buyer-terminal-root .onx-spot-layout {
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 18px;
+}
+.buyer-terminal-root .onx-spot-layout.filters-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+.buyer-terminal-root .onx-spot-filters,
+.buyer-terminal-root .onx-spot-results {
+  border-color: var(--line);
+  border-radius: 9px;
+}
+.buyer-terminal-root .onx-spot-filter-head {
+  padding: 17px 16px;
+}
+.buyer-terminal-root .onx-spot-filter-head strong,
+.buyer-terminal-root .onx-spot-filter-toggle {
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-spot-filter-toggle {
+  min-height: 48px;
+}
+.buyer-terminal-root .onx-spot-option {
+  font-size: 13px;
+  min-height: 31px;
+}
+.buyer-terminal-root .onx-spot-table {
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-spot-table th {
+  color: var(--muted);
+  background: #fbfcfd;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 550;
+  text-transform: none;
+  letter-spacing: 0;
+  border-color: var(--line);
+}
+.buyer-terminal-root .onx-spot-table td {
+  padding: 10px 14px;
+  height: 58px;
+  border-color: #edf1f4;
+}
+.buyer-terminal-root .onx-spot-model {
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-spot-price strong {
+  font-size: 16px;
+  color: #274e69;
+}
+.buyer-terminal-root .onx-spot-price strong span,
+.buyer-terminal-root .onx-spot-price small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-spot-action {
+  font-size: 12px;
+  min-height: 33px;
+  padding: 7px 12px;
+}
+.buyer-terminal-root .onx-spot-pagination {
+  padding: 14px 18px;
+  font-size: 12px;
+  border-color: var(--line);
+}
+.buyer-terminal-root .onx-spot-card {
+  border-radius: 9px;
+  padding: 22px;
+  border-color: var(--line);
+  box-shadow: none;
+}
+.buyer-terminal-root .onx-spot-card h2 {
+  font-size: 18px;
+}
+.buyer-terminal-root .onx-spot-card-bottom {
+  border-color: var(--line);
+}
+.buyer-terminal-root .data-table {
+  font-size: 13px;
+}
+.buyer-terminal-root .data-table th {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 14px 18px;
+  color: var(--muted);
+  background: #fbfcfd;
+}
+.buyer-terminal-root .data-table td {
+  padding: 17px 18px;
+  border-color: var(--line);
+}
+.buyer-terminal-root .modal {
+  border-radius: 14px;
+  border-color: #e1e9ef;
+  box-shadow: 0 25px 75px #16374d29;
+}
+.buyer-terminal-root .overlay {
+  background: #102c4050;
+  backdrop-filter: blur(4px);
+}
+.buyer-terminal-root .modal-head {
+  padding: 22px 26px;
+  border-color: var(--line);
+}
+.buyer-terminal-root .modal-head .eyebrow {
+  display: none;
+}
+.buyer-terminal-root .modal-head h2 {
+  font-size: 20px;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+.buyer-terminal-root .modal-body {
+  padding: 26px;
+  font-size: 14px;
+}
+.buyer-terminal-root .modal-body label,
+.buyer-terminal-root .modal-body .form-label {
+  font-size: 14px;
+}
+.buyer-terminal-root .bill-wallets {
+  grid-template-columns: minmax(250px, 1fr);
+}
+.buyer-terminal-root .bill-wallet {
+  background: #163247;
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 22px 26px;
+}
+.buyer-terminal-root .bill-wallet > span,
+.buyer-terminal-root .bill-wallet > p {
+  color: #adc1cf;
+  font-size: 13px;
+}
+.buyer-terminal-root .bill-wallet > strong {
+  color: #fff;
+  font-size: 34px;
+  font-weight: 550;
+}
+.buyer-terminal-root .bill-wallet-note {
+  display: none;
+}
+.buyer-terminal-root .bill-metric {
+  padding: 18px 20px;
+}
+.buyer-terminal-root .bill-metric > strong {
+  font-size: 29px;
+  font-weight: 550;
+}
+.buyer-terminal-root .bill-panel-head h2 {
+  font-size: 18px;
+}
+.buyer-terminal-root .onx-sa-index,
+.buyer-terminal-root .onx-sa-analytics,
+.buyer-terminal-root .onx-sa-activities {
+  border-color: var(--line);
+  border-radius: 10px;
+}
+.buyer-terminal-root .user-pop {
+  border-color: var(--line);
+  border-radius: 10px;
+  box-shadow: 0 15px 40px #14364c18;
+}
+.buyer-terminal-root .preview-menu-count {
+  background: #eaf1f6;
+  color: #52758e;
+}
+.buyer-terminal-root .role-tab.active {
+  background: #eaf1f6;
+  border-color: #bdcfdd;
+  color: #274e69;
+}
+.buyer-terminal-root .onx-auth-root {
+  font-family: inherit;
+  --onx-ink: #183247;
+  --onx-muted: #627787;
+  --onx-line: #e3eaf0;
+  --onx-green: #254f6e;
+  grid-template-columns: 48% 52%;
+}
+.buyer-terminal-root .onx-auth-story {
+  background:
+    linear-gradient(180deg, #10293d10, #071b31a6),
+    url('/terminal-design/data-center.webp') center/cover;
+  border: 0;
+  padding: 43px 45px;
+}
+.buyer-terminal-root .onx-auth-story .onx-brand {
+  color: #fff;
+  font-family: inherit;
+  font-size: 28px;
+}
+.buyer-terminal-root .onx-auth-story-copy {
+  padding: 0 0 80px;
+}
+.buyer-terminal-root .onx-auth-story h2 {
+  font-family: inherit;
+  font-size: clamp(40px, 4vw, 65px);
+  line-height: 1.14;
+  font-weight: 500;
+  letter-spacing: -2.5px;
+  color: #fff;
+  max-width: 570px;
+}
+.buyer-terminal-root .onx-auth-story p {
+  color: #bdd1e0;
+  font-size: 16px;
+  max-width: none;
+}
+.buyer-terminal-root .onx-auth-orbits {
+  display: none;
+}
+.buyer-terminal-root .onx-auth-card {
+  max-width: 420px;
+}
+.buyer-terminal-root .onx-auth-card h1 {
+  font-family: inherit;
+  font-size: 36px;
+  font-weight: 550;
+  line-height: 1.2;
+  letter-spacing: -1.3px;
+}
+.buyer-terminal-root .onx-auth-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 13px 0 30px;
+}
+.buyer-terminal-root .onx-auth-provider,
+.buyer-terminal-root .onx-auth-submit {
+  min-height: 46px;
+  font-size: 14px;
+  border-radius: 7px;
+}
+.buyer-terminal-root .onx-auth-github {
+  background: white;
+  color: #23425a;
+  border: 1px solid #dce5ec;
+}
+.buyer-terminal-root .onx-auth-submit {
+  background: #18364d;
+  border-color: #18364d;
+}
+.buyer-terminal-root .onx-auth-field > span {
+  font-size: 14px;
+  font-weight: 550;
+  color: #527087;
+}
+.buyer-terminal-root .onx-auth-field input {
+  border: 1px solid #dce5ec;
+  border-radius: 7px;
+  height: 46px;
+  box-shadow: none;
+  font-size: 14px;
+}
+.buyer-terminal-root .onx-auth-smallnote {
+  font-size: 13px;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-auth-kicker {
+  display: none;
+}
+@media (max-width: 1250px) {
+  .buyer-sidebar {
+    width: 200px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .buyer-terminal-root .terminal-main {
+    margin-left: 200px;
+  }
+  .buyer-terminal-root .page-content,
+  .buyer-terminal-root .onx-spot-market {
+    padding: 28px 24px 45px;
+  }
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    padding: 0 24px;
+  }
+  .buyer-terminal-root .onx-spot-layout {
+    grid-template-columns: 185px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .buyer-terminal-root .onx-spot-table th,
+  .buyer-terminal-root .onx-spot-table td {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+  .buyer-terminal-root .onx-spot-market-head {
+    gap: 16px;
+  }
+  .buyer-terminal-root .onx-spot-market-actions {
+    gap: 10px;
+  }
+}
+@media (max-width: 800px) {
+  .buyer-sidebar {
+    width: 232px;
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+    z-index: 80;
+  }
+  .buyer-sidebar.is-open {
+    transform: none;
+  }
+  .buyer-mobile-nav {
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+  .buyer-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #19394e50;
+    backdrop-filter: blur(3px);
+    z-index: 79;
+  }
+  .buyer-terminal-root .terminal-main {
+    margin-left: 0;
+  }
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    height: 68px;
+    padding: 0 20px;
+    gap: 12px;
+  }
+  .buyer-terminal-root .page-content,
+  .buyer-terminal-root .onx-spot-market {
+    padding: 25px 20px 40px;
+  }
+  .buyer-terminal-root .onx-auth-root {
+    grid-template-columns: 1fr;
+  }
+  .buyer-terminal-root .onx-auth-story {
+    display: none;
+  }
+  .buyer-terminal-root .onx-auth-main {
+    padding: 100px 28px 45px;
+  }
+  .buyer-terminal-root .onx-auth-mobile-brand {
+    display: block;
+    margin-bottom: 30px;
+  }
+}
+@media (max-width: 560px) {
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    padding: 0 15px;
+    gap: 9px;
+  }
+  .buyer-terminal-root .preview-terminal-head .credit {
+    font-size: 11px;
+    padding: 8px;
+  }
+  .buyer-terminal-root .preview-terminal-head .credit strong {
+    font-size: 12px;
+  }
+  .buyer-terminal-root .preview-terminal-head .user-button b {
+    display: none;
+  }
+  .buyer-terminal-root .page-content,
+  .buyer-terminal-root .onx-spot-market {
+    padding: 25px 16px 40px;
+  }
+  .buyer-terminal-root .page-heading h1,
+  .buyer-terminal-root .onx-spot-market h1 {
+    font-size: 27px;
+  }
+  .buyer-terminal-root .onx-spot-market-head {
+    align-items: center;
+    margin-bottom: 18px;
+    gap: 19px;
+  }
+  .buyer-terminal-root .onx-spot-market-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .buyer-terminal-root .onx-spot-tabs {
+    flex: 1;
+  }
+  .buyer-terminal-root .onx-spot-tabs button {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  .buyer-terminal-root .btn {
+    font-size: 12px;
+    padding: 8px 11px;
+  }
+  .buyer-terminal-root .onx-spot-toolbar {
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-bottom: 16px;
+  }
+  .buyer-terminal-root .onx-spot-result-count {
+    font-size: 12px;
+    margin-left: auto;
+  }
+  .buyer-terminal-root .onx-spot-toolbar > .field {
+    order: 3;
+    width: calc(100% - 82px);
+    flex: 1;
+    margin-left: 0;
+  }
+  .buyer-terminal-root .onx-spot-view {
+    order: 4;
+  }
+  .buyer-terminal-root .onx-spot-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .buyer-terminal-root .onx-spot-filters {
+    position: static;
+    max-height: 300px;
+    overflow: auto;
+  }
+  .buyer-terminal-root .onx-spot-table {
+    min-width: 710px;
+  }
+  .buyer-terminal-root .onx-spot-table th:first-child,
+  .buyer-terminal-root .onx-spot-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: white;
+    box-shadow: 3px 0 6px #18364b08;
+  }
+  .buyer-terminal-root .onx-spot-table th:first-child {
+    background: #fbfcfd;
+  }
+  .buyer-terminal-root .onx-spot-table td {
+    height: 61px;
+  }
+  .buyer-terminal-root .onx-spot-table-scroll {
+    overflow-x: auto;
+  }
+  .buyer-terminal-root .modal {
+    max-width: calc(100vw - 24px);
+    border-radius: 12px;
+  }
+  .buyer-terminal-root .modal-head {
+    padding: 18px;
+  }
+  .buyer-terminal-root .modal-body {
+    padding: 20px 18px;
+  }
+  .buyer-terminal-root .modal-head h2 {
+    font-size: 18px;
+  }
+  .buyer-terminal-root .onx-auth-card h1 {
+    font-size: 32px;
+  }
+  .buyer-terminal-root .bill-wallet {
+    padding: 24px;
+  }
+  .buyer-terminal-root .bill-wallet > strong {
+    font-size: 30px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buyer-terminal-root *,
+  .buyer-terminal-root *::before,
+  .buyer-terminal-root *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.buyer-terminal-root .onx-spot-view .icon-btn.active {
+  background: #edf3f7;
+  color: #234a66;
+  border-color: #c9dbe8;
+}
+@media (min-width: 801px) {
+  .buyer-terminal-root .agent-companion-launch {
+    display: none;
+  }
+}
+
+/* Keep operational labels readable; decorative section kickers are omitted. */
+.buyer-terminal-root .btn.small {
+  font-size: 13px;
+  min-height: 36px;
+}
+.buyer-sidebar .preview-terminal-nav button,
+.buyer-collections button {
+  font-size: 14px;
+}
+.buyer-terminal-root .stat-card > span,
+.buyer-terminal-root .bill-metric > span,
+.buyer-terminal-root .bill-date-filter label,
+.buyer-terminal-root .bill-date-filter .field,
+.buyer-terminal-root .bill-legend,
+.buyer-terminal-root .bill-legend strong {
+  font-size: 13px;
+  color: var(--muted);
+}
+.buyer-terminal-root .bill-metric > small,
+.buyer-terminal-root .bill-panel-head p,
+.buyer-terminal-root .bill-footnote,
+.buyer-terminal-root .proc-sub,
+.buyer-terminal-root .instance-example-caption,
+.buyer-terminal-root .instance-example-caption strong,
+.buyer-terminal-root .instance-example-specs small,
+.buyer-terminal-root .instance-example-meta,
+.buyer-terminal-root .instance-example-footer,
+.buyer-terminal-root .onx-account-footnote,
+.buyer-terminal-root .instance-empty-summary p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.buyer-terminal-root .bill-panel-head h2,
+.buyer-terminal-root .bill-metric > strong {
+  color: var(--ink);
+}
+.buyer-terminal-root .tag {
+  font-size: 12px;
+  padding: 4px 7px;
+}
+.buyer-terminal-root .instance-example-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px;
+}
+.buyer-terminal-root .instance-example-meta {
+  margin: 10px 0 18px;
+}
+.buyer-terminal-root .instance-example-chart {
+  height: 115px;
+  margin: 12px 0;
+  color: #527e9b;
+}
+.buyer-terminal-root .onx-spot-view [aria-pressed='true'],
+.buyer-terminal-root .bill-segment [aria-pressed='true'] {
+  background: #edf3f7;
+  color: #244e6c;
+  border-color: #c3d4e1;
+}
+.buyer-terminal-root .bill-chart svg text {
+  fill: var(--muted);
+}
+
+.buyer-terminal-root .onx-seller-activities {
+  --sa-accent-dark: #17364d;
+  --sa-muted: #627787;
+  padding: 24px 28px 36px;
+  max-width: 1640px;
+}
+.buyer-terminal-root .onx-sa-page-head {
+  align-items: center;
+  margin-bottom: 22px;
+}
+.buyer-terminal-root .onx-sa-page-head h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -1.1px;
+}
+.buyer-terminal-root .onx-sa-page-head p {
+  display: none;
+}
+.buyer-terminal-root .onx-sa-layout {
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 18px;
+}
+.buyer-terminal-root .onx-sa-layout.filters-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+.buyer-terminal-root .onx-sa-tabs button,
+.buyer-terminal-root .onx-sa-panel-controls button,
+.buyer-terminal-root .onx-sa-ranges button,
+.buyer-terminal-root .onx-sa-index-controls select,
+.buyer-terminal-root .onx-sa-index-controls label,
+.buyer-terminal-root .onx-sa-index-metrics button,
+.buyer-terminal-root .onx-sa-check,
+.buyer-terminal-root .onx-sa-filter-group summary,
+.buyer-terminal-root .onx-sa-list-supply {
+  font-size: 13px;
+}
+.buyer-terminal-root .onx-sa-tabs button.active {
+  background: #edf3f7;
+  color: #244e6c;
+  box-shadow: none;
+}
+.buyer-terminal-root .onx-sa-ranges button.active,
+.buyer-terminal-root .onx-sa-panel-controls button[aria-pressed='true'],
+.buyer-terminal-root .onx-sa-index-metrics button[aria-pressed='true'] {
+  background: #edf3f7;
+  color: #244e6c;
+  border-color: #c3d4e1;
+}
+.buyer-terminal-root .onx-sa-panel-marker {
+  background: #446d89;
+}
+.buyer-terminal-root .onx-sa-panel-head h2 {
+  font-size: 18px;
+  color: var(--ink);
+}
+.buyer-terminal-root .onx-sa-panel-head p,
+.buyer-terminal-root .onx-sa-filter-scope,
+.buyer-terminal-root .onx-sa-metrics small,
+.buyer-terminal-root .onx-sa-filter-group summary > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-sa-toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.buyer-terminal-root .onx-sa-search input {
+  font-size: 13px;
+}
+@media (max-width: 1000px) {
+  .buyer-terminal-root .onx-sa-ranges {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 800px) {
+  .buyer-terminal-root .onx-seller-activities {
+    padding: 24px 20px;
+  }
+  .buyer-terminal-root .onx-sa-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .buyer-terminal-root .onx-sa-filters {
+    position: static;
+    max-height: 320px;
+    overflow: auto;
+  }
+}
+@media (max-width: 560px) {
+  .buyer-terminal-root .onx-seller-activities {
+    padding: 24px 16px;
+  }
+  .buyer-terminal-root .onx-sa-page-head {
+    flex-wrap: wrap;
+    gap: 15px;
+  }
+  .buyer-terminal-root .onx-sa-ranges button {
+    padding: 6px 9px;
+  }
+  .buyer-terminal-root .onx-sa-index-controls {
+    flex-wrap: wrap;
+  }
+}
+
+.buyer-sidebar .preview-terminal-nav {
+  order: 0;
+  flex-wrap: nowrap;
+  padding: 0;
+  width: 100%;
+}
+.buyer-sidebar .preview-terminal-nav button {
+  width: 100%;
+}
+.buyer-sidebar {
+  overflow-y: auto;
+}
+@media (max-width: 800px) {
+  .buyer-sidebar {
+    visibility: hidden;
+  }
+  .buyer-sidebar.is-open {
+    visibility: visible;
+  }
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    flex-wrap: nowrap;
+    min-height: 68px;
+    padding-top: 0;
+  }
+}
+@media (max-width: 560px) {
+  .buyer-terminal-root .onx-spot-result-count {
+    width: auto;
+    flex: 1;
+    text-align: right;
+  }
+}
+.buyer-sidebar .preview-terminal-nav {
+  flex: none;
+  min-height: auto;
+}
+.buyer-sidebar .preview-terminal-brand,
+.buyer-role-switch,
+.buyer-collections,
+.buyer-sidebar-bottom {
+  flex-shrink: 0;
+}
+@media (max-width: 560px) {
+  .buyer-terminal-root .onx-spot-toolbar > .field {
+    flex: 1 0 calc(100% - 90px);
+    width: calc(100% - 90px);
+  }
+  .buyer-terminal-root .onx-spot-view {
+    flex: 0 0 73px;
+  }
+  .buyer-terminal-root .onx-spot-result-count {
+    min-width: 120px;
+  }
+}
+
+.buyer-sidebar-close {
+  display: none;
+}
+@media (max-width: 800px) {
+  .buyer-sidebar-close {
+    display: block;
+    position: absolute;
+    top: 22px;
+    right: 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 24px;
+  }
+  .buyer-nav-scrim {
+    left: 232px;
+    width: calc(100% - 232px);
+  }
+}
+.buyer-terminal-root .onx-spot-card {
+  padding: 0;
+  overflow: hidden;
+}
+.buyer-terminal-root .onx-spot-card-main {
+  padding: 22px;
+}
+.buyer-terminal-root .onx-spot-card-bottom {
+  padding: 18px 22px;
+  background: #fbfcfd;
+}
+.buyer-terminal-root .onx-spot-card-model > span,
+.buyer-terminal-root .onx-spot-card-identity p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-spot-card-identity h2 {
+  color: var(--ink);
+}
+.buyer-terminal-root .onx-spot-card-specs small {
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.buyer-terminal-root .onx-spot-card-specs strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* Keep the market controls together and the inventory in a bounded, scrollable workspace. */
+.buyer-session-status {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.buyer-session-status a {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--ink);
+}
+.buyer-account-email {
+  margin: 7px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.buyer-terminal-root .user-pop > .user-links {
+  margin-top: 16px;
+}
+.buyer-terminal-root .onx-spot-toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.buyer-terminal-root .onx-spot-tabs {
+  flex-shrink: 0;
+}
+.buyer-terminal-root .onx-spot-result-count {
+  white-space: nowrap;
+}
+.buyer-terminal-root .onx-spot-toolbar > .field {
+  width: 172px;
+}
+.buyer-terminal-root .onx-spot-filter-head {
+  padding: 14px 13px;
+}
+@media (min-width: 1101px) {
+  .buyer-terminal-root .onx-spot-market {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 64px);
+    min-height: 620px;
+    padding-bottom: 24px;
+  }
+  .buyer-terminal-root .onx-spot-market-head,
+  .buyer-terminal-root .onx-spot-toolbar,
+  .buyer-terminal-root .onx-spot-pagination {
+    flex-shrink: 0;
+  }
+  .buyer-terminal-root .onx-spot-layout {
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .buyer-terminal-root .onx-spot-filters {
+    position: static;
+    overflow: auto;
+  }
+  .buyer-terminal-root .onx-spot-results {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .buyer-terminal-root .onx-spot-table-scroll,
+  .buyer-terminal-root .onx-spot-cards {
+    flex: 1;
+    overflow: auto;
+  }
+  .buyer-terminal-root .onx-spot-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+}
+@media (max-width: 1100px) {
+  .buyer-terminal-root .onx-spot-toolbar .onx-spot-tabs {
+    flex: 0 0 100%;
+  }
+  .buyer-terminal-root .onx-spot-tabs button {
+    flex: 1;
+  }
+}
+@media (max-width: 800px) {
+  .buyer-terminal-root .onx-spot-table {
+    min-width: 710px;
+  }
+  .buyer-terminal-root .onx-spot-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .buyer-terminal-root .onx-spot-filters {
+    position: static;
+    max-height: 260px;
+    overflow: auto;
+  }
+  .buyer-terminal-root .onx-spot-market-head {
+    flex-wrap: nowrap;
+  }
+  .buyer-terminal-root .onx-spot-market-actions {
+    width: auto;
+  }
+}
+
+.buyer-terminal-root .instance-empty-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+}
+.buyer-terminal-root .instance-empty-layout > div {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  padding: 28px;
+  margin: 0;
+}
+.buyer-terminal-root .instance-empty-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 330px;
+}
+.buyer-terminal-root .instance-empty-summary strong {
+  font-size: 22px;
+  color: var(--ink);
+}
+.buyer-terminal-root .instance-empty-summary p {
+  max-width: 360px;
+  margin: 10px 0 22px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.buyer-terminal-root .instance-empty-layout .onx-account-ssh {
+  margin-top: 0;
+  padding-top: 0;
+  border: 0;
+}
+.buyer-terminal-root .instance-empty-layout .onx-account-section-header {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .buyer-terminal-root .instance-empty-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .buyer-terminal-root .instance-empty-summary {
+    min-height: 260px;
+  }
+}
+
+.buyer-terminal-root .instance-empty-summary .btn {
+  background: var(--ink);
+  color: white;
+  border-color: var(--ink);
+}

@@ -26,7 +26,7 @@ export function DailyTable({
       <div className="bill-panel-head">
         <h2>
           Daily {billing.role === 'buyer' ? 'spend' : 'financial'} details
-          {a.sample ? ' · example' : ''}
+          {a.sample ? ' example' : ''}
         </h2>
         <Btn act="bill-export" value="daily" onClick={() => onExport('daily')}>
           Export daily data
@@ -36,7 +36,7 @@ export function DailyTable({
         <table className="data-table">
           <thead>
             <tr>
-              <th>Date · UTC</th>
+              <th>Date (UTC)</th>
               {columns.map(([, label]) => (
                 <th key={label}>{label}</th>
               ))}

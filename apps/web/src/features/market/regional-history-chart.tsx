@@ -186,7 +186,7 @@ export function RegionalHistoryChart({
         </div>
       ) : null}
       <span className="capacity-unit">
-        {metricText(selection)} · USD / GPU-hour · {term}
+        {metricText(selection)} USD / GPU-hour {term}
       </span>
     </div>
   );
@@ -299,7 +299,7 @@ export function RegionalHistoryChart({
               {METRIC_SHORT[m]}
             </button>
           ))}
-          <small>Color identifies region · Line style identifies metric</small>
+          <small>Color identifies region. Line style identifies metric.</small>
         </div>
       ) : null}
       <div className="history-range">
@@ -307,7 +307,7 @@ export function RegionalHistoryChart({
           {dateLabel(geo.from)} – {dateLabel(geo.to)}
         </span>
         <span>
-          {geo.series.length} curves · {metricText(selection)} price
+          {geo.series.length} curves {metricText(selection)} price
         </span>
       </div>
       <PricePlot
@@ -319,7 +319,7 @@ export function RegionalHistoryChart({
       />
       <div className="history-footnote">
         <span>
-          Actual {metricText(selection).toLowerCase()} observations · Missing dates remain gaps
+          Actual {metricText(selection).toLowerCase()} observations. Missing dates remain gaps.
         </span>
         <span>{snapshot}</span>
       </div>

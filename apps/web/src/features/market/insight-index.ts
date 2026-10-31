@@ -138,10 +138,16 @@ export interface InsightOptions {
   range: string | null;
   term: string;
   selected: Record<'model' | 'country' | 'vcpu' | 'memory', string[]>;
+  emptyGroups?: Array<'model' | 'country' | 'vcpu' | 'memory'>;
 }
 
 export function optionsCopy(
-  options: { range?: unknown; term?: unknown; selected?: Partial<Record<string, unknown>> } = {},
+  options: {
+    range?: unknown;
+    term?: unknown;
+    selected?: Partial<Record<string, unknown>>;
+    emptyGroups?: unknown;
+  } = {},
 ): InsightOptions {
   const range =
     typeof options.range === 'string' && INSIGHT_PERIODS[options.range] ? options.range : null;
@@ -154,7 +160,10 @@ export function optionsCopy(
       return [key, Array.isArray(value) ? [...new Set(value.map(String))] : []];
     }),
   ) as InsightOptions['selected'];
-  return { range, term, selected };
+  const emptyGroups = (['model', 'country', 'vcpu', 'memory'] as const).filter(
+    (key) => Array.isArray(options.emptyGroups) && options.emptyGroups.includes(key),
+  );
+  return { range, term, selected, emptyGroups };
 }
 
 export interface InsightCatalog {
@@ -244,6 +253,7 @@ export function modelInfo(
 }
 
 export function availableModels(options: InsightOptions, catalogModels: string[]): string[] {
+  if (options.emptyGroups?.includes('model')) return [];
   if (options.selected.model.length) return options.selected.model;
   return [
     ...new Set(['H100', ...catalogModels, ...CATALOG.map((row) => row.canonical).filter(Boolean)]),
@@ -312,6 +322,7 @@ export function filterData(
   const model = modelInfo(focusedModel, catalog.models);
   const want = options.selected;
   const unknown = { vcpu: 0, country: 0, form: 0 };
+  if (options.emptyGroups?.length) return { data: { ...data, series: [], regions: [] }, unknown };
   const sourceRegions = data.regions || [];
   const series = (data.series || [])
     .filter((row) => {
@@ -383,6 +394,7 @@ export function emptyReason(unknown: FilteredInsight['unknown']): string {
 }
 
 export function scopeText(options: InsightOptions): string {
+  if (options.emptyGroups?.length) return 'No options selected in one or more filters.';
   return [
     options.selected.country.length
       ? options.selected.country.map(normalizeCountry).join(', ')
@@ -391,5 +403,5 @@ export function scopeText(options: InsightOptions): string {
     options.selected.memory.length ? options.selected.memory.join(' / ') + ' GB per GPU' : null,
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join(' ');
 }

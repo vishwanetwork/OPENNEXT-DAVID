@@ -1,0 +1,331 @@
+/* Buyer navigation lives across the top; compact viewports use a dropdown panel. */
+.buyer-terminal-root .terminal-main {
+  margin-left: 0;
+}
+.buyer-terminal-root .preview-terminal .preview-terminal-head {
+  display: flex;
+  height: 82px;
+  min-height: 82px;
+  padding: 0 32px;
+  gap: 14px;
+  overflow: visible;
+  flex-wrap: nowrap;
+  background: #fff;
+  z-index: 50;
+}
+.buyer-terminal-root .preview-terminal-brand {
+  margin: 0 14px 0 0;
+}
+.buyer-brand-lockup img {
+  display: block;
+  width: 180px;
+  height: auto;
+}
+.buyer-terminal-root .onx-auth-story .buyer-brand-lockup img {
+  width: 230px;
+}
+.buyer-terminal-root .onx-auth-mobile-brand .buyer-brand-lockup img {
+  width: 200px;
+}
+.buyer-top-navigation,
+.buyer-top-navigation .buyer-sidebar-bottom {
+  display: contents;
+}
+.buyer-top-navigation > .buyer-role-switch,
+.buyer-top-navigation .buyer-sidebar-close,
+.buyer-top-navigation .buyer-sidebar-bottom > button:not(.buyer-agent-button) {
+  display: none;
+}
+.buyer-terminal-root .buyer-top-navigation .preview-terminal-nav {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex: 1;
+  width: auto;
+  gap: 20px;
+  padding: 0;
+  order: 0;
+}
+.buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button {
+  display: flex;
+  align-items: center;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  color: #57677b;
+  font-size: 13px;
+  font-weight: 550;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button .buyer-nav-icon {
+  display: none;
+}
+.buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button[aria-current='page'] {
+  color: #13293c;
+  border-bottom-color: #13293c;
+  font-weight: 750;
+}
+.buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button:hover {
+  color: #205fba;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-collections {
+  display: flex;
+  flex-direction: row;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  border: 0;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-collections button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-height: 36px;
+  padding: 8px;
+  color: #5a6c80;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-collections button:hover,
+.buyer-terminal-root .buyer-top-navigation .buyer-collections button[aria-current='page'] {
+  color: #205fba;
+  background: #edf3fc;
+}
+.buyer-top-navigation .buyer-collection-label {
+  display: none;
+}
+.buyer-top-navigation .buyer-collection-count:not(:empty) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 10px;
+  min-width: 15px;
+  height: 15px;
+  text-align: center;
+  border-radius: 100%;
+  color: #fff;
+  background: #205fba;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-agent-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 11px 13px;
+  margin: 0;
+  min-height: 40px;
+  border: 1px solid #13293c;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: #fff;
+  background: #13293c;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-agent-button > .buyer-nav-icon {
+  display: none;
+}
+.buyer-terminal-root .buyer-top-navigation .buyer-agent-button:hover {
+  background: #245071;
+}
+.buyer-terminal-root .preview-terminal-head .credit {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 11px;
+}
+.buyer-terminal-root .preview-terminal-head .credit strong {
+  font-size: 13px;
+}
+.buyer-terminal-root .preview-terminal-head .user-button {
+  margin: 0;
+  padding: 0;
+}
+.buyer-terminal-root .preview-terminal-head .user-pop {
+  top: calc(100% - 4px);
+  right: 24px;
+}
+.buyer-terminal-root .user-pop .buyer-account-role {
+  display: flex;
+  margin: 0 0 16px;
+}
+.buyer-terminal-root .user-pop .buyer-account-role button {
+  text-align: center;
+}
+.buyer-terminal-root .page-content,
+.buyer-terminal-root .onx-spot-market {
+  max-width: 1536px;
+  margin-inline: auto;
+  padding: 30px 40px 42px;
+}
+@media (max-width: 1350px) and (min-width: 1201px) {
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    padding-inline: 24px;
+    gap: 10px;
+  }
+  .buyer-brand-lockup img {
+    width: 164px;
+  }
+  .buyer-terminal-root .preview-terminal-brand {
+    margin-right: 8px;
+  }
+  .buyer-terminal-root .buyer-top-navigation .preview-terminal-nav {
+    gap: 15px;
+  }
+}
+@media (max-width: 1200px) {
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    height: 74px;
+    min-height: 74px;
+    padding: 0 24px;
+    gap: 14px;
+  }
+  .buyer-terminal-root .preview-terminal-brand {
+    margin: 0 auto 0 0;
+  }
+  .buyer-terminal-root .buyer-mobile-nav {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: #13293c;
+    background: #f3f6fa;
+  }
+  .buyer-terminal-root .buyer-top-navigation {
+    display: none;
+    position: fixed;
+    top: 74px;
+    right: 0;
+    width: min(360px, 100vw);
+    max-height: calc(100dvh - 74px);
+    overflow-y: auto;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #dfe6ef;
+    border-radius: 0 0 0 18px;
+    box-shadow: 0 20px 50px #13293c1a;
+  }
+  .buyer-terminal-root .buyer-top-navigation.is-open {
+    display: block;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-role-switch {
+    display: flex;
+    margin: 0 40px 20px 0;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-sidebar-close {
+    display: block;
+    position: absolute;
+    top: 26px;
+    right: 20px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    font-size: 24px;
+    color: #66778c;
+    background: transparent;
+  }
+  .buyer-terminal-root .buyer-top-navigation .preview-terminal-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button {
+    min-height: 46px;
+    gap: 12px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9px;
+    font-size: 14px;
+  }
+  .buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button .buyer-nav-icon {
+    display: block;
+  }
+  .buyer-terminal-root .buyer-top-navigation .preview-terminal-nav button[aria-current='page'] {
+    background: #edf3fc;
+    color: #205fba;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-collections {
+    flex-direction: column;
+    padding-block: 14px;
+    margin-block: 14px;
+    border-block: 1px solid #e4eaf2;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-collections button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 12px;
+    padding-inline: 12px;
+  }
+  .buyer-top-navigation .buyer-collection-label {
+    display: inline;
+    font-size: 14px;
+    color: inherit;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-collections .buyer-collection-label {
+    margin-left: 0;
+  }
+  .buyer-top-navigation .buyer-collection-count:not(:empty) {
+    position: static;
+    margin-left: auto;
+  }
+  .buyer-top-navigation .buyer-sidebar-bottom {
+    display: flex;
+    padding: 0;
+    gap: 12px;
+  }
+  .buyer-top-navigation .buyer-sidebar-bottom > button:not(.buyer-agent-button) {
+    display: block;
+  }
+  .buyer-terminal-root .buyer-top-navigation .buyer-agent-button {
+    justify-content: space-between;
+  }
+  .buyer-terminal-root .buyer-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 74px 0 0;
+    width: 100%;
+    height: calc(100dvh - 74px);
+    z-index: 49;
+    background: #13293c33;
+  }
+}
+@media (max-width: 600px) {
+  .buyer-terminal-root .preview-terminal .preview-terminal-head {
+    height: 68px;
+    min-height: 68px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .buyer-brand-lockup img {
+    width: 146px;
+  }
+  .buyer-terminal-root .preview-terminal-head .credit {
+    display: none;
+  }
+  .buyer-terminal-root .buyer-top-navigation {
+    top: 68px;
+    max-height: calc(100dvh - 68px);
+  }
+  .buyer-terminal-root .buyer-nav-scrim {
+    top: 68px;
+    height: calc(100dvh - 68px);
+  }
+  .buyer-terminal-root .page-content,
+  .buyer-terminal-root .onx-spot-market {
+    padding: 20px 16px 32px;
+  }
+}

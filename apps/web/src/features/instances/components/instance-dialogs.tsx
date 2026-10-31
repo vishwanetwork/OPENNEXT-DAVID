@@ -85,11 +85,7 @@ export function Manage({ id }: { id?: string }) {
         Resale is limited to authorized, independently allocatable idle GPUs within your existing
         service window. Active allocations are never reclaimed automatically.
       </p>
-      {localDemo(i, demo) ? (
-        <p className="instance-example-record-note">
-          Demo allocation · local lifecycle changes only
-        </p>
-      ) : null}
+      {localDemo(i, demo) ? <p className="instance-example-record-note">Local allocation</p> : null}
       <div className="modal-footer">
         <IBtn
           act="instance-access"
@@ -225,11 +221,11 @@ export function Resell({ id }: { id?: string }) {
           />
         </label>
         <label className="form-label">
-          Your unit price · USD / GPU-hour
+          Your unit price (USD / GPU-hour)
           <input className="field" type="number" name="rate" min="0.01" step="0.01" required />
         </label>
         <label className="form-label">
-          Duration · hours
+          Duration (hours)
           <input className="field" type="number" name="hours" min={1} max={maxHours} required />
         </label>
       </div>
