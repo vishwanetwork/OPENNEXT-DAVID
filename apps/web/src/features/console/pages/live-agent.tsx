@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
 import { AsyncButton } from '@/components/ui/async-feedback';
 import { stampUtc } from '@/lib/format';
-import { downloadText } from '@/terminal-kit';
+import { csvFrom, downloadText } from '@/terminal-kit';
 import { useConsoleResource } from '../live-hooks';
 import { liveApi } from '../live-api';
 import { LiveFrame, LivePagination } from '../components/live-frame';
@@ -13,7 +13,13 @@ import { Head, Status } from '../components/forms';
 
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const csv = (rows: string[][]) =>
-  rows.map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')).join('\n');
+  csvFrom(
+    rows
+      .slice(1)
+      .map((row) =>
+        Object.fromEntries((rows[0] ?? []).map((column, index) => [column, row[index] ?? ''])),
+      ),
+  );
 
 export function LiveAgentPage() {
   const state = useConsoleResource('agent');
@@ -229,6 +235,25 @@ export function LiveAuditPage() {
       <Head
         title="Audit log"
         copy="Server-recorded operator actions and customer review decisions."
+        actions={
+          <button
+            type="button"
+            className="btn"
+            disabled={!rows.length}
+            onClick={() =>
+              downloadText(
+                'OpenNEXT-audit.csv',
+                csv([
+                  ['Time UTC', 'Actor', 'Action', 'Reference', 'Detail'],
+                  ...rows.map((row) => [row.at, row.actor, row.action, row.target, row.detail]),
+                ]),
+                'text/csv;charset=utf-8',
+              )
+            }
+          >
+            Export displayed records
+          </button>
+        }
       />
       <label>
         Search audit events

@@ -10,10 +10,12 @@ import { isAccessError } from './components/admin-access';
 function useOperationsQuery<T>(
   resource: string,
   read: (api: ApiClient, signal?: AbortSignal) => Promise<T>,
+  enabled = true,
 ) {
   const api = useApi();
   const query = useQuery({
     queryKey: queryKeys.admin.overview(resource),
+    enabled,
     queryFn: ({ signal }) => read(api, signal),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
@@ -24,13 +26,13 @@ function useOperationsQuery<T>(
   return { ...query, data: isAccessError(query.error) ? undefined : query.data };
 }
 
-export function useOperationsOverview() {
-  const marketplace = useOperationsQuery('marketplace', adminApi.marketplace);
-  const providers = useOperationsQuery('providers', adminApi.providers);
-  const prices = useOperationsQuery('prices', adminApi.prices);
-  const topups = useOperationsQuery('topups', adminApi.topups);
-  const contacts = useOperationsQuery('contacts', adminApi.contacts);
-  const publicMarket = useOperationsQuery('public-market', adminApi.publicMarket);
+export function useOperationsOverview(enabled = true) {
+  const marketplace = useOperationsQuery('marketplace', adminApi.marketplace, enabled);
+  const providers = useOperationsQuery('providers', adminApi.providers, enabled);
+  const prices = useOperationsQuery('prices', adminApi.prices, enabled);
+  const topups = useOperationsQuery('topups', adminApi.topups, enabled);
+  const contacts = useOperationsQuery('contacts', adminApi.contacts, enabled);
+  const publicMarket = useOperationsQuery('public-market', adminApi.publicMarket, enabled);
   return { marketplace, providers, prices, topups, contacts, publicMarket };
 }
 

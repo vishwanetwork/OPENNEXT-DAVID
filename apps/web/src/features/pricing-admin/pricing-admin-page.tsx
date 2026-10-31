@@ -52,10 +52,10 @@ export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
     placeholderData: keepPreviousData,
     retry: false,
   });
-  const providers = data.data?.providers ?? [];
-  const runs = data.data?.runs ?? [];
-  const access = data.data?.access ?? { mutable: false };
   const blocked = isAccessError(data.error);
+  const providers = blocked ? [] : (data.data?.providers ?? []);
+  const runs = blocked ? [] : (data.data?.runs ?? []);
+  const access = blocked ? { mutable: false } : (data.data?.access ?? { mutable: false });
   // Query failures are shown as the notice; action notices show while the query is healthy.
   const shownNotice = data.error
     ? {
@@ -162,7 +162,7 @@ export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
         ).map(([label, value]) => (
           <div key={label}>
             <span>{label}</span>
-            <strong>{data.data ? value.toLocaleString() : '—'}</strong>
+            <strong>{data.data && !blocked ? value.toLocaleString() : '—'}</strong>
           </div>
         ))}
       </div>
@@ -234,7 +234,7 @@ export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
         AWS charts use AWS observations only. Catalog prices do not guarantee stock. Unsupported
         price types stay unavailable until an adapter and permissions are verified.
       </p>
-      {dialog ? (
+      {dialog && (!blocked || dialog.kind === 'login') ? (
         <PcDialog
           dialog={dialog}
           providers={providers}

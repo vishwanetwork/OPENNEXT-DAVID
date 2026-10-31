@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { jsonResponse, mockFetch, renderConsole } from '@/test/render';
-import { LiveOrdersPage, LiveUsersPage } from './pages/live-records';
+import { LiveOrdersPage, LiveUsersPage, LiveOverviewPage } from './pages/live-records';
 import { LiveAgentPage, LiveBillingPage } from './pages/live-agent';
 
 const asOf = '2026-10-31T00:00:00Z';
@@ -18,6 +18,35 @@ const person = (id: string) => ({
 });
 
 describe('Live Console integration', () => {
+  it('uses the full backend overview and distinguishes unavailable dependencies from zero', async () => {
+    const request = mockFetch((path) =>
+      jsonResponse(
+        path.endsWith('/operations/session')
+          ? session
+          : {
+              metrics: {
+                pendingTopups: 1,
+                pendingPayments: 2,
+                pendingKyb: 0,
+                liveInstances: 4,
+                priceSources: 2,
+                spotOffers: 3,
+                pendingContacts: null,
+                pendingRfqs: 5,
+              },
+              events: [],
+              asOf,
+            },
+      ),
+    );
+    renderConsole(<LiveOverviewPage />);
+    expect(await screen.findByRole('link', { name: /Live Instances/ })).toHaveTextContent('4');
+    expect(screen.getByRole('link', { name: /Pending Contact Requests/ })).toHaveTextContent('—');
+    expect(screen.getByRole('link', { name: /Pending KYB Requests/ })).toHaveTextContent('0');
+    expect(request.mock.calls).toHaveLength(2);
+    expect(request.mock.calls[1]?.[0]).toBe('/api/admin/overview?');
+  });
+
   it('authenticates before reading private records and preserves platform totals across pages', async () => {
     const request = mockFetch((raw) => {
       const url = new URL(raw, 'http://localhost');

@@ -52,10 +52,14 @@ export const OperationsActivity = z.object({
 });
 export const OperationsOverview = z.object({
   metrics: z.object({
+    priceSources: count.nullable().default(null),
+    spotOffers: count.nullable().default(null),
+    pendingContacts: count.nullable().default(null),
+    pendingRfqs: count.nullable().default(null),
     pendingTopups: count,
     pendingPayments: count,
     pendingKyb: count,
-    liveInstances: count,
+    liveInstances: count.nullable(),
   }),
   events: z.array(OperationsEvent),
   asOf: z.string(),

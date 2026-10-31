@@ -10,22 +10,35 @@ import { Btn, Head } from '../components/forms';
 import { availableSourceCount, recentOperations } from './overview-data';
 import type { LiveData } from '../live-api';
 
-export function OverviewPage({ summary }: { summary?: LiveData<'overview'> }) {
+export function OverviewPage({
+  summary,
+  onRefresh,
+}: {
+  summary?: LiveData<'overview'>;
+  onRefresh?: () => Promise<unknown>;
+}) {
   const { href } = useApp();
-  const data = useOperationsOverview();
+  const data = useOperationsOverview(!summary);
   const queries = Object.values(data);
   const refresh = () => {
+    if (onRefresh) {
+      void onRefresh();
+      return;
+    }
     queries.forEach((query) => void query.refetch());
   };
-  const denied = queries.some((query) => isAccessError(query.error));
+  const denied = !summary && queries.some((query) => isAccessError(query.error));
   const market = data.marketplace.data;
-  const liveSpot = data.publicMarket.data
-    ? agentInventory(data.publicMarket.data.supplies, regionCountry).filter(
-        (row) => row.term === 'Spot' && !row.previewOnly,
-      ).length
-    : undefined;
-  const sourceCount =
-    data.providers.data && data.prices.data && data.prices.data.meta.truncated !== true
+  const liveSpot = summary
+    ? summary.metrics.spotOffers
+    : data.publicMarket.data
+      ? agentInventory(data.publicMarket.data.supplies, regionCountry).filter(
+          (row) => row.term === 'Spot' && !row.previewOnly,
+        ).length
+      : undefined;
+  const sourceCount = summary
+    ? summary.metrics.priceSources
+    : data.providers.data && data.prices.data && data.prices.data.meta.truncated !== true
       ? availableSourceCount(data.providers.data.providers, data.prices.data.records)
       : undefined;
   const metrics = [
@@ -68,17 +81,21 @@ export function OverviewPage({ summary }: { summary?: LiveData<'overview'> }) {
     },
     {
       label: 'Pending Contact Requests',
-      value: data.contacts.data?.leads.filter((r) => r.status === 'New').length,
+      value: summary
+        ? summary.metrics.pendingContacts
+        : data.contacts.data?.leads.filter((r) => r.status === 'New').length,
       path: '/leads',
       note: 'New enquiries awaiting first response',
     },
     {
       label: 'Pending RFQs',
-      value: market?.rfqs.filter(
-        (r) =>
-          !r.external &&
-          ['Reviewing', 'Open', 'Quoted'].includes(r.workflowStatus || r.status || ''),
-      ).length,
+      value: summary
+        ? summary.metrics.pendingRfqs
+        : market?.rfqs.filter(
+            (r) =>
+              !r.external &&
+              ['Reviewing', 'Open', 'Quoted'].includes(r.workflowStatus || r.status || ''),
+          ).length,
       path: '/rfqs',
       note: 'Reviewing, open or quoted buyer requests',
     },
@@ -118,14 +135,14 @@ export function OverviewPage({ summary }: { summary?: LiveData<'overview'> }) {
           <Link key={metric.label} href={href(metric.path)} className="stat ops-metric">
             <div className="stat-label">{metric.label}</div>
             <div className="stat-value">
-              {denied || metric.value === undefined ? '—' : metric.value.toLocaleString('en-US')}
+              {denied || metric.value == null ? '—' : metric.value.toLocaleString('en-US')}
             </div>
             <div className="stat-foot">{metric.note}</div>
           </Link>
         ))}
       </div>
       {denied ? <AdminLoginForm onConnected={refresh} /> : null}
-      {queries.some((q) => q.error) ? (
+      {!summary && queries.some((q) => q.error) ? (
         <p className="ops-state" role="alert">
           Some services could not be refreshed. Retained figures may be out of date; unavailable
           values are shown as —.

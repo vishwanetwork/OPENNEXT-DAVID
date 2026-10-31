@@ -11,7 +11,7 @@ export function LiveOverviewPage() {
   const state = useConsoleResource('overview');
   return (
     <LiveFrame title="overview" state={state}>
-      <OverviewPage summary={state.data} />
+      <OverviewPage summary={state.data} onRefresh={state.refresh} />
     </LiveFrame>
   );
 }
