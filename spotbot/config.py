@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     spotbot_rental_task_key: SecretStr = SecretStr("")
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
+    # Read-only transitional account/RFQ projection from the legacy backend's private volume.
+    spotbot_opennext_legacy_data_dir: str = ""
+    # Independent AES-256-GCM key for durable Console credentials; never use a cloud API key.
+    spotbot_opennext_console_key: SecretStr = SecretStr("")
     # Bot API for the OpenNEXT Spot market (catalog, purchases, instances); empty disables it.
     # The adapter authenticates with SPOTBOT_API_KEY and keeps rentals in this tenant.
     spotbot_opennext_bot_url: str = ""

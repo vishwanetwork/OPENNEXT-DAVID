@@ -36,6 +36,7 @@ from starlette.background import BackgroundTask
 
 from spotbot.models import timestamp, utcnow
 from spotbot.opennext_autopilot import install as install_autopilot
+from spotbot.opennext_console import install as install_console
 from spotbot.opennext_files import Vault
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
@@ -179,9 +180,12 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     async def lifespan(_app):
         # Bills usage and sends order notices while customers are away; one adapter instance.
         task = asyncio.create_task(notifier.run()) if notifier else None
+        console_task = asyncio.create_task(console.run())
         yield
+        console_task.cancel()
         if task:
             task.cancel()
+        await asyncio.gather(console_task, *([task] if task else []), return_exceptions=True)
         if own_client:
             await client.aclose()
 
@@ -254,7 +258,17 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             return error(400, "Unknown status filter", code="INVALID_STATUS")
         if not (1 <= limit <= MAX_PAGE) or (cursor and not cursor.isdigit()):
             return error(400, "Invalid cursor or limit", code="INVALID_PAGE")
-        views = await asyncio.to_thread(rentals)
+        if market is not None:
+            try:
+                rows = await market.rentals()
+                views = [
+                    instance_view(row, {"region": (row.get("connection") or {}).get("region")})
+                    for row in rows
+                ]
+            except (httpx.HTTPError, ValueError, KeyError):
+                return error(503, "The Spot Bot is temporarily unavailable.")
+        else:
+            views = await asyncio.to_thread(rentals)
         if wanted:
             views = [v for v in views if v["lifecycle"].lower() == wanted]
         start = int(cursor or 0)
@@ -743,6 +757,23 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         task.add_done_callback(background.discard)
         return task
 
+    console = install_console(
+        app,
+        SimpleNamespace(
+            db=db,
+            settings=settings,
+            market=market,
+            ops=ops,
+            notifier=notifier,
+            origin=origin,
+            client=client,
+            headers=headers,
+            admin_session=admin_session,
+            same_origin=same_origin,
+            no_store=no_store,
+            error=error,
+        ),
+    )
     install_autopilot(
         app,
         SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental),

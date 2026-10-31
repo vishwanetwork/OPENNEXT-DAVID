@@ -33,3 +33,28 @@ owns rentals, payment review, usage settlement and the new operations projection
   configure a trusted shared snapshot or implement a future account directory API.
 - Tests use local fixtures and fake cloud services; they must not provision GPUs or
   send production customer emails.
+
+## Deployment
+
+Run the updated `spotbot opennext-api` adapter in front of the existing backend.
+Set `SPOTBOT_OPENNEXT_LEGACY_DATA_DIR` to the shared private directory containing
+`auth-state.json` and `marketplace.json`. The adapter only reads these files. An
+unavailable or malformed snapshot returns 503 instead of an empty account directory.
+
+Set `SPOTBOT_OPENNEXT_CONSOLE_KEY` to an independent base64-encoded random 32-byte
+key. Keep it in the deployment secret manager and retain it across restarts.
+Provider credentials are AES-256-GCM encrypted in the configured workflow database,
+bound to their provider ID, and never returned to the browser. Environment-supplied
+provider keys continue to work. Database-saved keys override those environment keys.
+
+The single adapter maintenance loop restores keys into the existing collector every
+30 seconds, including after an independent collector restart. Local private legacy
+listeners use their existing loopback policy. A remote legacy service additionally
+requires `OPENNEXT_ADMIN_TOKEN` in the adapter environment. No browser cookie is saved
+for background use. Provider enablement, cadence, observations and run history remain
+owned by the existing collector and its persistent data directory.
+
+`POST /api/admin/agent/actions` accepts only `reconcile` plus an idempotency key.
+It queues a durable job that retries already-paid work and settles existing usage;
+it cannot create a fresh purchase or alter a running RFQ. Customer billing summaries
+are ledger projections, not provider invoices. The current fee policy is unchanged.
