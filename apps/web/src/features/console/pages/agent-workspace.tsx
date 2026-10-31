@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/components/providers/app-context';
-import { AgentPage } from './agent';
-import { BillingPage } from './billing';
+import { LiveAgentPage, LiveBillingPage } from './live-agent';
 
 export function AgentWorkspace() {
   const billing = useSearchParams().get('tab') === 'billing';
@@ -19,7 +18,7 @@ export function AgentWorkspace() {
           Agent billing
         </Link>
       </nav>
-      {billing ? <BillingPage /> : <AgentPage />}
+      {billing ? <LiveBillingPage /> : <LiveAgentPage />}
     </>
   );
 }

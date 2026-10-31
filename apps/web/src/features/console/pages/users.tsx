@@ -11,13 +11,30 @@ import {
   type UsersSnapshot,
 } from './operations-records';
 
-/** The administrator user service is not connected; no browser-local account records are used. */
-export function UsersPage({ snapshot }: { snapshot?: UsersSnapshot }) {
+/** Read-only account table. The live route supplies a verified server snapshot. */
+export function UsersPage({
+  snapshot,
+  filters,
+}: {
+  snapshot?: UsersSnapshot;
+  filters?: {
+    search: string;
+    role: string;
+    onSearch: (value: string) => void;
+    onRole: (value: string) => void;
+  };
+}) {
   const [period, setPeriod] = useState<GrowthPeriod>('7D');
-  const [search, setSearch] = useState('');
-  const [role, setRole] = useState('All');
+  const [localSearch, setLocalSearch] = useState('');
+  const [localRole, setLocalRole] = useState('All');
+  const search = filters?.search ?? localSearch;
+  const role = filters?.role ?? localRole;
+  const setSearch = filters?.onSearch ?? setLocalSearch;
+  const setRole = filters?.onRole ?? setLocalRole;
   const users = snapshot?.users ?? [];
-  const roles = [...new Set(users.map((user) => user.role))].sort();
+  const roles = [
+    ...new Set(['buyer', 'seller', 'unassigned', ...users.map((user) => user.role)]),
+  ].sort();
   const list = filterUsers(users, search, role);
   const growth = growthValue(snapshot, period);
   return (

@@ -7,6 +7,7 @@ import {
   type PricingProvider,
 } from '@opennext/contracts';
 import type { ApiClient } from '@/lib/api/client';
+import { z } from 'zod';
 
 const BASE = '/api/admin/pricing/';
 
@@ -25,8 +26,18 @@ export const pricingAdminApi = {
     CollectionRun.parse(await api.post(BASE + 'providers/' + encodeURIComponent(id) + '/test', {})),
   settings: (api: ApiClient, id: string, body: { enabled: boolean; intervalMinutes: number }) =>
     api.patch(BASE + 'providers/' + encodeURIComponent(id), body),
-  credential: (api: ApiClient, id: string, credential: string) =>
-    api.post(BASE + 'providers/' + encodeURIComponent(id) + '/credential', { credential }),
+  credential: async (api: ApiClient, id: string, credential: string) =>
+    z
+      .object({
+        ok: z.literal(true),
+        configured: z.literal(true),
+        storage: z.enum(['encrypted_database', 'server-memory']),
+      })
+      .parse(
+        await api.post(BASE + 'providers/' + encodeURIComponent(id) + '/credential', {
+          credential,
+        }),
+      ),
   prices: async (api: ApiClient, id: string, signal?: AbortSignal) =>
     PricesResponse.parse(
       await api.get('/api/pricing/prices?provider=' + encodeURIComponent(id) + '&limit=100', {

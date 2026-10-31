@@ -143,9 +143,13 @@ function ProviderDetail({
     const value = credential;
     setCredential('');
     try {
-      await pricingAdminApi.credential(api, p.id, value);
+      const result = await pricingAdminApi.credential(api, p.id, value);
       onClose();
-      onNotice('Credential saved in server memory. It will be cleared when the server restarts.');
+      onNotice(
+        result.storage === 'encrypted_database'
+          ? 'Credential encrypted and saved to the server database.'
+          : 'Credential saved in server memory. Configure the OpenNEXT adapter for persistent storage.',
+      );
       await refresh();
     } catch (error) {
       onNotice(
@@ -255,8 +259,8 @@ function ProviderDetail({
         <form onSubmit={saveCredential} autoComplete="off">
           <h3>Provider credential</h3>
           <p>
-            For this session only. Saved to server memory, never browser storage. Use server
-            environment or a secrets manager for persistent deployment.
+            Saved encrypted by the connected OpenNEXT adapter. Credentials are never stored in
+            browser storage or returned by this page.
           </p>
           <label>
             API key
@@ -278,7 +282,7 @@ function ProviderDetail({
             busy={saving === 'credential'}
             busyLabel="Saving…"
           >
-            Save to server memory
+            Save credential
           </AsyncButton>
         </form>
       ) : null}

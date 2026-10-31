@@ -8,8 +8,9 @@ import { useOperationsOverview } from '../hooks';
 import { AdminLoginForm, isAccessError } from '../components/admin-access';
 import { Btn, Head } from '../components/forms';
 import { availableSourceCount, recentOperations } from './overview-data';
+import type { LiveData } from '../live-api';
 
-export function OverviewPage() {
+export function OverviewPage({ summary }: { summary?: LiveData<'overview'> }) {
   const { href } = useApp();
   const data = useOperationsOverview();
   const queries = Object.values(data);
@@ -45,21 +46,25 @@ export function OverviewPage() {
     },
     {
       label: 'Pending Top-up Requests',
-      value: data.topups.data?.requests.filter((r) => r.status === 'Pending' && !r.solved).length,
+      value:
+        summary?.metrics.pendingTopups ??
+        data.topups.data?.requests.filter((r) => r.status === 'Pending' && !r.solved).length,
       path: '/topups',
       note: 'Live deposits awaiting review',
     },
     {
       label: 'Pending Payment Confirmed',
-      value: undefined,
+      value: summary?.metrics.pendingPayments,
       path: '/payments',
-      note: 'Bank receipt confirmation · Awaiting backend',
+      note: summary
+        ? 'Customer bank payments awaiting confirmation'
+        : 'Bank receipt confirmation · Awaiting backend',
     },
     {
       label: 'Pending KYB Requests',
-      value: undefined,
+      value: summary?.metrics.pendingKyb,
       path: '/kyb',
-      note: 'Buyer KYB summary · Awaiting backend',
+      note: summary ? 'Buyer verification awaiting review' : 'Buyer KYB summary · Awaiting backend',
     },
     {
       label: 'Pending Contact Requests',
@@ -79,14 +84,24 @@ export function OverviewPage() {
     },
     {
       label: 'Live Instances',
-      value: undefined,
-      path: '/orders',
-      note: 'Running customer instances · Awaiting backend',
+      value: summary?.metrics.liveInstances,
+      path: '/instances',
+      note: summary
+        ? 'Running customer instances'
+        : 'Running customer instances · Awaiting backend',
     },
   ];
-  const activity = denied
-    ? []
-    : recentOperations(market, data.topups.data?.requests, data.contacts.data?.leads);
+  const activity = summary
+    ? summary.events.map((event) => ({
+        key: event.id,
+        event: event.action + ' ' + event.target,
+        actor: event.actor,
+        at: event.at,
+        path: '/audit',
+      }))
+    : denied
+      ? []
+      : recentOperations(market, data.topups.data?.requests, data.contacts.data?.leads);
   return (
     <>
       <Head
