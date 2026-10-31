@@ -18,6 +18,9 @@ from spotbot.opennext_console_data import (
 )
 from spotbot.opennext_console_pricing import CollectorBridge
 from spotbot.opennext_ops import KYB, TRANSFER, OperationError
+from spotbot.price_sources.registry import SOURCES
+from spotbot.price_sources.routes import install as install_price_routes
+from spotbot.price_sources.service import PriceSources
 from spotbot.rentals import at
 from spotbot.storage.workflows import ConflictError
 
@@ -37,8 +40,12 @@ class ConsoleBackend:
             ctx.client,
             ctx.headers,
         )
+        self.sources = PriceSources(self.db, ctx.client, self.bridge.sealer)
         self.lock = asyncio.Lock()
         self.worker_error = None
+
+    async def source_registry(self, request):
+        return await self.sources.providers(await self.bridge.providers(request))
 
     async def documents(self, kind):
         return await asyncio.to_thread(self.db.list, kind)
@@ -165,7 +172,7 @@ class ConsoleBackend:
             transfers, cases = await self.ops.transfers(), await self.ops.kyb_cases()
             rentals, providers, contacts = await asyncio.gather(
                 self.rentals(),
-                self.bridge.providers(request),
+                self.source_registry(request),
                 self.bridge.call(request, "GET", "/api/admin/contacts"),
                 return_exceptions=True,
             )
@@ -360,7 +367,7 @@ class ConsoleBackend:
         while True:
             # A collector outage must not block reconciliation of already-paid orders.
             results = await asyncio.gather(
-                self.bridge.restore(), self.tick(), return_exceptions=True
+                self.bridge.restore(), self.tick(), self.sources.tick(), return_exceptions=True
             )
             self.worker_error = (
                 "Console maintenance could not complete its last cycle."
@@ -441,7 +448,7 @@ def install(app, ctx):
         if failed:
             return failed
         try:
-            return ctx.no_store(await backend.bridge.providers(request))
+            return ctx.no_store(await backend.source_registry(request))
         except OperationError as exc:
             return ctx.error(exc.status, exc.message)
 
@@ -458,13 +465,22 @@ def install(app, ctx):
             ):
                 raise OperationError(400, "Invalid collector operation.")
             body = await request.json()
-            value = (
-                await backend.bridge.credential(request, provider, body.get("credential"))
-                if operation == "credential"
-                else await backend.bridge.call(
-                    request, "POST", f"/api/admin/pricing/providers/{provider}/{operation}", {}
+            if provider in SOURCES:
+                value = (
+                    await backend.sources.credential(provider, body.get("credential"))
+                    if operation == "credential"
+                    else await backend.sources.enqueue(
+                        provider, "test" if operation == "test" else "incremental"
+                    )
                 )
-            )
+            else:
+                value = (
+                    await backend.bridge.credential(request, provider, body.get("credential"))
+                    if operation == "credential"
+                    else await backend.bridge.call(
+                        request, "POST", f"/api/admin/pricing/providers/{provider}/{operation}", {}
+                    )
+                )
             await backend.audit(actor, "Price source " + operation, provider)
             response = ctx.no_store(value)
             if operation == "run":
@@ -491,8 +507,12 @@ def install(app, ctx):
                 or not 10 <= body["intervalMinutes"] <= 1440
             ):
                 raise OperationError(400, "Use an interval between 10 and 1440 minutes.")
-            value = await backend.bridge.call(
-                request, "PATCH", f"/api/admin/pricing/providers/{provider}", body
+            value = (
+                await backend.sources.settings(provider, body)
+                if provider in SOURCES
+                else await backend.bridge.call(
+                    request, "PATCH", f"/api/admin/pricing/providers/{provider}", body
+                )
             )
             await backend.audit(actor, "Price source settings updated", provider)
             return ctx.no_store(value)
@@ -501,4 +521,5 @@ def install(app, ctx):
         except (ValueError, TypeError):
             return ctx.error(400, "Invalid source settings.")
 
+    install_price_routes(app, ctx, backend, guard)
     return backend
