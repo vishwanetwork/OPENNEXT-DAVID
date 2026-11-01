@@ -401,8 +401,11 @@ class ConsoleBackend:
 
 
 def install(app, ctx):
+    from spotbot.opennext_accounts import install as install_accounts
+
     backend = ConsoleBackend(ctx)
     app.state.console_backend = backend
+    install_accounts(app, ctx, backend)
 
     async def guard(request, *, write=False):
         actor, failed = await ctx.admin_session(request)

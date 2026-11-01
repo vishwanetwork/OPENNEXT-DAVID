@@ -735,15 +735,18 @@ class Operations:
 
     async def credits(self, user_id):
         """Cents added to the account: confirmed top-ups and held Direct Pay payments."""
-        total = 0
-        for doc in await self.transfers(user_id=user_id):
-            if doc["status"] != "Confirmed":
-                continue
-            if doc["purpose"] == "topup":
-                total += doc.get("credited_cents") or 0
-            elif (doc.get("provisioning") or {}).get("state") in CREDITED:
-                total += doc["amount_cents"]
-        return total
+        return sum(
+            [await self.credits_for_transfer(d) for d in await self.transfers(user_id=user_id)]
+        )
+
+    async def credits_for_transfer(self, doc):
+        if doc["status"] != "Confirmed":
+            return 0
+        if doc["purpose"] == "topup":
+            return doc.get("credited_cents") or 0
+        return (
+            doc["amount_cents"] if (doc.get("provisioning") or {}).get("state") in CREDITED else 0
+        )
 
     async def notifications(self, user_id):
         docs = [*await self.transfers(user_id=user_id)]
