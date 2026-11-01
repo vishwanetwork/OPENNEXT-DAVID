@@ -10,6 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from spotbot.models import timestamp
+from spotbot.providers import ProviderError
 from spotbot.rental_models import (
     AgentReport,
     GatewayAck,
@@ -134,6 +136,35 @@ def install(app, service):
         value, created = guard(lambda: engine.create(request, owner, idempotency_key))
         return {"created": created, "rental": public(value)}
 
+    @router.post("/preflight")
+    async def preflight(request: RentalRequest, owner: Annotated[str, Depends(tenant)]):
+        """Read-only account/quota/price checks; this never reserves or guarantees capacity."""
+        guard(lambda: engine.validate_rules(request.rfq))
+        candidates = engine.candidates(request.rfq)
+        rejected = []
+        for offer in candidates[:8]:
+            try:
+                await engine.backend.preflight(offer, request.rfq)
+                return dict(
+                    confirmed=True,
+                    eligible=True,
+                    capacityGuaranteed=False,
+                    checkKind="provider_preflight",
+                    checkedAt=timestamp(),
+                )
+            except ProviderError as exc:
+                if exc.code not in {"quota_insufficient", "price_limit_exceeded"}:
+                    raise HTTPException(503, "provider_preflight_unavailable") from exc
+                rejected.append(exc.code)
+        return dict(
+            confirmed=True,
+            eligible=False,
+            capacityGuaranteed=False,
+            checkKind="provider_preflight",
+            checkedAt=timestamp(),
+            reason=rejected[-1] if rejected else "no_eligible_offer",
+        )
+
     @router.get("")
     def listing(
         owner: Annotated[str, Depends(tenant)],
@@ -147,7 +178,11 @@ def install(app, service):
         page = engine.db.rental_directory.page(
             owner, customer_ref, upstream_order_id, limit=limit, offset=offset
         )
-        return {"query_version": 1, "total": page["total"], "items": [public(v) for v in page["items"]]}
+        return {
+            "query_version": 1,
+            "total": page["total"],
+            "items": [public(v) for v in page["items"]],
+        }
 
     @router.get("/{rental_id}")
     def get(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):

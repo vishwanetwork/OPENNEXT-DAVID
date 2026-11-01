@@ -202,6 +202,8 @@ def review_record(transfer):
         )
     else:
         record.update(pricingVersion="order-total-v1", orderId=transfer["order_reference"])
+        if transfer.get("offer_id"):
+            record["offerId"] = transfer["offer_id"]
     return record
 
 
@@ -750,6 +752,8 @@ class Operations:
         if doc["status"] != "Confirmed":
             return 0
         if doc["purpose"] == "topup":
+            return doc.get("credited_cents") or 0
+        if (doc.get("paid_purchase") or {}).get("state") == "credited":
             return doc.get("credited_cents") or 0
         return (
             doc["amount_cents"] if (doc.get("provisioning") or {}).get("state") in CREDITED else 0

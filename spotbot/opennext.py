@@ -750,7 +750,11 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         derived from the payment, so a retry finds the rental instead of ordering twice.
         """
         state = (doc.get("provisioning") or {}).get("state")
-        if market is None or doc["status"] != "Confirmed" or state not in {"queued", "held"}:
+        if (
+            market is None
+            or doc["status"] != "Confirmed"
+            or state not in {"queued", "held", "redeeming"}
+        ):
             return doc
         user_id, reference = doc["account"], doc["order_reference"]
         async with ledger.lock(user_id):
@@ -764,19 +768,31 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 offer_snapshot=doc.get("offer"),
                 email=doc["email"] or None,
             )
+            if (charge.get("offer_id"), charge.get("cents"), charge.get("hourly_cents")) != (
+                doc["offer_id"],
+                doc["amount_cents"],
+                doc["hourly_cents"],
+            ):
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                return await ops.add_notice(
+                    doc,
+                    "Payment requires a new purchase",
+                    "This reference belongs to a different purchase. Your full payment is in Credit. "
+                    "Please choose another instance.",
+                )
             if charge["state"] == "billed" and charge.get("rental_id"):
                 return await ops.set_provisioning(
                     doc, state="submitted", rental_id=charge["rental_id"]
                 )
             if charge["state"] not in {"held", "charged"}:
-                doc = await ops.set_provisioning(doc, state="failed")
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
                 return await ops.add_notice(
                     doc,
                     "Instance purchase attempt closed",
                     "This purchase attempt has already been released or refunded to Credit. "
                     "Start a new purchase to request another instance.",
                 )
-            if state == "queued":
+            if state in {"queued", "redeeming"}:
                 doc = await ops.set_provisioning(doc, state="held")
             try:
                 rental = await market.find(user_id, reference)
@@ -799,7 +815,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     elif response.status_code not in {200, 201}:
                         logger.error("opennext_direct_pay_rejected status=%s", response.status_code)
                         await ledger.refund(charge, "rental_rejected")
-                        doc = await ops.set_provisioning(doc, state="failed")
+                        doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
                         return await ops.add_notice(
                             doc,
                             "Instance could not be started",

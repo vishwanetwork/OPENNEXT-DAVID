@@ -16,6 +16,19 @@ from tests.test_opennext_ops import ADMIN, PDF, submit_kyb
 async def test_package_contains_frozen_form_and_every_original(env, tmp_path):  # noqa: F811
     client, *_ = env
     case = (await submit_kyb(client)).json()["verification"]
+    wrong_owner = await client.post(
+        f"/api/admin/buyer-kyb/{case['id']}/decision",
+        headers=ADMIN,
+        json=dict(
+            accountId="U2",
+            expectedRevision=1,
+            decision="Approved",
+            allscaleApproved=True,
+            reason="",
+            idempotencyKey="wrong-owner",
+        ),
+    )
+    assert wrong_owner.status_code == 404
     url = f"/api/admin/buyer-kyb/{case['id']}/bundle?accountId=U4&revision=1"
     assert (await client.get(url)).status_code == 401
     assert (await client.get(url.replace("U4", "U2"), headers=ADMIN)).status_code == 404

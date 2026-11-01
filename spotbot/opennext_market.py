@@ -180,6 +180,13 @@ class PurchaseRequest(BaseModel):
     sshPublicKey: str | None = Field(None, max_length=4096)
     idempotencyKey: str = Field(min_length=1, max_length=100)
 
+    @field_validator("idempotencyKey")
+    @classmethod
+    def customer_key(cls, value):
+        if value.startswith("direct-pay:"):
+            raise ValueError("reserved_payment_reference")
+        return value
+
     @field_validator("durationHours")
     @classmethod
     def hundredths(cls, value):
@@ -419,6 +426,31 @@ class SpotMarket:
                 self._offers, self._loaded = build_offers(values, self.regions), time.monotonic()
             policy = await self.pricing_policy.get() if self.pricing_policy else None
             return build_offers([o.raw for o in self._offers.values()], self.regions, policy)
+
+    async def preflight(self, doc):
+        """Check the original server specification against live provider quota and price."""
+        from types import SimpleNamespace
+
+        from spotbot.models import utcnow
+
+        purchase = SimpleNamespace(
+            durationHours=doc["duration_hours"],
+            idempotencyKey="preflight",
+            sshPublicKey=doc.get("ssh_public_key"),
+        )
+        rules = rfq_for(
+            Offer(doc["offer"], frozen=doc.get("pricing_snapshot")),
+            purchase,
+            doc["account"],
+            utcnow(),
+            self.storage_rate,
+        )
+        response = await self.bot("POST", "/v1/rentals/preflight", json={"rfq": rules}, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        if result.get("confirmed") is not True or type(result.get("eligible")) is not bool:
+            raise ValueError("invalid_provider_preflight")
+        return result
 
     async def rentals(self, customer=None):
         """The tenant's rentals; with `customer`, only that customer's."""

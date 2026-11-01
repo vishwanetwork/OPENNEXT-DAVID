@@ -79,6 +79,7 @@ class PaymentDecision(Strict):
 
 
 class KybDecision(Strict):
+    accountId: str | None = None
     expectedRevision: int
     decision: Literal["Approved", "Rejected"]
     reason: str = Field("", max_length=2000)
@@ -277,13 +278,15 @@ def install(app, ctx):
             {
                 "confirmed": True,
                 "sessionScope": scope,
-                "capabilities": ["accounts-v1", "kyb-bundle-v1"],
+                "capabilities": ["accounts-v1", "kyb-bundle-v1", "direct-pay-continuation-v1"],
             }
         )
 
     from spotbot.opennext_kyb_bundle import install as install_bundle
+    from spotbot.opennext_paid import install as install_paid
 
     install_bundle(app, ctx, operator)
+    install_paid(app, ctx, operator, parse, PaymentDecision, Report)
 
     @app.get("/api/admin/payment-requests")
     async def payment_requests(request: Request, kind: str = "topup"):
@@ -365,6 +368,10 @@ def install(app, ctx):
         if failed:
             return failed
         try:
+            if body.accountId is not None:
+                case = await ops._get("opennext_kyb_case", case_id)
+                if not case or case["account"] != body.accountId:
+                    return error(404, "Business verification case not found.")
             receipt = await ops.kyb_decide(
                 case_id,
                 body.expectedRevision,
