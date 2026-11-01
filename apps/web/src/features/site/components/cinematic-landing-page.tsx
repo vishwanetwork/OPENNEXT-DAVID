@@ -12,6 +12,7 @@ import { useChoreography, usePageActive, useReducedMotion } from './use-cinemati
 import '../styles/cinematic-landing.css';
 import '../styles/cinematic-agent.css';
 import '../styles/cinematic-capacity.css';
+import '../styles/cinematic-partners.css';
 
 export function CinematicLandingPage() {
   const { crossHref } = useApp();

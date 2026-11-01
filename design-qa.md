@@ -107,3 +107,54 @@ No GitHub push or PR has been created at this checkpoint because GitHub credenti
 are unavailable. Creating a PR alone does not publish the release; merging to main
 triggers the existing deployment workflow. See
 `docs/LANDING_TERMINAL_INTEGRATION.md` for the route and authentication details.
+
+## Partner and program module — 2026-11-01
+
+### Reference and placement
+
+The product owner's supplied partner slide is the content reference. The owner
+confirmed Pharos, Fidelity Labs, Ondo and Solana as partners. The module follows
+the existing team experience metrics and precedes the closing call to action.
+The earlier integration PR #12 has since merged; this addition is based on main
+at `489046a` and retains the subsequent Console work.
+
+The slide's heavy green cards were intentionally adapted to the approved landing
+design: white background, monochrome logos, fine dividers and the existing font.
+Programs are grouped separately from partners, with their supplied program names.
+No decorative descriptions, badges, pagination or middle-dot separators were added.
+
+### Visual verification
+
+- Reference and implementation screenshots were inspected together. Artwork,
+  typography, spacing, colors and copy were checked against the content reference
+  and the existing landing style.
+- Desktop at 1280×720: partners appear in four columns; programs appear in three
+  columns. The module shares the metrics container and has no fixed-height blank
+  section. All seven logo assets load locally.
+- Mobile at 390×844 and 320×740: partner logos use a compact two-column grid;
+  programs stack with horizontal dividers. No horizontal overflow was observed.
+- Initial Fidelity artwork clipping was corrected with a responsive image-mat
+  crop; the complete mark remains visible at 320px. The initial Solana icon was
+  replaced with a transparent horizontal wordmark.
+- Existing scroll reveal adds short staggered fades. Reduced-motion styling
+  leaves the logos visible without the stagger. Logos have meaningful alt text;
+  the two groups have labelled sections and lists.
+- The browser reported no warnings or errors. Existing Open Terminal and Buy
+  capacity destinations remain the host-aware Buyer Market routes.
+
+Evidence is in `../qa-partners/`: `before-experience.png`,
+`partners-desktop.png`, `partners-mobile.png`, `partners-mobile-narrow.png`
+and `programs-mobile.png`. Artwork provenance is recorded in
+`apps/web/public/landing-design/partners/SOURCES.md`.
+
+### Validation
+
+- Formatting, lint and typecheck passed. Lint retains three existing max-lines
+  warnings and no errors.
+- The complete test run passed: 477 web tests and 10 contract tests.
+- Production build passed.
+- No new dependencies, API contracts, authentication, backend or deployment
+  behavior were introduced by this static landing module.
+
+Final visual QA result: passed. This change is prepared for review; the local
+preview is not a production deployment.

@@ -1,0 +1,221 @@
+.opennext-landing .partner-network {
+  margin-top: 72px;
+  scroll-margin-top: 110px;
+  border-top: 1px solid var(--line);
+}
+
+.opennext-landing .partner-group {
+  padding-top: 42px;
+}
+
+.opennext-landing .partner-group h3 {
+  font-size: clamp(24px, 2.4vw, 32px);
+  letter-spacing: -0.04em;
+}
+
+.opennext-landing .partner-logos,
+.opennext-landing .program-logos {
+  display: grid;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.opennext-landing .partner-logos {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 22px;
+}
+
+.opennext-landing .partner-logos > li {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  height: 100px;
+}
+
+.opennext-landing .partner-logo {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 60px;
+  overflow: hidden;
+}
+
+.opennext-landing .partner-logo img,
+.opennext-landing .program-logo img {
+  object-fit: contain;
+  filter: grayscale(1);
+}
+
+.opennext-landing .partner-logo-pharos img {
+  width: 180px;
+  height: auto;
+}
+
+.opennext-landing .partner-logo-fidelity {
+  position: relative;
+  max-width: 218px;
+  height: 46px;
+}
+
+.opennext-landing .partner-logo-fidelity img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 128%;
+  height: auto;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  filter: grayscale(1) brightness(0.7) contrast(3);
+}
+
+.opennext-landing .partner-logo-ondo img {
+  width: 136px;
+  height: auto;
+}
+
+.opennext-landing .partner-logo-solana img {
+  width: 170px;
+  height: auto;
+}
+
+.opennext-landing .program-group {
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.opennext-landing .program-group h3 {
+  font-size: 23px;
+}
+
+.opennext-landing .program-logos {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 32px;
+}
+
+.opennext-landing .program-logos > li {
+  min-width: 0;
+  padding: 0 32px;
+}
+
+.opennext-landing .program-logos > li:first-child {
+  padding-left: 0;
+}
+
+.opennext-landing .program-logos > li + li {
+  border-left: 1px solid var(--line);
+}
+
+.opennext-landing .program-logo {
+  display: flex;
+  align-items: center;
+  height: 46px;
+}
+
+.opennext-landing .program-logo img {
+  width: auto;
+  height: auto;
+  max-width: 180px;
+  max-height: 40px;
+}
+
+.opennext-landing .program-logo-anthropic img {
+  width: 180px;
+}
+
+.opennext-landing .program-logo-plug-and-play img {
+  width: 144px;
+}
+
+.opennext-landing .program-logo-circle img {
+  width: 126px;
+}
+
+.opennext-landing .program-logos p {
+  margin-top: 16px;
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .opennext-landing .partner-group li {
+    opacity: 0;
+    transform: translateY(12px);
+    transition:
+      opacity 650ms var(--ease) var(--partner-delay),
+      transform 650ms var(--ease) var(--partner-delay);
+  }
+
+  .opennext-landing .partner-group[data-revealed='true'] li {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .opennext-landing .partner-logos {
+    gap: 16px;
+  }
+
+  .opennext-landing .partner-logo-fidelity {
+    max-width: 166px;
+    height: 40px;
+  }
+
+  .opennext-landing .program-logos > li {
+    padding-inline: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .opennext-landing .partner-network {
+    margin-top: 44px;
+  }
+
+  .opennext-landing .partner-group {
+    padding-top: 30px;
+  }
+
+  .opennext-landing .partner-logos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 20px;
+    margin-top: 18px;
+  }
+
+  .opennext-landing .partner-logos > li {
+    height: 80px;
+  }
+
+  .opennext-landing .partner-logo-pharos img {
+    width: 140px;
+  }
+
+  .opennext-landing .partner-logo-ondo img {
+    width: 116px;
+  }
+
+  .opennext-landing .program-logos {
+    grid-template-columns: 1fr;
+    margin-top: 16px;
+  }
+
+  .opennext-landing .program-logos > li,
+  .opennext-landing .program-logos > li:first-child {
+    padding: 22px 0;
+  }
+
+  .opennext-landing .program-logos > li + li {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .opennext-landing .program-logos > li:last-child {
+    padding-bottom: 0;
+  }
+
+  .opennext-landing .program-logos p {
+    margin-top: 10px;
+  }
+}

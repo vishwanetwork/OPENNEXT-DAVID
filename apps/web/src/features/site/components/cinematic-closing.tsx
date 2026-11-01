@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { ArrowUpRightIcon } from './cinematic-icons';
 import { Brand, LinkButton, WordReveal, RollingNumber } from './cinematic-elements';
+import { CinematicPartners } from './cinematic-partners';
 export function CinematicClosing({
   reduced,
   buyerHref,
@@ -52,6 +53,7 @@ export function CinematicClosing({
               <p>Across our team members’ careers.</p>
             </article>
           </div>
+          <CinematicPartners />
         </div>
       </section>
 
