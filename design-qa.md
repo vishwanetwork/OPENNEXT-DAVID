@@ -175,3 +175,21 @@ Formatting, lint, typecheck and production build passed. All 477 web tests passe
 with two workers and loopback access for the proxy test server; all 10 contract
 tests also passed. An initial sandboxed parallel run encountered a denied local
 listener and timing failures, resolved by the complete web-suite rerun above.
+
+### Final market placement and CTA — 2026-11-01
+
+The hero's single action is now “Open Terminal”, using the same Buyer destination.
+Partners and programs now follow the “Find your fit. Set your terms.” introduction
+and its buyer/supplier cards, immediately before the scrolling capacity rail.
+They no longer appear in the team metrics section.
+
+At 1280×900 the endorsement block has 56px spacing above and below; at 390×844
+the existing compact logo grid and stacked programs remain intact. All logos
+load, both groups reveal on scroll, the capacity rail runs, and neither viewport
+has horizontal overflow. The former location retains only its normal section
+padding, with no duplicate module or reserved blank area.
+
+Evidence is in `../qa-placement/`: `partners-before-capacity.png`,
+`partners-mobile.png` and `programs-to-capacity-mobile.png`. Formatting, lint,
+typecheck, all 477 web tests, all 10 contract tests and production build passed.
+The three existing lint warnings are unchanged.
