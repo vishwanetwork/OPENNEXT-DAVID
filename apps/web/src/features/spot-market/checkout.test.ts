@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { at } from '@/test/at';
 import { webcrypto, generateKeyPairSync } from 'node:crypto';
 import { sshTestRuntime as runtime } from '@/test/ssh-runtime';
+import { signedAgreementFixture } from '@/test/spot-agreement-fixture';
+import type { AgreementPaymentMethod, SpotAgreementService } from '@/lib/spot-agreement';
+import { purchaseWithAgreement } from './agreement-payment';
 import {
   SpotCheckout,
   checkoutTotals,
@@ -169,9 +172,16 @@ const confirmation = (input: PurchaseInput) => ({
   durationHours: input.durationHours,
   totalCents: input.expectedPricing.totalCents,
 });
-async function toPayment(env: Env, key = '', hours = '1') {
+async function toPayment(
+  env: Env,
+  key = '',
+  hours = '1',
+  method: AgreementPaymentMethod = 'credit',
+) {
   await env.engine.reviewPurchase({ durationHours: hours, sshPublicKey: key });
   expect(env.ctx.modal?.type).toBe('spot-payment-choice');
+  if (!env.ctx.demo && env.row.sourceKind === 'agent')
+    env.engine.recordAgreement(signedAgreementFixture(env.engine.agreementContext(method)));
 }
 function deposit(env: Env) {
   expect(env.ctx.modal?.type).toBe('spot-credit-confirm');
@@ -217,7 +227,7 @@ describe('Spot checkout totals', () => {
         return true;
       },
     });
-    await toPayment(env, '', '2');
+    await toPayment(env, '', '2', 'bank_transfer');
     await env.engine.chooseDirect();
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -313,6 +323,249 @@ describe('Spot checkout totals', () => {
 });
 
 describe('Spot checkout safety', () => {
+  it('does not freeze a never-dispatched purchase after agreement expiry or context mismatch in transport preflight', async () => {
+    let remoteCalls = 0;
+    const remote: SpotAgreementService = {
+      prepare: async () => {
+        throw new Error('Not used.');
+      },
+      sign: async () => {
+        throw new Error('Not used.');
+      },
+      createBankTransfer: async () => {
+        throw new Error('Not used.');
+      },
+      download: async () => {
+        throw new Error('Not used.');
+      },
+      purchaseByCredit: async ({ agreement, purchase }) => {
+        remoteCalls++;
+        return {
+          ...confirmation(purchase),
+          confirmed: true,
+          currency: 'USD',
+          agreementId: agreement.agreementId,
+        };
+      },
+    };
+    for (const mismatch of ['expired', 'offer'] as const) {
+      const env = setup({
+        rows: [agent],
+        demo: false,
+        service: {
+          getCreditBalance: async () => wallet(),
+          beginPurchase: async (input) =>
+            purchaseWithAgreement(
+              remote,
+              mismatch === 'offer'
+                ? { ...input, offerId: 'other' }
+                : {
+                    ...input,
+                    agreement: input.agreement
+                      ? { ...input.agreement, expiresAt: new Date(Date.now() - 1000).toISOString() }
+                      : undefined,
+                  },
+            ),
+        },
+      });
+      await toPayment(env);
+      await env.engine.chooseCredit();
+      await env.engine.authorizeCredit();
+      expect(env.engine.pending()?.paymentSubmitted).toBe(false);
+      await env.engine.authorizeCredit();
+      expect(env.engine.pending()?.paymentSubmitted).toBe(false);
+      env.engine.action('spot-checkout-review');
+      expect(env.ctx.modal?.type).toBe('spot-review');
+    }
+    expect(remoteCalls).toBe(0);
+  });
+  it('preserves an earlier uncertain payment when a retry fails before dispatch', async () => {
+    let attempts = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      service: {
+        getCreditBalance: async () => wallet(),
+        beginPurchase: async (input) => {
+          attempts++;
+          return attempts === 1 ? { confirmed: false } : purchaseWithAgreement(undefined, input);
+        },
+      },
+    });
+    await toPayment(env);
+    await env.engine.chooseCredit();
+    await env.engine.authorizeCredit();
+    expect(env.engine.pending()?.paymentSubmitted).toBe(true);
+    await env.engine.authorizeCredit();
+    expect(env.engine.pending()?.paymentSubmitted).toBe(true);
+    env.engine.action('spot-checkout-cancel');
+    expect(env.ctx.messages.at(-1)).toMatch(/confirmation is pending/);
+    expect(attempts).toBe(2);
+  });
+  it.each([
+    ['KYB', 401],
+    ['KYB', 409],
+    ['balance', 401],
+    ['balance', 409],
+  ] as const)(
+    'keeps an uncertain purchase locked when retry %s preflight fails with HTTP %i',
+    async (source, status) => {
+      let retry = false;
+      let dispatches = 0;
+      const failure = Object.assign(new Error('Preflight request failed.'), { status });
+      const env = setup({
+        rows: [agent],
+        demo: false,
+        verifyKyb: async () => {
+          if (retry && source === 'KYB') throw failure;
+          return true;
+        },
+        service: {
+          getCreditBalance: async () => {
+            if (retry && source === 'balance') throw failure;
+            return wallet();
+          },
+          beginPurchase: async () => {
+            dispatches++;
+            throw new Error('The payment response timed out.');
+          },
+        },
+      });
+      await toPayment(env, '', '2');
+      await env.engine.chooseCredit();
+      await env.engine.authorizeCredit();
+      const draft = env.engine.pending();
+      expect(draft?.paymentSubmitted).toBe(true);
+      const key = draft?.idempotencyKey;
+      retry = true;
+      await env.engine.authorizeCredit();
+      await env.engine.authorizeCredit();
+      expect(dispatches).toBe(1);
+      expect(env.engine.pending()?.paymentSubmitted).toBe(true);
+      for (const action of ['spot-checkout-review', 'spot-checkout-cancel']) {
+        env.engine.action(action);
+        expect(env.engine.pending()).toBe(draft);
+        expect(env.ctx.messages.at(-1)).toMatch(/confirmation is pending/);
+      }
+      const changed = await env.engine.reviewPurchase({ durationHours: '4', sshPublicKey: '' });
+      expect(changed?.error).toMatch(/confirmation is pending/);
+      env.engine.beginCheckout(env.row);
+      expect(env.ctx.messages.at(-1)).toMatch(/awaiting confirmation/);
+      expect(env.engine.pending()?.idempotencyKey).toBe(key);
+      expect(env.engine.pending()?.durationHours).toBe(2);
+      expect(env.engine.pending()?.paymentSubmitted).toBe(true);
+      expect(dispatches).toBe(1);
+      const restored = setup({
+        rows: [agent],
+        demo: false,
+        storage: env.storage,
+        begin: false,
+      });
+      expect(restored.engine.pending()?.paymentSubmitted).toBe(true);
+      expect(restored.engine.pending()?.idempotencyKey).toBe(key);
+    },
+  );
+  it('does not treat a retry payment HTTP refusal as reconciliation of an earlier timeout', async () => {
+    const payloads: PurchaseInput[] = [];
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      service: {
+        getCreditBalance: async () => wallet(),
+        beginPurchase: async (input) => {
+          payloads.push(input);
+          if (payloads.length === 1) throw new Error('The payment response timed out.');
+          throw Object.assign(new Error('A reconciliation request is required.'), { status: 409 });
+        },
+      },
+    });
+    await toPayment(env);
+    await env.engine.chooseCredit();
+    await env.engine.authorizeCredit();
+    await env.engine.authorizeCredit();
+    expect(payloads).toHaveLength(2);
+    expect(payloads[1]).toEqual(payloads[0]);
+    expect(env.engine.pending()?.paymentSubmitted).toBe(true);
+    env.engine.action('spot-checkout-cancel');
+    expect(env.ctx.messages.at(-1)).toMatch(/confirmation is pending/);
+  });
+  it('requires a signed agreement after choosing Credit and never submits unsigned payment', async () => {
+    let purchases = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      service: {
+        getCreditBalance: async () => wallet(),
+        beginPurchase: async () => {
+          purchases++;
+          return null;
+        },
+      },
+    });
+    await env.engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' });
+    await env.engine.chooseCredit();
+    expect(env.ctx.modal).toMatchObject({ type: 'spot-agreement', method: 'credit' });
+    await env.engine.authorizeCredit();
+    expect(purchases).toBe(0);
+    const context = env.engine.agreementContext('credit');
+    expect(() =>
+      env.engine.recordAgreement(signedAgreementFixture({ ...context, accountId: 'other' })),
+    ).toThrow();
+    expect(() =>
+      env.engine.recordAgreement(
+        signedAgreementFixture({ ...context, pricing: { ...context.pricing, totalCents: 1 } }),
+      ),
+    ).toThrow();
+    env.engine.recordAgreement(signedAgreementFixture(context));
+    await env.engine.chooseCredit();
+    expect(env.ctx.modal?.type).toBe('spot-credit-confirm');
+    expect(purchases).toBe(0);
+  });
+  it('requires a new payment-method-bound signature before creating Direct Pay instructions', async () => {
+    let requests = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      beginBankTransfer: async (_request, agreement) => {
+        expect(agreement.context.paymentMethod).toBe('bank_transfer');
+        requests++;
+        return true;
+      },
+    });
+    await toPayment(env);
+    await env.engine.chooseDirect();
+    expect(env.ctx.modal).toMatchObject({ type: 'spot-agreement', method: 'bank_transfer' });
+    expect(requests).toBe(0);
+    env.engine.recordAgreement(
+      signedAgreementFixture(env.engine.agreementContext('bank_transfer')),
+    );
+    await env.engine.chooseDirect();
+    expect(requests).toBe(1);
+  });
+  it('rechecks signature expiry at final authorization and never persists the signature', async () => {
+    let purchases = 0;
+    const env = setup({
+      rows: [agent],
+      demo: false,
+      service: {
+        getCreditBalance: async () => wallet(),
+        beginPurchase: async () => {
+          purchases++;
+          return null;
+        },
+      },
+    });
+    await toPayment(env);
+    await env.engine.chooseCredit();
+    const draft = env.engine.pending();
+    if (!draft?.agreement) throw new Error('Expected a signed agreement.');
+    draft.agreement = { ...draft.agreement, expiresAt: new Date(Date.now() - 1000).toISOString() };
+    await env.engine.authorizeCredit();
+    expect(purchases).toBe(0);
+    expect(env.ctx.modal?.type).toBe('spot-agreement');
+    expect(draft.stage).toBe('payment');
+    expect([...env.storage.values()].join('')).not.toContain('signature-1');
+  });
   it('optional SSH accepts blank; Direct Pay never calls a gateway', async () => {
     const env = setup();
     await toPayment(env);
@@ -712,9 +965,11 @@ describe('Spot checkout safety', () => {
     });
     expect(restored.engine.pending()?.paymentSubmitted).toBe(true);
     await restored.engine.chooseCredit();
+    expect(restored.ctx.messages.at(-1)).toMatch(/confirmation is pending/);
     await restored.engine.authorizeCredit();
-    expect(payloads.length).toBe(3);
-    expect(payloads[2]).toEqual(payloads[0]);
+    expect(payloads.length).toBe(2);
+    expect(restored.engine.pending()?.paymentSubmitted).toBe(true);
+    expect(restored.ctx.modal?.type).not.toBe('spot-agreement');
     expect(restored.ctx.balance).toBe(100);
   });
   it('a definite refusal unlocks review; network failures stay pending', async () => {
@@ -739,7 +994,7 @@ describe('Spot checkout safety', () => {
     expect(draft.error).toMatch(/No order was created/);
     env.engine.action('spot-checkout-review');
     expect(env.ctx.modal?.type).toBe('spot-review');
-    await env.engine.reviewPurchase({ durationHours: '2', sshPublicKey: publicKey });
+    await toPayment(env, publicKey, '2');
     await env.engine.chooseCredit();
     await env.engine.authorizeCredit();
     expect(env.engine.pending()?.paymentSubmitted).toBe(true);

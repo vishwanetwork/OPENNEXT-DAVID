@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test/render';
+import { signedAgreementFixture } from '@/test/spot-agreement-fixture';
+import type { SpotAgreementService } from '@/lib/spot-agreement';
 import { useWorkspaceStore } from '@/terminal-kit';
 import { CHECKOUT_MODALS, durationHours, type SpotCheckout } from './checkout';
 import { spotCheckoutModals } from './components/checkout-modals';
@@ -27,7 +29,6 @@ const offer = {
   serverRecord: true,
   agentStatus: 'Succeeded',
 };
-
 const seen: { engine?: SpotCheckout; rows: SpotRow[] } = { rows: [] };
 function Probe() {
   const inventory = useSpotInventory();
@@ -38,36 +39,71 @@ function Probe() {
   });
   return null;
 }
+function agreementPort() {
+  return {
+    prepare: vi.fn<SpotAgreementService['prepare']>(),
+    sign: vi.fn<SpotAgreementService['sign']>(),
+    purchaseByCredit: vi
+      .fn<SpotAgreementService['purchaseByCredit']>()
+      .mockImplementation(async ({ agreement, purchase }) => ({
+        confirmed: true,
+        agreementId: agreement.agreementId,
+        offerId: purchase.offerId,
+        orderId: 'rental-1',
+        currency: 'USD',
+        durationHours: purchase.durationHours,
+        totalCents: purchase.expectedPricing.totalCents,
+      })),
+    createBankTransfer: vi.fn<SpotAgreementService['createBankTransfer']>(),
+    download: vi.fn<SpotAgreementService['download']>(),
+  };
+}
+function readApi() {
+  return mockFetch((path) => {
+    if (path.includes('/api/marketplace/public')) return json(200, { rfqs: [], supplies: [offer] });
+    if (path.includes('/api/billing/account'))
+      return json(200, {
+        confirmed: true,
+        accountId: 'u1',
+        currency: 'USD',
+        availableCredit: 100,
+        paidCredit: 0,
+        promotionalCredit: 100,
+      });
+    return json(200, {});
+  });
+}
+function buyer() {
+  signIn();
+  useWorkspaceStore.getState().applySession({
+    id: 'u1',
+    email: 'ada@example.com',
+    role: 'buyer',
+    onboardingCompleted: true,
+  } as never);
+}
+async function review() {
+  await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+  const engine = seen.engine;
+  const row = seen.rows[0];
+  if (!engine || !row) throw new Error('Expected checkout engine and offer');
+  act(() => engine.beginCheckout(row));
+  await act(async () => engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
+  return engine;
+}
+async function signAndChooseCredit(engine: SpotCheckout) {
+  act(() => engine.recordAgreement(signedAgreementFixture(engine.agreementContext('credit'))));
+  await act(async () => engine.chooseCredit());
+}
 
-describe('Spot purchase', () => {
-  it('shows payment progress while the order is uncertain and blocks a duplicate confirmation', async () => {
-    const gate = Promise.withResolvers<Response>();
-    let posts = 0;
-    mockFetch((path) => {
-      if (path.includes('/api/marketplace/public'))
-        return json(200, { rfqs: [], supplies: [offer] });
-      if (path.includes('/api/billing/account'))
-        return json(200, {
-          confirmed: true,
-          accountId: 'u1',
-          currency: 'USD',
-          availableCredit: 100,
-          paidCredit: 0,
-          promotionalCredit: 100,
-        });
-      if (path.includes('/api/marketplace/spot-purchases')) {
-        posts += 1;
-        return gate.promise;
-      }
-      return json(200, {});
-    });
-    signIn();
-    useWorkspaceStore.getState().applySession({
-      id: 'u1',
-      email: 'ada@example.com',
-      role: 'buyer',
-      onboardingCompleted: true,
-    } as never);
+describe('agreement-linked Spot purchase', () => {
+  it('shows payment progress while uncertain and blocks duplicate confirmation', async () => {
+    const gate =
+      Promise.withResolvers<Awaited<ReturnType<SpotAgreementService['purchaseByCredit']>>>();
+    const service = agreementPort();
+    service.purchaseByCredit.mockImplementation(() => gate.promise);
+    const api = readApi();
+    buyer();
     renderTerminal(
       <SpotCheckoutProvider>
         <Probe />
@@ -76,39 +112,36 @@ describe('Spot purchase', () => {
       {
         workspace: {},
         billing: { availableCredit: 100, promotionalCredit: 100 },
-        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+        slots: { services: { buyerKyb: serviceFixture('Approved'), spotAgreement: service } },
       },
     );
-    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
-    const engine = seen.engine;
-    const row = seen.rows[0];
-    if (!engine || !row) throw new Error('Expected checkout engine and offer');
-    act(() => engine.beginCheckout(row));
-    await act(async () => engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
-    await act(async () => engine.chooseCredit());
+    const engine = await review();
+    await signAndChooseCredit(engine);
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
     expect(
       await screen.findByText('Confirming your payment and order. Please wait…'),
     ).toBeInTheDocument();
-    await waitFor(() => expect(posts).toBe(1));
+    await waitFor(() => expect(service.purchaseByCredit).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('button', { name: 'Confirm Credit payment' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
-    expect(posts).toBe(1);
+    expect(service.purchaseByCredit).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/OpenNEXT Fee 5%/)).not.toBeInTheDocument();
     expect(screen.getAllByText('$0.78')).toHaveLength(2);
     await act(async () =>
-      gate.resolve(
-        json(200, {
-          confirmed: true,
-          offerId: offer.id,
-          orderId: 'rental-1',
-          currency: 'USD',
-          durationHours: 2,
-          totalCents: 78,
-        }),
-      ),
+      gate.resolve({
+        confirmed: true,
+        agreementId: 'agreement-1',
+        offerId: offer.id,
+        orderId: 'rental-1',
+        currency: 'USD',
+        durationHours: 2,
+        totalCents: 78,
+      }),
     );
     await waitFor(() => expect(engine.pending()?.stage).toBe('completed'));
+    expect(
+      api.mock.calls.some(([path]) => String(path).includes('/api/marketplace/spot-purchases')),
+    ).toBe(false);
   });
   it('orders at least one hour, since usage has a 1-hour minimum', () => {
     expect(durationHours('1')).toBe(1);
@@ -116,45 +149,14 @@ describe('Spot purchase', () => {
     for (const value of ['0.5', '0.99', '0', '1.005', 'x'])
       expect(() => durationHours(value)).toThrow('at least 1 hour');
   });
-  it('registers a dialog for every checkout step the engine opens', () => {
+  it('registers a dialog for every checkout step including the agreement', () => {
     expect(Object.keys(spotCheckoutModals).sort()).toEqual([...CHECKOUT_MODALS].sort());
   });
-  it('Buy Now sends the confirmed purchase to the backend and shows the order', async () => {
-    const posts: { body: unknown; headers: Record<string, string> }[] = [];
-    mockFetch((path, init) => {
-      if (path.includes('/api/marketplace/public'))
-        return json(200, { rfqs: [], supplies: [offer] });
-      if (path.includes('/api/billing/account'))
-        return json(200, {
-          confirmed: true,
-          accountId: 'u1',
-          currency: 'USD',
-          availableCredit: 100,
-          paidCredit: 0,
-          promotionalCredit: 100,
-        });
-      if (path.includes('/api/marketplace/spot-purchases')) {
-        const body = JSON.parse(String(init?.body)) as { durationHours: number };
-        posts.push({ body, headers: init?.headers as Record<string, string> });
-        return json(200, {
-          confirmed: true,
-          offerId: offer.id,
-          orderId: 'rental-1',
-          currency: 'USD',
-          durationHours: body.durationHours,
-          totalCents: 78,
-        });
-      }
-      return json(200, {});
-    });
-    signIn();
+  it('uses the signed-payment capability with the immutable agreement and refreshes Instances', async () => {
+    const service = agreementPort();
+    const api = readApi();
+    buyer();
     const queryClient = testQueryClient();
-    useWorkspaceStore.getState().applySession({
-      id: 'u1',
-      email: 'ada@example.com',
-      role: 'buyer',
-      onboardingCompleted: true,
-    } as never);
     renderTerminal(
       <SpotCheckoutProvider>
         <Probe />
@@ -163,42 +165,79 @@ describe('Spot purchase', () => {
         billing: { availableCredit: 100, promotionalCredit: 100 },
         workspace: {},
         queryClient,
-        // Purchases require an approved Buyer KYB.
-        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+        slots: { services: { buyerKyb: serviceFixture('Approved'), spotAgreement: service } },
       },
     );
-    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
-    expect(seen.rows[0]?.sourceKind).toBe('agent');
-    act(() => seen.engine!.beginCheckout(seen.rows[0]!));
-    // The key is checked by the backend; jsdom's SubtleCrypto cannot fingerprint keys here.
-    await act(() => seen.engine!.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
-    await act(() => seen.engine!.chooseCredit());
-    await act(() => seen.engine!.authorizeCredit());
-    expect(seen.engine!.pending()?.error).toBe('');
-    expect(posts).toHaveLength(1);
-    expect(posts[0]?.body).toEqual({
-      pricingVersion: 'duration-v1',
-      offerId: offer.id,
-      durationHours: 2,
-      expectedPricing: {
-        currency: 'USD',
+    const engine = await review();
+    await act(async () => engine.chooseCredit());
+    expect(useWorkspaceStore.getState().modal?.type).toBe('spot-agreement');
+    expect(service.purchaseByCredit).not.toHaveBeenCalled();
+    await signAndChooseCredit(engine);
+    await act(async () => engine.authorizeCredit());
+    expect(engine.pending()?.error).toBe('');
+    expect(service.purchaseByCredit).toHaveBeenCalledTimes(1);
+    expect(service.purchaseByCredit.mock.calls[0]?.[0]).toEqual({
+      agreement: expect.objectContaining({
+        agreementId: 'agreement-1',
+        executionComplete: true,
+        context: expect.objectContaining({
+          accountId: 'u1',
+          offerId: offer.id,
+          paymentMethod: 'credit',
+        }),
+      }),
+      purchase: {
+        pricingVersion: 'duration-v1',
+        offerId: offer.id,
         durationHours: 2,
-        hourlyCents: 39,
-        baseCents: 78,
-        feeCents: 0,
-        totalCents: 78,
+        expectedPricing: {
+          currency: 'USD',
+          durationHours: 2,
+          hourlyCents: 39,
+          baseCents: 78,
+          feeCents: 0,
+          totalCents: 78,
+        },
+        sshPublicKey: null,
+        idempotencyKey: expect.any(String),
       },
-      sshPublicKey: null,
-      idempotencyKey: expect.any(String),
     });
-    expect(posts[0]?.headers['X-CSRF-Token']).toBe('csrf');
-    expect(seen.engine!.pending()?.stage).toBe('completed');
-    expect(seen.engine!.pending()?.orderId).toBe('rental-1');
-    // The workspace (and with it Instances) is refreshed for the new order.
+    expect(
+      api.mock.calls.some(([path]) => String(path).includes('/api/marketplace/spot-purchases')),
+    ).toBe(false);
+    expect(engine.pending()?.stage).toBe('completed');
+    expect(engine.pending()?.orderId).toBe('rental-1');
     const workspace = queryClient.getQueryCache().findAll({ queryKey: ['account', 'workspace'] });
     expect(workspace.length).toBeGreaterThan(0);
     expect(workspace.every((query) => query.state.isInvalidated)).toBe(true);
-    act(() => seen.engine!.action('spot-checkout-instances'));
+    act(() => engine.action('spot-checkout-instances'));
     expect(useWorkspaceStore.getState().modal).toBeNull();
+  });
+  it('never falls back to the legacy purchase endpoint when agreement payments are unavailable', async () => {
+    const api = readApi();
+    buyer();
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+      </SpotCheckoutProvider>,
+      {
+        billing: { availableCredit: 100 },
+        workspace: {},
+        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+      },
+    );
+    const engine = await review();
+    await signAndChooseCredit(engine);
+    await act(async () => engine.authorizeCredit());
+    expect(engine.pending()?.error).toMatch(/Agreement-linked payment is not connected/);
+    expect(engine.pending()?.stage).not.toBe('completed');
+    expect(engine.pending()?.paymentSubmitted).toBe(false);
+    await act(async () => engine.authorizeCredit());
+    expect(engine.pending()?.paymentSubmitted).toBe(false);
+    act(() => engine.action('spot-checkout-review'));
+    expect(engine.pending()?.stage).toBe('review');
+    expect(
+      api.mock.calls.some(([path]) => String(path).includes('/api/marketplace/spot-purchases')),
+    ).toBe(false);
   });
 });

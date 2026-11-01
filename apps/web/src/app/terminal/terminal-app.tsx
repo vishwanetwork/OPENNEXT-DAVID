@@ -31,6 +31,7 @@ import {
   useBuyerKybApiService,
 } from '@/features/buyer-kyb';
 import { bankTransferModals, useBankTransferApiService } from '@/features/bank-transfer';
+import { cashoutModals } from '@/features/cashout';
 
 /**
  * Composition root of the Capacity Terminal. This is the only module that knows every
@@ -46,6 +47,7 @@ const MODALS = composeModals(
   accountModals,
   buyerKybModals,
   bankTransferModals,
+  cashoutModals,
 );
 
 function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']): TerminalSlots {
@@ -67,8 +69,8 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       openContact,
       openOpportunity,
       // Backend adapters (SpotOrderBot's OpenNEXT adapter): account SSH keys, instance
-      // termination and usage, Buyer KYB and bank transfers. Spot purchases use the Spot
-      // market feature's own endpoint unless a `spotCheckout` service is injected here.
+      // termination and usage, Buyer KYB and bank transfers. Agreement-linked Spot purchases
+      // and Cashout remain disabled until their separately approved backend ports are supplied.
       services: {
         purchaseContext,
         account,

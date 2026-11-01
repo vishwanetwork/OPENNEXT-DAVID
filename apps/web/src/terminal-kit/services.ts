@@ -6,6 +6,8 @@
 import type { Instance } from '@opennext/contracts';
 import type { BankTransferService, BuyerKybService } from '@/lib/buyer-kyb';
 import type { InstanceUsageService } from '@/lib/instance-usage';
+import type { CashoutService } from '@/lib/cashout';
+import type { SignedSpotAgreement, SpotAgreementService } from '@/lib/spot-agreement';
 
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
@@ -53,6 +55,7 @@ export interface SpotCheckoutService {
     expectedPricing: unknown;
     sshPublicKey: string | null;
     idempotencyKey: string;
+    agreement?: SignedSpotAgreement;
   }): Promise<PurchaseResult | null | undefined>;
   /** Fallback balance refresh through the verified billing account (legacy exchange). */
   refreshBillingAccount?(): Promise<CreditBalanceResult | null | undefined>;
@@ -66,6 +69,8 @@ export interface PurchaseContext {
 }
 
 export interface TerminalServices {
+  cashout?: CashoutService;
+  spotAgreement?: SpotAgreementService;
   buyerKyb?: BuyerKybService;
   bankTransfer?: BankTransferService;
   account?: AccountService;

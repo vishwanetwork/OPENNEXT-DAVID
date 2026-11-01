@@ -10,6 +10,19 @@ import { useConsoleStore } from './store';
 import { pageFromPath, pagePath } from './pages';
 
 describe('console shell', () => {
+  it('keeps Cashout Requests nested under Requests', () => {
+    renderConsole(<Sidebar page="cashouts" />);
+    const nav = within(screen.getByRole('navigation', { name: 'Console navigation' }));
+    expect(nav.getByRole('button', { name: 'Requests' })).toHaveAttribute('aria-current', 'page');
+    expect(nav.getByRole('link', { name: 'Cashout Requests' })).toHaveAttribute(
+      'href',
+      '/admin/cashouts',
+    );
+    expect(nav.getByRole('link', { name: 'Cashout Requests' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
   it('keeps User active with a compact nested Account link', () => {
     renderConsole(<Sidebar page="users/accounts" />);
     const nav = within(screen.getByRole('navigation', { name: 'Console navigation' }));

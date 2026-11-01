@@ -7,6 +7,7 @@ export const CONSOLE_PAGES = {
   pricing: 'Price Source',
   leads: 'Contact requests',
   topups: 'Top-up Requests',
+  cashouts: 'Cashout Requests',
   rfqs: 'Buyer RFQs',
   supplies: 'Supplier capacity',
   kyb: 'KYB reviews',
@@ -35,7 +36,7 @@ export const SIDEBAR_PAGES: ConsolePage[] = [
   'agent',
   'users',
 ];
-export const REQUEST_PAGES: ConsolePage[] = ['payments', 'topups', 'leads', 'kyb'];
+export const REQUEST_PAGES: ConsolePage[] = ['payments', 'topups', 'cashouts', 'leads', 'kyb'];
 
 /** Pages that exist as routes but are not listed in the sidebar. */
 export const HIDDEN_PAGES: Record<string, string> = { 'demo-submissions': 'Demo submissions' };

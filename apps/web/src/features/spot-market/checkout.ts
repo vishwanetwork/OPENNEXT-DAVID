@@ -6,6 +6,13 @@
  */
 import type { CreditBalanceResult, PurchaseResult } from '@/terminal-kit';
 import type { BankTransferRequest } from '@/lib/buyer-kyb';
+import type {
+  AgreementPaymentMethod,
+  SignedSpotAgreement,
+  SpotAgreementContext,
+} from '@/lib/spot-agreement';
+import { validateAgreementReceipt } from '@/features/agreements';
+import { PaymentNotStartedError } from './agreement-payment';
 import { round, usd, type SpotRow } from './inventory';
 
 export const CHECKOUT_STORAGE = 'opennext:pending-spot-purchase:v1:';
@@ -92,6 +99,8 @@ export interface CheckoutDraft {
   message: string;
   busy: boolean;
   paymentSubmitted?: boolean;
+  /** Server-signed receipt is memory-only; never persisted with the resumable draft. */
+  agreement?: SignedSpotAgreement;
   orderId?: string;
   /** Last validation/service error shown inside the dialog (legacy `[data-spot-checkout-error]`). */
   error: string;
@@ -100,6 +109,7 @@ export interface CheckoutDraft {
 export type { CreditBalanceResult, PurchaseResult };
 
 export interface PurchaseInput {
+  agreement?: SignedSpotAgreement;
   pricingVersion: 'duration-v1';
   offerId: string;
   durationHours: number;
@@ -132,7 +142,10 @@ export interface CheckoutDeps {
   inventory: () => SpotRow[];
   service: () => SpotCheckoutService;
   verifyKyb?: () => Promise<boolean>;
-  beginBankTransfer?: (input: BankTransferRequest) => Promise<boolean>;
+  beginBankTransfer?: (
+    input: BankTransferRequest,
+    agreement: SignedSpotAgreement,
+  ) => Promise<boolean>;
   validateSsh: (value: unknown) => Promise<string>;
   storage: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   now: () => number;
@@ -146,6 +159,7 @@ export interface CheckoutDeps {
 export const CHECKOUT_MODALS = [
   'spot-review',
   'spot-payment-choice',
+  'spot-agreement',
   'spot-credit-confirm',
   'spot-purchase-complete',
 ] as const;
@@ -324,6 +338,63 @@ export class SpotCheckout {
     const value = Number(this.deps.balance());
     return Number.isFinite(value) && value >= 0 ? value : null;
   }
+
+  agreementContext(method: AgreementPaymentMethod): SpotAgreementContext {
+    const draft = this.pending();
+    const accountId = this.deps.userId();
+    if (!draft || !accountId) throw new Error('Choose a Spot offer in your Buyer account first.');
+    const row = this.liveRow();
+    return {
+      accountId,
+      purchaseReference: this.purchaseReference() ?? draft.idempotencyKey,
+      offerId: row.id,
+      offerFingerprint: signature(row),
+      model: row.model,
+      gpuCount: row.gpuCount,
+      vcpu: row.vcpu ?? null,
+      memoryGbPerGpu: row.memory ?? null,
+      country: row.country,
+      paymentMethod: method,
+      pricing: checkoutTotals(row, draft.hoursRaw),
+    };
+  }
+
+  recordAgreement(receipt: SignedSpotAgreement): void {
+    const draft = this.pending();
+    if (!draft || draft.busy || draft.paymentSubmitted || draft.stage !== 'payment')
+      throw new Error('The purchase changed. Return to payment selection.');
+    draft.agreement = validateAgreementReceipt(
+      receipt,
+      this.agreementContext(receipt.context.paymentMethod),
+      this.deps.now(),
+    );
+    draft.error = '';
+    this.notify();
+  }
+
+  private signedAgreement(method: AgreementPaymentMethod): SignedSpotAgreement {
+    return validateAgreementReceipt(
+      this.pending()?.agreement,
+      this.agreementContext(method),
+      this.deps.now(),
+    );
+  }
+
+  private requireAgreement(method: AgreementPaymentMethod): boolean {
+    // Inventory errors must retain their review step rather than opening an obsolete agreement.
+    const context = this.agreementContext(method);
+    try {
+      validateAgreementReceipt(this.pending()?.agreement, context, this.deps.now());
+      return true;
+    } catch {
+      if (this.pending()?.paymentSubmitted)
+        throw new Error(
+          'Payment confirmation is pending. Check your order status before signing or paying again.',
+        );
+      this.deps.open('spot-agreement', { method });
+      return false;
+    }
+  }
   insufficientCredit(draft: CheckoutDraft): boolean {
     const balance = this.availableCredit();
     return (
@@ -451,6 +522,14 @@ export class SpotCheckout {
       if (draft.reviewRequired) return this.deps.open('spot-review');
       if (balance === null) throw new Error('Your available Credit has not been confirmed.');
       checkoutTotals(fresh, draft.hoursRaw);
+      if (
+        !this.deps.isDemo() &&
+        !fresh.previewOnly &&
+        fresh.sourceKind === 'agent' &&
+        !this.insufficientCredit(draft) &&
+        !this.requireAgreement('credit')
+      )
+        return;
       draft.stage = 'confirm';
       draft.message = '';
       draft.error = '';
@@ -466,6 +545,7 @@ export class SpotCheckout {
   async authorizeCredit(): Promise<void> {
     const draft = this.pending();
     if (!draft || draft.busy) return;
+    const previouslySubmitted = Boolean(draft.paymentSubmitted);
     draft.busy = true;
     this.notify();
     try {
@@ -507,6 +587,10 @@ export class SpotCheckout {
         return this.deps.open('spot-credit-confirm');
       }
       const service = this.deps.service();
+      if (!this.requireAgreement('credit')) {
+        draft.stage = 'payment';
+        return;
+      }
       if (typeof service.beginPurchase !== 'function')
         throw new Error(
           'Credit payment is not connected yet. No Credit was charged and no order was created.',
@@ -519,6 +603,7 @@ export class SpotCheckout {
         throw new Error(
           'The offer changed during validation. Review its current price before paying.',
         );
+      const agreement = this.signedAgreement('credit');
       draft.paymentSubmitted = true;
       this.savePending();
       const result = await service.beginPurchase({
@@ -528,6 +613,7 @@ export class SpotCheckout {
         expectedPricing,
         sshPublicKey: ssh || null,
         idempotencyKey: draft.idempotencyKey,
+        agreement,
       });
       if (this.deps.owner() !== draft.owner || this.pending() !== draft) return;
       if (
@@ -548,9 +634,15 @@ export class SpotCheckout {
       this.clearStored();
       this.deps.open('spot-purchase-complete');
     } catch (error) {
-      // A definite refusal (HTTP 4xx) created no order, so the purchase can be reviewed again.
+      // A first-attempt refusal may unlock review. No retry failure can erase an earlier
+      // uncertain submission, including a preflight or payment HTTP 4xx response.
       const status = (error as { status?: unknown }).status;
-      if (draft.paymentSubmitted && typeof status === 'number' && status >= 400 && status < 500) {
+      if (
+        draft.paymentSubmitted &&
+        !previouslySubmitted &&
+        (error instanceof PaymentNotStartedError ||
+          (typeof status === 'number' && status >= 400 && status < 500))
+      ) {
         draft.paymentSubmitted = false;
         this.savePending();
       }
@@ -585,16 +677,21 @@ export class SpotCheckout {
         throw new Error('Your account or purchase changed. Review it before continuing.');
       if (!this.deps.beginBankTransfer)
         throw new Error('Bank transfer is not connected yet. No payment request was created.');
-      const started = await this.deps.beginBankTransfer({
-        purpose: 'order',
-        currency: 'USD',
-        offerId: row.id,
-        amountCents: checkoutTotals(row, hours).totalCents,
-        durationHours: hours,
-        sshPublicKey: draft.sshPublicKey || null,
-        purchaseReference: this.purchaseReference() || undefined,
-        idempotencyKey: draft.idempotencyKey,
-      });
+      if (!this.requireAgreement('bank_transfer')) return;
+      const agreement = this.signedAgreement('bank_transfer');
+      const started = await this.deps.beginBankTransfer(
+        {
+          purpose: 'order',
+          currency: 'USD',
+          offerId: row.id,
+          amountCents: checkoutTotals(row, hours).totalCents,
+          durationHours: hours,
+          sshPublicKey: draft.sshPublicKey || null,
+          purchaseReference: this.purchaseReference() || undefined,
+          idempotencyKey: draft.idempotencyKey,
+        },
+        agreement,
+      );
       if (!started && this.pending() === draft)
         throw new Error(
           'Bank transfer instructions could not be confirmed. Please retry or contact support. No payment was taken.',
