@@ -141,6 +141,8 @@ async def build_bundle(ops, case_id, account, revision):
         raise OperationError(404, "Business verification case not found.")
     if case["revision"] != revision:
         raise OperationError(409, "This case changed. Refresh before downloading.")
+    if not case.get("documents") or not (case.get("company") or {}).get("companyName"):
+        raise OperationError(409, "This case has no complete original submission to export.")
     if sum(d["size_bytes"] for d in case["documents"]) > MAX_TOTAL:
         raise OperationError(413, "The submitted documents exceed the download limit.")
     originals = [await ops.kyb_document(case_id, d["id"], revision) for d in case["documents"]]

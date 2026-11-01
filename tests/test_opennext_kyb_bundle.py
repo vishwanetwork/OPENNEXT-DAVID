@@ -15,6 +15,11 @@ from tests.test_opennext_ops import ADMIN, PDF, submit_kyb
 
 async def test_package_contains_frozen_form_and_every_original(env, tmp_path):  # noqa: F811
     client, *_ = env
+    skipped_case = client._transport.app.state.ops.case_id("U1")
+    skipped = await client.get(
+        f"/api/admin/buyer-kyb/{skipped_case}/bundle?accountId=U1&revision=2", headers=ADMIN
+    )
+    assert skipped.status_code == 409 and "dataBase64" not in skipped.text
     case = (await submit_kyb(client)).json()["verification"]
     wrong_owner = await client.post(
         f"/api/admin/buyer-kyb/{case['id']}/decision",
