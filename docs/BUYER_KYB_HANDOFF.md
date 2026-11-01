@@ -1,6 +1,6 @@
 # Buyer KYB and bank transfer — backend handoff
 
-Updated 2026-10-29. **Frontend-only implementation; no live adapters or new wire contracts.**
+Updated 2026-11-01. **Existing live adapters; package export and account extensions pending.**
 The product owner approved frontend + interface handoff, not changes to `legacy/`.
 
 ## Implemented frontend
@@ -11,7 +11,8 @@ The product owner approved frontend + interface handoff, not changes to `legacy/
 - Bank transfer is the only newly offered payment method; old provider checkout is disabled.
 - Shared bank instructions, amount/reference/expiry, and “I have made the transfer” flow.
 - Console `/admin/kyb` Buyer queue; `?tab=supplier` retains the supplier queue and deep links.
-- Private file download; Approve requires ALLScale confirmation; Reject requires a private reason.
+- Private file download; Completed requires external review confirmation; Failed requires a private reason.
+  These labels still map to the existing Approved/Rejected wire decisions.
 - Allowlisted approval/rejection notification shortcuts; reopening always rechecks KYB.
 - Public-facing forms, review states and notification templates must use OpenNEXT branding;
   ALLScale is an internal operations/review integration detail, not a customer-facing label.
@@ -20,11 +21,13 @@ The product owner approved frontend + interface handoff, not changes to `legacy/
 - First confirmed Buyer onboarding creates a one-time in-memory KYB introduction with Skip for now.
   Existing sign-ins do not recreate that intent. The help link opens the existing Contact Us dialog.
 
-Composition supplies no `buyerKyb` / `bankTransfer` service, and the Console route supplies no
-Buyer review service. Upload, submission, review and payment therefore fail closed. No fake
-requests, approvals, notifications, balances or payment confirmations are generated. Demo accepts
-no genuine files. New local demonstration walkthroughs are excluded from this production release.
-Inputs/files remain in memory only.
+Composition now supplies the Buyer KYB and bank-transfer adapters, and Console supplies its
+review adapter after a confirmed operator session. Upload, submission and review still require
+verified backend responses; no browser-generated approvals, balances or payment confirmations
+are accepted. The new one-click form-PDF-plus-originals ZIP export is an optional, unwired
+capability; individual private file downloads remain available. See
+[Console account and review handoff](CONSOLE_ACCOUNT_REVIEW_HANDOFF.md) for the export contract.
+Demo cannot reach these live services. Inputs/files remain in memory only.
 
 See [payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md) for the latest
 face-value top-up rule, email outbox, durable provisioning and hourly usage ledger requirements.
@@ -60,12 +63,12 @@ UI limits are product defaults, not ALLScale-provided limits: PDF/PNG/JPEG, 10 M
 50 MiB combined. Backend must agree/publish limits, validate content signatures and malware-scan;
 browser MIME checks are not a security boundary.
 
-## Proposed interfaces — not currently deployed endpoints
+## Existing adapter interfaces and remaining transport work
 
-Frontend types: `apps/web/src/lib/buyer-kyb.ts`. Agree schemas with the backend team before
-implementing adapters using the shared API client and versioned contracts.
+Frontend types: `apps/web/src/lib/buyer-kyb.ts`. Current adapters use the shared API client.
+New bundle/account capabilities still need agreed versioned backend contracts.
 
-| Proposed endpoint                                         | Responsibility                                                                                                             |
+| Existing adapter endpoint                                 | Responsibility                                                                                                             |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/buyer-kyb/me`                                   | Confirmed owner-bound status and company/document metadata.                                                                |
 | `POST /api/buyer-kyb/documents`                           | Private authenticated upload, category/limits, quarantine and malware scan.                                                |
@@ -78,7 +81,8 @@ implementing adapters using the shared API client and versioned contracts.
 | `GET /api/admin/payment-requests`                         | Incoming transfer review, linked top-up/order and audit metadata.                                                          |
 | `POST /api/admin/payment-requests/:id/decision`           | Verify actual receipt, currency/amount/reference; atomic idempotent accounting and notification.                           |
 
-The current API client is JSON-only; secure FormData/binary transport needs coordinated work.
+The current adapters transport documents as base64 within JSON and validate downloaded files.
+Streaming or multipart transport and the new ZIP export need coordinated backend work.
 Do not bypass it with raw fetch, change CSRF/host forwarding, call seller KYB for buyers, or label
 bank transfers as `credit_card` to fit existing contracts. Demo must never reach these live APIs.
 
@@ -110,7 +114,8 @@ Approval: “Your KYB has been approved. You can now continue with a bank transf
 Rejection: “Your KYB was not approved. Reason: {review reason}. Please review and resubmit.”
 Customer-facing notification text and operator-entered reasons must use OpenNEXT branding;
 keep external reviewer identifiers in the internal audit record, not the recipient message.
-Agree wire schema additions with backend; these fields are not an active notification integration.
+Delivery is backend-owned; queued acknowledgments do not establish email delivery. Agree any
+additional notification fields with the backend before extending the current integration.
 Clicking a notice is navigation, not proof of approval.
 
 Bank top-up records must preserve the existing owner-scoped billing request and purchase reference

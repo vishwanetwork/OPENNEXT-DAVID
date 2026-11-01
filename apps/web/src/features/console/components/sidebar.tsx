@@ -13,7 +13,9 @@ export function Sidebar({ page }: { page: string }) {
     ? 'requests'
     : page === 'billing'
       ? 'agent'
-      : page;
+      : page === 'users/accounts'
+        ? 'users'
+        : page;
   return (
     <aside className="sidebar">
       <Link className="brand" href={href('/')} aria-label="OpenNEXT Operations Console">
@@ -64,6 +66,16 @@ export function Sidebar({ page }: { page: string }) {
               <div className="side-sub">
                 <Link href={href('/agent')}>Configuration</Link>
                 <Link href={href('/agent?tab=billing')}>Agent billing</Link>
+              </div>
+            ) : null}
+            {id === 'users' && active === id ? (
+              <div className="side-sub">
+                <Link
+                  href={href('/users/accounts')}
+                  aria-current={page === 'users/accounts' ? 'page' : undefined}
+                >
+                  Account
+                </Link>
               </div>
             ) : null}
           </div>

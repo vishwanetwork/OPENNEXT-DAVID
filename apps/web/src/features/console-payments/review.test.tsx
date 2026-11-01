@@ -1,88 +1,24 @@
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import type {
-  PaymentReviewDecision,
-  PaymentReviewReceipt,
-  PaymentReviewRecord,
-  PaymentReviewService,
-} from '@/lib/payment-review';
+import {
+  adapter,
+  direct,
+  input,
+  receipt,
+  topup,
+  type PaymentReviewReceipt,
+} from '@/test/payment-review-fixture';
 import { renderConsole } from '@/test/render';
 import { PaymentReviewQueue } from './page';
 import { confirmedPaymentDecision, confirmedPaymentRecords, reviewable } from './validation';
 
-const topup: PaymentReviewRecord = {
-  id: 'PAY-1',
-  accountId: 'buyer-1',
-  email: 'buyer@example.com',
-  revision: 1,
-  kind: 'topup',
-  status: 'Pending',
-  currency: 'USD',
-  amountCents: 10000,
-  creditAmountCents: 10000,
-  feeAmountCents: 0,
-  reference: 'REF-1',
-  submittedAt: '2026-10-29T01:00:00Z',
-  pricingVersion: 'credit-face-value-v1',
-};
-const direct: PaymentReviewRecord = {
-  ...topup,
-  kind: 'direct_pay',
-  orderId: 'ORDER-1',
-  pricingVersion: 'order-total-v1',
-  creditAmountCents: undefined,
-  feeAmountCents: undefined,
-};
-const input: PaymentReviewDecision = {
-  caseId: topup.id,
-  accountId: topup.accountId,
-  expectedRevision: 1,
-  idempotencyKey: 'decision-1',
-  decision: 'Confirm',
-  fundsVerified: true,
-  reason: '',
-};
-function receipt(row: PaymentReviewRecord, request: PaymentReviewDecision): PaymentReviewReceipt {
-  return {
-    confirmed: true,
-    currency: row.currency,
-    pricingVersion: row.pricingVersion,
-    caseId: row.id,
-    accountId: row.accountId,
-    revision: row.revision + 1,
-    idempotencyKey: request.idempotencyKey,
-    status: request.decision === 'Fail' ? 'Failed' : 'Confirmed',
-    notificationQueued: true,
-    emailQueued: true,
-    amountCents: row.amountCents,
-    creditAmountCents:
-      request.decision === 'Confirm' && row.kind === 'topup' ? (row.creditAmountCents ?? 0) : 0,
-    feeAmountCents:
-      request.decision === 'Confirm' && row.kind === 'topup' ? (row.feeAmountCents ?? 0) : 0,
-    ledgerPosted: request.decision === 'Confirm' && row.kind === 'topup',
-    provisioningQueued: request.decision === 'Confirm' && row.kind === 'direct_pay',
-  };
-}
-function adapter(row = topup) {
-  return {
-    sessionScope: 'operator-a',
-    list: vi
-      .fn<PaymentReviewService['list']>()
-      .mockResolvedValue({ confirmed: true, sessionScope: 'operator-a', records: [row] }),
-    decide: vi
-      .fn<PaymentReviewService['decide']>()
-      .mockImplementation(async (request) => receipt(row, request)),
-  };
-}
-async function confirmButton(label = 'Add Credit') {
-  fireEvent.click(await screen.findByRole('button', { name: label }));
+async function confirmButton() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Completed' }));
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('checkbox'));
   await act(async () => {
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: label === 'Add Credit' ? label : 'Confirm' }),
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Completed' }));
   });
 }
 afterEach(() => {
@@ -117,10 +53,10 @@ describe('payment review amounts and acknowledgments', () => {
     ])
       expect(confirmedPaymentDecision({ ...ack, ...change }, topup, input)).toBe(false);
   });
-  it('requires provisioning rather than credit posting for Direct Pay and neither for Fail', () => {
+  it('requires paid continuation rather than automatic provisioning, and neither for Failed', () => {
     const ack = receipt(direct, input);
     expect(confirmedPaymentDecision(ack, direct, input)).toBe(true);
-    expect(confirmedPaymentDecision({ ...ack, provisioningQueued: false }, direct, input)).toBe(
+    expect(confirmedPaymentDecision({ ...ack, provisioningQueued: true }, direct, input)).toBe(
       false,
     );
     const fail = {
@@ -154,18 +90,25 @@ describe('Console payment review', () => {
       'role',
       'status',
     );
-    expect(screen.queryByRole('button', { name: 'Add Credit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Completed' })).not.toBeInTheDocument();
     expect(screen.queryByText(/0 pending/)).not.toBeInTheDocument();
   });
-  it('shows equal received and credited amounts and confirms only a complete server receipt', async () => {
+  it('shows the requested columns, confirmed balance and only accepts a complete server receipt', async () => {
     const service = adapter();
     renderConsole(<PaymentReviewQueue kind="topup" service={service} />);
-    expect(await screen.findAllByText('$100.00')).toHaveLength(2);
+    expect(await screen.findByText('$100.00')).toBeInTheDocument();
+    expect(screen.getByText('$25.00')).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader').map((node) => node.textContent)).toEqual([
+      'Account #',
+      'Top-up Amount',
+      'Current Credit',
+      'Action',
+    ]);
     expect(screen.queryByRole('columnheader', { name: 'OpenNEXT Fee' })).not.toBeInTheDocument();
     await confirmButton();
     expect(
       await screen.findByText(
-        'Decision confirmed. Account notification and email have been queued.',
+        'Top-up completed. Credit has been added; notification and email have been queued.',
       ),
     ).toBeInTheDocument();
     expect(service.decide).toHaveBeenCalledWith(
@@ -180,14 +123,14 @@ describe('Console payment review', () => {
   it('requires a Fail reason and sends it without adding Credit', async () => {
     const service = adapter();
     renderConsole(<PaymentReviewQueue kind="topup" service={service} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Fail' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Failed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
     expect(service.decide).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a reason');
     fireEvent.change(screen.getByRole('textbox', { name: 'Failure reason' }), {
       target: { value: 'The bank reference does not match.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
     await waitFor(() =>
       expect(service.decide).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -199,7 +142,7 @@ describe('Console payment review', () => {
     );
     expect(
       await screen.findByText(
-        'Decision confirmed. Account notification and email have been queued.',
+        'Failed. The reason has been queued for the customer notification and email.',
       ),
     ).toBeInTheDocument();
   });
@@ -213,19 +156,28 @@ describe('Console payment review', () => {
   it('requires independently verified funds before Confirm', async () => {
     const service = adapter(direct);
     renderConsole(<PaymentReviewQueue kind="direct_pay" service={service} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Completed' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Completed' }));
     expect(service.decide).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('independently verified');
   });
-  it('uses Confirm for Direct Pay and queues provisioning, never fabricating a running instance', async () => {
+  it('uses the new completion capability without invoking old auto-provisioning', async () => {
     const service = adapter(direct);
     renderConsole(<PaymentReviewQueue kind="direct_pay" service={service} />);
-    await confirmButton('Confirm');
+    await confirmButton();
     expect(
-      await screen.findByText(/Decision confirmed. Provisioning is queued/),
+      await screen.findByText(/Payment completed. Notification and email include/),
     ).toBeInTheDocument();
     expect(screen.queryByText('Running')).not.toBeInTheDocument();
+    expect(service.completeDirectPay).toHaveBeenCalledTimes(1);
+    expect(service.decide).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('columnheader').map((node) => node.textContent)).toEqual([
+      'Order',
+      'Payment Amount',
+      'Account #',
+      'Email',
+      'Action',
+    ]);
   });
   it('keeps an incomplete acknowledgment unresolved and reuses the same retry key', async () => {
     const service = adapter();
@@ -237,13 +189,15 @@ describe('Console payment review', () => {
     await confirmButton();
     expect(await screen.findByRole('alert')).toHaveTextContent('not fully confirmed');
     const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Credit' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Completed' }));
     await waitFor(() => expect(service.decide).toHaveBeenCalledTimes(2));
     expect(service.decide.mock.calls[0]?.[0].idempotencyKey).toBe(
       service.decide.mock.calls[1]?.[0].idempotencyKey,
     );
     expect(
-      screen.queryByText('Decision confirmed. Account notification and email have been queued.'),
+      screen.queryByText(
+        'Top-up completed. Credit has been added; notification and email have been queued.',
+      ),
     ).not.toBeInTheDocument();
   });
   it('keeps legacy amounts visible and disables unsupported versioned decisions', async () => {
@@ -253,21 +207,21 @@ describe('Console payment review', () => {
         service={adapter({ ...topup, pricingVersion: 'legacy-credit-v1' })}
       />,
     );
-    expect(await screen.findByRole('button', { name: 'Add Credit' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Fail' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(await screen.findByRole('button', { name: 'Completed' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Failed' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'View request PAY-1' }));
     expect(screen.getByRole('dialog')).toHaveTextContent('not re-priced');
   });
   it('drops private data and late decision effects on operator-session replacement', async () => {
     const old = adapter();
     const next = {
-      ...adapter({ ...topup, email: 'next@example.com' }),
+      ...adapter({ ...topup, accountNumber: 'ON-2002', email: 'next@example.com' }),
       sessionScope: 'operator-b',
     };
     next.list.mockResolvedValue({
       confirmed: true,
       sessionScope: 'operator-b',
-      records: [{ ...topup, email: 'next@example.com' }],
+      records: [{ ...topup, accountNumber: 'ON-2002', email: 'next@example.com' }],
     });
     let resolve: (value: PaymentReviewReceipt) => void = () => {};
     old.decide.mockImplementation(
@@ -290,14 +244,16 @@ describe('Console payment review', () => {
     renderConsole(<Harness />);
     await confirmButton();
     fireEvent.click(screen.getByRole('button', { name: 'Switch operator' }));
-    expect(await screen.findByText('next@example.com')).toBeInTheDocument();
+    expect(await screen.findByText('ON-2002')).toBeInTheDocument();
     await act(async () => {
       resolve(receipt(topup, old.decide.mock.calls[0]?.[0] ?? input));
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText('buyer@example.com')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Decision confirmed. Account notification and email have been queued.'),
+      screen.queryByText(
+        'Top-up completed. Credit has been added; notification and email have been queued.',
+      ),
     ).not.toBeInTheDocument();
   });
 });

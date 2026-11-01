@@ -8,13 +8,13 @@ import { useToast } from '@/components/ui/toast';
 import { MarketplaceInboxPage } from '@/features/console-marketplace';
 import { describeError, isUnauthorized } from '@/lib/api/errors';
 import type { BuyerKybAdminService } from '@/lib/buyer-kyb';
-import { stampUtc } from '@/lib/format';
+import { KybBundleDownload } from './bundle-download';
 import { BuyerKybDetails } from './details';
 import { useBuyerKybQueue } from './hooks';
 import { filterCases } from './review';
 import './buyer-kyb.css';
 
-/** Future service supplied by the Console composition root; no network endpoint is invented. */
+/** The authenticated service is supplied by the Console composition root. */
 export function BuyerKybReviewPage({ service }: { service?: BuyerKybAdminService }) {
   const scope = service?.sessionScope;
   const [binding, setBinding] = useState({ service, scope, generation: 0 });
@@ -36,6 +36,7 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('All');
   const [selectedId, setSelectedId] = useState('');
+  const [initialAction, setInitialAction] = useState<'details' | 'completed' | 'failed'>('details');
   const clear = queue.clear;
   useEffect(() => {
     if (accessDenied) clear();
@@ -48,6 +49,10 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
   const records = accessDenied ? [] : (queue.data ?? []);
   const rows = filterCases(records, search, status);
   const selected = records.find((row) => row.id === selectedId);
+  const openCase = (id: string, action: typeof initialAction) => {
+    setInitialAction(action);
+    setSelectedId(id);
+  };
   const denyAccess = () => {
     setAccessDenied(true);
     setSelectedId('');
@@ -92,7 +97,9 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
             Status
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               {['All', 'Reviewing', 'Approved', 'Rejected'].map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>
+                  {value === 'Approved' ? 'Completed' : value === 'Rejected' ? 'Failed' : value}
+                </option>
               ))}
             </select>
           </label>
@@ -105,42 +112,70 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
             Refresh
           </button>
         </div>
+        {service && !service.downloadBundle && (
+          <p className="buyer-kyb-package-note">
+            Complete package download is not yet available from the backend. Select a company to
+            review its submitted form and download individual original documents.
+          </p>
+        )}
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                {[
-                  'Email',
-                  'Company',
-                  'Country',
-                  'Collection',
-                  'Submitted',
-                  'Status',
-                  'Details',
-                ].map((label) => (
+                {['Email', 'Company', 'Country', 'Download', 'Action'].map((label) => (
                   <th key={label}>{label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((record) => (
-                <tr key={record.id}>
+                <tr key={`${record.id}:${record.revision}:${record.status}`}>
                   <td>{record.email}</td>
-                  <td>{record.company.companyName}</td>
-                  <td>{record.company.country}</td>
-                  <td>{record.mode}</td>
-                  <td>{stampUtc(record.submittedAt)}</td>
-                  <td>
-                    <span className="buyer-kyb-status">{record.status}</span>
-                  </td>
                   <td>
                     <button
                       type="button"
-                      className="btn small"
-                      onClick={() => setSelectedId(record.id)}
+                      className="buyer-kyb-company"
+                      aria-label="Details"
+                      onClick={() => openCase(record.id, 'details')}
                     >
-                      Details
+                      {record.company.companyName}
                     </button>
+                  </td>
+                  <td>{record.company.country}</td>
+                  <td>
+                    {service && (
+                      <KybBundleDownload
+                        record={record}
+                        service={service}
+                        onAccessDenied={denyAccess}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {record.status === 'Reviewing' ? (
+                      <div className="buyer-kyb-row-actions">
+                        <button
+                          type="button"
+                          className="btn small primary"
+                          aria-label={`Completed KYB for ${record.email}`}
+                          onClick={() => openCase(record.id, 'completed')}
+                        >
+                          Completed
+                        </button>
+                        <button
+                          type="button"
+                          className="btn small"
+                          aria-label={`Failed KYB for ${record.email}`}
+                          onClick={() => openCase(record.id, 'failed')}
+                        >
+                          Failed
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="buyer-kyb-status">
+                        {record.status === 'Approved' ? 'Completed' : 'Failed'}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -170,6 +205,7 @@ function BuyerKybQueuePage({ service }: { service?: BuyerKybAdminService }) {
         <BuyerKybDetails
           key={`${selected.id}:${selected.revision}:${selected.status}`}
           record={selected}
+          initialAction={initialAction}
           service={service}
           onClose={() => setSelectedId('')}
           onConfirmed={confirmed}

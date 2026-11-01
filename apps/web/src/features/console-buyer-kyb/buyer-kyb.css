@@ -60,6 +60,38 @@
 .app-console .buyer-kyb-toolbar .buyer-kyb-field:first-child {
   flex: 1;
 }
+.app-console .buyer-kyb-package-note {
+  margin: 0;
+  padding: 0 20px 20px;
+  color: #687567;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-console .buyer-kyb-company {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #314d37;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.app-console .buyer-kyb-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-console .buyer-kyb-download {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.app-console .buyer-kyb-download small {
+  color: #687567;
+  font-size: 11px;
+}
 .app-console .buyer-kyb-status,
 .app-console .buyer-kyb-eyebrow {
   font-size: 12px;

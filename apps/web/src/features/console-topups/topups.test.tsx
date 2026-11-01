@@ -108,9 +108,7 @@ describe('ConsoleTopupsPage', () => {
     await waitFor(() =>
       expect(service.list).toHaveBeenCalledWith('topup', expect.any(AbortSignal)),
     );
-    expect(
-      screen.getByRole('heading', { name: 'Bank transfer top-up requests' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Top-up Requests' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Account scope' })).not.toBeInTheDocument();
     expect(fetchSpy.mock.calls.some(([input]) => String(input).includes('/api/admin/topups'))).toBe(
       false,

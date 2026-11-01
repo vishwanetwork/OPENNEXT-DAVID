@@ -1,0 +1,1 @@
+export { ConsoleAccountsPage } from './page';

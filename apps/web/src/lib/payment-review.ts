@@ -1,10 +1,13 @@
-/** Frontend ports only. No existing top-up endpoint implements this review protocol. */
+/** Operator-facing ports. New account and Direct Pay completion fields need backend agreement. */
 export type PaymentReviewKind = 'topup' | 'direct_pay';
 export type PaymentReviewStatus = 'Pending' | 'Confirmed' | 'Failed';
 
 export interface PaymentReviewRecord {
   id: string;
   accountId: string;
+  /** Assigned by the account service; never derived from an opaque user ID. */
+  accountNumber?: string;
+  currentCreditCents?: number;
   email: string;
   revision: number;
   kind: PaymentReviewKind;
@@ -14,6 +17,7 @@ export interface PaymentReviewRecord {
   reference: string;
   submittedAt: string;
   orderId?: string;
+  offerId?: string;
   /** Top-ups add the full received amount. Purchase fees belong to order totals only. */
   pricingVersion: 'credit-face-value-v1' | 'order-total-v1' | 'legacy-credit-v1';
   creditAmountCents?: number;
@@ -46,6 +50,15 @@ export interface PaymentReviewReceipt {
   feeAmountCents: number;
   ledgerPosted: boolean;
   provisioningQueued: boolean;
+  directPayResolution?: {
+    policy: 'recheck-before-purchase-v1';
+    orderId: string;
+    offerId: string;
+    availabilityCheckedAt: string;
+    outcome: 'awaiting_customer_order' | 'credited';
+    /** Owner-bound paid intent, redeemable once without taking a second payment. */
+    purchaseIntentId?: string;
+  };
 }
 
 export interface PaymentReviewService {
@@ -61,4 +74,9 @@ export interface PaymentReviewService {
   }>;
   /** Backend owns bank verification, ledger/provisioning and notification/email outboxes. */
   decide: (input: PaymentReviewDecision) => Promise<PaymentReviewReceipt>;
+  /**
+   * Opt-in only after backend rollout. Recheck the exact original offer, then retain a paid
+   * purchase intent or credit the full received amount. Never call the old provisioning decision.
+   */
+  completeDirectPay?: (input: PaymentReviewDecision) => Promise<PaymentReviewReceipt>;
 }

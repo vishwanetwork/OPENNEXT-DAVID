@@ -1,18 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Dialog } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { describeError, isUnauthorized } from '@/lib/api/errors';
-import { money, stampUtc } from '@/lib/format';
-import type {
-  PaymentReviewKind,
-  PaymentReviewRecord,
-  PaymentReviewService,
-} from '@/lib/payment-review';
+import type { PaymentReviewKind, PaymentReviewService } from '@/lib/payment-review';
 import { usePaymentReviewQueue } from './hooks';
 import { reviewable } from './validation';
 import { PaymentDecisionDialog } from './decision-dialog';
+import { PaymentRequestTable } from './request-table';
+import { PaymentDetails } from './request-details';
 import './payment-review.css';
 
 export function PaymentReviewQueue({
@@ -60,13 +56,13 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
   const visible = rows.filter(
     (row) =>
       (status === 'All' || row.status === status) &&
-      [row.email, row.id, row.reference, row.orderId]
+      [row.email, row.id, row.reference, row.orderId, row.accountNumber]
         .join(' ')
         .toLowerCase()
         .includes(search.trim().toLowerCase()),
   );
   const selected = rows.find((row) => row.id === selection?.id);
-  const title = kind === 'topup' ? 'Bank transfer top-up requests' : 'Payment Requests';
+  const title = kind === 'topup' ? 'Top-up Requests' : 'Payment Requests';
   const close = () => setSelection(null);
   return (
     <section className="payment-review">
@@ -76,7 +72,7 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
           <p>
             {kind === 'topup'
               ? 'Verify incoming payments and add the full received amount as Credit. Top-ups have no fee.'
-              : 'Confirm bank receipts and queue Direct Pay provisioning.'}
+              : 'Verify bank receipts, recheck the original resource and notify the customer.'}
           </p>
         </div>
         <button
@@ -94,6 +90,16 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
           are not connected. No payment can be approved here yet.
         </p>
       )}
+      {kind === 'direct_pay' &&
+        service &&
+        (!service.completeDirectPay ||
+          rows.some((row) => row.status === 'Pending' && !row.offerId)) && (
+          <p className="payment-review-state" role="status">
+            Completed is unavailable until the backend supports original-resource rechecks and
+            paid-purchase continuation or full Credit conversion. Failed requests can still be
+            processed. No automatic purchase will be triggered by this page.
+          </p>
+        )}
       {(queue.error || blocked) && (
         <p className="payment-review-error" role="alert">
           {blocked || unauthorized
@@ -107,7 +113,7 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
             Search
             <input
               type="search"
-              placeholder="Email, request or payment reference"
+              placeholder="Account, email, order or reference"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -116,83 +122,19 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
             Status
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               {['All', 'Pending', 'Confirmed', 'Failed'].map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>
+                  {value === 'Confirmed' ? 'Completed' : value}
+                </option>
               ))}
             </select>
           </label>
         </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                {[
-                  'Email',
-                  'Payment amount',
-                  ...(kind === 'topup' ? ['Credit'] : ['Order']),
-                  'Reference',
-                  'Submitted',
-                  'Status',
-                  'Actions',
-                ].map((label) => (
-                  <th key={label}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((record) => (
-                <tr key={record.id}>
-                  <td>{record.email}</td>
-                  <td>{money(record.amountCents / 100)}</td>
-                  {kind === 'topup' ? (
-                    <>
-                      <td>
-                        {record.creditAmountCents === undefined
-                          ? '—'
-                          : money(record.creditAmountCents / 100)}
-                      </td>
-                    </>
-                  ) : (
-                    <td>{record.orderId ?? '—'}</td>
-                  )}
-                  <td>{record.reference}</td>
-                  <td>{stampUtc(record.submittedAt)}</td>
-                  <td>{record.status}</td>
-                  <td>
-                    <div className="payment-review-actions">
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => setSelection({ id: record.id, action: 'Details' })}
-                      >
-                        Details
-                      </button>
-                      {record.status === 'Pending' && (
-                        <>
-                          <button
-                            type="button"
-                            className="btn small primary"
-                            disabled={!reviewable(record)}
-                            onClick={() => setSelection({ id: record.id, action: 'Confirm' })}
-                          >
-                            {kind === 'topup' ? 'Add Credit' : 'Confirm'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn small"
-                            disabled={!reviewable(record)}
-                            onClick={() => setSelection({ id: record.id, action: 'Fail' })}
-                          >
-                            Fail
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PaymentRequestTable
+          kind={kind}
+          rows={visible}
+          service={service}
+          onSelect={(id, action) => setSelection({ id, action })}
+        />
         {!visible.length && (
           <div className="payment-review-empty">
             {!service
@@ -217,12 +159,16 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
             decision={selection.action}
             service={service}
             onClose={close}
-            onConfirmed={() => {
+            onConfirmed={(receipt) => {
               close();
               toast(
-                kind === 'topup'
-                  ? 'Decision confirmed. Account notification and email have been queued.'
-                  : 'Decision confirmed. Provisioning is queued when approved; account notification and email have been queued.',
+                receipt.status === 'Failed'
+                  ? 'Failed. The reason has been queued for the customer notification and email.'
+                  : kind === 'topup'
+                    ? 'Top-up completed. Credit has been added; notification and email have been queued.'
+                    : receipt.directPayResolution?.outcome === 'credited'
+                      ? 'Payment completed. The resource is unavailable; the full payment was added as Credit. Notification and email have been queued.'
+                      : 'Payment completed. Notification and email include the next step to complete the original paid purchase.',
               );
               void queue.refetch();
             }}
@@ -238,46 +184,5 @@ function Queue({ kind, service }: { kind: PaymentReviewKind; service?: PaymentRe
           />
         )}
     </section>
-  );
-}
-
-function PaymentDetails({ record, onClose }: { record: PaymentReviewRecord; onClose: () => void }) {
-  return (
-    <Dialog
-      overlayClassName="payment-review-overlay"
-      className="payment-review-dialog"
-      label="Payment request details"
-      onClose={onClose}
-    >
-      <h2>Payment request details</h2>
-      <dl>
-        {[
-          ['Email', record.email],
-          ['Request', record.id],
-          ['Order', record.orderId ?? '—'],
-          ['Payment amount', money(record.amountCents / 100)],
-          ['Pricing basis', record.pricingVersion],
-          ['Reference', record.reference],
-          ['Submitted', stampUtc(record.submittedAt)],
-          ['Status', record.status],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      {!reviewable(record) && record.status === 'Pending' && (
-        <p className="payment-review-state">
-          This record needs a verified, versioned payment basis before review. Legacy amounts are
-          not re-priced or charged a second fee.
-        </p>
-      )}
-      <footer>
-        <button type="button" className="btn" onClick={onClose}>
-          Close
-        </button>
-      </footer>
-    </Dialog>
   );
 }

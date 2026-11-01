@@ -1,0 +1,91 @@
+.console-accounts > .head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.console-accounts > .head h1 {
+  margin: 0;
+}
+.console-accounts > .head p {
+  margin: 6px 0 0;
+}
+.console-accounts .head p,
+.console-account-dialog p {
+  color: var(--muted);
+}
+.console-account-email {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.console-account-dialog {
+  width: min(1100px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  color: var(--ink);
+  background: var(--panel, white);
+}
+.console-account-dialog::backdrop {
+  background: rgb(20 32 29 / 35%);
+}
+.console-account-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.console-account-dialog .ops-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.console-account-dialog .ops-tabs [aria-pressed='true'] {
+  background: var(--blue-soft, #edf3ff);
+  color: var(--blue);
+}
+.console-account-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 36px;
+  padding: 16px 0;
+}
+.console-account-summary small,
+.console-account-summary strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.console-account-summary small,
+.console-account-bank dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.console-account-bank {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  margin: 14px 0;
+}
+.console-account-bank dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.console-account-bank dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .console-account-dialog {
+    padding: 18px;
+  }
+  .console-account-bank dl {
+    grid-template-columns: 1fr;
+  }
+}

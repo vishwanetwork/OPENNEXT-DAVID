@@ -9,19 +9,21 @@ import { confirmedDecision } from './review';
 
 export function KybDecision({
   record,
+  initiallyRejecting = false,
   service,
   onConfirmed,
   onRefresh,
   onAccessDenied,
 }: {
   record: BuyerKybCase;
+  initiallyRejecting?: boolean;
   service: BuyerKybAdminService;
   onConfirmed: () => Promise<void>;
   onRefresh: () => void;
   onAccessDenied: () => void;
 }) {
   const [allscaleApproved, setAllscaleApproved] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
+  const [rejecting, setRejecting] = useState(initiallyRejecting);
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -123,7 +125,7 @@ export function KybDecision({
             setRejecting(true);
           }}
         >
-          Reject
+          Failed
         </AsyncButton>
         <AsyncButton
           busy={busy}
@@ -132,14 +134,14 @@ export function KybDecision({
           disabled={busy || !allscaleApproved}
           onClick={() => void decide('Approved')}
         >
-          {busy && !rejecting ? 'Saving…' : 'Approve'}
+          {busy && !rejecting ? 'Saving…' : 'Completed'}
         </AsyncButton>
       </div>
       {rejecting && (
         <Dialog
           overlayClassName="buyer-kyb-overlay"
           className="buyer-kyb-modal buyer-kyb-reject"
-          label="Reject Buyer KYB"
+          label="Failed Buyer KYB"
           onClose={() => {
             if (!busy) {
               setRejecting(false);
@@ -149,7 +151,7 @@ export function KybDecision({
           }}
           closeOnEscape={!busy}
         >
-          <h2>Reject Buyer KYB</h2>
+          <h2>Failed Buyer KYB</h2>
           <p>
             Enter ALLScale&apos;s reason. It will be sent privately to the applicant in their
             notification and email.
@@ -185,7 +187,7 @@ export function KybDecision({
                 Cancel
               </button>
               <AsyncButton busy={busy} type="submit" className="btn primary" disabled={busy}>
-                {busy ? 'Saving…' : 'Confirm rejection'}
+                {busy ? 'Saving…' : 'Submit'}
               </AsyncButton>
             </div>
           </form>

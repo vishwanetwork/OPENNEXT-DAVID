@@ -1,6 +1,6 @@
 # Payment operations and instance usage
 
-Updated 2026-10-29. Frontend implementation and proposed backend integration only.
+Updated 2026-11-01. Existing review adapters plus proposed backend extensions.
 `legacy/` and existing wire schemas are unchanged. No live mail sender, bank reconciliation,
 Credit ledger writer, or provisioning worker has been added to the frontend.
 
@@ -12,8 +12,9 @@ The latest product clarification supersedes the earlier $105 transfer / $100 Cre
 - Purchase subtotal is the hourly offer price multiplied by the selected duration. Apply the
   tentative 5% purchase fee once to that subtotal, rounded to integer cents.
 - A Credit purchase debits that full purchase total. Insufficient Credit returns to Add credit.
-- Direct Pay transfers that full purchase total. Receipt confirmation starts provisioning,
-  not an immediate claim that an instance is running.
+- Direct Pay transfers that full purchase total. Confirmation must recheck the original offer:
+  if unavailable, credit the entire received amount; otherwise invite the customer to complete
+  that already-paid purchase. Confirmation alone must not provision or charge Credit again.
 - The final commercial fee rate and whether it is itemized or included in displayed prices
   are not finalized. Current UI continues to itemize 5%; do not introduce a hidden uplift.
 - Changing fee policy requires a new pricing version and renewed customer consent. Never
@@ -46,15 +47,15 @@ decision receipt, not apply the decision again. Mail delivery failures need retr
 ## Operations payment queue
 
 Frontend port: `src/lib/payment-review.ts`, consumed by `features/console-payments`.
-It is optional; route composition currently supplies no adapter. The new Payment Requests view
-shows unavailable, not zero outstanding requests, when its service is missing. Top-up Requests
-keeps the established read/review workflow until a versioned adapter is supplied, so existing
-pending requests remain processable. That existing workflow preserves recorded amounts and its
-current Approve/Reject contract; it does not claim the new notification/email outbox protocol.
-Supplying an adapter selects the versioned queue instead. The old approval endpoint must not be
-used as an implementation of this new protocol because it lacks the full owner/revision/email receipt.
+`features/console-operations/routes.tsx` supplies the existing review adapter after a confirmed
+operator session. Both queues fail closed if that service is unavailable; they do not fall back
+to the legacy top-up approval endpoint. Top-up completion and both failure decisions retain the
+existing decision API and require owner/revision/idempotency and both messaging acknowledgments.
+Direct Pay completion is separately gated by the optional `completeDirectPay` capability, which
+is deliberately not connected to the old auto-provisioning endpoint. Its replacement policy and
+the additional account fields are specified in [the current handoff](CONSOLE_ACCOUNT_REVIEW_HANDOFF.md).
 
-Proposed API operations, pending backend agreement:
+Existing adapter operations; new Direct Pay completion semantics require backend agreement:
 
 | Operation                                                | Required semantics                                                                                                                               |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -66,7 +67,7 @@ The service has an opaque non-secret `sessionScope` rotated on operator login, l
 change. Replacing scope/service remounts private views, cancels reads and removes old scoped cache.
 Backend RBAC is mandatory; a React prop is not authorization.
 
-For a top-up, the positive action is Add Credit. Operations must confirm the actual received amount,
+For a top-up, the positive action is Completed. Operations must confirm the actual received amount,
 currency and payment reference. Confirm performs one atomic transaction:
 
 1. Lock the pending case and validate revision, bank evidence and pricing basis.
@@ -75,18 +76,20 @@ currency and payment reference. Confirm performs one atomic transaction:
 4. Return a receipt matching the owner, case, next revision, idempotency key, currency, pricing version and exact cents,
    `ledgerPosted: true`, `notificationQueued: true`, `emailQueued: true`.
 
-For Direct Pay, the positive action is Confirm. Use the same locking/receipt verification, then
-persist a durable provisioning job in the same transaction/outbox boundary. The receipt must
-acknowledge `provisioningQueued: true`; no Credit is added. A retry cannot pay/provision twice.
+For Direct Pay, the positive action is Completed. Use the same locking/receipt verification,
+then atomically record either full payment-to-Credit conversion or a single-use paid purchase
+intent after an authoritative offer recheck. Both outcomes require `provisioningQueued: false`.
+Only the customer's subsequent owner-checked redemption can start provisioning; that redemption
+must recheck availability again and must not use the ordinary Credit-debit purchase endpoint.
 
-Fail opens a required-reason dialog. Send commits Failed plus the reason and both owner outboxes.
+Failed opens a required-reason dialog. Submit commits Failed plus the reason and both owner outboxes.
 Do not add Credit or enqueue provisioning. Keep the reason out of public queues and browser logs;
 send it to the affected user in the private notification and email. Do not silently retry a failed
 payment as a new transfer; ask the customer to verify the reason and start an intentional retry.
 
 ## Durable provisioning and messaging
 
-The Agent runs on the backend, independent of browser lifetime. Refreshing, closing a tab,
+After the customer completes a paid purchase, the Agent runs on the backend, independent of browser lifetime. Refreshing, closing a tab,
 signing out, or switching accounts must not cancel a paid provisioning job.
 
 - Persist the paid order, exact model/capacity/region/specification, purchased duration and
@@ -105,13 +108,14 @@ signing out, or switching accounts must not cancel a paid provisioning job.
 
 Suggested owner-only notification/email copy (safe in-app routes, no arbitrary external URLs):
 
-| Event             | Message                                                                                                                                                             | Destination                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| KYB approved      | Your business verification is complete. You can now continue with a bank transfer.                                                                                  | KYB status / retained payment flow |
-| Top-up confirmed  | Your {amount} Credit top-up is complete. You can now purchase capacity.                                                                                             | Billing / retained purchase        |
-| Payment confirmed | Your payment is complete. Our Agent is finding your instance. You do not need to keep this page open. Add your SSH public key in Instances if you have not done so. | Instances                          |
-| Instance ready    | Your instance has been purchased successfully and is ready to use.                                                                                                  | Owned instance                     |
-| Payment failed    | Your payment could not be confirmed. Reason: {operator reason}. Please check the details and try again.                                                             | Payment history                    |
+| Event                | Message                                                                                                                                    | Destination                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| KYB approved         | Your business verification is complete. You can now continue with a bank transfer.                                                         | KYB status / retained payment flow |
+| Top-up confirmed     | Your {amount} Credit top-up is complete. You can now purchase capacity.                                                                    | Billing / retained purchase        |
+| Payment confirmed    | Your payment is complete. The selected capacity is still available. Continue your original purchase without paying again.                  | Owner-bound paid purchase          |
+| Capacity unavailable | The selected capacity is no longer available. Your full payment of {amount} has been added to your Credit. Please select another instance. | GPU Market / Billing               |
+| Instance ready       | Your instance has been purchased successfully and is ready to use.                                                                         | Owned instance                     |
+| Payment failed       | Your payment could not be confirmed. Reason: {operator reason}. Please check the details and try again.                                    | Payment history                    |
 
 Do not put private KYB files, bank evidence or credentials in email. Require server-generated,
 owner-checked destinations. Track sent/delivered/failed states separately from queue acceptance.
@@ -119,8 +123,8 @@ owner-checked destinations. Track sent/delivered/failed states separately from q
 ## Instance timeline and billing
 
 Frontend port: `src/lib/instance-usage.ts` via `TerminalServices.instanceUsage`.
-Proposed endpoint: `GET /api/marketplace/instances/:id/usage`, with authenticated owner checks,
-bounded windows/pagination and an agreed contract. No adapter or endpoint is added by this change.
+The existing adapter calls `GET /api/marketplace/instances/:id/usage`, with authenticated owner
+checks. This Console change does not alter that adapter or its backend behavior.
 
 The read snapshot contains matching account/instance/environment, explicit purchased hours,
 observed/window timestamps, connected/interrupted intervals, utilization values (nullable),

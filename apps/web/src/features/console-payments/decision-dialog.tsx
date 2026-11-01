@@ -8,9 +8,10 @@ import { money } from '@/lib/format';
 import type {
   PaymentReviewDecision,
   PaymentReviewRecord,
+  PaymentReviewReceipt,
   PaymentReviewService,
 } from '@/lib/payment-review';
-import { confirmedPaymentDecision, reviewable } from './validation';
+import { canComplete, confirmedPaymentDecision, reviewable } from './validation';
 
 export function PaymentDecisionDialog({
   record,
@@ -25,7 +26,7 @@ export function PaymentDecisionDialog({
   decision: 'Confirm' | 'Fail';
   service: PaymentReviewService;
   onClose: () => void;
-  onConfirmed: () => void;
+  onConfirmed: (receipt: PaymentReviewReceipt) => void;
   onAccessDenied: () => void;
   onRefresh: () => void;
 }) {
@@ -43,14 +44,15 @@ export function PaymentDecisionDialog({
     };
   }, []);
   const fail = decision === 'Fail';
-  const label = fail
-    ? 'Fail payment request'
-    : record.kind === 'topup'
-      ? 'Add Credit'
-      : 'Confirm Direct Pay';
+  const subject = record.kind === 'topup' ? 'top-up' : 'payment';
+  const label = fail ? `Failed ${subject}` : `Complete ${subject}`;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (lock.current || !reviewable(record)) return;
+    if (!fail && !canComplete(record, service)) {
+      setError('Completion requires the availability recheck service. No decision was submitted.');
+      return;
+    }
     if (fail && !reason.trim()) {
       setError('Enter a reason before sending the failure notification.');
       return;
@@ -83,13 +85,17 @@ export function PaymentDecisionDialog({
     setBusy(true);
     setError('');
     try {
-      const result = await service.decide(input);
+      const complete = service.completeDirectPay;
+      const result =
+        !fail && record.kind === 'direct_pay' && complete
+          ? await complete(input)
+          : await service.decide(input);
       if (!active.current) return;
       if (!confirmedPaymentDecision(result, record, input))
         throw new Error(
           'The decision, account update and notification/email queues were not fully confirmed. Refresh before retrying.',
         );
-      onConfirmed();
+      onConfirmed(result);
     } catch (cause) {
       if (!active.current) return;
       if (isUnauthorized(cause)) onAccessDenied();
@@ -124,8 +130,9 @@ export function PaymentDecisionDialog({
       )}
       {!fail && record.kind === 'direct_pay' && (
         <p>
-          Confirmation asks the backend to queue provisioning. It does not mark an instance as
-          running.
+          The original resource will be checked again. If available, the customer receives a link to
+          complete the paid purchase. If unavailable, the full payment becomes Credit so they can
+          choose another resource. This action does not provision an instance.
         </p>
       )}
       <form onSubmit={submit} noValidate>
@@ -166,7 +173,7 @@ export function PaymentDecisionDialog({
             Cancel
           </button>
           <AsyncButton busy={busy} type="submit" className="btn primary" disabled={busy}>
-            {busy ? 'Saving…' : fail ? 'Send' : record.kind === 'topup' ? 'Add Credit' : 'Confirm'}
+            {busy ? 'Saving…' : fail ? 'Submit' : 'Completed'}
           </AsyncButton>
         </footer>
       </form>
