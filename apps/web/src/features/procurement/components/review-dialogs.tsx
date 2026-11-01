@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/toast';
 import { useApi } from '@/components/providers/api-context';
 import { useWorkspaceData } from '@/terminal-kit';
 import { procurementApi } from '../api';
-import { FEE_LABEL, baseRate } from '../fees';
+import { baseRate } from '../fees';
 import { useRunServer } from '../hooks';
 import { useProcurementUi } from '../ui-store';
 import { KybForm, SupplyForm } from './forms';
@@ -79,7 +79,7 @@ export function SupplyStatus({ id }: { id: string }) {
             ['Agent', r.agentStatus],
             ['Country', r.region],
             ['Base unit price', money(baseRate(r))],
-            ['Seller fee', FEE_LABEL + ' deducted at settlement'],
+            ['Seller fee', 'No fixed service fee'],
             ['Service starts', date(r.serviceStart)],
             ['Service ends', date(r.serviceEnd)],
           ]}

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { at } from '@/test/at';
 import type { LedgerEntry, Order } from '@opennext/contracts';
-import { FEE_POLICY } from '@/features/procurement';
 import {
   activityRows,
   analytics,
@@ -81,7 +80,7 @@ describe('billing analytics', () => {
           status: 'Active',
           subtotal: 100,
           sellerNet: 95,
-          feePolicyVersion: FEE_POLICY,
+          feePolicyVersion: 'opennext-explicit-5pct-v1',
           buyerFee: 5,
           sellerFee: 5,
           buyerTotal: 105,
@@ -102,7 +101,7 @@ describe('billing analytics', () => {
           settledAt: '2026-10-10T00:00:00Z',
           subtotal: 70,
           sellerNet: 66.5,
-          feePolicyVersion: FEE_POLICY,
+          feePolicyVersion: 'opennext-explicit-5pct-v1',
           buyerFee: 3.5,
           sellerFee: 3.5,
           buyerTotal: 73.5,
@@ -112,7 +111,7 @@ describe('billing analytics', () => {
     });
     const cards = metrics(summary, analytics(summary));
     expect(cards.find((c) => c.label === 'Pending settlement')?.value).toBe(95);
-    expect(cards.find((c) => c.label === 'OpenNEXT Fee 5%')?.value).toBe(-3.5);
+    expect(cards.find((c) => c.label === 'Recorded service fees')?.value).toBe(-3.5);
     expect(orderAmount(at(summary.orders, 0))).toBe(95);
     expect(orderAmount(at(summary.orders, 3))).toBe(20);
   });

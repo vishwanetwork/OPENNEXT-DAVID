@@ -19,8 +19,8 @@ describe('fees', () => {
     expect(sellerEstimate(2.345, 8, 10)).toEqual({
       valid: true,
       base: 187.6,
-      fee: 9.38,
-      net: 178.22,
+      fee: 0,
+      net: 187.6,
     });
     expect(sellerEstimate('', 8, 10).valid).toBe(false);
   });
@@ -39,6 +39,26 @@ describe('fees', () => {
     expect(
       currentFees({ subtotal: 100, buyerFee: 5, sellerFee: 5, buyerTotal: 105, sellerNet: 95 }),
     ).toBe(false);
+    expect(
+      currentFees({
+        feePolicyVersion: 'opennext-explicit-5pct-v1',
+        subtotal: 100,
+        buyerFee: 5,
+        sellerFee: 5,
+        buyerTotal: 105,
+        sellerNet: 95,
+      }),
+    ).toBe(true);
+    expect(
+      currentFees({
+        feePolicyVersion: FEE_POLICY,
+        subtotal: 120,
+        buyerFee: 0,
+        sellerFee: 0,
+        buyerTotal: 120,
+        sellerNet: 120,
+      }),
+    ).toBe(true);
     expect(currentFees(null)).toBe(false);
   });
 });

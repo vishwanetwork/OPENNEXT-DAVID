@@ -20,15 +20,15 @@ async function publish(service,input=supply){const row=await service.createSuppl
 async function requirement(service,input=rfq){const row=await service.saveRfq(buyer,input);await service.decideRfq(row.id,{status:'Approved',expectedRevision:row.reviewRevision});return row;}
 const amounts=row=>Object.fromEntries(['subtotal','buyerFee','sellerFee','buyerTotal','sellerNet','total'].map(key=>[key,row[key]]));
 
-test('both 5% fees independently use the base subtotal, not a fee-inclusive price',()=>{
+test('new transactions use the agreed subtotal without fixed service fees',()=>{
   const row=transactionAmounts({kind:'physical_gpu',rate:100,count:1});
-  assert.deepEqual(amounts(row),{subtotal:100,buyerFee:5,sellerFee:5,buyerTotal:105,sellerNet:95,total:105});
-  assert.equal(row.feePercent,5);assert.equal(row.feePolicyVersion,FEE_POLICY_VERSION);assert.equal(row.feeLabel,'OpenNEXT Fee 5%');
+  assert.deepEqual(amounts(row),{subtotal:100,buyerFee:0,sellerFee:0,buyerTotal:100,sellerNet:100,total:100});
+  assert.equal(row.feePercent,0);assert.equal(row.feePolicyVersion,FEE_POLICY_VERSION);assert.equal(row.feeLabel,'Service fee');
 });
 
 test('subtotal and each independent fee are rounded to USD cents, including half-cent boundaries',()=>{
-  assert.deepEqual(amounts(transactionAmounts({kind:'hardware',rate:.10,count:1})),{subtotal:.1,buyerFee:.01,sellerFee:.01,buyerTotal:.11,sellerNet:.09,total:.11});
-  assert.deepEqual(amounts(transactionAmounts({kind:'hardware',rate:1.005,count:1})),{subtotal:1.01,buyerFee:.05,sellerFee:.05,buyerTotal:1.06,sellerNet:.96,total:1.06});
+  assert.deepEqual(amounts(transactionAmounts({kind:'hardware',rate:.10,count:1})),{subtotal:.1,buyerFee:0,sellerFee:0,buyerTotal:.1,sellerNet:.1,total:.1});
+  assert.deepEqual(amounts(transactionAmounts({kind:'hardware',rate:1.005,count:1})),{subtotal:1.01,buyerFee:0,sellerFee:0,buyerTotal:1.01,sellerNet:1.01,total:1.01});
   assert.equal(transactionAmounts({kind:'rental',rate:.000001,count:100,hours:100}).subtotal,.01);
   assert.equal(transactionAmounts({kind:'hardware',rate:1.234567,count:7}).subtotal,8.64);
 });
@@ -49,7 +49,7 @@ for(const kind of ['gpu_rental','physical_gpu','model_capacity'])test(kind+' quo
   const {service}=await fixture(t);await approve(service);
   const model=kind==='model_capacity'?'Model API bundle':'H100';
   const listing=await publish(service,{...supply,...forgedFees,kind,model,netPrice:2});
-  assert.equal(listing.buyerPrice,2);assert.equal(listing.markupPercent,0);assert.equal(listing.feePercent,5);
+  assert.equal(listing.buyerPrice,2);assert.equal(listing.markupPercent,0);assert.equal(listing.feePercent,0);
   const demand=await requirement(service,{...rfq,kind,model,days:2,inputMillion:1,outputMillion:1});
   const quote=await service.submitQuote(seller,demand.id,{...forgedFees,supplyId:listing.id,rate:2,delivery:30,notes:'Verified quote.',validUntil:'2026-10-19T00:00:00Z'});
   const expected=transactionAmounts({kind,rate:2,count:demand.count,hours:demand.hours});
@@ -82,7 +82,7 @@ test('legacy open listings migrate but pending quotes require a re-quote and all
   const service=createMarketplaceService({dataDir,now:()=>epoch});
   const admin=await service.admin();assert.equal(admin.supplies[0].buyerPrice,2);assert.equal(admin.supplies[0].markupPercent,0);
   const buyerState=await service.mine(buyer),stale=buyerState.rfqs[0].quotes[0];
-  assert.equal(stale.status,'Needs refresh');assert.equal(stale.total,403.2);assert.match(stale.refreshReason,/separate 5% fee/);
+  assert.equal(stale.status,'Needs refresh');assert.equal(stale.total,403.2);assert.match(stale.refreshReason,/no longer charges a fixed service fee/);
   assert.equal(buyerState.rfqs[0].reviewStatus,'Approved');assert.equal(buyerState.rfqs[0].reviewRevision,2);
   await assert.rejects(service.decideQuote(buyer,oldRfq.id,pendingQuote.id,'accept'),{status:409});
   let saved=JSON.parse(await fs.readFile(file,'utf8'));assert.deepEqual(saved.orders,historicSnapshot);assert.deepEqual(saved.quotes.find(row=>row.id===acceptedQuote.id),quoteSnapshot);
@@ -90,7 +90,7 @@ test('legacy open listings migrate but pending quotes require a re-quote and all
   const restarted=createMarketplaceService({dataDir,now:()=>epoch});await restarted.admin();
   saved=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(saved.notifications.length,2,'migration does not notify again after restart');
   const refreshed=await restarted.submitQuote(seller,oldRfq.id,{supplyId:oldSupply.id,rate:2,notes:'Requoted with explicit fees.',validUntil:'2026-10-19T00:00:00Z'});
-  assert.equal(refreshed.feePolicyVersion,FEE_POLICY_VERSION);assert.equal(refreshed.sellerNet,364.8);
+  assert.equal(refreshed.feePolicyVersion,FEE_POLICY_VERSION);assert.equal(refreshed.sellerNet,384);
   saved=JSON.parse(await fs.readFile(file,'utf8'));assert.deepEqual(saved.orders,historicSnapshot);assert.deepEqual(saved.quotes.find(row=>row.id===acceptedQuote.id),quoteSnapshot);
 });
 
@@ -109,6 +109,6 @@ test('verified resale publishes the seller base rate without an embedded fee',as
   const {dataDir}=await fixture(t),data={version:2,rfqs:[],supplies:[],kyb:[],interests:[],quotes:[],orders:[],notifications:[],audit:[],instances:[{id:'INSTANCE-1',ownerId:buyer.id,sellerId:seller.id,model:'H100',region:'Singapore',term:'On-demand',count:8,paymentStatus:'Paid',status:'Running',resaleAllowed:true,serviceEnd:'2026-10-22T00:00:00Z',telemetry:{utilizationPercent:50,idleGpuCount:4,observedAt:new Date(epoch).toISOString()}}]};
   await fs.writeFile(path.join(dataDir,'marketplace.json'),JSON.stringify(data));
   const service=createMarketplaceService({dataDir,now:()=>epoch}),row=await service.resell(buyer,'INSTANCE-1',{...forgedFees,count:2,hours:12,rate:2.123456});
-  assert.equal(row.netPrice,2.123456);assert.equal(row.buyerPrice,row.netPrice);assert.equal(row.markupPercent,0);assert.equal(row.feePercent,5);
+  assert.equal(row.netPrice,2.123456);assert.equal(row.buyerPrice,row.netPrice);assert.equal(row.markupPercent,0);assert.equal(row.feePercent,0);
   assert.equal((await service.publicMarket()).supplies[0].price,2.123456);
 });

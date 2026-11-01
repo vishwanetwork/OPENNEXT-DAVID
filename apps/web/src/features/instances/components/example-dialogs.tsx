@@ -34,12 +34,8 @@ export function ExampleOrder() {
           <strong>{moneyOrNa(subtotal)}</strong>
         </div>
         <div>
-          <span>OpenNEXT Fee 5%</span>
-          <strong>{moneyOrNa(subtotal * 0.05)}</strong>
-        </div>
-        <div>
           <span>Illustrative total</span>
-          <strong>{moneyOrNa(subtotal * 1.05)}</strong>
+          <strong>{moneyOrNa(subtotal)}</strong>
         </div>
       </div>
       <p className="form-note">

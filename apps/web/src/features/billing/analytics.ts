@@ -3,7 +3,7 @@ import type { LedgerEntry, Order, Payout } from '@opennext/contracts';
 import { FEE_POLICY } from '@/features/procurement';
 import type { Role } from '@/terminal-kit';
 
-export const FEE_LABEL = 'OpenNEXT Fee 5%';
+export const FEE_LABEL = 'Recorded service fees';
 export const COLORS: Record<string, string> = {
   purchase: '#7298b5',
   revenue: '#3a7355',
@@ -53,7 +53,7 @@ export const orderSide = (o: Order): 'buy' | 'sell' =>
   o.side || (o.role === 'Seller' ? 'sell' : 'buy');
 
 export const currentFees = (o: Partial<Order>): boolean =>
-  o.feePolicyVersion === FEE_POLICY &&
+  [FEE_POLICY, 'opennext-explicit-5pct-v1'].includes(o.feePolicyVersion ?? '') &&
   (['subtotal', 'buyerFee', 'sellerFee', 'buyerTotal', 'sellerNet'] as const).every(
     (key) => o[key] != null && Number.isFinite(Number(o[key])),
   );

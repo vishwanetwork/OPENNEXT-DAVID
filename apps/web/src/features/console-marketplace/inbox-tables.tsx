@@ -75,7 +75,7 @@ export function FeaturedTable({ rows, open }: { rows: FeaturedCandidate[]; open:
               <td>
                 {money(supply ? s.netPrice : s.price)}
                 <small>{supply ? 'Lowest quoted unit price' : 'Highest maximum buyer price'}</small>
-                {supply ? <small>OpenNEXT Fee 5% per side at checkout / settlement</small> : null}
+                {supply ? <small>No fixed service fee at checkout / settlement</small> : null}
               </td>
               <td>
                 {date(row.submittedAt)}

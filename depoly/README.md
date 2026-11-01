@@ -12,10 +12,10 @@ configuration and storage. An image does not need to contain customer data. Howe
 `latest` image may not contain the Console account/review and paid-purchase functionality.
 
 - The Bot/gateway source image is pinned to
-  `ghcr.io/vishwanetwork/spot-order-bot:414707340ba9a59fd06fa312cee9e8f8d6e3e3f5`.
+  `ghcr.io/vishwanetwork/spot-order-bot:67b0c1c6bb13cf04d137a1733b2f1ddc5c44bbf9`.
 - Select a reviewed web image by full Git SHA or digest. It must include the new frontend and
   the adapter built using `SPOTBOT_SOURCE=image`. `lock-images` checks the adapter imports,
-  Unicode PDF generation and frontend account/paid-purchase code before accepting it.
+  Unicode PDF generation, zero fixed service fee and frontend account/paid-purchase code before accepting it.
 - Existing compatible images can be reused directly. Otherwise build from the approved
   checkout using the build-only command below. The existing GitHub `deploy.yml` workflow also
   upgrades a 1Panel container; **do not invoke that workflow merely to build a production image**.
@@ -247,8 +247,8 @@ After those checks, set both procurement switches to true, run `up` and `smoke`,
 a deliberately budgeted first real purchase/recovery/release acceptance. This is a paid operator
 action, not part of `prepare` or `smoke`. Direct Pay continues through provider preflight,
 owner-bound paid redemption and the existing Agent. Failure releases the full receipt to Credit;
-the original retail quote stays locked. New Spot retail markup defaults to 20%, followed by the
-existing 5% usage/checkout service fee. Existing running orders keep their accepted terms.
+the original retail quote stays locked. New Spot retail markup defaults to 20%, with
+no additional fixed usage/checkout service fee. Existing running orders keep their accepted terms.
 
 ## Maintenance, backup and rollback
 

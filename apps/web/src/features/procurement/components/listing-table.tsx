@@ -3,7 +3,6 @@
 import type { MarketRow } from '@opennext/contracts';
 import { useRegions, regionCode } from '@/features/market';
 import { useIsDemo, useTerminal, useWorkspaceStore } from '@/terminal-kit';
-import { FEE_LABEL } from '../fees';
 import { marketRows, type MarketSide } from '../exchange';
 import { useMarketplaceView } from '../market-view';
 import { useOpportunity } from './opportunity';
@@ -155,8 +154,8 @@ export function ListingTable() {
           ? 'Reference listings reuse the preview catalog; they are not verified inventory or executable quotes. '
           : ''}
         Bidding Parties counts unique verified buyers who requested a quote for this GPU model in
-        the last 30 days. Listed prices are base unit prices. {FEE_LABEL} is shown separately at
-        buyer checkout and deducted separately from seller settlement.
+        the last 30 days. Listed prices are the agreed unit prices. No fixed service fee is added at
+        checkout or deducted from settlement.
       </p>
     </div>
   );

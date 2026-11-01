@@ -421,7 +421,7 @@ The 2026-10-29 frontend additions are documented in
 [payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md). These include optional
 review and usage ports with subsequently added adapters. New account, bundle export and revised
 Direct Pay completion capabilities are not connected; see the 2026-11-01 handoff below.
-Top-ups credit the full transferred amount; the tentative 5% fee is purchase-only. Review receipts
+Top-ups credit the full transferred amount; new purchases have no fixed service fee. Review receipts
 must acknowledge both notification and email outboxes. Instance charts do not calculate charges.
 
 Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
@@ -566,7 +566,7 @@ queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules
 ### Dynamic Spot retail pricing
 
 `GET /api/admin/pricing/retail-policy` returns `version`, `defaultMarkupBps`, ordered `rules`,
-`changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=500`, independent
+`changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=0`, independent
 `procurementToleranceBps=2000`, and `scope=executable_spot_offers`. A rule has `id`, nullable
 canonical `gpuModel`, nullable `region`/`provider`, and `markupBps`. Blank selectors match any
 value; at least one selector is required. First matching rule wins; duplicate selectors are
@@ -577,6 +577,6 @@ rejected. Markups range from 0 to 10000 basis points (0–100%), at most 20 rule
 at 20% (`SPOTBOT_OPENNEXT_SPOT_MARKUP_BPS=2000`); persisted policy overrides this initial setting.
 New executable Spot quotes apply the latest policy even while the wholesale catalog is cached.
 Raw price observations and history retain supplier prices. Procurement ceilings use wholesale
-costs independently of the retail markup. Existing 5% checkout/usage fees remain unchanged.
+costs independently of the retail markup. New checkout/usage service fees are zero. New marketplace quotes use `opennext-markup-only-v2` with zero buyer/seller fees; historical `opennext-explicit-5pct-v1` records retain their saved amounts. The adapter freezes `service_fee_bps` on every new charge; historical charges without the field retain their original 500 bps.
 Credit holds and Direct Pay intents store immutable retail and source quote snapshots, so later
 changes cannot reprice accepted purchases, delayed provisioning, instances or idempotent retries.

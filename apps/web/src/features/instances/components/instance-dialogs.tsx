@@ -204,8 +204,8 @@ export function Resell({ id }: { id?: string }) {
       </p>
       <p className="form-note">
         A server-side availability and utilization check is required before listing. Your listed
-        unit price has no markup. OpenNEXT Fee 5% is added at buyer checkout and deducted from
-        seller proceeds, each based on the order subtotal.
+        unit price is the agreed resale rate. No fixed service fee is added at buyer checkout or
+        deducted from seller proceeds.
       </p>
       <div className="form-grid">
         <label className="form-label">

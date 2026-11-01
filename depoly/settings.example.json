@@ -4,7 +4,7 @@
   "state_root": "/opt/opennext-production",
   "images": {
     "web": "",
-    "bot": "ghcr.io/vishwanetwork/spot-order-bot:414707340ba9a59fd06fa312cee9e8f8d6e3e3f5",
+    "bot": "ghcr.io/vishwanetwork/spot-order-bot:67b0c1c6bb13cf04d137a1733b2f1ddc5c44bbf9",
     "mysql": "mysql:8.4"
   },
   "domains": {

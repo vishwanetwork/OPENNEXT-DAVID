@@ -88,7 +88,7 @@ function PricingEditor({ policy }: { policy: OperationsRetailPricing }) {
               />
             </div>
             <p>
-              Existing service fee: {policy.serviceFeeBps / 100}%. Procurement tolerance:{' '}
+              Additional service fee: {policy.serviceFeeBps / 100}%. Procurement tolerance:{' '}
               {policy.procurementToleranceBps / 100}%.
             </p>
             <p className="muted">
@@ -232,7 +232,7 @@ function PricingEditor({ policy }: { policy: OperationsRetailPricing }) {
               />
             </div>
             <p>Listed price before service fee: {preview ? usd(preview.rateCents) : '—'}</p>
-            <p>Existing service fee: {preview ? usd(preview.feeCents) : '—'}</p>
+            <p>Additional service fee: {preview ? usd(preview.feeCents) : '—'}</p>
             <p>Total for one hour: {preview ? usd(preview.totalCents) : '—'}</p>
             <p className="muted">
               Preview uses the default markup; matching overrides take precedence. Retail rates

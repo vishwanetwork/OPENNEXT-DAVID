@@ -37,9 +37,9 @@ export function checkoutTotals(
   const hourlyCents = Math.round(row.instanceHourly * 100);
   const hundredthHours = Math.round(parsedHours * 100);
   const durationProduct = hourlyCents * hundredthHours;
-  // Integer hundredth-hours preserve half-cent rounding; one twentieth is the aggregate 5% fee.
+  // The listed retail rate already includes the configured markup. Round the duration once.
   const baseCents = Math.round(durationProduct / 100);
-  const feeCents = Math.round(baseCents / 20);
+  const feeCents = 0;
   const totalCents = baseCents + feeCents;
   if (
     ![hourlyCents, hundredthHours, durationProduct, baseCents, feeCents, totalCents].every(
@@ -111,7 +111,7 @@ export interface PurchaseInput {
 /**
  * Backend contract for Credit purchases (legacy `OpenNEXTSpotCheckout`). The backend must
  * authorize the session, lock the offer, independently calculate the duration subtotal and
- * 5% fee, check funds and apply idempotency. No client ledger changes.
+ * with no added service fee, check funds and apply idempotency. No client ledger changes.
  */
 export interface SpotCheckoutService {
   getCreditBalance?: () => Promise<CreditBalanceResult | null | undefined>;

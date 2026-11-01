@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from 'react';
 import { useWorkspaceStore } from '@/terminal-kit';
-import { FEE_LABEL } from '../fees';
 import { SellerEstimate } from './shared';
 import { CountrySelect, Input, formData } from './fields';
 import { useSubmitRecord } from './use-submit-record';
@@ -78,8 +77,8 @@ export function SupplyForm() {
         </div>
       </div>
       <p className="form-note">
-        Your listed unit price remains unchanged. {FEE_LABEL} is deducted from the base order amount
-        at settlement. Final amounts depend on the quantity and duration ordered.
+        Your listed unit price remains unchanged. No fixed service fee is deducted at settlement.
+        Final amounts depend on the quantity and duration ordered.
       </p>
       <h3>Agent installation handoff</h3>
       <p className="form-note">

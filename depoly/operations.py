@@ -85,13 +85,27 @@ class Deployment:
             run(["docker", "pull", "--platform", "linux/amd64", source])
             metadata = json.loads(
                 run(
-                    ["docker", "image", "inspect", "--format", "{{json .Config}}", source],
+                    [
+                        "docker",
+                        "image",
+                        "inspect",
+                        "--format",
+                        "{{json .Config}}",
+                        source,
+                    ],
                     capture=True,
                 ).stdout
             )
             reject_baked_credentials(metadata)
             result = run(
-                ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", source],
+                [
+                    "docker",
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{json .RepoDigests}}",
+                    source,
+                ],
                 capture=True,
             )
             values = json.loads(result.stdout)
@@ -103,11 +117,17 @@ class Deployment:
 from spotbot.opennext_paid import PaidPurchases
 from spotbot.opennext_kyb_bundle import form_pdf
 from spotbot.opennext_accounts import Accounts
+from spotbot.opennext_pricing import SERVICE_FEE_BPS
+from spotbot.opennext_market import checkout_totals
+assert SERVICE_FEE_BPS == 0 and checkout_totals(1.2, 1)["totalCents"] == 120
+import subprocess
+subprocess.run(["node", "-e", "const fees=require('/app/legacy/OpenNEXT-transaction-fees.cjs'); if(fees.FEE_PERCENT !== 0) process.exit(1)"], check=True)
 form_pdf(dict(id='probe', account='probe', mode='Auto', company={'companyName':'Unicode \u6d4b\u8bd5'}, submitted_at='2026-11-01T00:00:00Z'))
 chunks=Path('/app/apps/web/.next/static')
 text=''.join(p.read_text(errors='ignore') for p in chunks.rglob('*.js'))
 assert '/api/billing/paid-purchases' in text and '/api/admin/accounts' in text
-print('Verified bundled adapter, Unicode PDF support and frontend review capabilities.')
+assert 'opennext-markup-only-v2' in text
+print('Verified bundled adapter, Unicode PDF support, zero service fee and frontend review capabilities.')
 """
         run(
             [
@@ -144,7 +164,7 @@ print('Verified bundled adapter, Unicode PDF support and frontend review capabil
                 "python",
                 digests["bot"],
                 "-c",
-                "from spotbot.opennext_paid import PaidPurchases; from spotbot.rental_api import install; print('Verified Bot feature imports.')",
+                "from spotbot.opennext_paid import PaidPurchases; from spotbot.rental_api import install; from spotbot.opennext_pricing import SERVICE_FEE_BPS; assert SERVICE_FEE_BPS == 0; print('Verified Bot feature imports and zero service fee.')",
             ]
         )
         write_private(
@@ -226,7 +246,12 @@ print('Verified bundled adapter, Unicode PDF support and frontend review capabil
                         )
                     ):
                         raise Invalid("Production Docker subnet overlaps an existing network.")
-        for name, uid in (("web", 1000), ("bot", 10001), ("gateway", 10002), ("mysql", 999)):
+        for name, uid in (
+            ("web", 1000),
+            ("bot", 10001),
+            ("gateway", 10002),
+            ("mysql", 999),
+        ):
             target = self.state / name
             if target.is_symlink():
                 raise Invalid("A production data mount cannot be a symlink.")
@@ -378,7 +403,10 @@ print('Gateway cannot obtain an EC2 instance metadata token.')
                 ]
                 with subprocess.Popen(command, stdout=subprocess.PIPE) as archive:
                     try:
-                        run(["age", "-r", recipient, "-o", str(partial)], stdin=archive.stdout)
+                        run(
+                            ["age", "-r", recipient, "-o", str(partial)],
+                            stdin=archive.stdout,
+                        )
                         archive.stdout.close()
                         if archive.wait() != 0:
                             raise Invalid("The production backup archive failed.")

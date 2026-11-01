@@ -185,7 +185,7 @@ export type InstancesResponse = z.infer<typeof InstancesResponse>;
 
 /* ---------- Shared shapes ---------- */
 
-/** Fee policy fields written by the server on quotes, orders and supply rows (5 % each side). */
+/** Recorded fee policy fields, including historical agreements. New orders have zero service fees. */
 export const FeeFields = z.object({
   feePolicyVersion: str,
   feePercent: num,
@@ -196,7 +196,7 @@ export const FeeFields = z.object({
   sellerNet: num,
 });
 export type FeeFields = z.infer<typeof FeeFields>;
-export const FEE_POLICY_VERSION = 'opennext-explicit-5pct-v1';
+export const FEE_POLICY_VERSION = 'opennext-markup-only-v2';
 
 /** A public market row (`/api/marketplace/public`, matches, reference catalog, external imports). */
 export const MarketRow = MarketplaceListing.extend({

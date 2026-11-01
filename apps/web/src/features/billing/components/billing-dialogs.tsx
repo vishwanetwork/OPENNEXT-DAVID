@@ -49,7 +49,7 @@ export function Measurement() {
         />
         <Detail
           label={FEE_LABEL}
-          value="Buyer: base order amount + 5%. Seller: base order amount − 5%. Top-ups are not charged this order fee."
+          value="New purchases use the listed price, including any configured markup, with no additional service fee. Historical orders retain their recorded fees."
         />
         <Detail label="Trading margin" value="Sales revenue minus purchase charges" />
         <Detail

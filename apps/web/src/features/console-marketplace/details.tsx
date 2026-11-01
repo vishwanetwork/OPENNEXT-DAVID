@@ -220,11 +220,7 @@ export function FeaturedDialogBody({
       supply ? 'Quoted unit price' : 'Maximum buyer price',
       money(supply ? snapshot.netPrice : snapshot.price),
     ],
-    ...(supply
-      ? ([
-          ['OpenNEXT Fee 5%', 'Calculated separately on the order subtotal for each side.'],
-        ] as Info)
-      : []),
+    ...(supply ? ([['Service fee', 'No fixed service fee on new orders.']] as Info) : []),
     ['Start', date(snapshot.start)],
     ['End / quote deadline', date(snapshot.serviceEnd || snapshot.quoteDeadline)],
     ['Selected', date(row.submittedAt)],

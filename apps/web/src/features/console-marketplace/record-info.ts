@@ -147,8 +147,8 @@ export function recordInfo(r: MarketRecord, tab: InboxTab, demo: boolean): Info 
       ['Quoted unit price', money(r.netPrice) + ' · ' + unit(r)],
       ['Buyer listed price', money(r.netPrice) + ' · ' + unit(r)],
       [
-        'OpenNEXT Fee 5%',
-        'Added to the buyer order subtotal at checkout; deducted from the seller order subtotal at settlement.',
+        'Recorded service fee',
+        'New orders have no fixed service fee; historical orders keep their recorded amounts.',
       ],
       ['Agent status', r.agentStatus],
       ['Source instance', r.resaleOf],
