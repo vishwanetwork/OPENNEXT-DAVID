@@ -286,10 +286,13 @@ class Notifier:
 
     async def provision_paid(self):
         """Direct Pay orders whose payment was confirmed but not yet turned into a rental."""
+        if hasattr(self.ops, "paid_purchases"):
+            await self.ops.paid_purchases.expire()
         for doc in await self.ops.transfers("order"):
             if doc["status"] == "Confirmed" and (doc.get("provisioning") or {}).get("state") in {
                 "queued",
                 "held",
+                "redeeming",
             }:
                 try:
                     await self.provision(doc)

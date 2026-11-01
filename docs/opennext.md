@@ -47,7 +47,7 @@ seconds, limited to the rental Regions (`SPOTBOT_RENTAL_REGIONS`), whole GPUs an
 start from the Region's x86_64 base image). Each Region and
 instance type becomes one supply row (the cheapest zone): `id` `spotbot-<region>-<instance type>`,
 `term` `Spot`, `model`, `region`, `gpuCount`, `vcpu`, `memory` (marketed GB per GPU) and
-`perGpuHourly`. The instance price is the Spot quote rounded up to whole cents. Rows carry the
+`perGpuHourly`. The instance price is the supplier quote with the configured retail markup, rounded up to whole cents. Rows carry the
 published-record markers the web app requires for checkout (`status: Published`,
 `serverRecord: true`, `agentStatus: Succeeded`) and no supplier or instance details. When the bot
 is unavailable the existing response is returned unchanged.
@@ -57,13 +57,13 @@ is unavailable the existing response is returned unchanged.
 ```json
 {"pricingVersion": "duration-v1", "offerId": "spotbot-us-west-2-g6.xlarge",
  "durationHours": 1.5, "expectedPricing": {"currency": "USD", "durationHours": 1.5,
- "hourlyCents": 39, "baseCents": 59, "feeCents": 3, "totalCents": 62},
+ "hourlyCents": 39, "baseCents": 59, "feeCents": 0, "totalCents": 59},
  "sshPublicKey": "ssh-ed25519 AAAA… user@host", "idempotencyKey": "<uuid>"}
 ```
 
 The adapter verifies the session with `GET /api/auth/session` (a signed-in, non-demo Buyer), the
 CSRF token and a same-origin `Origin`, then recomputes the totals with the web app's arithmetic
-(duration subtotal plus 5% fee, JavaScript rounding) from the current offer. A mismatch answers
+(retail duration subtotal with no added fee, JavaScript rounding) from the current offer. A mismatch answers
 409 `PRICE_CHANGED`; an offer that left the catalog answers 409 `OFFER_UNAVAILABLE`; too little
 Credit answers 409 `INSUFFICIENT_CREDIT`. The total is held from the account's Credit as the
 order's maximum and billed by usage (see below). `durationHours` is 1 to 720 hours.
@@ -77,7 +77,7 @@ whole duration plus storage, with margin). The answer is
 
 ```json
 {"confirmed": true, "offerId": "…", "orderId": "<rental id>", "currency": "USD",
- "durationHours": 1.5, "totalCents": 62}
+ "durationHours": 1.5, "totalCents": 59}
 ```
 
 The RFQ reference derives from the user and `idempotencyKey`, so a retry after an uncertain
@@ -102,7 +102,7 @@ rental ends before the customer ever had a running server.
 Usage billing: the purchase total stays held while the order is open. When a delivered rental
 closes, the charge is billed for the bot's service periods (`service_intervals`: the time the
 rental was `ACTIVE`; a Spot replacement pauses it), per started minute with a 1-hour minimum,
-plus the 5% fee, never more than the hold; the rest returns to the Credit. Charges from before
+with the frozen accepted fee (zero on new orders), never more than the hold; the rest returns to the Credit. Charges from before
 usage billing have no `hourly_cents` and stay prepaid. Charges for an account are serialized in
 one process, so run a single adapter instance.
 

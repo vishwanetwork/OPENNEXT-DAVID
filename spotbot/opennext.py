@@ -53,6 +53,7 @@ from spotbot.opennext_market import (
 from spotbot.opennext_notify import Mailer, Notifier
 from spotbot.opennext_ops import Operations, direct_pay_key
 from spotbot.opennext_ops_api import install as install_operations
+from spotbot.opennext_pricing import PricingPolicy
 from spotbot.storage import create_store
 from spotbot.storage.workflows import WorkflowStore
 
@@ -153,6 +154,9 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     # later request. Cookies only travel in each browser request's own headers.
     client.cookies.jar.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
     market = market or SpotMarket.from_settings(settings, client)
+    pricing = PricingPolicy(db, settings.spotbot_opennext_spot_markup_bps if settings else 0)
+    if isinstance(market, SpotMarket):
+        market.pricing_policy = pricing
     ledger = CreditLedger(db)
     library = KeyLibrary(db)
     public_url = settings.spotbot_opennext_public_url if settings else ""
@@ -399,9 +403,14 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             return error(503, "Your available Credit could not be confirmed.")
         return relay(upstream, adjusted_account(account, charges, credits, notices))
 
-    def confirmation(rental):
+    async def confirmation(rental, user_id):
         bought = purchased(rental)
-        totals = checkout_totals(bought["cents"] / 100, bought["hours"])
+        charge = await ledger.find(user_id, rental["rfq"].get("upstream_order_id", ""))
+        total = (
+            charge["cents"]
+            if charge
+            else checkout_totals(bought["cents"] / 100, bought["hours"])["totalCents"]
+        )
         return JSONResponse(
             {
                 "confirmed": True,
@@ -409,7 +418,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 "orderId": rental["id"],
                 "currency": "USD",
                 "durationHours": bought["hours"],
-                "totalCents": totals["totalCents"],
+                "totalCents": total,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -477,8 +486,32 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                         "This purchase reference was already used.",
                         code="IDEMPOTENCY_CONFLICT",
                     )
-                return confirmation(existing)
-            offer = (await market.offers()).get(purchase.offerId)
+                return await confirmation(existing, user["id"])
+            held = await ledger.find(user["id"], reference)
+            if held and held["state"] in {"billed", "refunded"}:
+                return error(
+                    409,
+                    "This purchase attempt is closed. Start a new purchase.",
+                    code="IDEMPOTENCY_CONFLICT",
+                )
+            if held and not (held.get("pricing_snapshot") and held.get("offer_snapshot")):
+                return error(
+                    503,
+                    "An earlier purchase is still pending. Check your instances before creating another order.",
+                )
+            if held and held.get("pricing_snapshot") and held.get("offer_snapshot"):
+                if (
+                    held["offer_id"] != purchase.offerId
+                    or held["pricing_snapshot"]["durationHours"] != purchase.durationHours
+                ):
+                    return error(
+                        409,
+                        "This purchase reference was already used.",
+                        code="IDEMPOTENCY_CONFLICT",
+                    )
+                offer = Offer(held["offer_snapshot"], frozen=held["pricing_snapshot"])
+            else:
+                offer = (await market.offers()).get(purchase.offerId)
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             return error(503, "Spot offers are temporarily unavailable. No order was created.")
         if offer is None:
@@ -487,25 +520,32 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 "This Spot offer is no longer available. Choose another offer.",
                 code="OFFER_UNAVAILABLE",
             )
-        totals = checkout_totals(offer.instance_hourly, purchase.durationHours)
+        totals = checkout_totals(
+            offer.instance_hourly,
+            purchase.durationHours,
+            offer.pricing.get("serviceFeeBps", 500) if held else 0,
+        )
         if totals != purchase.expectedPricing.model_dump():
             return error(
                 409,
                 "The offer price changed. Review the current price before paying.",
                 code="PRICE_CHANGED",
             )
-        try:
-            account = await credit(request, user["id"])
-        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
-            account = None
-        if account is None:
-            return error(503, "Your available Credit could not be confirmed. No order was created.")
-        if round(account["availableCredit"] * 100) < totals["totalCents"]:
-            return error(
-                409,
-                "Insufficient Credit. Add credit to complete this purchase. No order was created.",
-                code="INSUFFICIENT_CREDIT",
-            )
+        if held is None:
+            try:
+                account = await credit(request, user["id"])
+            except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+                account = None
+            if account is None:
+                return error(
+                    503, "Your available Credit could not be confirmed. No order was created."
+                )
+            if round(account["availableCredit"] * 100) < totals["totalCents"]:
+                return error(
+                    409,
+                    "Insufficient Credit. Add credit to complete this purchase. No order was created.",
+                    code="INSUFFICIENT_CREDIT",
+                )
         email = user.get("email")
         charge = await ledger.hold(
             user["id"],
@@ -513,8 +553,32 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             totals["totalCents"],
             offer.id,
             hourly_cents=offer.cents,
+            pricing_snapshot=dict(offer.pricing, durationHours=purchase.durationHours),
+            offer_snapshot=offer.raw,
             email=email if isinstance(email, str) and "@" in email else None,
         )
+        if charge["state"] not in {"held", "charged"}:
+            return error(
+                409,
+                "This purchase attempt is closed. Start a new purchase.",
+                code="IDEMPOTENCY_CONFLICT",
+            )
+        if charge["cents"] != totals["totalCents"]:
+            return error(
+                409,
+                "This purchase reference already holds a different price.",
+                code="IDEMPOTENCY_CONFLICT",
+            )
+        if charge.get("offer_snapshot") and charge.get("pricing_snapshot"):
+            offer = Offer(charge["offer_snapshot"], frozen=charge["pricing_snapshot"])
+            if (
+                offer.cents != totals["hourlyCents"]
+                or charge["pricing_snapshot"]["durationHours"] != purchase.durationHours
+                or offer.id != purchase.offerId
+            ):
+                return error(
+                    409, "This purchase reference was already used.", code="IDEMPOTENCY_CONFLICT"
+                )
         rfq = rfq_for(offer, purchase, user["id"], utcnow(), market.storage_rate)
         try:
             response = await market.create(rfq)
@@ -523,7 +587,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 existing = await market.find(user["id"], reference)
                 if existing:
                     await ledger.settle(charge, existing["id"])
-                    return confirmation(existing)
+                    return await confirmation(existing, user["id"])
             if response.status_code not in {200, 201}:
                 logger.error(
                     "opennext_spot_purchase_rejected status=%s body=%s",
@@ -540,7 +604,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 503, "The order status is uncertain. Check your instances before trying again."
             )
         await ledger.settle(charge, rental["id"])
-        return confirmation(rental)
+        return await confirmation(rental, user["id"])
 
     def csrf_ok(request, user):
         token = user.get("csrfToken")
@@ -690,7 +754,11 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         derived from the payment, so a retry finds the rental instead of ordering twice.
         """
         state = (doc.get("provisioning") or {}).get("state")
-        if market is None or doc["status"] != "Confirmed" or state not in {"queued", "held"}:
+        if (
+            market is None
+            or doc["status"] != "Confirmed"
+            or state not in {"queued", "held", "redeeming"}
+        ):
             return doc
         user_id, reference = doc["account"], doc["order_reference"]
         async with ledger.lock(user_id):
@@ -700,9 +768,36 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 doc["amount_cents"],
                 doc["offer_id"],
                 hourly_cents=doc["hourly_cents"],
+                pricing_snapshot=doc.get("pricing_snapshot"),
+                service_fee_bps=(doc.get("pricing_snapshot") or {}).get("serviceFeeBps", 500),
+                offer_snapshot=doc.get("offer"),
                 email=doc["email"] or None,
             )
-            if state == "queued":
+            if (charge.get("offer_id"), charge.get("cents"), charge.get("hourly_cents")) != (
+                doc["offer_id"],
+                doc["amount_cents"],
+                doc["hourly_cents"],
+            ):
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                return await ops.add_notice(
+                    doc,
+                    "Payment requires a new purchase",
+                    "This reference belongs to a different purchase. Your full payment is in Credit. "
+                    "Please choose another instance.",
+                )
+            if charge["state"] == "billed" and charge.get("rental_id"):
+                return await ops.set_provisioning(
+                    doc, state="submitted", rental_id=charge["rental_id"]
+                )
+            if charge["state"] not in {"held", "charged"}:
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                return await ops.add_notice(
+                    doc,
+                    "Instance purchase attempt closed",
+                    "This purchase attempt has already been released or refunded to Credit. "
+                    "Start a new purchase to request another instance.",
+                )
+            if state in {"queued", "redeeming"}:
                 doc = await ops.set_provisioning(doc, state="held")
             try:
                 rental = await market.find(user_id, reference)
@@ -713,7 +808,11 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                         sshPublicKey=doc["ssh_public_key"],
                     )
                     rfq = rfq_for(
-                        Offer(doc["offer"]), purchase, user_id, utcnow(), market.storage_rate
+                        Offer(doc["offer"], frozen=doc.get("pricing_snapshot")),
+                        purchase,
+                        user_id,
+                        utcnow(),
+                        market.storage_rate,
                     )
                     response = await market.create(rfq)
                     if response.status_code == 409:
@@ -721,7 +820,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     elif response.status_code not in {200, 201}:
                         logger.error("opennext_direct_pay_rejected status=%s", response.status_code)
                         await ledger.refund(charge, "rental_rejected")
-                        doc = await ops.set_provisioning(doc, state="failed")
+                        doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
                         return await ops.add_notice(
                             doc,
                             "Instance could not be started",
@@ -765,6 +864,8 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             market=market,
             ops=ops,
             notifier=notifier,
+            pricing=pricing,
+            ledger=ledger,
             origin=origin,
             client=client,
             headers=headers,
@@ -791,6 +892,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             admin_session=admin_session,
             same_origin=same_origin,
             provision_now=provision_now,
+            accounts=console.accounts,
             audit=lambda event, **fields: logger.info(
                 "opennext_audit event=%s %s", event, " ".join(f"{k}={v}" for k, v in fields.items())
             ),

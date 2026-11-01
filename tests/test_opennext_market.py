@@ -165,8 +165,18 @@ class Fakes:
             for key in ("customer_ref", "upstream_order_id"):
                 if key in request.url.params:
                     rows = [r for r in rows if r["rfq"].get(key) == request.url.params[key]]
-            offset, limit = int(request.url.params.get("offset", 0)), int(request.url.params.get("limit", 100))
-            return httpx.Response(200, json={"query_version": 1, "total": len(rows), "items": rows[offset:offset + limit]})
+            offset, limit = (
+                int(request.url.params.get("offset", 0)),
+                int(request.url.params.get("limit", 100)),
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "query_version": 1,
+                    "total": len(rows),
+                    "items": rows[offset : offset + limit],
+                },
+            )
         if len(parts) == 4 and parts[2] == "rentals" and request.method == "GET":
             row = next((r for r in self.rentals if r["id"] == parts[3]), None)
             return httpx.Response(200, json=row) if row else httpx.Response(404)
@@ -291,10 +301,10 @@ def test_prices_follow_the_web_apps_rounding():
         "durationHours": 1.5,
         "hourlyCents": 39,
         "baseCents": 59,
-        "feeCents": 3,
-        "totalCents": 62,
+        "feeCents": 0,
+        "totalCents": 59,
     }
-    assert checkout_totals(2.64, 1.5)["totalCents"] == 396 + 20
+    assert checkout_totals(2.64, 1.5)["totalCents"] == 396
     # Every whole-cent instance price survives the web app's per-GPU round trip.
     for count in (1, 2, 4, 8):
         for cents in range(1, 50000, 7):
@@ -361,7 +371,7 @@ async def test_buy_now_creates_a_rental_for_the_customers_key(env):
         "orderId": rental["id"],
         "currency": "USD",
         "durationHours": 1.5,
-        "totalCents": 62,
+        "totalCents": 59,
     }
     rfq = fakes.created[0]
     assert rfq["regions"] == ["us-west-2"] and rfq["instance_types"] == ["g6.xlarge"]
@@ -466,12 +476,12 @@ async def test_workspace_adds_the_customers_own_rentals(env):
             "mode": "usage",
             "state": "charged",
             "final": False,
-            "heldCents": 62,
+            "heldCents": 59,
             "hourlyCents": 39,
-            "feePercent": 5,
+            "feePercent": 0,
             "minimumMinutes": 60,
             "usedSeconds": billing["usedSeconds"],
-            "chargedCents": 62,  # Usage so far, never above the hold.
+            "chargedCents": 59,  # Usage so far, never above the hold.
             "releasedCents": None,
             "startedAt": "2026-10-28T01:06:00+00:00",
         },
@@ -527,27 +537,27 @@ async def test_purchases_are_paid_from_credit_promotional_first(env):
     client, fakes, _ = env
     before = (await balance(client)).json()
     assert before["availableCredit"] == 1.5 and before["spotCharges"] == []
-    assert (await buy(client, body())).status_code == 200  # $0.62 total.
+    assert (await buy(client, body())).status_code == 200  # $0.59 total.
     after = (await balance(client)).json()
     assert (after["promotionalCredit"], after["paidCredit"], after["availableCredit"]) == (
         0,
-        0.88,
-        0.88,
+        0.91,
+        0.91,
     )
     assert (
-        after["spotCharges"][0]["totalCents"] == 62
+        after["spotCharges"][0]["totalCents"] == 59
         and after["spotCharges"][0]["state"] == "charged"
     )
     assert after["spotCharges"][0]["orderId"] == fakes.rentals[0]["id"]
     # A retried purchase returns the same order and charges nothing more.
     assert (await buy(client, body())).status_code == 200
-    assert (await balance(client)).json()["availableCredit"] == 0.88
-    # Three hours ($1.23) cost more than is left.
+    assert (await balance(client)).json()["availableCredit"] == 0.91
+    # Three hours ($1.17) cost more than is left.
     refused = await buy(
         client, {**body(hours=3, expectedPricing=checkout_totals(0.39, 3)), "idempotencyKey": "k-2"}
     )
     assert refused.status_code == 409 and refused.json()["code"] == "INSUFFICIENT_CREDIT"
-    assert len(fakes.created) == 1 and (await balance(client)).json()["availableCredit"] == 0.88
+    assert len(fakes.created) == 1 and (await balance(client)).json()["availableCredit"] == 0.91
 
 
 async def test_refused_or_undelivered_orders_are_refunded(env, monkeypatch):
@@ -581,33 +591,33 @@ async def test_delivered_orders_are_billed_by_usage_with_a_one_hour_minimum(env)
         )
         return held, (await balance(client)).json()
 
-    # 1.5 h at $0.39 holds 62 cents; 10 minutes of use bills the 1-hour minimum: 39 + 2 fee.
+    # 1.5 h at $0.39 holds 59 cents; 10 minutes of use bills the 1-hour minimum: 39 cents, with no fee.
     held, account = await order("k-1", 10)
-    assert held["availableCredit"] == 0.88 and held["spotCharges"][0]["state"] == "charged"
-    assert account["availableCredit"] == 1.09
+    assert held["availableCredit"] == 0.91 and held["spotCharges"][0]["state"] == "charged"
+    assert account["availableCredit"] == 1.11
     assert account["spotCharges"][0] == {
         "orderId": fakes.rentals[0]["id"],
-        "totalCents": 41,
-        "heldCents": 62,
+        "totalCents": 39,
+        "heldCents": 59,
         "billing": "usage",
         "state": "billed",
         "createdAt": account["spotCharges"][0]["createdAt"],
     }
     # Usage beyond the hold is never billed: the hold is the order's maximum.
     _, account = await order("k-2", 180)
-    assert account["availableCredit"] == 0.47
+    assert account["availableCredit"] == 0.52
     assert [(c["state"], c["totalCents"]) for c in account["spotCharges"]] == [
-        ("billed", 62),
-        ("billed", 41),
+        ("billed", 59),
+        ("billed", 39),
     ]
 
 
 def test_usage_is_billed_per_started_minute_after_the_first_hour():
     from spotbot.opennext_ledger import usage_cents
 
-    assert usage_cents(39, 0) == usage_cents(39, 3600) == 39 + 2
-    assert usage_cents(39, 75 * 60) == 49 + 2  # ceil(39 * 75 / 60)
-    assert usage_cents(39, 3601) == 40 + 2  # A started minute counts: ceil(39 * 61 / 60)
+    assert usage_cents(39, 0) == usage_cents(39, 3600) == 39
+    assert usage_cents(39, 75 * 60) == 49  # ceil(39 * 75 / 60)
+    assert usage_cents(39, 3601) == 40  # A started minute counts: ceil(39 * 61 / 60)
 
 
 async def test_an_unanswered_order_stays_held_until_its_rental_shows_up(env, monkeypatch):
@@ -616,7 +626,7 @@ async def test_an_unanswered_order_stays_held_until_its_rental_shows_up(env, mon
     uncertain = await buy(client, body())
     assert uncertain.status_code == 503
     held = (await balance(client)).json()
-    assert held["availableCredit"] == 0.88 and held["spotCharges"][0]["state"] == "charged"
+    assert held["availableCredit"] == 0.91 and held["spotCharges"][0]["state"] == "charged"
     # Lost before the bot stored it: refunded once the grace period has passed.
     fakes.rentals.clear()
     fakes.create = "lost"
@@ -626,7 +636,7 @@ async def test_an_unanswered_order_stays_held_until_its_rental_shows_up(env, mon
     await buy(client, {**body(), "idempotencyKey": "k-2"})
     fakes.rentals.clear()
     monkeypatch.setattr(opennext_ledger, "utcnow", lambda: later)
-    assert (await balance(client)).json()["availableCredit"] == 0.88
+    assert (await balance(client)).json()["availableCredit"] == 0.91
 
 
 async def test_buy_now_without_a_key(env):
@@ -718,7 +728,9 @@ async def test_autopilot_for_the_owner_only(env):
         "maxMinutes": 90,
     }
     assert (await client.get(path, headers={"Cookie": "session=other"})).status_code == 404
-    assert (await write(client, "PUT", path, task, cookie="session=other", csrf="csrf-2")).status_code == 404
+    assert (
+        await write(client, "PUT", path, task, cookie="session=other", csrf="csrf-2")
+    ).status_code == 404
     assert (await write(client, "PUT", path, dict(task, onFailure=None))).status_code == 400
     assert (await write(client, "PUT", path, dict(task, env={"1X": "y"}))).status_code == 400
     saved = await write(client, "PUT", path, task)
@@ -829,8 +841,8 @@ async def test_notifier_bills_and_emails_orders_while_the_customer_is_away(env, 
     to, subject, text = outbox.messages[-1]
     assert subject == "Your 1 × L4 Spot server has ended"
     assert "Time used: 50 minutes. Billed for 60 minutes" in text
-    assert "Billed $0.41 of the $0.62 held; $0.21 returned to your Credit." in text
-    assert (await balance(client)).json()["availableCredit"] == 1.09
+    assert "Billed $0.39 of the $0.59 held; $0.20 returned to your Credit." in text
+    assert (await balance(client)).json()["availableCredit"] == 1.11
     # Long-closed orders are skipped entirely.
     monkeypatch.setattr(opennext_notify, "due", lambda *a, **k: 1 / 0)
     await notifier.tick(now + timedelta(days=3))
@@ -848,7 +860,7 @@ async def test_notifier_announces_refunds_and_skips_orders_without_an_email(env)
     await notifier.tick(datetime.fromisoformat("2026-10-28T02:02:00+00:00"))
     [(to, subject, text)] = outbox.messages  # U2's session has no email.
     assert to == "u1@example.com" and subject == "Your 1 × L4 Spot order was not filled"
-    assert "The full $0.62 was returned to your Credit." in text
+    assert "The full $0.59 was returned to your Credit." in text
 
 
 def test_history_lists_only_interruptions_the_customer_did_not_ask_for():

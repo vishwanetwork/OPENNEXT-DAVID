@@ -401,8 +401,11 @@ class ConsoleBackend:
 
 
 def install(app, ctx):
+    from spotbot.opennext_accounts import install as install_accounts
+
     backend = ConsoleBackend(ctx)
     app.state.console_backend = backend
+    install_accounts(app, ctx, backend)
 
     async def guard(request, *, write=False):
         actor, failed = await ctx.admin_session(request)
@@ -465,6 +468,27 @@ def install(app, ctx):
             return ctx.error(400, "Invalid operation request.")
         except OperationError as exc:
             return ctx.error(exc.status, exc.message)
+
+    @app.get("/api/admin/pricing/retail-policy")
+    async def retail_policy(request: Request):
+        _, failed = await guard(request)
+        if failed:
+            return failed
+        return ctx.no_store(await ctx.pricing.view())
+
+    @app.put("/api/admin/pricing/retail-policy")
+    async def update_retail_policy(request: Request):
+        actor, failed = await guard(request, write=True)
+        if failed:
+            return failed
+        try:
+            return ctx.no_store(await ctx.pricing.update(await request.json(), actor))
+        except ConflictError:
+            return ctx.error(409, "Pricing settings changed. Reload before saving.")
+        except (ValueError, TypeError):
+            return ctx.error(
+                400, "Enter valid markup percentages from 0 to 100, with distinct rule selectors."
+            )
 
     @app.get("/api/admin/pricing/providers")
     async def providers(request: Request):

@@ -202,6 +202,8 @@ def review_record(transfer):
         )
     else:
         record.update(pricingVersion="order-total-v1", orderId=transfer["order_reference"])
+        if transfer.get("offer_id"):
+            record["offerId"] = transfer["offer_id"]
     return record
 
 
@@ -395,6 +397,13 @@ class Operations:
                 reviewed_at=None,
             )
             updated["submission_keys"] = {**updated["submission_keys"], idempotency_key: revision}
+            updated["submission_snapshot"] = dict(
+                company=dict(company),
+                mode=mode,
+                consent=True,
+                revision=revision,
+                submitted_at=updated["submitted_at"],
+            )
             saved = await self._save(updated)
             for d in docs:
                 await self._save(dict(d, case_revision=revision))
@@ -527,6 +536,14 @@ class Operations:
 
     # ---------- Bank transfers ----------
 
+    async def find_transfer(self, user_id, key):
+        identity = (
+            "BT-"
+            + hashlib.sha256(dump(["transfer", user_id, key]).encode()).hexdigest()[:20].upper()
+        )
+        doc = await self._get(TRANSFER, identity)
+        return doc if doc and doc["account"] == user_id else None
+
     async def create_transfer(self, user, request, offer=None):
         """Issue (or return) the intent for this request; `offer` is the priced Spot offer."""
         user_id = user["id"]
@@ -560,6 +577,9 @@ class Operations:
                 reference="ONX-" + secrets.token_hex(4).upper(),
                 ssh_public_key=request.get("sshPublicKey") or None,
                 offer=offer.raw if offer else None,
+                pricing_snapshot=dict(offer.pricing, durationHours=request["durationHours"])
+                if offer
+                else None,
                 hourly_cents=offer.cents if offer else None,
                 # The order's RFQ reference: the same derivation as a Credit purchase, with a
                 # Direct Pay key, so provisioning retries can never create a second rental.
@@ -724,15 +744,20 @@ class Operations:
 
     async def credits(self, user_id):
         """Cents added to the account: confirmed top-ups and held Direct Pay payments."""
-        total = 0
-        for doc in await self.transfers(user_id=user_id):
-            if doc["status"] != "Confirmed":
-                continue
-            if doc["purpose"] == "topup":
-                total += doc.get("credited_cents") or 0
-            elif (doc.get("provisioning") or {}).get("state") in CREDITED:
-                total += doc["amount_cents"]
-        return total
+        return sum(
+            [await self.credits_for_transfer(d) for d in await self.transfers(user_id=user_id)]
+        )
+
+    async def credits_for_transfer(self, doc):
+        if doc["status"] != "Confirmed":
+            return 0
+        if doc["purpose"] == "topup":
+            return doc.get("credited_cents") or 0
+        if (doc.get("paid_purchase") or {}).get("state") == "credited":
+            return doc.get("credited_cents") or 0
+        return (
+            doc["amount_cents"] if (doc.get("provisioning") or {}).get("state") in CREDITED else 0
+        )
 
     async def notifications(self, user_id):
         docs = [*await self.transfers(user_id=user_id)]

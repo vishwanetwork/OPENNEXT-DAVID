@@ -79,6 +79,7 @@ class PaymentDecision(Strict):
 
 
 class KybDecision(Strict):
+    accountId: str | None = None
     expectedRevision: int
     decision: Literal["Approved", "Rejected"]
     reason: str = Field("", max_length=2000)
@@ -192,6 +193,13 @@ def install(app, ctx):
                 return error(400, "The request is invalid.", code="INVALID_REQUEST")
             if not (body.offerId and body.durationHours):
                 return error(400, "Choose a Spot offer and a duration.")
+            previous = await ops.find_transfer(user["id"], body.idempotencyKey)
+            if previous:
+                try:
+                    # A previously issued intent keeps its agreed quote through later policy changes.
+                    return no_store(intent_view(await ops.create_transfer(user, body.model_dump())))
+                except OperationError as exc:
+                    return refused(exc)
             try:
                 offer = (await ctx.market.offers()).get(body.offerId)
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
@@ -266,7 +274,19 @@ def install(app, ctx):
         scope, failed = await operator(request, write=False)
         if failed:
             return failed
-        return no_store({"confirmed": True, "sessionScope": scope})
+        return no_store(
+            {
+                "confirmed": True,
+                "sessionScope": scope,
+                "capabilities": ["accounts-v1", "kyb-bundle-v1", "direct-pay-continuation-v1"],
+            }
+        )
+
+    from spotbot.opennext_kyb_bundle import install as install_bundle
+    from spotbot.opennext_paid import install as install_paid
+
+    install_bundle(app, ctx, operator)
+    install_paid(app, ctx, operator, parse, PaymentDecision, Report)
 
     @app.get("/api/admin/payment-requests")
     async def payment_requests(request: Request, kind: str = "topup"):
@@ -276,9 +296,20 @@ def install(app, ctx):
         if kind not in {"topup", "direct_pay"}:
             return error(400, "Unknown payment kind.")
         rows = await ops.transfers("topup" if kind == "topup" else "order")
-        return no_store(
-            {"confirmed": True, "sessionScope": scope, "records": [review_record(r) for r in rows]}
-        )
+        source = None
+        try:
+            source = await ctx.accounts.source()
+        except OperationError:
+            pass  # Review remains usable when the optional legacy account source is unavailable.
+        records = []
+        for row in rows:
+            record = review_record(row)
+            record["accountNumber"] = await ctx.accounts.number(row["account"])
+            if source and row["account"] in source[0]:
+                summary = await ctx.accounts.summary(row["account"], source)
+                record["currentCreditCents"] = summary["currentCreditCents"]
+            records.append(record)
+        return no_store({"confirmed": True, "sessionScope": scope, "records": records})
 
     @app.post("/api/admin/payment-requests/{transfer_id}/decision")
     async def payment_decision(request: Request, transfer_id: str):
@@ -337,6 +368,10 @@ def install(app, ctx):
         if failed:
             return failed
         try:
+            if body.accountId is not None:
+                case = await ops._get("opennext_kyb_case", case_id)
+                if not case or case["account"] != body.accountId:
+                    return error(404, "Business verification case not found.")
             receipt = await ops.kyb_decide(
                 case_id,
                 body.expectedRevision,

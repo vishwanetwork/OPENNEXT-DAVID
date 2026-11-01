@@ -2,7 +2,7 @@
 
 The snapshot follows OPENNEXT-DAVID `src/lib/instance-usage.ts`: connected and interrupted
 intervals, lifecycle events, and hourly billing entries whose cents add up exactly to what
-the order is charged (usage per started minute with a one-hour minimum, plus the 5% fee,
+the order is charged (usage per started minute with a one-hour minimum and any frozen historical fee,
 never above the purchase hold). GPU utilization is not measured yet, so it is null.
 """
 
