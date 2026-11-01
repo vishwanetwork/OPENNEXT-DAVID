@@ -6,6 +6,8 @@ import {
   OperationsJob,
   OperationsOrders,
   OperationsCreditPayments,
+  OperationsRetailPricing,
+  type RetailPricingUpdate,
   OperationsOverview,
   OperationsUsers,
 } from '@opennext/contracts';
@@ -15,6 +17,7 @@ export const liveSchemas = {
   users: OperationsUsers,
   orders: OperationsOrders,
   creditPayments: OperationsCreditPayments,
+  retailPricing: OperationsRetailPricing,
   overview: OperationsOverview,
   activity: OperationsActivity,
   agent: OperationsAgent,
@@ -26,6 +29,7 @@ const paths: Record<LiveResource, string> = {
   users: '/api/admin/users',
   orders: '/api/admin/orders',
   creditPayments: '/api/admin/payments/credit',
+  retailPricing: '/api/admin/pricing/retail-policy',
   overview: '/api/admin/overview',
   activity: '/api/admin/operations/activity',
   agent: '/api/admin/agent',
@@ -44,6 +48,10 @@ export const liveApi = {
     liveSchemas[resource].parse(
       await api.get(paths[resource] + '?' + new URLSearchParams(params), { signal }),
     ) as LiveData<K>,
+  saveRetailPricing: async (api: ApiClient, body: RetailPricingUpdate) =>
+    OperationsRetailPricing.parse(
+      await api.request('/api/admin/pricing/retail-policy', { method: 'PUT', body }),
+    ),
   reconcile: async (api: ApiClient, idempotencyKey: string) =>
     OperationsJob.parse(
       await api.post('/api/admin/agent/actions', { action: 'reconcile', idempotencyKey }),

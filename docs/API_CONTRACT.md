@@ -510,3 +510,21 @@ charged, billed, refunded), `cursor` and `limit`. Rows have `id`, `orderId`, nul
 orders also create usage holds; their references are excluded from Credit purchase rows.
 The existing `/api/admin/payment-requests?kind=direct_pay` remains the bank-receipt review
 queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules change.
+
+### Dynamic Spot retail pricing
+
+`GET /api/admin/pricing/retail-policy` returns `version`, `defaultMarkupBps`, ordered `rules`,
+`changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=500`, independent
+`procurementToleranceBps=2000`, and `scope=executable_spot_offers`. A rule has `id`, nullable
+canonical `gpuModel`, nullable `region`/`provider`, and `markupBps`. Blank selectors match any
+value; at least one selector is required. First matching rule wins; duplicate selectors are
+rejected. Markups range from 0 to 10000 basis points (0–100%), at most 20 rules.
+
+`PUT` requires administrator access, the Console's own origin and
+`{expectedVersion,defaultMarkupBps,rules}`. Stale versions return 409. New deployments start
+at 20% (`SPOTBOT_OPENNEXT_SPOT_MARKUP_BPS=2000`); persisted policy overrides this initial setting.
+New executable Spot quotes apply the latest policy even while the wholesale catalog is cached.
+Raw price observations and history retain supplier prices. Procurement ceilings use wholesale
+costs independently of the retail markup. Existing 5% checkout/usage fees remain unchanged.
+Credit holds and Direct Pay intents store immutable retail and source quote snapshots, so later
+changes cannot reprice accepted purchases, delayed provisioning, instances or idempotent retries.

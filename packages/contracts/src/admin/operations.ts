@@ -133,3 +133,31 @@ export const OperationsCreditPayments = z.object({
   total: count,
   ...page,
 });
+
+const RetailPricingRule = z.object({
+  id: z.string(),
+  gpuModel: z.string().nullable(),
+  region: z.string().nullable(),
+  provider: z.string().nullable(),
+  markupBps: z.number().int().min(0).max(10000),
+});
+const RetailPricingRevision = z.object({
+  version: z.number().int().nonnegative(),
+  defaultMarkupBps: z.number().int().min(0).max(10000),
+  rules: z.array(RetailPricingRule).max(20),
+  changedBy: z.string().nullable(),
+  changedAt: z.string().nullable(),
+});
+export const OperationsRetailPricing = RetailPricingRevision.extend({
+  history: z.array(RetailPricingRevision),
+  serviceFeeBps: z.number().int().nonnegative(),
+  procurementToleranceBps: z.number().int().nonnegative(),
+  scope: z.literal('executable_spot_offers'),
+});
+export type OperationsRetailPricing = z.infer<typeof OperationsRetailPricing>;
+export const RetailPricingUpdate = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+  defaultMarkupBps: z.number().int().min(0).max(10000),
+  rules: z.array(RetailPricingRule).max(20),
+});
+export type RetailPricingUpdate = z.infer<typeof RetailPricingUpdate>;

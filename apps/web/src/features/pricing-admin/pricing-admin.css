@@ -35,8 +35,10 @@
   flex-wrap: wrap;
 }
 .provider-console button,
+.provider-console .pc-actions a,
 .pc-dialog button {
   font: inherit;
+  text-decoration: none;
   font-size: 11px;
   cursor: pointer;
   padding: 8px 12px;
@@ -46,6 +48,7 @@
   color: #52657b;
 }
 .provider-console button:hover,
+.provider-console .pc-actions a:hover,
 .pc-dialog button:hover {
   border-color: #9babbd;
   background: #f7fafc;
