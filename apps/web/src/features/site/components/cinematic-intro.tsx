@@ -45,7 +45,6 @@ export function CinematicIntro({
             />
           </div>
           <div className="container hero-copy" inert={heroCollapsed}>
-            <p className="eyebrow hero-enter">Agent-native GPU marketplace</p>
             <h1 id="hero-title">
               <span className="line-mask">
                 <span>An always-on</span>
@@ -61,10 +60,7 @@ export function CinematicIntro({
             </p>
             <div className="hero-actions hero-enter">
               <LinkButton href={buyerHref} kind="white">
-                Find capacity
-              </LinkButton>
-              <LinkButton href={supplierHref} kind="outline-light">
-                Offer capacity
+                Launch App
               </LinkButton>
             </div>
           </div>

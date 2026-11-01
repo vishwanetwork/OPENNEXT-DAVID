@@ -158,3 +158,20 @@ and `programs-mobile.png`. Artwork provenance is recorded in
 
 Final visual QA result: passed. This change is prepared for review; the local
 preview is not a production deployment.
+
+### Hero CTA refinement — 2026-11-01
+
+Removed the hero's “Agent-native GPU marketplace” eyebrow and replaced its two
+actions with a single “Launch App” link to the existing Buyer Market destination.
+The hero copy reflows naturally; obsolete eyebrow styles were removed and the
+mobile button uses a 180×50px target with 14px text.
+
+Browser review at 1280×800 and 390×844 confirmed the single action, removed copy,
+and intact layout without horizontal overflow. Launch App reached the Buyer
+authentication gate; Back to OpenNEXT returned to the homepage. Evidence is in
+`../qa-launch/hero-desktop.png`, `hero-mobile.png` and `launch-login.png`.
+
+Formatting, lint, typecheck and production build passed. All 477 web tests passed
+with two workers and loopback access for the proxy test server; all 10 contract
+tests also passed. An initial sandboxed parallel run encountered a denied local
+listener and timing failures, resolved by the complete web-suite rerun above.
