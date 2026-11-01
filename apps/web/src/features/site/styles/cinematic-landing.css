@@ -365,11 +365,6 @@ html:has(.opennext-landing) {
 .opennext-landing .hero-copy:has(~ .hero-morph-copy) {
   visibility: visible;
 }
-.opennext-landing .hero-copy .eyebrow {
-  color: #d0dfeb;
-  font-size: 11px;
-  margin-bottom: 26px;
-}
 .opennext-landing .hero-copy h1 {
   font-size: clamp(60px, 6.9vw, 105px);
   line-height: 1.02;
@@ -1394,11 +1389,6 @@ html:has(.opennext-landing) {
   .opennext-landing .hero-copy h1 {
     font-size: clamp(43px, 10.9vw, 60px);
   }
-  .opennext-landing .hero-copy .eyebrow {
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    margin-bottom: 25px;
-  }
   .opennext-landing .hero-description {
     font-size: 15px;
     line-height: 1.7;
@@ -1409,13 +1399,11 @@ html:has(.opennext-landing) {
     margin-top: 28px;
   }
   .opennext-landing .hero-actions .button {
-    min-width: 0;
-    flex: 1;
-    max-width: 180px;
-    padding-inline: 15px;
-    gap: 12px;
-    font-size: 11px;
-    min-height: 49px;
+    min-width: 180px;
+    padding-inline: 20px;
+    gap: 28px;
+    font-size: 14px;
+    min-height: 50px;
   }
   .opennext-landing .hero-actions .button svg {
     width: 15px;

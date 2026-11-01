@@ -107,3 +107,89 @@ No GitHub push or PR has been created at this checkpoint because GitHub credenti
 are unavailable. Creating a PR alone does not publish the release; merging to main
 triggers the existing deployment workflow. See
 `docs/LANDING_TERMINAL_INTEGRATION.md` for the route and authentication details.
+
+## Partner and program module — 2026-11-01
+
+### Reference and placement
+
+The product owner's supplied partner slide is the content reference. The owner
+confirmed Pharos, Fidelity Labs, Ondo and Solana as partners. The module follows
+the existing team experience metrics and precedes the closing call to action.
+The earlier integration PR #12 has since merged; this addition is based on main
+at `489046a` and retains the subsequent Console work.
+
+The slide's heavy green cards were intentionally adapted to the approved landing
+design: white background, monochrome logos, fine dividers and the existing font.
+Programs are grouped separately from partners, with their supplied program names.
+No decorative descriptions, badges, pagination or middle-dot separators were added.
+
+### Visual verification
+
+- Reference and implementation screenshots were inspected together. Artwork,
+  typography, spacing, colors and copy were checked against the content reference
+  and the existing landing style.
+- Desktop at 1280×720: partners appear in four columns; programs appear in three
+  columns. The module shares the metrics container and has no fixed-height blank
+  section. All seven logo assets load locally.
+- Mobile at 390×844 and 320×740: partner logos use a compact two-column grid;
+  programs stack with horizontal dividers. No horizontal overflow was observed.
+- Initial Fidelity artwork clipping was corrected with a responsive image-mat
+  crop; the complete mark remains visible at 320px. The initial Solana icon was
+  replaced with a transparent horizontal wordmark.
+- Existing scroll reveal adds short staggered fades. Reduced-motion styling
+  leaves the logos visible without the stagger. Logos have meaningful alt text;
+  the two groups have labelled sections and lists.
+- The browser reported no warnings or errors. Existing Open Terminal and Buy
+  capacity destinations remain the host-aware Buyer Market routes.
+
+Evidence is in `../qa-partners/`: `before-experience.png`,
+`partners-desktop.png`, `partners-mobile.png`, `partners-mobile-narrow.png`
+and `programs-mobile.png`. Artwork provenance is recorded in
+`apps/web/public/landing-design/partners/SOURCES.md`.
+
+### Validation
+
+- Formatting, lint and typecheck passed. Lint retains three existing max-lines
+  warnings and no errors.
+- The complete test run passed: 477 web tests and 10 contract tests.
+- Production build passed.
+- No new dependencies, API contracts, authentication, backend or deployment
+  behavior were introduced by this static landing module.
+
+Final visual QA result: passed. This change is prepared for review; the local
+preview is not a production deployment.
+
+### Hero CTA refinement — 2026-11-01
+
+Removed the hero's “Agent-native GPU marketplace” eyebrow and replaced its two
+actions with a single “Launch App” link to the existing Buyer Market destination.
+The hero copy reflows naturally; obsolete eyebrow styles were removed and the
+mobile button uses a 180×50px target with 14px text.
+
+Browser review at 1280×800 and 390×844 confirmed the single action, removed copy,
+and intact layout without horizontal overflow. Launch App reached the Buyer
+authentication gate; Back to OpenNEXT returned to the homepage. Evidence is in
+`../qa-launch/hero-desktop.png`, `hero-mobile.png` and `launch-login.png`.
+
+Formatting, lint, typecheck and production build passed. All 477 web tests passed
+with two workers and loopback access for the proxy test server; all 10 contract
+tests also passed. An initial sandboxed parallel run encountered a denied local
+listener and timing failures, resolved by the complete web-suite rerun above.
+
+### Final market placement and CTA — 2026-11-01
+
+The hero's single action is now “Open Terminal”, using the same Buyer destination.
+Partners and programs now follow the “Find your fit. Set your terms.” introduction
+and its buyer/supplier cards, immediately before the scrolling capacity rail.
+They no longer appear in the team metrics section.
+
+At 1280×900 the endorsement block has 56px spacing above and below; at 390×844
+the existing compact logo grid and stacked programs remain intact. All logos
+load, both groups reveal on scroll, the capacity rail runs, and neither viewport
+has horizontal overflow. The former location retains only its normal section
+padding, with no duplicate module or reserved blank area.
+
+Evidence is in `../qa-placement/`: `partners-before-capacity.png`,
+`partners-mobile.png` and `programs-to-capacity-mobile.png`. Formatting, lint,
+typecheck, all 477 web tests, all 10 contract tests and production build passed.
+The three existing lint warnings are unchanged.
