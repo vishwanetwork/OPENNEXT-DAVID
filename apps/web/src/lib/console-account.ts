@@ -34,7 +34,7 @@ export interface ConsolePurchaseEntry {
   kind: 'Instance' | 'RFQ';
   model: string;
   capacity: number;
-  totalCents: number;
+  totalCents: number | null;
   currency: 'USD';
   status: string;
   purchasedAt: string;

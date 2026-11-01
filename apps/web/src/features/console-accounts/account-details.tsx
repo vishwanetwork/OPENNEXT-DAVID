@@ -201,7 +201,9 @@ export function AccountDetails({
                     <td>{entry.kind}</td>
                     <td>{entry.model}</td>
                     <td>{entry.capacity} GPUs</td>
-                    <td>{money(entry.totalCents / 100)}</td>
+                    <td>
+                      {entry.totalCents === null ? 'Not recorded' : money(entry.totalCents / 100)}
+                    </td>
                     <td>{entry.status}</td>
                     <td>{stampUtc(entry.purchasedAt)}</td>
                   </tr>

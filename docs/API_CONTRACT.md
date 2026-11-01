@@ -10,6 +10,7 @@ Missing capabilities keep the corresponding frontend actions disabled.
 - `GET /api/admin/accounts/{id}?creditCursor=&purchaseCursor=`: the existing ConsoleAccountDetail
   port, independently paginated histories, stable Account # and authoritative current Credit.
   Customer bank enrollment is unavailable (null), as are unrecorded historical balance-after values.
+  Purchase totalCents is null for early orders with no linked payment, rendered as Not recorded.
 - `GET /api/admin/buyer-kyb/{case}/bundle?accountId={owner}&revision={revision}`: matching
   case/account/revision, fileName, application/zip contentType, dataBase64, form and original-file
   manifest. The service constructs the Blob; the page validates metadata before download.
