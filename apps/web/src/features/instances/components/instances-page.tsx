@@ -4,6 +4,7 @@ import type { Instance, Order } from '@opennext/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { useTerminal, useWorkspace, useWorkspaceStore } from '@/terminal-kit';
 import { AsyncFeedback } from '@/components/ui/async-feedback';
+import { PaidPurchases } from '@/features/bank-transfer';
 import { lifecycle, moneyOrNa, stampUtcFull, isSpot } from '../lifecycle';
 import { instanceView } from '../preview';
 import { useInstanceUsage, usePrefetchAutopilot, useRefreshInstance } from '../hooks';
@@ -190,6 +191,7 @@ export function InstancesPage() {
             ) : null}
           </div>
         </div>
+        <PaidPurchases />
         {query.isFetching ? (
           <AsyncFeedback>
             {workspace ? 'Refreshing instances…' : 'Loading instances…'}

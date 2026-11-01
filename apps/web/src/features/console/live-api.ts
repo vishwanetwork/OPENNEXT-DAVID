@@ -35,7 +35,11 @@ const paths: Record<LiveResource, string> = {
   agent: '/api/admin/agent',
   billing: '/api/admin/agent/billing',
 };
-const Session = z.object({ confirmed: z.literal(true), sessionScope: z.string().min(1) });
+const Session = z.object({
+  confirmed: z.literal(true),
+  sessionScope: z.string().min(1),
+  capabilities: z.array(z.string()).optional(),
+});
 export const liveApi = {
   session: async (api: ApiClient, signal?: AbortSignal) =>
     Session.parse(await api.get('/api/admin/operations/session', { signal })),

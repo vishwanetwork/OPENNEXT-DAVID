@@ -41,12 +41,22 @@ function useOperationsSession() {
 
 export function usePaymentReviewService(): PaymentReviewService | undefined {
   const api = useApi();
-  const { scope } = useOperationsSession();
+  const { scope, capabilities } = useOperationsSession();
+  const continuation = capabilities.includes('direct-pay-continuation-v1');
   return useMemo<PaymentReviewService | undefined>(
     () =>
       scope
         ? {
             sessionScope: scope,
+            ...(continuation
+              ? {
+                  completeDirectPay: (input: Parameters<PaymentReviewService['decide']>[0]) =>
+                    api.post(
+                      `/api/admin/payment-requests/${encodeURIComponent(input.caseId)}/complete`,
+                      input,
+                    ),
+                }
+              : {}),
             list: (kind, signal) =>
               api.get(`/api/admin/payment-requests?kind=${encodeURIComponent(kind)}`, { signal }),
             decide: (input) =>
@@ -56,7 +66,7 @@ export function usePaymentReviewService(): PaymentReviewService | undefined {
               ),
           }
         : undefined,
-    [api, scope],
+    [api, scope, continuation],
   );
 }
 

@@ -1,5 +1,35 @@
 # API contract (what the front-end expects from the backend)
 
+## Console review adapters (2026-11-01)
+
+The Python adapter now advertises optional `accounts-v1`, `kyb-bundle-v1`, and
+`direct-pay-continuation-v1` capabilities in the authenticated operations-session response.
+Missing capabilities keep the corresponding frontend actions disabled.
+
+- `GET /api/admin/accounts?userIds=u1,u2`: confirmed, demo=false, sessionScope, asOf, accounts.
+- `GET /api/admin/accounts/{id}?creditCursor=&purchaseCursor=`: the existing ConsoleAccountDetail
+  port, independently paginated histories, stable Account # and authoritative current Credit.
+  Customer bank enrollment is unavailable (null), as are unrecorded historical balance-after values.
+- `GET /api/admin/buyer-kyb/{case}/bundle?accountId={owner}&revision={revision}`: matching
+  case/account/revision, fileName, application/zip contentType, dataBase64, form and original-file
+  manifest. The service constructs the Blob; the page validates metadata before download.
+- `POST /api/admin/payment-requests/{id}/complete`: PaymentReviewDecision -> the existing
+  PaymentReviewReceipt with recheck-before-purchase-v1 resolution. This never calls the old
+  automatic provisioning decision. A successful provider preflight is not a stock guarantee.
+- `GET /api/billing/paid-purchases`: owner-bound PaidPurchasesResponse.
+- `POST /api/billing/paid-purchases/{id}/redeem`: { idempotencyKey } -> RedeemPaidPurchaseResponse.
+  Schemas are in billing/paid-purchases.ts. Instances exposes this separate paid continuation;
+  it must never use the Credit checkout endpoint or collect another payment.
+
+Writes enforce existing origin/CSRF, operator RBAC or Buyer ownership/KYB. Errors leave money
+unchanged unless an explicit full-Credit conversion is committed. Decisions/redemptions are
+durable and idempotent. Original prices stay frozen. Full receipt conversion adds no fee;
+top-ups remain face value and delivered usage retains the existing checkout fee.
+Provider uncertainty blocks completion rather than guessing; definitive allocation failure or
+intent expiry releases the whole receipt to Credit. Notices and email outboxes are persisted;
+an acknowledgment confirms queuing, not external delivery. See the adapter's console-reviews.md
+for deployment and recovery behavior, including Unicode fonts for private PDF exports.
+
 Source of truth for shapes: `packages/contracts/src/**` (zod). This document lists every
 endpoint the web application calls, with the auth model and envelopes the legacy Node server
 implements today. The Python backend must keep paths, methods, status codes and envelopes

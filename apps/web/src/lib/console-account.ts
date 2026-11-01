@@ -1,4 +1,4 @@
-/** Read-only Console port. These are adapter models, not deployed endpoint contracts. */
+/** Private read-only Console account service, enabled by the accounts-v1 capability. */
 export interface ConsoleAccountSummary {
   userId: string;
   accountNumber: string | null;

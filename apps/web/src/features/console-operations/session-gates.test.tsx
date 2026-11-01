@@ -23,6 +23,53 @@ function sessionHarness() {
 }
 
 describe('operator session service gates', () => {
+  it('enables completion and bundle services only when the live backend advertises them', async () => {
+    const paths: string[] = [];
+    mockFetch((path) => {
+      paths.push(path);
+      return path === sessionPath
+        ? json(200, {
+            confirmed: true,
+            sessionScope: 'capable-operator',
+            capabilities: ['direct-pay-continuation-v1', 'kyb-bundle-v1'],
+          })
+        : path.includes('/bundle?')
+          ? json(200, {
+              confirmed: true,
+              caseId: 'k1',
+              accountId: 'u1',
+              revision: 1,
+              fileName: 'kyb.zip',
+              contentType: 'application/zip',
+              dataBase64: 'UEs=',
+              form: {},
+              documents: [],
+            })
+          : json(200, { confirmed: true });
+    });
+    const { result } = sessionHarness();
+    await waitFor(() => expect(result.current.payments?.completeDirectPay).toBeTypeOf('function'));
+    if (!result.current.payments?.completeDirectPay || !result.current.kyb?.downloadBundle)
+      throw new Error('Expected enabled capabilities.');
+    await result.current.payments.completeDirectPay({
+      caseId: 'p1',
+      accountId: 'u1',
+      expectedRevision: 1,
+      idempotencyKey: 'key',
+      decision: 'Confirm',
+      fundsVerified: true,
+      reason: '',
+    });
+    const bundle = await result.current.kyb.downloadBundle({
+      caseId: 'k1',
+      accountId: 'u1',
+      expectedRevision: 1,
+    });
+    expect(bundle.blob.type).toBe('application/zip');
+    expect(paths).toContain('/api/admin/payment-requests/p1/complete');
+    expect(paths).toContain('/api/admin/buyer-kyb/k1/bundle?accountId=u1&revision=1');
+    expect(paths.some((path) => path.endsWith('/decision'))).toBe(false);
+  });
   it('does not provide services for an unconfirmed session even when a scope is present', async () => {
     mockFetch((path) =>
       path === sessionPath
