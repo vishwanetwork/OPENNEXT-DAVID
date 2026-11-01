@@ -11,7 +11,7 @@ from spotbot.storage.workflows import ConflictError
 
 IDENTITY = "spot-retail-pricing"
 KIND = "opennext_pricing"
-SERVICE_FEE_BPS = 500
+SERVICE_FEE_BPS = 0
 
 
 class Rule(BaseModel):

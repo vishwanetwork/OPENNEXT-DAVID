@@ -520,7 +520,11 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 "This Spot offer is no longer available. Choose another offer.",
                 code="OFFER_UNAVAILABLE",
             )
-        totals = checkout_totals(offer.instance_hourly, purchase.durationHours)
+        totals = checkout_totals(
+            offer.instance_hourly,
+            purchase.durationHours,
+            offer.pricing.get("serviceFeeBps", 500) if held else 0,
+        )
         if totals != purchase.expectedPricing.model_dump():
             return error(
                 409,
@@ -765,6 +769,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 doc["offer_id"],
                 hourly_cents=doc["hourly_cents"],
                 pricing_snapshot=doc.get("pricing_snapshot"),
+                service_fee_bps=(doc.get("pricing_snapshot") or {}).get("serviceFeeBps", 500),
                 offer_snapshot=doc.get("offer"),
                 email=doc["email"] or None,
             )

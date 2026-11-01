@@ -21,7 +21,7 @@ instruction to the same channel.
 
 ### Today
 
-- The adapter holds `checkout_totals(price, hours)` (duration plus the 5% fee) at purchase.
+- The adapter holds `checkout_totals(price, hours)` (retail duration subtotal; no extra fee on new orders) at purchase.
 - The charge becomes `charged` when the bot accepts the rental and stays charged.
 - Ending a delivered rental early refunds nothing.
 - `expires_at` is `acquisition_deadline + hours`, so a server delivered after 5 minutes runs
@@ -40,7 +40,7 @@ instruction to the same channel.
   - Recomputing them from generation timestamps is possible but fragile, because recovery
     and frozen switches overlap generations.
 - When the rental closes, the ledger settles the charge:
-  - `billed = ceil(billable_minutes * price_cents / 60)` plus the 5% fee, rounded the way
+  - `billed = ceil(billable_minutes * price_cents / 60)` with the frozen accepted fee (zero on new orders), rounded the way
     `checkout_totals` rounds.
   - The billed amount never exceeds the hold.
   - A delivered order is billed at least 60 minutes.

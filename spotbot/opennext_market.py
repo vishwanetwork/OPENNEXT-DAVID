@@ -49,11 +49,11 @@ def js_round(value):
     return js_int(value * 100) / 100
 
 
-def checkout_totals(instance_hourly, hours):
-    """The web app's `checkoutTotals`: duration subtotal plus the 5% fee, in cents."""
+def checkout_totals(instance_hourly, hours, service_fee_bps=0):
+    """Retail duration subtotal in cents; an explicit frozen fee preserves old agreements."""
     hourly = js_int(instance_hourly * 100)
     base = js_int(hourly * js_int(hours * 100) / 100)
-    fee = js_int(base / 20)
+    fee = js_int(base * service_fee_bps / 10000)
     return {
         "currency": "USD",
         "durationHours": hours,

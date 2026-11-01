@@ -61,7 +61,7 @@ errors return 503 without changing the receipt.
 - Definitive submission failure releases the whole payment and queues its notice atomically
   with the failed transfer state. Uncertain outcomes stay pending and reconcile the original
   reference. After acceptance, existing acquisition/delivery deadlines and usage billing apply:
-  an undelivered closed rental releases its entire hold; delivered use retains the existing 5% fee.
+  an undelivered closed rental releases its entire hold; delivered use retains its accepted fee terms (zero on new orders).
 - Maintenance expires unused paid intents to Credit. Expiry and redemption compete through
   the same compare-and-swap record. Never both credit and allocate.
 

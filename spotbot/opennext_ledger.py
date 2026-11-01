@@ -10,7 +10,8 @@ database and subtracts the open charges from that Credit, promotional Credit fir
   held charge, or when the rental ended without ever being handed to the customer.
 - Usage billing (charges with `hourly_cents`): the held amount is the order's maximum. When a
   delivered rental closes, the charge is `billed` for the time the customer had a server, per
-  started minute with a one-hour minimum, plus the 5% fee; the rest of the hold is released.
+  started minute with a one-hour minimum; the rest of the hold is released.
+  The accepted fee is frozen per charge. Older charges without that field retain their 5% fee.
   Earlier charges have no `hourly_cents` and stay prepaid.
 
 Charges for one account are serialized in this process; run a single adapter instance.
@@ -46,11 +47,18 @@ def amount(charge):
     return charge["cents"] if charge["state"] in OPEN else 0
 
 
-def usage_cents(hourly_cents, seconds):
-    """Per started minute with a one-hour minimum, plus the checkout's 5% fee."""
+def usage_cents(hourly_cents, seconds, service_fee_bps=0):
+    """Per started minute with a one-hour minimum and the accepted service fee."""
     minutes = max(MINIMUM_MINUTES, math.ceil(seconds / 60))
     base = math.ceil(hourly_cents * minutes / 60)
-    return base + js_int(base / 20)
+    return base + js_int(base * service_fee_bps / 10000)
+
+
+def fee_bps(charge):
+    """Missing fields identify historical 5% agreements; never reprice those charges."""
+    return charge.get(
+        "service_fee_bps", (charge.get("pricing_snapshot") or {}).get("serviceFeeBps", 500)
+    )
 
 
 def undelivered(rental):
@@ -92,6 +100,7 @@ class CreditLedger:
         email=None,
         pricing_snapshot=None,
         offer_snapshot=None,
+        service_fee_bps=0,
     ):
         """Hold `cents` for the purchase `reference`; an existing charge is returned as is.
 
@@ -109,6 +118,7 @@ class CreditLedger:
             rental_id=None,
             hourly_cents=hourly_cents,
             pricing_snapshot=pricing_snapshot,
+            service_fee_bps=(pricing_snapshot or {}).get("serviceFeeBps", service_fee_bps),
             offer_snapshot=offer_snapshot,
             email=email,
             created_at=timestamp(),
@@ -135,7 +145,7 @@ class CreditLedger:
     async def bill(self, charge, seconds):
         if charge["state"] != "charged":
             return charge
-        billed = min(charge["cents"], usage_cents(charge["hourly_cents"], seconds))
+        billed = min(charge["cents"], usage_cents(charge["hourly_cents"], seconds, fee_bps(charge)))
         return await self._save(
             charge,
             state="billed",
@@ -193,7 +203,9 @@ def billing_view(charge, rental, now=None):
     elif charge["state"] == "refunded":
         charged = 0
     elif hourly:
-        charged = min(charge["cents"], usage_cents(hourly, seconds)) if seconds else 0
+        charged = (
+            min(charge["cents"], usage_cents(hourly, seconds, fee_bps(charge))) if seconds else 0
+        )
     else:
         charged = charge["cents"]
     periods = rental.get("service_intervals") or []
@@ -203,7 +215,7 @@ def billing_view(charge, rental, now=None):
         final=charge["state"] in {"billed", "refunded"},
         heldCents=charge["cents"],
         hourlyCents=hourly,
-        feePercent=5,
+        feePercent=fee_bps(charge) / 100,
         minimumMinutes=MINIMUM_MINUTES,
         usedSeconds=round(seconds),
         chargedCents=charged,

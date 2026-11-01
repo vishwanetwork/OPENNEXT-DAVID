@@ -228,7 +228,7 @@ async def test_direct_pay_provisions_once_and_returns_unused_time_as_credit(env)
     client, fakes, _ = env
     order = {
         "purpose": "order",
-        "amountCents": 62,
+        "amountCents": 59,
         "currency": "USD",
         "offerId": "spotbot-us-west-2-g6.xlarge",
         "durationHours": 1.5,
@@ -236,8 +236,8 @@ async def test_direct_pay_provisions_once_and_returns_unused_time_as_credit(env)
         "sshPublicKey": None,
         "idempotencyKey": "d-1",
     }
-    # The amount must be the current purchase total including the 5% fee.
-    assert (await transfer(client, {**order, "amountCents": 59})).status_code == 409
+    # The amount must be the current purchase total with no additional service fee.
+    assert (await transfer(client, {**order, "amountCents": 62})).status_code == 409
     intent = (await transfer(client, order)).json()
     assert intent["offerId"] == order["offerId"] and "pricingVersion" not in intent
     queue = (await client.get("/api/admin/payment-requests?kind=direct_pay", headers=ADMIN)).json()
@@ -268,8 +268,8 @@ async def test_direct_pay_provisions_once_and_returns_unused_time_as_credit(env)
             {"start": start.isoformat(), "end": (start + timedelta(minutes=20)).isoformat()}
         ],
     )
-    # 20 minutes bill the 1-hour minimum (41 cents); the other 21 cents become Credit.
-    assert (await balance(client)).json()["availableCredit"] == 1.71
+    # 20 minutes bill the 1-hour minimum (39 cents); the other 20 cents become Credit.
+    assert (await balance(client)).json()["availableCredit"] == 1.70
 
 
 async def test_usage_snapshot_matches_the_terminal_contract(env):  # noqa: F811
@@ -318,12 +318,12 @@ async def test_usage_snapshot_matches_the_terminal_contract(env):  # noqa: F811
         ("ended", "user"),
     ]
     billing = snap["billing"]
-    # 85 minutes: ceil(39 * 85 / 60) = 56 compute + 3 fee = 59, under the 62 hold.
-    assert (billing["totalCents"], billing["complete"]) == (59, True)
+    # 85 minutes: ceil(39 * 85 / 60) = 56 compute, no service fee, under the 59 hold.
+    assert (billing["totalCents"], billing["complete"]) == (56, True)
     entries = billing["entries"]
     assert [e["billableSeconds"] for e in entries] == [3000 + 0, 35 * 60]
-    assert sum(e["totalCents"] for e in entries) == 59
-    assert sum(e["feeCents"] for e in entries) == 3
+    assert sum(e["totalCents"] for e in entries) == 56
+    assert sum(e["feeCents"] for e in entries) == 0
     assert all(e["totalCents"] == e["computeCents"] + e["feeCents"] for e in entries)
     assert billing["startedAt"] == iso(0) and billing["stoppedAt"] == iso(95)
 

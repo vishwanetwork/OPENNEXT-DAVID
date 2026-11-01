@@ -22,7 +22,7 @@ async def test_direct_pay_console_and_terminal_share_the_same_order(env, tmp_pat
     outbox = app.state.notifier.mailer = Outbox()
     request = dict(
         purpose="order",
-        amountCents=62,
+        amountCents=59,
         currency="USD",
         offerId="spotbot-us-west-2-g6.xlarge",
         durationHours=1.5,

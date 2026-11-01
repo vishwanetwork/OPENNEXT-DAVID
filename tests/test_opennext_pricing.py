@@ -32,7 +32,7 @@ def test_retail_rounding_and_procurement_cost_are_separate():
         request["max_price_hourly"] == "0.492"
     )  # Procurement ceiling does not include retail markup.
     assert offer.instance_hourly == 0.49
-    assert checkout_totals(1.20, 1)["totalCents"] == 126
+    assert checkout_totals(1.20, 1)["totalCents"] == 120
 
 
 def test_first_matching_rule_wins_with_normalized_gpu_names():
@@ -89,7 +89,7 @@ async def test_policy_auth_cas_and_cached_catalog_refresh(env):  # noqa: F811
     saved = await set_policy(client, 2000)
     assert (
         saved["version"] == 1
-        and saved["serviceFeeBps"] == 500
+        and saved["serviceFeeBps"] == 0
         and saved["procurementToleranceBps"] == 2000
     )
     assert (await client.put(PATH, headers=ADMIN, json=request)).status_code == 409
@@ -114,7 +114,7 @@ async def test_old_confirmation_and_instance_rate_survive_policy_changes(env):  
     purchase["expectedPricing"] = checkout_totals(0.47, 1)
     accepted = await buy(client, purchase)
     assert accepted.status_code == 200, accepted.text
-    assert accepted.json()["totalCents"] == 49
+    assert accepted.json()["totalCents"] == 47
     assert fakes.created[-1]["max_price_hourly"] == "0.468"
     await set_policy(client, 5000)
     replay = await buy(client, purchase)
@@ -133,7 +133,7 @@ async def test_direct_pay_intent_and_provisioning_keep_the_original_quote(env): 
     await set_policy(client, 2000)
     payload = dict(
         purpose="order",
-        amountCents=49,
+        amountCents=47,
         currency="USD",
         offerId="spotbot-us-west-2-g6.xlarge",
         durationHours=1,
@@ -151,7 +151,7 @@ async def test_direct_pay_intent_and_provisioning_keep_the_original_quote(env): 
     await client._transport.app.state.notifier.tick()
     assert len(fakes.created) == 1 and fakes.created[0]["max_price_hourly"] == "0.468"
     charges = client._transport.app.state.console_backend.db.list("opennext_charge")
-    assert len(charges) == 1 and charges[0]["hourly_cents"] == 47 and charges[0]["cents"] == 49
+    assert len(charges) == 1 and charges[0]["hourly_cents"] == 47 and charges[0]["cents"] == 47
 
 
 async def test_uncertain_hold_reuses_original_quote_without_reserving_credit_twice(
@@ -178,7 +178,7 @@ async def test_uncertain_hold_reuses_original_quote_without_reserving_credit_twi
     monkeypatch.setattr(market, "create", original)
     retry = await buy(client, purchase)
     assert retry.status_code == 200, retry.text
-    assert retry.json()["totalCents"] == 49 and len(fakes.created) == 1
+    assert retry.json()["totalCents"] == 47 and len(fakes.created) == 1
     assert len(app.state.console_backend.db.list("opennext_charge")) == 1
 
 
@@ -187,7 +187,7 @@ async def test_refunded_direct_pay_hold_cannot_acquire_another_instance(env):
     await set_policy(client, 2000)
     payload = dict(
         purpose="order",
-        amountCents=49,
+        amountCents=47,
         currency="USD",
         offerId="spotbot-us-west-2-g6.xlarge",
         durationHours=1,
@@ -208,3 +208,57 @@ async def test_refunded_direct_pay_hold_cannot_acquire_another_instance(env):
     assert result["provisioning"]["state"] == "failed"
     assert not fakes.created
     assert (await ledger.find("U1", doc["order_reference"]))["state"] == "refunded"
+
+
+async def test_new_and_historical_usage_charges_keep_separate_fee_terms(env):
+    """Old persisted holds keep their fee even when no explicit fee snapshot existed."""
+    client, _, _ = env
+    ledger = client._transport.app.state.notifier.ledger
+    new = await ledger.hold("U1", "new-free", 300, "offer", hourly_cents=100)
+    assert new["service_fee_bps"] == 0
+    old = await ledger.hold("U1", "old-fee", 315, "offer", hourly_cents=100)
+    old.pop("service_fee_bps")
+    old.pop("pricing_snapshot")
+    ledger.db.save(old, old["version"])
+    old = await ledger.find("U1", "old-fee")
+    new = await ledger.settle(new, "new-rental")
+    old = await ledger.settle(old, "old-rental")
+    assert (await ledger.bill(new, 75 * 60))["billed_cents"] == 125
+    assert (await ledger.bill(old, 75 * 60))["billed_cents"] == 131
+    # Replaying an old reference must not replace its original held amount or fee policy.
+    replay = await ledger.hold("U1", "old-fee", 300, "offer", hourly_cents=100)
+    assert replay["cents"] == 315 and replay["billed_cents"] == 131
+
+
+async def test_obsolete_fee_confirmation_cannot_create_a_new_charge(env):
+    client, fakes, _ = env
+    purchase = body()
+    purchase["expectedPricing"] = checkout_totals(0.39, 1.5, 500)
+    result = await buy(client, purchase)
+    assert result.status_code == 409 and result.json()["code"] == "PRICE_CHANGED"
+    assert not fakes.created
+    assert not client._transport.app.state.console_backend.db.list("opennext_charge")
+
+
+async def test_frozen_historical_hold_retry_uses_its_original_five_percent_fee(env):
+    client, fakes, _ = env
+    purchase = body()
+    from spotbot.opennext_market import order_reference
+
+    ledger = client._transport.app.state.notifier.ledger
+    offer = (await client._transport.app.state.console_backend.market.offers())[purchase["offerId"]]
+    reference = order_reference("U1", purchase["idempotencyKey"])
+    original = dict(offer.pricing, serviceFeeBps=500, durationHours=1.5)
+    await ledger.hold(
+        "U1",
+        reference,
+        62,
+        offer.id,
+        hourly_cents=39,
+        pricing_snapshot=original,
+        offer_snapshot=offer.raw,
+    )
+    purchase["expectedPricing"] = checkout_totals(0.39, 1.5, 500)
+    result = await buy(client, purchase)
+    assert result.status_code == 200, result.text
+    assert result.json()["totalCents"] == 62 and len(fakes.created) == 1

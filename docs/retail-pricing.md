@@ -25,9 +25,11 @@ store. No client-side storage or redeployment is required for future policy chan
 Retail instance-hour cents are `ceil(supplier_hourly_usd * (1 + markup) * 100)`. Calculation
 uses decimal arithmetic, before rounding, rather than adding a margin to an already rounded
 supplier price. Per-GPU prices divide the retail instance-hour price by the explicit GPU count.
-The existing 5% checkout and usage service fee remains separate and unchanged. For example,
+No fixed checkout or usage service fee is added to new purchases. For example,
 a $1.00 supplier rate with 20% markup lists at $1.20 per instance-hour; a one-hour purchase is
-$1.26 including the existing fee. This is a markup on the observed supplier quote, not a
+$1.20. The Console reports `serviceFeeBps=0`. New Credit holds freeze `service_fee_bps=0`;
+historical holds without that field retain 500 bps, and existing snapshots/Direct Pay invoices
+retain their accepted fee. This is a markup on the observed supplier quote, not a
 promise of a fixed realized margin after future Spot price fluctuations and storage costs.
 
 The existing procurement tolerance remains independent: the Bot's `max_price_hourly` derives
