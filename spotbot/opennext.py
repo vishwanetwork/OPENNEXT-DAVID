@@ -764,6 +764,18 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 offer_snapshot=doc.get("offer"),
                 email=doc["email"] or None,
             )
+            if charge["state"] == "billed" and charge.get("rental_id"):
+                return await ops.set_provisioning(
+                    doc, state="submitted", rental_id=charge["rental_id"]
+                )
+            if charge["state"] not in {"held", "charged"}:
+                doc = await ops.set_provisioning(doc, state="failed")
+                return await ops.add_notice(
+                    doc,
+                    "Instance purchase attempt closed",
+                    "This purchase attempt has already been released or refunded to Credit. "
+                    "Start a new purchase to request another instance.",
+                )
             if state == "queued":
                 doc = await ops.set_provisioning(doc, state="held")
             try:

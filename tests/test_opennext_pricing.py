@@ -180,3 +180,31 @@ async def test_uncertain_hold_reuses_original_quote_without_reserving_credit_twi
     assert retry.status_code == 200, retry.text
     assert retry.json()["totalCents"] == 49 and len(fakes.created) == 1
     assert len(app.state.console_backend.db.list("opennext_charge")) == 1
+
+
+async def test_refunded_direct_pay_hold_cannot_acquire_another_instance(env):
+    client, fakes, _ = env
+    await set_policy(client, 2000)
+    payload = dict(
+        purpose="order",
+        amountCents=49,
+        currency="USD",
+        offerId="spotbot-us-west-2-g6.xlarge",
+        durationHours=1,
+        idempotencyKey="closed-bank-attempt",
+        sshPublicKey=None,
+    )
+    assert (await transfer(client, payload)).status_code == 200
+    app = client._transport.app
+    ops = app.state.ops
+    doc = await ops.find_transfer("U1", payload["idempotencyKey"])
+    # Persist the state left by an interrupted older worker after its hold was refunded.
+    doc.update(status="Confirmed", provisioning=dict(state="held"))
+    doc = await ops._save(doc)
+    ledger = app.state.notifier.ledger
+    charge = await ledger.hold("U1", doc["order_reference"], 49, doc["offer_id"], hourly_cents=47)
+    await ledger.refund(charge, "rental_not_created")
+    result = await app.state.notifier.provision(doc)
+    assert result["provisioning"]["state"] == "failed"
+    assert not fakes.created
+    assert (await ledger.find("U1", doc["order_reference"]))["state"] == "refunded"
