@@ -23,6 +23,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from spotbot.opennext_autopilot import summary_view
+from spotbot.opennext_pricing import snapshot
 from spotbot.rental_models import gpu_memory_sufficient, valid_public_key
 from spotbot.rentals import at, dump
 
@@ -95,7 +96,7 @@ def eligible(offer, regions):
 class Offer:
     """One public Spot row and the private launch requirements behind it."""
 
-    def __init__(self, offer):
+    def __init__(self, offer, policy=None, *, frozen=None):
         self.raw = offer  # Kept with Direct Pay orders, which provision after the offer may leave.
         d = offer["details"]
         mib = min(g["MemoryInfo"]["SizeInMiB"] for g in d["gpu_specifications"])
@@ -106,10 +107,12 @@ class Offer:
         self.gpu_memory = nominal_gb(mib)
         if not gpu_memory_sufficient(mib, self.gpu_memory):
             raise ValueError("gpu_memory_unmatched")
-        # Whole cents per instance-hour, rounded up from the Spot quote.
-        self.cents = int(
-            (Decimal(str(offer["price_hourly"])) * 100).to_integral_value(ROUND_CEILING)
+        # The wholesale launch ceiling and customer retail price use independent values.
+        self.pricing = frozen or snapshot(
+            offer, policy or {"version": 0, "defaultMarkupBps": 0, "rules": []}
         )
+        self.source_cents = self.pricing["sourceCents"]
+        self.cents = self.pricing["retailCents"]
         self.id = offer_id(self.region, self.sku)
         per_gpu = self.cents / 100 / self.gpu_count
         self.instance_hourly = js_round(per_gpu * self.gpu_count)
@@ -135,7 +138,7 @@ class Offer:
         }
 
 
-def build_offers(offers, regions):
+def build_offers(offers, regions, policy=None):
     cheapest = {}
     for offer in offers:
         if not eligible(offer, regions):
@@ -148,7 +151,7 @@ def build_offers(offers, regions):
     result = {}
     for key in sorted(cheapest):
         try:
-            item = Offer(cheapest[key])
+            item = Offer(cheapest[key], policy)
         except (KeyError, TypeError, ValueError, ArithmeticError):
             continue
         result[item.id] = item
@@ -206,7 +209,7 @@ def order_reference(user_id, key):
 def rfq_for(offer, purchase, user_id, now, storage_rate):
     reference = order_reference(user_id, purchase.idempotencyKey)
     hours = Decimal(str(purchase.durationHours))
-    cap = Decimal(offer.cents) * PRICE_CAP / 100
+    cap = Decimal(offer.source_cents) * PRICE_CAP / 100
     deadline = now + ACQUISITION
     # Safety bound for the bot, not a charge: the ceiling for the whole duration plus storage
     # (root disk during the rental and its final backup retention), with margin.
@@ -245,9 +248,10 @@ def purchased(rental):
     rfq = rental["rfq"]
     cents = int(Decimal(rfq["max_price_hourly"]) / PRICE_CAP * 100)
     # Earlier purchases have no `service_seconds`; their window ran from the acquisition deadline.
-    seconds = rfq.get("service_seconds") or (
-        at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])
-    ).total_seconds()
+    seconds = (
+        rfq.get("service_seconds")
+        or (at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])).total_seconds()
+    )
     return {
         "cents": cents,
         "hours": round(seconds / 36) / 100,
@@ -315,7 +319,9 @@ def instance_view(row, ssh=None, billing=None):
         "region": connection.get("region") or rfq["regions"][0],
         "term": "Spot",
         "count": rfq["gpu_count"],
-        "rate": round(bought["cents"] / 100 / rfq["gpu_count"], 4),
+        "rate": round(
+            ((billing or {}).get("hourlyCents") or bought["cents"]) / 100 / rfq["gpu_count"], 4
+        ),
         "status": status,
         "connectionStatus": "connected" if ready else None,
         "orderId": row["id"],
@@ -360,6 +366,7 @@ class SpotMarket:
         self.regions = set(regions)
         self.gateway_url, self.gateway_token = gateway_url.rstrip("/"), gateway_token
         self.storage_rate = storage_rate
+        self.pricing_policy = None
         self._offers, self._loaded, self._lock = {}, None, asyncio.Lock()
 
     @classmethod
@@ -410,7 +417,8 @@ class SpotMarket:
                     if not page or offset >= body["total"]:
                         break
                 self._offers, self._loaded = build_offers(values, self.regions), time.monotonic()
-            return self._offers
+            policy = await self.pricing_policy.get() if self.pricing_policy else None
+            return build_offers([o.raw for o in self._offers.values()], self.regions, policy)
 
     async def rentals(self, customer=None):
         """The tenant's rentals; with `customer`, only that customer's."""
@@ -431,14 +439,24 @@ class SpotMarket:
         return [r for r in values if r.get("rfq", {}).get("customer_ref") == customer]
 
     async def find(self, user_id, reference):
-        response = await self.bot("GET", "/v1/rentals", params=dict(
-            customer_ref=customer_ref(user_id), upstream_order_id=reference, limit=1,
-        ))
+        response = await self.bot(
+            "GET",
+            "/v1/rentals",
+            params=dict(
+                customer_ref=customer_ref(user_id),
+                upstream_order_id=reference,
+                limit=1,
+            ),
+        )
         response.raise_for_status()
         body = response.json()
         # A rolling upgrade can still reach an older bot that ignores query parameters.
         # Do not mistake its first tenant rental for a missing idempotent purchase.
-        rows = body["items"] if body.get("query_version") == 1 else await self.rentals(customer_ref(user_id))
+        rows = (
+            body["items"]
+            if body.get("query_version") == 1
+            else await self.rentals(customer_ref(user_id))
+        )
         for rental in rows:
             if rental.get("rfq", {}).get("customer_ref") != customer_ref(user_id):
                 continue
@@ -448,6 +466,7 @@ class SpotMarket:
 
     async def owned(self, user_id, rental_id):
         from uuid import UUID
+
         try:
             rental_id = str(UUID(rental_id))
         except ValueError:

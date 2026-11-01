@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     tensordock_api_key: SecretStr = SecretStr("")
     # Read-only Console pricing; this does not register a fulfillment provider.
     digitalocean_api_key: SecretStr = SecretStr("")
+    spotbot_opennext_spot_markup_bps: int = Field(2000, ge=0, le=10000)
     vultr_api_key: SecretStr = SecretStr("")
     shadeform_api_key: SecretStr = SecretStr("")
     spotbot_api_key: SecretStr = SecretStr("")

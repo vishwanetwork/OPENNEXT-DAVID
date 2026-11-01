@@ -192,6 +192,13 @@ def install(app, ctx):
                 return error(400, "The request is invalid.", code="INVALID_REQUEST")
             if not (body.offerId and body.durationHours):
                 return error(400, "Choose a Spot offer and a duration.")
+            previous = await ops.find_transfer(user["id"], body.idempotencyKey)
+            if previous:
+                try:
+                    # A previously issued intent keeps its agreed quote through later policy changes.
+                    return no_store(intent_view(await ops.create_transfer(user, body.model_dump())))
+                except OperationError as exc:
+                    return refused(exc)
             try:
                 offer = (await ctx.market.offers()).get(body.offerId)
             except (httpx.HTTPError, ValueError, KeyError, TypeError):

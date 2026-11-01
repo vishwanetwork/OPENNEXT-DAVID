@@ -75,7 +75,24 @@ class CreditLedger:
         updated["version"] = charge["version"] + 1
         return updated
 
-    async def hold(self, user_id, reference, cents, offer_id, *, hourly_cents=None, email=None):
+    async def find(self, user_id, reference):
+        if not reference:
+            return None
+        charge = await asyncio.to_thread(self.db.get, KIND, reference.removeprefix("opennext-"))
+        return charge if charge and charge["tenant_id"] == account_id(user_id) else None
+
+    async def hold(
+        self,
+        user_id,
+        reference,
+        cents,
+        offer_id,
+        *,
+        hourly_cents=None,
+        email=None,
+        pricing_snapshot=None,
+        offer_snapshot=None,
+    ):
         """Hold `cents` for the purchase `reference`; an existing charge is returned as is.
 
         With `hourly_cents`, the hold is the maximum and the charge is billed by usage. `email`
@@ -91,6 +108,8 @@ class CreditLedger:
             state="held",
             rental_id=None,
             hourly_cents=hourly_cents,
+            pricing_snapshot=pricing_snapshot,
+            offer_snapshot=offer_snapshot,
             email=email,
             created_at=timestamp(),
             version=0,
@@ -137,7 +156,11 @@ class CreditLedger:
             rental = by_reference.get(charge["reference"])
             if charge["state"] == "held" and rental:
                 charge = await self.settle(charge, rental["id"])
-            elif complete and charge["state"] == "held" and utcnow() - at(charge["created_at"]) > HELD_GRACE:
+            elif (
+                complete
+                and charge["state"] == "held"
+                and utcnow() - at(charge["created_at"]) > HELD_GRACE
+            ):
                 charge = await self.refund(charge, "rental_not_created")
             if charge["state"] == "charged" and rental and undelivered(rental):
                 charge = await self.refund(charge, "not_delivered")

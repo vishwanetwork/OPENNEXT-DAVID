@@ -527,6 +527,14 @@ class Operations:
 
     # ---------- Bank transfers ----------
 
+    async def find_transfer(self, user_id, key):
+        identity = (
+            "BT-"
+            + hashlib.sha256(dump(["transfer", user_id, key]).encode()).hexdigest()[:20].upper()
+        )
+        doc = await self._get(TRANSFER, identity)
+        return doc if doc and doc["account"] == user_id else None
+
     async def create_transfer(self, user, request, offer=None):
         """Issue (or return) the intent for this request; `offer` is the priced Spot offer."""
         user_id = user["id"]
@@ -560,6 +568,9 @@ class Operations:
                 reference="ONX-" + secrets.token_hex(4).upper(),
                 ssh_public_key=request.get("sshPublicKey") or None,
                 offer=offer.raw if offer else None,
+                pricing_snapshot=dict(offer.pricing, durationHours=request["durationHours"])
+                if offer
+                else None,
                 hourly_cents=offer.cents if offer else None,
                 # The order's RFQ reference: the same derivation as a Credit purchase, with a
                 # Direct Pay key, so provisioning retries can never create a second rental.
