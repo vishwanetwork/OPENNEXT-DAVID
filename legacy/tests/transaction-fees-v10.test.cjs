@@ -52,6 +52,7 @@ for(const kind of ['gpu_rental','physical_gpu','model_capacity'])test(kind+' quo
   assert.equal(listing.buyerPrice,2);assert.equal(listing.markupPercent,0);assert.equal(listing.feePercent,0);
   const demand=await requirement(service,{...rfq,kind,model,days:2,inputMillion:1,outputMillion:1});
   const quote=await service.submitQuote(seller,demand.id,{...forgedFees,supplyId:listing.id,rate:2,delivery:30,notes:'Verified quote.',validUntil:'2026-10-19T00:00:00Z'});
+  const notice=(await service.mine(buyer)).notifications.find(row=>row.subject==='New supplier quote');assert.match(notice.message,/No fixed service fee/);assert.doesNotMatch(notice.message,/5%/);
   const expected=transactionAmounts({kind,rate:2,count:demand.count,hours:demand.hours});
   assert.deepEqual(amounts(quote),amounts(expected));assert.equal(quote.unitPrice,2);assert.equal(quote.buyerPrice,2);assert.equal(quote.feeLabel,FEE_LABEL);
   const publicRow=(await service.publicMarket()).supplies[0];assert.equal(publicRow.price,2);assert.equal(publicRow.priceBasis,'base_rate');

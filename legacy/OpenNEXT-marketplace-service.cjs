@@ -224,7 +224,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     const netPrice=round(number(input.rate,0.000001,1e9)),validUntil=date(input.validUntil,now()+1000),amounts=transactionAmounts({kind:r.kind,rate:netPrice,count:r.count,hours:r.hours});
     if(amounts.subtotal<=0)throw fail(400,'The quoted transaction subtotal must be at least USD 0.01.');
     const q={id:uid('QUOTE'),rfqId:r.id,ownerId:user.id,supplyId:supply.id,kind:r.kind,model:r.model,region:r.region,count:r.count,hours:r.hours,term:r.term,netPrice,rate:netPrice,unitPrice:netPrice,buyerPrice:netPrice,price:netPrice,priceBasis:'base_rate',...amounts,validUntil,delivery:number(input.delivery||30,1,525600,true),notes:text(input.notes,4000,true),status:'Pending',createdAt:timestamp(),serverRecord:true};
-    db.quotes.push(q);r.status='Quoted';notify(db,r.ownerId,'New supplier quote',r.id+' received a verified supplier quote. The buyer and seller each pay a separate OpenNEXT Fee 5% on the base transaction amount.');log(db,'Quote submitted',user.id,q.id);return q;
+    db.quotes.push(q);r.status='Quoted';notify(db,r.ownerId,'New supplier quote',r.id+' received a verified supplier quote. No fixed service fee is added at checkout or deducted at settlement.');log(db,'Quote submitted',user.id,q.id);return q;
   });}
   async function decideQuote(user,rfqId,quoteId,action){role(user,'Buyer');return change(db=>{
     const r=owner(db.rfqs,rfqId,user),q=db.quotes.find(q=>q.id===quoteId&&q.rfqId===r.id);
