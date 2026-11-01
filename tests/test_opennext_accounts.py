@@ -31,6 +31,24 @@ async def test_accounts_are_private_stable_and_use_the_terminal_ledger(console):
     await backend.accounts.ledger.refund(charge, "test")
     refreshed = (await client.get("/api/admin/accounts/u1", headers=ADMIN)).json()
     assert refreshed["account"]["currentCreditCents"] == 10000
+    assert any(
+        r["kind"] == "Refund" and r["amountCents"] == 4200
+        for r in refreshed["creditHistory"]["entries"]
+    )
+    console[3].append(
+        dict(
+            id="unlinked-rental",
+            state="CLOSED",
+            created_at="2026-10-28T00:00:00Z",
+            rfq=dict(
+                customer_ref="opennext:u1", gpu_model="T4", gpu_count=1, regions=["us-west-2"]
+            ),
+        )
+    )
+    history = (await client.get("/api/admin/accounts/u1", headers=ADMIN)).json()["purchaseHistory"][
+        "entries"
+    ]
+    assert next(r for r in history if r["id"] == "unlinked-rental")["totalCents"] is None
     other = (await client.get("/api/admin/accounts/u2", headers=ADMIN)).json()
     assert other["purchaseHistory"]["entries"] == []
     assert other["creditHistory"]["entries"] == []

@@ -10,7 +10,7 @@ from fastapi import Request
 
 from spotbot.models import timestamp
 from spotbot.opennext_console_data import order_rows, page
-from spotbot.opennext_ledger import account_id, adjusted_account, amount
+from spotbot.opennext_ledger import account_id, adjusted_account
 from spotbot.opennext_ops import OperationError
 from spotbot.storage.workflows import ConflictError
 
@@ -148,19 +148,35 @@ class Accounts:
                 )
         charges = await self.ledger.charges(user_id)
         for charge in charges:
-            if amount(charge):
+            if charge["state"] in {"held", "charged", "billed", "refunded"}:
                 entries.append(
                     dict(
                         id=charge["id"],
                         kind="Purchase",
-                        amountCents=-amount(charge),
+                        amountCents=-charge["cents"],
                         reference=charge.get("reference"),
-                        description="Instance usage"
-                        if charge["state"] == "billed"
-                        else "Reserved purchase Credit",
-                        at=charge.get("billed_at") or charge["created_at"],
+                        description="Reserved purchase Credit",
+                        at=charge["created_at"],
                     )
                 )
+                released = (
+                    charge["cents"]
+                    if charge["state"] == "refunded"
+                    else charge.get("released_cents", 0)
+                )
+                if released:
+                    entries.append(
+                        dict(
+                            id=charge["id"] + "-release",
+                            kind="Refund",
+                            amountCents=released,
+                            reference=charge.get("reference"),
+                            description="Released unused purchase Credit",
+                            at=charge.get("refunded_at")
+                            or charge.get("billed_at")
+                            or charge["created_at"],
+                        )
+                    )
         entries.sort(key=lambda r: (r["at"], r["id"]), reverse=True)
         # Historic balance-after is unknown: current snapshots cannot reconstruct past revisions.
         entries = [dict(r, balanceAfterCents=None) for r in entries]
@@ -181,7 +197,7 @@ class Accounts:
                 kind=r["kind"],
                 model=r["model"],
                 capacity=r["gpuCount"],
-                totalCents=cents(r["total"]),
+                totalCents=None if r.get("amountKnown") is False else cents(r["total"]),
                 currency="USD",
                 status=r["status"],
                 purchasedAt=r["submittedAt"],
