@@ -37,6 +37,14 @@ jobs:
         run: pnpm test:legacy
       - name: Adapter image pin tests
         run: node --test scripts/resolve-spotbot-image.test.cjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Production deployment contract tests
+        run: |
+          python -m unittest discover -s depoly/tests -v
+          bash -n depoly/build-image.sh depoly/metadata-isolation.sh depoly/rental-check.sh depoly/aws/prepare-recovery.sh
+          sh -n depoly/mysql-init.sh
       - name: Build
         run: pnpm --filter @opennext/web build
         env:

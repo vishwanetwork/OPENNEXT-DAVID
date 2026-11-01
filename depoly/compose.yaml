@@ -1,0 +1,114 @@
+name: ${PROJECT_NAME:?Run production.py render first}
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '10m', max-file: '5' }
+x-safety: &safety
+  restart: unless-stopped
+  security_opt: ['no-new-privileges:true']
+  cap_drop: [ALL]
+  logging: *logging
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:?Lock production images first}
+    restart: unless-stopped
+    env_file:
+      - { path: '${PRIVATE_DIR}/mysql.env', format: raw }
+    volumes:
+      - ${STATE_ROOT}/mysql:/var/lib/mysql
+      - ./mysql-init.sh:/docker-entrypoint-initdb.d/01-production.sh:ro
+    networks: [control]
+    # No host port: only services on the production bridge can connect.
+    logging: *logging
+    healthcheck:
+      test:
+        [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysql -uroot -e "SELECT 1" >/dev/null 2>&1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  bot:
+    <<: *safety
+    image: ${BOT_IMAGE:?Lock production images first}
+    platform: linux/amd64
+    user: '10001:10001'
+    env_file:
+      - { path: '${PRIVATE_DIR}/bot.env', format: raw }
+    command: [spotbot, serve, --host, 0.0.0.0, --port, '8000']
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    volumes:
+      - ${STATE_ROOT}/bot:/app/data
+    networks: [control]
+    ports: ['127.0.0.1:${BOT_PORT}:8000']
+    depends_on:
+      mysql: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+  gateway:
+    <<: *safety
+    image: ${BOT_IMAGE:?Lock production images first}
+    platform: linux/amd64
+    user: '10002:10002'
+    env_file:
+      - { path: '${PRIVATE_DIR}/gateway.env', format: raw }
+    command: [spotbot, gateway, --host, 0.0.0.0, --port, '8000']
+    read_only: true
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    volumes:
+      - ${STATE_ROOT}/gateway:/app/gateway-data
+    networks: [control]
+    ports:
+      - '127.0.0.1:${GATEWAY_PORT}:8000'
+      - '${SSH_START}-${SSH_END}:${SSH_START}-${SSH_END}/tcp'
+    depends_on:
+      mysql: { condition: service_healthy }
+      bot: { condition: service_started }
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+  web:
+    <<: *safety
+    image: ${WEB_IMAGE:?Lock production images first}
+    platform: linux/amd64
+    command: [node, /app/docker/start.cjs]
+    env_file:
+      - { path: '${PRIVATE_DIR}/web.env', format: raw }
+    environment:
+      OPENNEXT_ADAPTER: '1'
+      OPENNEXT_CLAMAV: '1'
+      OPENNEXT_DEMO_ENABLED: '0'
+      OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED: '0'
+      SPOTBOT_OPENNEXT_ALLOW_UNSCANNED: 'false'
+      AWS_EC2_METADATA_DISABLED: 'true'
+      AWS_SHARED_CREDENTIALS_FILE: /nonexistent
+      AWS_CONFIG_FILE: /nonexistent
+    volumes:
+      - ${STATE_ROOT}/web:/app/.opennext-data
+      - ./bootstrap-empty.cjs:/opt/depoly/bootstrap-empty.cjs:ro
+      - ./clamd.conf:/app/docker/clamd.conf:ro
+    networks: [control]
+    ports: ['127.0.0.1:${WEB_PORT}:4188']
+    depends_on:
+      mysql: { condition: service_healthy }
+      bot: { condition: service_started }
+networks:
+  control:
+    enable_ipv6: false
+    ipam:
+      config: [{ subnet: '${NETWORK_CIDR}' }]

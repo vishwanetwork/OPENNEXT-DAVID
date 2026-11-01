@@ -1,0 +1,780 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Regional protected rental interruption delivery and optional additive recovery permissions; no GPU instances or network changes.",
+  "Parameters": {
+    "ExistingBotRoleName": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "[A-Za-z0-9+=,.@_-]*",
+      "Description": "Existing control-plane role name. Empty creates queues only. Never attach to customer VMs."
+    },
+    "AllowCrossRegionCopies": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "false",
+        "true"
+      ]
+    },
+    "SourceRecoveryRegion": {
+      "Type": "String",
+      "Default": "us-east-1",
+      "AllowedPattern": "[a-z]{2}(-[a-z]+)+-[0-9]",
+      "Description": "One explicitly permitted source AMI Region when cross-region copies are enabled."
+    },
+    "KmsKeyArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional existing EBS KMS key ARN. This grants access but does not change the EBS encryption default."
+    },
+    "AlarmTopicArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional existing SNS topic for DLQ alarms. No subscriptions are created."
+    }
+  },
+  "Conditions": {
+    "HasBotRole": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "ExistingBotRoleName"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasAlarmTopic": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AlarmTopicArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "EnableCopyPolicy": {
+      "Fn::And": [
+        {
+          "Condition": "HasBotRole"
+        },
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AllowCrossRegionCopies"
+            },
+            "true"
+          ]
+        }
+      ]
+    },
+    "EnableKmsPolicy": {
+      "Fn::And": [
+        {
+          "Condition": "HasBotRole"
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "KmsKeyArn"
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "DeadLetterQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600
+      }
+    },
+    "InterruptionQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 60,
+        "ReceiveMessageWaitTimeSeconds": 0,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "DeadLetterQueue",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 5
+        }
+      }
+    },
+    "InterruptionRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "Deliver EC2 Spot warnings and state changes to the protected rental worker",
+        "State": "ENABLED",
+        "EventPattern": {
+          "source": [
+            "aws.ec2"
+          ],
+          "account": [
+            {
+              "Ref": "AWS::AccountId"
+            }
+          ],
+          "region": [
+            {
+              "Ref": "AWS::Region"
+            }
+          ],
+          "detail-type": [
+            "EC2 Spot Instance Interruption Warning",
+            "EC2 Instance State-change Notification"
+          ]
+        },
+        "Targets": [
+          {
+            "Id": "ProtectedRentalQueue",
+            "Arn": {
+              "Fn::GetAtt": [
+                "InterruptionQueue",
+                "Arn"
+              ]
+            },
+            "DeadLetterConfig": {
+              "Arn": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              }
+            },
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 86400,
+              "MaximumRetryAttempts": 185
+            }
+          }
+        ]
+      }
+    },
+    "QueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "InterruptionQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "EventBridgeDelivery",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::GetAtt": [
+                      "InterruptionRule",
+                      "Arn"
+                    ]
+                  }
+                },
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "RequireTls",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "sqs:*",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeadLetterAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Protected rental interruption events require operator investigation",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "DeadLetterQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 0,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "RecoveryPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Condition": "HasBotRole",
+      "Properties": {
+        "ManagedPolicyName": {
+          "Fn::Sub": "${AWS::StackName}-recovery"
+        },
+        "Description": "SpotOrderBot regional snapshot, image, volume and interruption-queue recovery",
+        "Roles": [
+          {
+            "Ref": "ExistingBotRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RegionalInventory",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:DescribeInstances",
+                "ec2:DescribeInstanceTypes",
+                "ec2:DescribeSpotInstanceRequests",
+                "ec2:DescribeSpotPriceHistory",
+                "ec2:DescribeVolumes",
+                "ec2:DescribeSnapshots",
+                "ec2:DescribeImages",
+                "ec2:DescribeKeyPairs",
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "servicequotas:GetServiceQuota"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestedRegion": {
+                    "Ref": "AWS::Region"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "GpuImageLookup",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParameter"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/deeplearning/ami/*"
+              }
+            },
+            {
+              "Sid": "ProtectInstanceDisks",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:ModifyInstanceAttribute"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false"
+                }
+              }
+            },
+            {
+              "Sid": "CaptureRunningInstance",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CreateSnapshots"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false"
+                }
+              }
+            },
+            {
+              "Sid": "CaptureRetainedVolumes",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CreateSnapshot",
+                "ec2:CreateSnapshots"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false"
+                }
+              }
+            },
+            {
+              "Sid": "CreateTaggedSnapshots",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CreateSnapshot",
+                "ec2:CreateSnapshots"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:RequestTag/spotbot-rental": "false",
+                  "aws:RequestTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "RegisterTaggedImage",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:RegisterImage"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:RequestTag/spotbot-rental": "false",
+                  "aws:RequestTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "UseOwnedBackupSnapshots",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:RegisterImage"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false",
+                  "aws:ResourceTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "DeleteOwnedVolumes",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:DeleteVolume"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false"
+                }
+              }
+            },
+            {
+              "Sid": "DeleteOwnedImages",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:DeregisterImage"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false",
+                  "aws:ResourceTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "DeleteOwnedSnapshots",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:DeleteSnapshot"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false",
+                  "aws:ResourceTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "TagRecoveryResourcesAtCreation",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CreateTags"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+                }
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "ec2:CreateAction": [
+                    "CreateSnapshot",
+                    "CreateSnapshots",
+                    "RegisterImage",
+                    "CopyImage"
+                  ],
+                  "aws:RequestTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:RequestTag/spotbot-rental": "false",
+                  "aws:RequestTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "ConsumeInterruptionQueue",
+              "Effect": "Allow",
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionQueue",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Sid": "InspectInterruptionRule",
+              "Effect": "Allow",
+              "Action": [
+                "events:DescribeRule",
+                "events:ListTargetsByRule"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "InterruptionRule",
+                  "Arn"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "CopyPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Condition": "EnableCopyPolicy",
+      "Properties": {
+        "ManagedPolicyName": {
+          "Fn::Sub": "${AWS::StackName}-copy"
+        },
+        "Description": "SpotOrderBot approved cross-region recovery image copies",
+        "Roles": [
+          {
+            "Ref": "ExistingBotRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "CopyTaggedDestination",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CopyImage"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+                }
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:RequestTag/spotbot-rental": "false",
+                  "aws:RequestTag/spotbot-backup": "false"
+                }
+              }
+            },
+            {
+              "Sid": "CopyManagedSourceImage",
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CopyImage"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ec2:${SourceRecoveryRegion}::image/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:ResourceTag/spotbot-managed": "true"
+                },
+                "Null": {
+                  "aws:ResourceTag/spotbot-rental": "false",
+                  "aws:ResourceTag/spotbot-backup": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "KmsPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Condition": "EnableKmsPolicy",
+      "Properties": {
+        "ManagedPolicyName": {
+          "Fn::Sub": "${AWS::StackName}-kms"
+        },
+        "Description": "SpotOrderBot use of the configured KMS key through EC2",
+        "Roles": [
+          {
+            "Ref": "ExistingBotRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "UseSelectedEbsKey",
+              "Effect": "Allow",
+              "Action": [
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+                "kms:DescribeKey"
+              ],
+              "Resource": {
+                "Ref": "KmsKeyArn"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "kms:ViaService": {
+                    "Fn::Sub": "ec2.${AWS::Region}.${AWS::URLSuffix}"
+                  },
+                  "kms:CallerAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "GrantEbsKeyToAwsResource",
+              "Effect": "Allow",
+              "Action": [
+                "kms:CreateGrant"
+              ],
+              "Resource": {
+                "Ref": "KmsKeyArn"
+              },
+              "Condition": {
+                "Bool": {
+                  "kms:GrantIsForAWSResource": "true"
+                },
+                "StringEquals": {
+                  "kms:ViaService": {
+                    "Fn::Sub": "ec2.${AWS::Region}.${AWS::URLSuffix}"
+                  },
+                  "kms:CallerAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeadLetterQueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "DeadLetterQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "EventBridgeDelivery",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::GetAtt": [
+                      "InterruptionRule",
+                      "Arn"
+                    ]
+                  }
+                },
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "RequireTls",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "sqs:*",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "InterruptionQueueUrl": {
+      "Value": {
+        "Ref": "InterruptionQueue"
+      }
+    },
+    "InterruptionQueueArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "InterruptionQueue",
+          "Arn"
+        ]
+      }
+    },
+    "DeadLetterQueueUrl": {
+      "Value": {
+        "Ref": "DeadLetterQueue"
+      }
+    },
+    "DeadLetterAlarmName": {
+      "Value": {
+        "Ref": "DeadLetterAlarm"
+      }
+    },
+    "InterruptionRuleName": {
+      "Value": {
+        "Ref": "InterruptionRule"
+      }
+    }
+  }
+}
