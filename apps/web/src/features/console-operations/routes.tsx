@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
-import type { BuyerKybAdminService } from '@/lib/buyer-kyb';
+import type { BuyerKybAdminService, BuyerKybDocument } from '@/lib/buyer-kyb';
 import type { PaymentReviewService } from '@/lib/payment-review';
 import type { ConsoleAccountService } from '@/lib/console-account';
 import { ConsoleAccountsPage } from '@/features/console-accounts';
@@ -62,13 +62,47 @@ export function usePaymentReviewService(): PaymentReviewService | undefined {
 
 export function useBuyerKybAdminService(): BuyerKybAdminService | undefined {
   const api = useApi();
-  const { scope } = useOperationsSession();
+  const { scope, capabilities } = useOperationsSession();
+  const bundles = capabilities.includes('kyb-bundle-v1');
   return useMemo<BuyerKybAdminService | undefined>(
     () =>
       scope
         ? {
             sessionScope: scope,
             list: (signal) => api.get('/api/admin/buyer-kyb', { signal }),
+            ...(bundles
+              ? {
+                  downloadBundle: async ({
+                    caseId,
+                    accountId,
+                    expectedRevision,
+                  }: {
+                    caseId: string;
+                    accountId: string;
+                    expectedRevision: number;
+                  }) => {
+                    const result = await api.get<{
+                      confirmed: boolean;
+                      caseId: string;
+                      accountId: string;
+                      revision: number;
+                      fileName: string;
+                      contentType: string;
+                      dataBase64: string;
+                      form: { fileName: string; contentType: 'application/pdf'; sizeBytes: number };
+                      documents: BuyerKybDocument[];
+                    }>(
+                      `/api/admin/buyer-kyb/${encodeURIComponent(caseId)}/bundle?${new URLSearchParams({ accountId, revision: String(expectedRevision) })}`,
+                    );
+                    return {
+                      ...result,
+                      blob: new Blob([base64ToBytes(result.dataBase64)], {
+                        type: result.contentType,
+                      }),
+                    };
+                  },
+                }
+              : {}),
             download: async ({ caseId, documentId, expectedRevision }) => {
               const result = await api.get<{
                 caseId: string;
@@ -90,7 +124,7 @@ export function useBuyerKybAdminService(): BuyerKybAdminService | undefined {
               api.post(`/api/admin/buyer-kyb/${encodeURIComponent(caseId)}/decision`, body),
           }
         : undefined,
-    [api, scope],
+    [api, scope, bundles],
   );
 }
 

@@ -52,7 +52,7 @@ COPY docker/start.cjs docker/clamd.conf docker/freshclam.conf ./docker/
 # virtual environment, and ClamAV. Signatures live in the data volume, refreshed by freshclam.
 COPY --from=spotbot /app /opt/spotbot-src
 RUN if [ -f /opt/spotbot-src/pyproject.toml ]; then \
-      apk add --no-cache python3 clamav clamav-daemon freshclam \
+      apk add --no-cache python3 clamav clamav-daemon freshclam font-wqy-zenhei \
       && python3 -m venv /opt/spotbot \
       && /opt/spotbot/bin/pip install --no-cache-dir '/opt/spotbot-src[mysql]' \
       && rm -rf /opt/spotbot-src; \
