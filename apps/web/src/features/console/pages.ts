@@ -18,6 +18,7 @@ export const CONSOLE_PAGES = {
   agent: 'Platform agent',
   billing: 'Agent billing',
   users: 'User',
+  'users/accounts': 'Account',
   audit: 'Audit log',
   settings: 'My account',
 } as const;
@@ -43,7 +44,9 @@ export const pagePath = (page: ConsolePage | string): string =>
   page === 'overview' ? '/' : `/${page}`;
 
 export const pageFromPath = (path: string): string => {
-  const segment = path.replace(/^\/+|\/+$/g, '').split('/')[0];
+  const normalized = path.replace(/^\/+|\/+$/g, '');
+  if (normalized === 'users/accounts') return 'users/accounts';
+  const segment = normalized.split('/')[0];
   return segment || 'overview';
 };
 

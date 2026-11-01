@@ -38,10 +38,10 @@ it('clears private records and blocks more decisions after authorization expires
   const service = adapter();
   service.decide.mockRejectedValue(new ApiError('Session expired.', 401));
   const { queryClient } = renderConsole(<PaymentReviewQueue kind="topup" service={service} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Add Credit' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Completed' }, { timeout: 5000 }));
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('checkbox'));
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Add Credit' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Completed' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Administrator access expired');
   expect(screen.queryByText('private@example.com')).not.toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

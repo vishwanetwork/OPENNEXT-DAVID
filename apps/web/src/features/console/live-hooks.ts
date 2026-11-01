@@ -39,6 +39,7 @@ export function useConsoleResource<K extends LiveResource>(
   const error = session.error || query.error;
   return {
     ...query,
+    sessionScope: scope,
     data: scope && !isAccessError(error) ? query.data : undefined,
     error,
     denied: isAccessError(error),

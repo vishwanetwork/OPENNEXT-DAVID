@@ -183,7 +183,7 @@ describe('Console Buyer KYB session boundaries', () => {
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
     fireEvent.click(screen.getByRole('button', { name: 'Switch session' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(await screen.findByText('new@example.com')).toBeInTheDocument();

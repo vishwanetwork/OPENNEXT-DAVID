@@ -4,8 +4,8 @@
 
 `features/buyer-kyb` owns Buyer forms and payment gates separately from supplier review.
 `features/bank-transfer` owns shared top-up / Direct Pay instructions; `features/console-buyer-kyb`
-owns private operations review. Optional ports in `lib/buyer-kyb.ts` have no live adapters until
-secure backend contracts exist. Modals register in the Terminal composition root; `/admin/kyb`
+owns private operations review. Ports in `lib/buyer-kyb.ts` have existing API adapters; the new
+bundle export remains optional until its backend contract exists. Modals register in the Terminal composition root; `/admin/kyb`
 defaults to Buyer, while `?tab=supplier` preserves the existing supplier queue.
 ISO country data lives in `lib/countries.ts` with the procurement re-export retained, avoiding a
 Buyer KYB / procurement import cycle. See [the handoff](BUYER_KYB_HANDOFF.md) for activation gates.
@@ -159,7 +159,8 @@ Console host they do not. Build links with `useApp().href()`, not hard-coded pre
 | Buyer RFQs        | `/rfqs`                                                     | `console-marketplace`; shared `rfq-details` renderer, revision-aware operations review and eligible homepage candidate review.                                  |
 | Supplier capacity | `/supplies`                                                 | `console-marketplace`; submitted supply form details, filters, provenance and eligible homepage candidate review.                                               |
 | Platform agent    | `/agent`, `/agent?tab=billing`                              | `AgentWorkspace` composes existing Platform agent and Agent billing pages without changing their execution policy.                                              |
-| User              | `/users`                                                    | Platform user directory and server-owned totals/growth for `7D`, `1M`, `3M`, `6M`, `1Y`; administrator user service pending.                                    |
+| User              | `/users`                                                    | Platform user directory and server-owned totals/growth for `7D`, `1M`, `3M`, `6M`, `1Y` through the existing administrator user service.                        |
+| User → Account    | `/users/accounts`                                           | `console-accounts`; live user directory with optional verified account numbers, masked bank details, KYB, Credit and independently paginated histories.         |
 
 RFQ, supply, KYB and homepage review routes accept `?record=<id>` to open the matching work item
 in a details dialog. Activity links use stable record IDs and UTC timestamps, not array
@@ -181,8 +182,9 @@ not a complete cross-service event ledger.
   authoritative platform-wide aggregates. Complete Overview totals require backend aggregation
   as described in `API_CONTRACT.md`.
 - `console/pages/operations-records.ts` contains read-only **view models**, not new wire
-  contracts. Orders, payment confirmations, the complete user directory and running-instance
-  totals remain unconnected until backend endpoints and contract tests are agreed.
+  contracts. The current operations adapter provides orders, users, overview and review reads.
+  The Account page's `lib/console-account.ts` enrichment port is not connected: unknown account
+  numbers, balances and bank details are unavailable, never derived from user IDs or another account.
 - The 24 provider references document official integration surfaces and limitations. They do
   not implement collectors, grant permissions, establish inventory or imply that every provider
   supports all three rental terms. Availability comes from the backend registry and current
@@ -196,8 +198,12 @@ not a complete cross-service event ledger.
   request must not manufacture notifications or change Credit locally. Notification coverage
   and the proposed audited, idempotent outbox are documented in `API_CONTRACT.md`.
 
-This redesign changes neither `legacy/` nor `packages/contracts`. Backend handoff proposals are
-explicitly unimplemented until the backend team agrees the wire contracts.
+The current review/account change modifies neither `legacy/` nor `packages/contracts`.
+Payment and Top-up Requests share `console-payments`; KYB remains `console-buyer-kyb`.
+Positive actions are Completed; Failed opens a required-reason Submit dialog. Direct Pay has a
+separate optional completion capability because the old adapter auto-provisions, whereas the new
+policy requires an offer recheck and customer-confirmed paid redemption or full Credit conversion.
+See [the handoff](CONSOLE_ACCOUNT_REVIEW_HANDOFF.md); missing capabilities fail closed.
 
 ### Terminal kit and composition root
 
