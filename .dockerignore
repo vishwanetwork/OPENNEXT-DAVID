@@ -9,6 +9,9 @@ legacy/.opennext-data
 legacy/node_modules
 legacy/tests
 legacy/scripts
+depoly/private
+depoly/state
+depoly/backups
 *.log
 .env
 .env.*

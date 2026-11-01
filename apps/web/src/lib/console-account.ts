@@ -1,4 +1,4 @@
-/** Read-only Console port. These are adapter models, not deployed endpoint contracts. */
+/** Private read-only Console account service, enabled by the accounts-v1 capability. */
 export interface ConsoleAccountSummary {
   userId: string;
   accountNumber: string | null;
@@ -34,7 +34,7 @@ export interface ConsolePurchaseEntry {
   kind: 'Instance' | 'RFQ';
   model: string;
   capacity: number;
-  totalCents: number;
+  totalCents: number | null;
   currency: 'USD';
   status: string;
   purchasedAt: string;

@@ -1,5 +1,5 @@
-import { ConsoleAccountsPage } from '@/features/console-accounts';
+import { AccountsRoute } from '@/features/console-operations';
 
 export default function Page() {
-  return <ConsoleAccountsPage />;
+  return <AccountsRoute />;
 }

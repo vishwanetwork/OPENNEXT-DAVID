@@ -61,7 +61,7 @@ const DetailResponse = z.object({
           kind: z.enum(['Instance', 'RFQ']),
           model: z.string(),
           capacity: count,
-          totalCents: count,
+          totalCents: count.nullable(),
           currency: z.literal('USD'),
           status: z.string(),
           purchasedAt: timestamp,

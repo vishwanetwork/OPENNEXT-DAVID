@@ -6,7 +6,6 @@ import type { OwnedRfq, OwnedSupply } from '@opennext/contracts';
 import { useToast } from '@/components/ui/toast';
 import { useTerminal, useWorkspaceData, useWorkspaceStore } from '@/terminal-kit';
 import { procurementApi } from '../api';
-import { FEE_LABEL } from '../fees';
 import { useRunServer, useSubmissionId } from '../hooks';
 import { useFindMarketRow } from '../market-view';
 import { PBtn, SellerEstimate } from './shared';
@@ -98,9 +97,8 @@ export function ResponseForm({ req }: { req: OwnedRfq }) {
         <SellerEstimate rate={rate} count={req.count} hours={req.hours} />
       </div>
       <p className="form-note">
-        Your base unit price is shown unchanged. {FEE_LABEL} is deducted from your base order amount
-        at settlement. The buyer pays their own 5% fee separately at checkout. Only verified
-        installed capacity can be quoted.
+        Your base unit price is shown unchanged. No fixed service fee is added at checkout or
+        deducted at settlement. Only verified installed capacity can be quoted.
       </p>
       <div className="modal-footer">
         <AsyncButton busy={busy} className="btn" type="submit" disabled={busy}>

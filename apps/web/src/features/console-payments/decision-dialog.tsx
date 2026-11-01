@@ -130,9 +130,10 @@ export function PaymentDecisionDialog({
       )}
       {!fail && record.kind === 'direct_pay' && (
         <p>
-          The original resource will be checked again. If available, the customer receives a link to
-          complete the paid purchase. If unavailable, the full payment becomes Credit so they can
-          choose another resource. This action does not provision an instance.
+          Provider eligibility for the original resource will be checked again. If preflight passes,
+          the customer can continue their paid purchase in Instances. Spot stock is confirmed only
+          when allocation succeeds. If the check or allocation fails, the full payment becomes
+          Credit. This action does not provision an instance.
         </p>
       )}
       <form onSubmit={submit} noValidate>
@@ -156,7 +157,7 @@ export function PaymentDecisionDialog({
               disabled={busy}
               onChange={(event) => setVerified(event.target.checked)}
             />
-            I have independently verified receipt of the full bank payment.
+            I have independently verified receipt of the full bank payment and its reference.
           </label>
         )}
         <p className="payment-review-note">

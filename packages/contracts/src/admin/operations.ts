@@ -31,6 +31,10 @@ export const OperationsOrder = z.object({
   status: z.string(),
   state: z.enum(['processing', 'completed', 'cancelled']),
   submittedAt: z.string(),
+  paymentMethod: z.enum(['Credit', 'Direct Pay', 'Unknown']).optional(),
+  amountKnown: z.boolean().optional(),
+  settledTotal: z.number().nonnegative().nullable().optional(),
+  rentalId: z.string().nullable().optional(),
 });
 export const OperationsOrders = z.object({
   orders: z.array(OperationsOrder),
@@ -108,3 +112,52 @@ export const OperationsBilling = z.object({
   ),
   asOf: z.string(),
 });
+
+/** Read-only Credit purchase ledger; never accepts bank-receipt decisions. */
+export const OperationsCreditPayments = z.object({
+  payments: z.array(
+    z.object({
+      id: z.string(),
+      orderId: z.string(),
+      rentalId: z.string().nullable(),
+      email: z.string(),
+      currency: z.literal('USD'),
+      state: z.enum(['held', 'charged', 'billed', 'refunded']),
+      authorizedCents: count,
+      settledCents: count.nullable(),
+      releasedCents: count,
+      submittedAt: z.string(),
+      paymentMethod: z.literal('Credit'),
+    }),
+  ),
+  total: count,
+  ...page,
+});
+
+const RetailPricingRule = z.object({
+  id: z.string(),
+  gpuModel: z.string().nullable(),
+  region: z.string().nullable(),
+  provider: z.string().nullable(),
+  markupBps: z.number().int().min(0).max(10000),
+});
+const RetailPricingRevision = z.object({
+  version: z.number().int().nonnegative(),
+  defaultMarkupBps: z.number().int().min(0).max(10000),
+  rules: z.array(RetailPricingRule).max(20),
+  changedBy: z.string().nullable(),
+  changedAt: z.string().nullable(),
+});
+export const OperationsRetailPricing = RetailPricingRevision.extend({
+  history: z.array(RetailPricingRevision),
+  serviceFeeBps: z.number().int().nonnegative(),
+  procurementToleranceBps: z.number().int().nonnegative(),
+  scope: z.literal('executable_spot_offers'),
+});
+export type OperationsRetailPricing = z.infer<typeof OperationsRetailPricing>;
+export const RetailPricingUpdate = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+  defaultMarkupBps: z.number().int().min(0).max(10000),
+  rules: z.array(RetailPricingRule).max(20),
+});
+export type RetailPricingUpdate = z.infer<typeof RetailPricingUpdate>;

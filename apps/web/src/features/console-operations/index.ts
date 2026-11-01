@@ -1,4 +1,5 @@
 export {
+  AccountsRoute,
   KybReviewRoute,
   PaymentRequestsRoute,
   TopupRequestsRoute,

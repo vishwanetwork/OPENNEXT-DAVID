@@ -168,6 +168,26 @@ function ProviderDetail({
       </div>
       <p className="pc-scope">{p.scope}</p>
       <dl className="pc-details">
+        {p.sourceType ? (
+          <div>
+            <dt>Price source</dt>
+            <dd>
+              {p.sourceType === 'catalog_reference'
+                ? 'SkyPilot reference catalog; upstream freshness varies'
+                : 'Direct provider pricing API'}
+            </dd>
+          </div>
+        ) : null}
+        {p.validationStatus ? (
+          <div>
+            <dt>Collection verification</dt>
+            <dd>
+              {p.validationStatus === 'live_verified'
+                ? 'A real collection published prices; account availability is not verified'
+                : 'Real collection not verified yet'}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Adapter</dt>
           <dd>

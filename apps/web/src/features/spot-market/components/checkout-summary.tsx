@@ -23,10 +23,6 @@ function Totals({ row, hours }: { row: SpotRow; hours: unknown }) {
         </span>
         <strong data-spot-compute>{total ? usd(total.baseCents / 100) : '—'}</strong>
       </p>
-      <p>
-        <span>OpenNEXT Fee 5%</span>
-        <strong data-spot-fee>{total ? usd(total.feeCents / 100) : '—'}</strong>
-      </p>
       <p className="onx-spot-checkout-total">
         <span>Total</span>
         <strong data-spot-total>{total ? usd(total.totalCents / 100) : '—'}</strong>

@@ -1,4 +1,4 @@
-/** Frontend service ports only. No backend wire contract or live adapter is implemented here. */
+/** Buyer KYB and transfer service ports backed by the protected Python adapter. */
 export type BuyerKybMode = 'Auto' | 'Full';
 export type BuyerKybStatus = 'Reviewing' | 'Approved' | 'Rejected';
 export type BuyerKybReturn = 'topup' | 'spot' | 'billing';

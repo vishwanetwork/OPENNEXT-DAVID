@@ -1,0 +1,20 @@
+{
+  "rfq": {
+    "rfq_id": "production-readiness-only",
+    "rfq_version": 1,
+    "upstream_order_id": "production-readiness-only",
+    "regions": ["us-west-2"],
+    "gpu_model": "T4",
+    "gpu_count": 1,
+    "min_gpu_memory_gib": 16,
+    "min_vcpus": 4,
+    "min_memory_gib": 16,
+    "root_volume_gib": 100,
+    "price_unit": "instance_hour",
+    "max_price_hourly": "1.00",
+    "budget_usd": "10.00",
+    "require_gateway_ack": true,
+    "acquisition_deadline": "AUTO",
+    "expires_at": "AUTO"
+  }
+}

@@ -1,7 +1,7 @@
 # Payment operations and instance usage
 
 Updated 2026-11-01. Existing review adapters plus proposed backend extensions.
-`legacy/` and existing wire schemas are unchanged. No live mail sender, bank reconciliation,
+Existing response shapes remain compatible; the marketplace fee policy now has a new version. No live mail sender, bank reconciliation,
 Credit ledger writer, or provisioning worker has been added to the frontend.
 
 ## Product rules
@@ -9,14 +9,14 @@ Credit ledger writer, or provisioning worker has been added to the frontend.
 The latest product clarification supersedes the earlier $105 transfer / $100 Credit example:
 
 - Top-up is 1:1. $100 transferred means $100 Credit. Do not add or deduct a top-up fee.
-- Purchase subtotal is the hourly offer price multiplied by the selected duration. Apply the
-  tentative 5% purchase fee once to that subtotal, rounded to integer cents.
+- Purchase subtotal is the retail hourly offer price, including the configured markup, multiplied
+  by the selected duration and rounded to integer cents. No additional fixed fee is charged.
 - A Credit purchase debits that full purchase total. Insufficient Credit returns to Add credit.
 - Direct Pay transfers that full purchase total. Confirmation must recheck the original offer:
   if unavailable, credit the entire received amount; otherwise invite the customer to complete
   that already-paid purchase. Confirmation alone must not provision or charge Credit again.
-- The final commercial fee rate and whether it is itemized or included in displayed prices
-  are not finalized. Current UI continues to itemize 5%; do not introduce a hidden uplift.
+- Spot markup remains dynamically configurable, initially 20%. New checkout and usage service
+  fees are zero; historical agreements keep their accepted amounts and frozen fee policy.
 - Changing fee policy requires a new pricing version and renewed customer consent. Never
   reinterpret historical amount-only records as fee-inclusive totals.
 

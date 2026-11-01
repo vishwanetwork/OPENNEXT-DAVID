@@ -33,6 +33,7 @@ export const queryKeys = {
       ['account', 'instance-usage', identity, id] as const,
     bankTransfer: (identity: string, id: string) =>
       ['account', 'bank-transfer', identity, id] as const,
+    paidPurchases: (identity: string) => ['account', 'paid-purchases', identity] as const,
     topup: (identity: string, id: string) => ['account', 'topup', identity, id] as const,
   },
   site: {

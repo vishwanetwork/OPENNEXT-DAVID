@@ -222,7 +222,7 @@ describe('Spot checkout totals', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       purpose: 'order',
-      amountCents: 3024,
+      amountCents: 2880,
       durationHours: 2,
       offerId: 'offer-one',
       currency: 'USD',
@@ -266,27 +266,27 @@ describe('Spot checkout totals', () => {
     await pending;
     expect(calls).toBe(0);
   });
-  it('review uses editable duration, aggregate computation and a flat 5% fee', () => {
+  it('review uses editable duration, aggregate computation and no additional service fee', () => {
     const { row } = setup();
     const total = checkoutTotals(row);
-    expect([total.baseCents, total.feeCents, total.totalCents]).toEqual([1440, 72, 1512]);
+    expect([total.baseCents, total.feeCents, total.totalCents]).toEqual([1440, 0, 1440]);
   });
-  it('duration multiplication rounds the aggregate fee rather than each hourly fee', () => {
+  it('duration multiplication rounds the retail subtotal once', () => {
     expect(checkoutTotals({ instanceHourly: 0.1 }, 3)).toEqual({
       currency: 'USD',
       durationHours: 3,
       hourlyCents: 10,
       baseCents: 30,
-      feeCents: 2,
-      totalCents: 32,
+      feeCents: 0,
+      totalCents: 30,
     });
     const fractional = checkoutTotals({ instanceHourly: 1.11 }, 2.5);
     expect([fractional.baseCents, fractional.feeCents, fractional.totalCents]).toEqual([
-      278, 14, 292,
+      278, 0, 278,
     ]);
     // 25 cents x 1.58 h = 39.5 cents, rounded half up (orders are at least 1 hour).
     const halfCent = checkoutTotals({ instanceHourly: 0.25 }, 1.58);
-    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([40, 2, 42]);
+    expect([halfCent.baseCents, halfCent.feeCents, halfCent.totalCents]).toEqual([40, 0, 40]);
     expect(() => checkoutTotals({ instanceHourly: 0.001 }, 1)).toThrow(/payable total/);
   });
   it('invalid, zero, overprecise and unsafe durations cannot advance checkout', async () => {
@@ -415,7 +415,7 @@ describe('Spot checkout safety', () => {
       expect(env.ctx.messages.at(-1)).toMatch(/testing only/);
     }
   });
-  it('real confirmed flow submits explicit duration and aggregate fee without mutating the client ledger', async () => {
+  it('real confirmed flow submits explicit duration and zero additional fee without mutating the client ledger', async () => {
     let calls = 0;
     let payload: PurchaseInput | undefined;
     const env = setup({
@@ -445,8 +445,8 @@ describe('Spot checkout safety', () => {
       durationHours: 2.5,
       hourlyCents: 1440,
       baseCents: 3600,
-      feeCents: 180,
-      totalCents: 3780,
+      feeCents: 0,
+      totalCents: 3600,
     });
     expect(env.ctx.balance).toBe(100);
     expect(env.ctx.modal?.type).toBe('spot-purchase-complete');
@@ -460,14 +460,14 @@ describe('Spot checkout safety', () => {
       rows: [agent],
       demo: false,
       service: {
-        getCreditBalance: async () => ({ ...wallet(), availableCredit: 30.24 }),
+        getCreditBalance: async () => ({ ...wallet(), availableCredit: 28.8 }),
         beginPurchase: async (input) => {
           calls++;
           return confirmation(input);
         },
       },
     });
-    env.ctx.balance = 30.24;
+    env.ctx.balance = 28.8;
     await toPayment(env, '', '2');
     await env.engine.chooseCredit();
     expect(env.engine.insufficientCredit(env.engine.pending()!)).toBe(false);
@@ -477,7 +477,7 @@ describe('Spot checkout safety', () => {
       rows: [agent],
       demo: false,
       service: {
-        getCreditBalance: async () => ({ ...wallet(), availableCredit: 30.23 }),
+        getCreditBalance: async () => ({ ...wallet(), availableCredit: 28.79 }),
         beginPurchase: async () => {
           calls++;
           return null;

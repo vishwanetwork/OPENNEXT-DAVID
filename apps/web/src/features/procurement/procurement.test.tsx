@@ -226,7 +226,7 @@ describe('Supply page', () => {
     expect(document.querySelector('.proc-review-steps')?.textContent).toContain('KYB Reviewing');
     expect(screen.getByRole('button', { name: 'View submission' })).toBeInTheDocument();
     expect(screen.getByText('$2.20')).toBeInTheDocument();
-    expect(screen.getByText('OpenNEXT Fee 5%')).toBeInTheDocument();
+    expect(screen.getByText('Service fee')).toBeInTheDocument();
     expect(screen.getByText('Agent: Pending')).toBeInTheDocument();
     expect(screen.getByText('H100 RFQ-1')).toBeInTheDocument();
   });

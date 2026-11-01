@@ -31,6 +31,10 @@ export interface OperationsOrder {
   readonly currency: string;
   readonly status: string;
   readonly state: 'processing' | 'completed' | 'cancelled';
+  readonly paymentMethod?: 'Credit' | 'Direct Pay' | 'Unknown';
+  readonly amountKnown?: boolean;
+  readonly settledTotal?: number | null;
+  readonly rentalId?: string | null;
   readonly submittedAt: string;
 }
 
@@ -62,10 +66,15 @@ export const filterUsers = (rows: readonly OperationsUser[], search: string, rol
       contains([row.name, row.email, row.company, row.role, row.status], search),
   );
 
-export const filterOrders = (rows: readonly OperationsOrder[], search: string, kind: string) =>
+export const filterOrders = (
+  rows: readonly OperationsOrder[],
+  search: string,
+  kind: string,
+  state = 'all',
+) =>
   rows.filter(
     (row) =>
-      row.state === 'processing' &&
+      (state === 'all' || row.state === state) &&
       (kind === 'All' || row.kind === kind) &&
       contains([row.id, row.email, row.model, row.country, row.term, row.status], search),
   );

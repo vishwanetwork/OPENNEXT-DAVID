@@ -1,5 +1,13 @@
 # Console accounts and review completion
 
+Implementation update: the optional ports described below are now connected through
+capability-gated Python adapters. Account summaries/history, KYB ZIP exports and Direct Pay
+completion/Terminal redemption have live endpoint contracts in API_CONTRACT.md. The original
+handoff below records the frontend boundary at PR #15. Customer bank enrollment remains
+unavailable; records display null rather than substituting the platform receiving bank.
+AWS completion uses provider quota/price preflight, not a guaranteed stock reservation;
+actual allocation failure returns the full receipt to Credit.
+
 Updated 2026-11-01. Frontend implementation and backend handoff. No backend, wire schema,
 deployment or local Demo walkthrough is changed by this work.
 

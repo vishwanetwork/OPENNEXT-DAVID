@@ -94,6 +94,8 @@ describe('Spot purchase', () => {
     expect(screen.getByRole('button', { name: 'Confirm Credit payment' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
     expect(posts).toBe(1);
+    expect(screen.queryByText(/OpenNEXT Fee 5%/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('$0.78')).toHaveLength(2);
     await act(async () =>
       gate.resolve(
         json(200, {
@@ -102,7 +104,7 @@ describe('Spot purchase', () => {
           orderId: 'rental-1',
           currency: 'USD',
           durationHours: 2,
-          totalCents: 82,
+          totalCents: 78,
         }),
       ),
     );
@@ -140,7 +142,7 @@ describe('Spot purchase', () => {
           orderId: 'rental-1',
           currency: 'USD',
           durationHours: body.durationHours,
-          totalCents: 82,
+          totalCents: 78,
         });
       }
       return json(200, {});
@@ -183,8 +185,8 @@ describe('Spot purchase', () => {
         durationHours: 2,
         hourlyCents: 39,
         baseCents: 78,
-        feeCents: 4,
-        totalCents: 82,
+        feeCents: 0,
+        totalCents: 78,
       },
       sshPublicKey: null,
       idempotencyKey: expect.any(String),

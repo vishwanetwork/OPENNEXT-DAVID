@@ -47,7 +47,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     }
     for(const quote of db.quotes){
       if(quote.status!=='Pending'||quote.feePolicyVersion===FEE_POLICY_VERSION||db.orders.some(order=>order.quoteId===quote.id))continue;
-      quote.status='Needs refresh';quote.refreshReason='OpenNEXT now charges a separate 5% fee to each party. The supplier must submit a refreshed quote before acceptance.';quote.feePolicyChangeRequired=true;
+      quote.status='Needs refresh';quote.refreshReason='OpenNEXT no longer charges a fixed service fee. The supplier must submit a refreshed quote before acceptance.';quote.feePolicyChangeRequired=true;
       const rfq=db.rfqs.find(row=>row.id===quote.rfqId);
       if(quote.ownerId)notify(db,quote.ownerId,'Quote refresh required',quote.refreshReason,{rfqId:quote.rfqId,quoteId:quote.id});
       if(rfq?.ownerId)notify(db,rfq.ownerId,'Updated supplier quote required',quote.refreshReason,{rfqId:rfq.id,quoteId:quote.id});
@@ -224,7 +224,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     const netPrice=round(number(input.rate,0.000001,1e9)),validUntil=date(input.validUntil,now()+1000),amounts=transactionAmounts({kind:r.kind,rate:netPrice,count:r.count,hours:r.hours});
     if(amounts.subtotal<=0)throw fail(400,'The quoted transaction subtotal must be at least USD 0.01.');
     const q={id:uid('QUOTE'),rfqId:r.id,ownerId:user.id,supplyId:supply.id,kind:r.kind,model:r.model,region:r.region,count:r.count,hours:r.hours,term:r.term,netPrice,rate:netPrice,unitPrice:netPrice,buyerPrice:netPrice,price:netPrice,priceBasis:'base_rate',...amounts,validUntil,delivery:number(input.delivery||30,1,525600,true),notes:text(input.notes,4000,true),status:'Pending',createdAt:timestamp(),serverRecord:true};
-    db.quotes.push(q);r.status='Quoted';notify(db,r.ownerId,'New supplier quote',r.id+' received a verified supplier quote. The buyer and seller each pay a separate OpenNEXT Fee 5% on the base transaction amount.');log(db,'Quote submitted',user.id,q.id);return q;
+    db.quotes.push(q);r.status='Quoted';notify(db,r.ownerId,'New supplier quote',r.id+' received a verified supplier quote. No fixed service fee is added at checkout or deducted at settlement.');log(db,'Quote submitted',user.id,q.id);return q;
   });}
   async function decideQuote(user,rfqId,quoteId,action){role(user,'Buyer');return change(db=>{
     const r=owner(db.rfqs,rfqId,user),q=db.quotes.find(q=>q.id===quoteId&&q.rfqId===r.id);
@@ -239,7 +239,7 @@ function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=nul
     // never totals, fee percentages or settlement amounts supplied by a client.
     q.status='Accepted';r.status='Confirmed';s.status='Reserved';
     const order={id:uid('ORDER'),rfqId:r.id,quoteId:q.id,buyerId:user.id,sellerId:q.ownerId,supplyId:s.id,kind:r.kind,model:r.model,count:r.count,hours:r.hours,days:r.days,inputMillion:r.inputMillion,outputMillion:r.outputMillion,region:r.region,term:r.term,unitPrice:q.netPrice,priceBasis:'base_rate',...amounts,currency:'USD',status:'Awaiting payment',paymentStatus:'Unpaid',serviceStart:r.start,serviceEnd:r.kind==='physical_gpu'?null:new Date(Date.parse(r.start)+(r.kind==='model_capacity'?r.days*86400000:r.hours*3600000)).toISOString(),buyer:{name:user.name,email:user.email},seller:{company:kybFor(db,q.ownerId)?.company||'Verified supplier'},provider:kybFor(db,q.ownerId)?.company||'Verified supplier',quoteValidUntil:q.validUntil,deliveryMinutes:q.delivery,createdAt:timestamp(),serverRecord:true};
-    db.orders.unshift(order);r.orderId=order.id;notify(db,q.ownerId,'Quote accepted',r.id+' was awarded. Payment confirmation is pending. Seller proceeds are the base subtotal less OpenNEXT Fee 5%.');
+    db.orders.unshift(order);r.orderId=order.id;notify(db,q.ownerId,'Quote accepted',r.id+' was awarded. Payment confirmation is pending. Seller proceeds are the full agreed subtotal, with no fixed service fee.');
     const rateUnit=r.kind==='gpu_rental'?' / GPU-hour':r.kind==='physical_gpu'?' / GPU':' total';
     for(const other of db.quotes.filter(x=>x.rfqId===r.id&&x.id!==q.id&&x.status==='Pending')){other.status='Not selected';notify(db,other.ownerId,'RFQ closed',r.id+' was awarded.'+(r.shareClosingPrice?' Closing base price: $'+q.netPrice.toFixed(2)+rateUnit+' before fees.':''));}
     log(db,'Quote accepted; awaiting payment',user.id,order.id);return {order:customerOrder(order,user)};

@@ -1,5 +1,36 @@
 # API contract (what the front-end expects from the backend)
 
+## Console review adapters (2026-11-01)
+
+The Python adapter now advertises optional `accounts-v1`, `kyb-bundle-v1`, and
+`direct-pay-continuation-v1` capabilities in the authenticated operations-session response.
+Missing capabilities keep the corresponding frontend actions disabled.
+
+- `GET /api/admin/accounts?userIds=u1,u2`: confirmed, demo=false, sessionScope, asOf, accounts.
+- `GET /api/admin/accounts/{id}?creditCursor=&purchaseCursor=`: the existing ConsoleAccountDetail
+  port, independently paginated histories, stable Account # and authoritative current Credit.
+  Customer bank enrollment is unavailable (null), as are unrecorded historical balance-after values.
+  Purchase totalCents is null for early orders with no linked payment, rendered as Not recorded.
+- `GET /api/admin/buyer-kyb/{case}/bundle?accountId={owner}&revision={revision}`: matching
+  case/account/revision, fileName, application/zip contentType, dataBase64, form and original-file
+  manifest. The service constructs the Blob; the page validates metadata before download.
+- `POST /api/admin/payment-requests/{id}/complete`: PaymentReviewDecision -> the existing
+  PaymentReviewReceipt with recheck-before-purchase-v1 resolution. This never calls the old
+  automatic provisioning decision. A successful provider preflight is not a stock guarantee.
+- `GET /api/billing/paid-purchases`: owner-bound PaidPurchasesResponse.
+- `POST /api/billing/paid-purchases/{id}/redeem`: { idempotencyKey } -> RedeemPaidPurchaseResponse.
+  Schemas are in billing/paid-purchases.ts. Instances exposes this separate paid continuation;
+  it must never use the Credit checkout endpoint or collect another payment.
+
+Writes enforce existing origin/CSRF, operator RBAC or Buyer ownership/KYB. Errors leave money
+unchanged unless an explicit full-Credit conversion is committed. Decisions/redemptions are
+durable and idempotent. Original prices stay frozen. Full receipt conversion adds no fee;
+top-ups remain face value and delivered usage retains the existing checkout fee.
+Provider uncertainty blocks completion rather than guessing; definitive allocation failure or
+intent expiry releases the whole receipt to Credit. Notices and email outboxes are persisted;
+an acknowledgment confirms queuing, not external delivery. See the adapter's console-reviews.md
+for deployment and recovery behavior, including Unicode fonts for private PDF exports.
+
 Source of truth for shapes: `packages/contracts/src/**` (zod). This document lists every
 endpoint the web application calls, with the auth model and envelopes the legacy Node server
 implements today. The Python backend must keep paths, methods, status codes and envelopes
@@ -390,7 +421,7 @@ The 2026-10-29 frontend additions are documented in
 [payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md). These include optional
 review and usage ports with subsequently added adapters. New account, bundle export and revised
 Direct Pay completion capabilities are not connected; see the 2026-11-01 handoff below.
-Top-ups credit the full transferred amount; the tentative 5% fee is purchase-only. Review receipts
+Top-ups credit the full transferred amount; new purchases have no fixed service fee. Review receipts
 must acknowledge both notification and email outboxes. Instance charts do not calculate charges.
 
 Existing connected front-end features use the contracts in `packages/contracts/src/<resource>/index.ts`
@@ -489,3 +520,63 @@ Console Schedules now directs operators to actual Price Source schedules. Platfo
 Agent and Agent billing use real backend records instead of browser-local policies
 or illustrative cost charts. The existing Terminal payment, notification, rental,
 SSH and Autopilot endpoints remain unchanged.
+
+### Additional read-only pricing sources
+
+The Python adapter extends the existing pricing endpoints with eleven sources: Verda,
+DigitalOcean, TensorDock, GCP, Azure, Hyperstack, Vast.ai, RunPod, Nebius, OCI and Paperspace.
+The final eight use SkyPilot's official reference catalog rather than authenticated provider
+APIs. New sources default to disabled. Pending adapters remain explicitly unimplemented.
+
+Optional provider fields `sourceType` (`provider_api` / `catalog_reference`) and
+`validationStatus` (`live_verified` / `not_live_verified` / `needs_credentials`) distinguish
+transport and actual successful collection. Credential presence is not live verification.
+New-source `/test` returns an enqueued real read-only run (`mode=test`), polled through the
+existing run endpoint. Provider configuration, credentials and collected snapshots persist
+in the adapter's configured database. Existing four collectors retain their behavior.
+
+Price records may include `sourceType`, `sourceRevision` (Git blob SHA), `upstreamUpdatedAt`,
+`priceBasis` (`instance_hour` / `gpu_component_hour`) and `orderable=false`. Catalog fetch
+time does not establish the upstream price's effective date. Accelerator-only GCP records
+have null `instanceHourly` and must be excluded from full-machine market comparisons.
+No Reserved prices, inventory or quota availability are inferred. The price endpoint merges
+and filters additional snapshots, balances providers before applying the limit, and reports
+truncation. Existing AWS historical charts and purchasable capacity keep their current sources.
+
+### Order history and Credit payment records
+
+`GET /api/admin/orders` defaults to `state=all`. `processing`, `completed` and `cancelled`
+remain supported filters, alongside type, search and pagination. Completed/ended purchases
+must not be removed by a second client-side processing-only filter. Orders include optional
+`paymentMethod`, `rentalId`, `amountKnown` and `settledTotal`; `total` remains the agreed order limit, while
+`settledTotal` is the final ledger charge or null until settled. Refunded orders settle to zero.
+Charge records without a visible rental remain in order history rather than disappearing.
+When no payment record is linked, `amountKnown=false` and the UI shows an unknown amount
+rather than interpreting a compatibility zero as a free order.
+
+`GET /api/admin/payments/credit` is an administrator-only read-only ledger projection. It
+returns `{payments,total,nextCursor,asOf}`, supports `search`, `paymentState` (all, held,
+charged, billed, refunded), `cursor` and `limit`. Rows have `id`, `orderId`, nullable `rentalId`,
+`email`, USD `currency`, `state`, `authorizedCents`, nullable `settledCents`, `releasedCents`,
+`submittedAt` and `paymentMethod=Credit`. A usage hold is not a final charge. Direct Pay
+orders also create usage holds; their references are excluded from Credit purchase rows.
+The existing `/api/admin/payment-requests?kind=direct_pay` remains the bank-receipt review
+queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules change.
+
+### Dynamic Spot retail pricing
+
+`GET /api/admin/pricing/retail-policy` returns `version`, `defaultMarkupBps`, ordered `rules`,
+`changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=0`, independent
+`procurementToleranceBps=2000`, and `scope=executable_spot_offers`. A rule has `id`, nullable
+canonical `gpuModel`, nullable `region`/`provider`, and `markupBps`. Blank selectors match any
+value; at least one selector is required. First matching rule wins; duplicate selectors are
+rejected. Markups range from 0 to 10000 basis points (0–100%), at most 20 rules.
+
+`PUT` requires administrator access, the Console's own origin and
+`{expectedVersion,defaultMarkupBps,rules}`. Stale versions return 409. New deployments start
+at 20% (`SPOTBOT_OPENNEXT_SPOT_MARKUP_BPS=2000`); persisted policy overrides this initial setting.
+New executable Spot quotes apply the latest policy even while the wholesale catalog is cached.
+Raw price observations and history retain supplier prices. Procurement ceilings use wholesale
+costs independently of the retail markup. New checkout/usage service fees are zero. New marketplace quotes use `opennext-markup-only-v2` with zero buyer/seller fees; historical `opennext-explicit-5pct-v1` records retain their saved amounts. The adapter freezes `service_fee_bps` on every new charge; historical charges without the field retain their original 500 bps.
+Credit holds and Direct Pay intents store immutable retail and source quote snapshots, so later
+changes cannot reprice accepted purchases, delayed provisioning, instances or idempotent retries.

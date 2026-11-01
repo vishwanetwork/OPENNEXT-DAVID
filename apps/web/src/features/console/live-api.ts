@@ -5,6 +5,9 @@ import {
   OperationsBilling,
   OperationsJob,
   OperationsOrders,
+  OperationsCreditPayments,
+  OperationsRetailPricing,
+  type RetailPricingUpdate,
   OperationsOverview,
   OperationsUsers,
 } from '@opennext/contracts';
@@ -13,6 +16,8 @@ import type { ApiClient } from '@/lib/api/client';
 export const liveSchemas = {
   users: OperationsUsers,
   orders: OperationsOrders,
+  creditPayments: OperationsCreditPayments,
+  retailPricing: OperationsRetailPricing,
   overview: OperationsOverview,
   activity: OperationsActivity,
   agent: OperationsAgent,
@@ -23,12 +28,18 @@ export type LiveData<K extends LiveResource> = z.infer<(typeof liveSchemas)[K]>;
 const paths: Record<LiveResource, string> = {
   users: '/api/admin/users',
   orders: '/api/admin/orders',
+  creditPayments: '/api/admin/payments/credit',
+  retailPricing: '/api/admin/pricing/retail-policy',
   overview: '/api/admin/overview',
   activity: '/api/admin/operations/activity',
   agent: '/api/admin/agent',
   billing: '/api/admin/agent/billing',
 };
-const Session = z.object({ confirmed: z.literal(true), sessionScope: z.string().min(1) });
+const Session = z.object({
+  confirmed: z.literal(true),
+  sessionScope: z.string().min(1),
+  capabilities: z.array(z.string()).optional(),
+});
 export const liveApi = {
   session: async (api: ApiClient, signal?: AbortSignal) =>
     Session.parse(await api.get('/api/admin/operations/session', { signal })),
@@ -41,6 +52,10 @@ export const liveApi = {
     liveSchemas[resource].parse(
       await api.get(paths[resource] + '?' + new URLSearchParams(params), { signal }),
     ) as LiveData<K>,
+  saveRetailPricing: async (api: ApiClient, body: RetailPricingUpdate) =>
+    OperationsRetailPricing.parse(
+      await api.request('/api/admin/pricing/retail-policy', { method: 'PUT', body }),
+    ),
   reconcile: async (api: ApiClient, idempotencyKey: string) =>
     OperationsJob.parse(
       await api.post('/api/admin/agent/actions', { action: 'reconcile', idempotencyKey }),

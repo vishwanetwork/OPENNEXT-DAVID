@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CreditPaymentsPage } from './credit-payments';
 import { Dialog } from '@/components/ui/dialog';
 import { PaymentReviewQueue } from '@/features/console-payments';
 import type { PaymentReviewService } from '@/lib/payment-review';
@@ -19,7 +20,42 @@ export function PaymentsPage({
   return payments ? (
     <LegacyPaymentRecords payments={payments} />
   ) : (
-    <PaymentReviewQueue kind="direct_pay" service={service} />
+    <PaymentSources service={service} />
+  );
+}
+
+function PaymentSources({ service }: { service?: PaymentReviewService }) {
+  const [source, setSource] = useState('bank');
+  return (
+    <>
+      <div className="ops-filters" role="group" aria-label="Payment source">
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={source === 'bank'}
+          onClick={() => setSource('bank')}
+        >
+          Bank transfers
+        </button>
+        <button
+          type="button"
+          className="btn"
+          aria-pressed={source === 'credit'}
+          onClick={() => setSource('credit')}
+        >
+          Credit purchases
+        </button>
+      </div>
+      <p className="muted">
+        Bank transfers require receipt verification. Credit purchases are recorded automatically and
+        do not require manual confirmation.
+      </p>
+      {source === 'credit' ? (
+        <CreditPaymentsPage />
+      ) : (
+        <PaymentReviewQueue kind="direct_pay" service={service} />
+      )}
+    </>
   );
 }
 

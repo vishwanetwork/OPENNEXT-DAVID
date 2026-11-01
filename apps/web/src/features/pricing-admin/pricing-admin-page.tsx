@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { useApp } from '@/components/providers/app-context';
+
 import { AsyncButton } from '@/components/ui/async-feedback';
 import './pricing-admin.css';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +33,7 @@ export type Dialog =
 /** Price sources operations page (legacy OpenNEXT-provider-console.js). */
 export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
   const api = useApi();
+  const { href } = useApp();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [directoryOpen, setDirectoryOpen] = useState(false);
@@ -127,6 +131,7 @@ export function PricingAdminPage({ embedded = false }: { embedded?: boolean }) {
           <p>Collect provider prices. Normalize units. Publish one trusted API.</p>
         </div>
         <div className="pc-actions">
+          <Link href={href('/agent?tab=pricing')}>Spot pricing</Link>
           <button type="button" onClick={() => setDirectoryOpen(true)} disabled={!providers.length}>
             API directory
           </button>

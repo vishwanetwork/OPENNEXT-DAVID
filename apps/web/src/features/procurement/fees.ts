@@ -1,8 +1,8 @@
 import { FEE_POLICY_VERSION, type FeeFields } from '@opennext/contracts';
 
 export const FEE_POLICY = FEE_POLICY_VERSION;
-export const FEE_LABEL = 'OpenNEXT Fee 5%';
-export const FEE_RATE = 0.05;
+export const FEE_LABEL = 'Service fee';
+export const FEE_RATE = 0;
 
 export const round2 = (value: unknown): number => Math.round((Number(value) || 0) * 100) / 100;
 export const num = (value: unknown): number => (Number.isFinite(Number(value)) ? Number(value) : 0);
@@ -16,7 +16,7 @@ export function currentFees(
   FeeFields {
   return (
     !!record &&
-    record.feePolicyVersion === FEE_POLICY &&
+    [FEE_POLICY, 'opennext-explicit-5pct-v1'].includes(record.feePolicyVersion ?? '') &&
     (['subtotal', 'buyerFee', 'sellerFee', 'buyerTotal', 'sellerNet'] as const).every(
       (key) => record[key] != null && Number.isFinite(Number(record[key])),
     )

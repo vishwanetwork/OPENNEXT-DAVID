@@ -42,7 +42,7 @@ export interface PurchaseResult {
 /**
  * Backend contract for Credit purchases (legacy `window.OpenNEXTSpotCheckout`). The backend must
  * authorize the session, lock the offer, independently calculate the duration subtotal and
- * 5% fee, check funds and apply idempotency. No client ledger changes.
+ * zero service fee, check funds and apply idempotency. No client ledger changes.
  */
 export interface SpotCheckoutService {
   getCreditBalance?(): Promise<CreditBalanceResult | null | undefined>;

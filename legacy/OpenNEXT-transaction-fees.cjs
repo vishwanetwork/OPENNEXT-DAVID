@@ -1,8 +1,8 @@
 'use strict';
 
-const FEE_PERCENT = 5;
-const FEE_POLICY_VERSION = 'opennext-explicit-5pct-v1';
-const FEE_LABEL = 'OpenNEXT Fee 5%';
+const FEE_PERCENT = 0;
+const FEE_POLICY_VERSION = 'opennext-markup-only-v2';
+const FEE_LABEL = 'Service fee';
 const feePolicy = Object.freeze({feePercent:FEE_PERCENT,feePolicyVersion:FEE_POLICY_VERSION,feeLabel:FEE_LABEL});
 const invalid = () => Object.assign(new Error('The transaction amount is outside the supported currency range.'),{status:400});
 
