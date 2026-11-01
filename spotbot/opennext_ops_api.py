@@ -273,7 +273,17 @@ def install(app, ctx):
         scope, failed = await operator(request, write=False)
         if failed:
             return failed
-        return no_store({"confirmed": True, "sessionScope": scope, "capabilities": ["accounts-v1"]})
+        return no_store(
+            {
+                "confirmed": True,
+                "sessionScope": scope,
+                "capabilities": ["accounts-v1", "kyb-bundle-v1"],
+            }
+        )
+
+    from spotbot.opennext_kyb_bundle import install as install_bundle
+
+    install_bundle(app, ctx, operator)
 
     @app.get("/api/admin/payment-requests")
     async def payment_requests(request: Request, kind: str = "topup"):

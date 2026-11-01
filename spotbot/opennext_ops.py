@@ -395,6 +395,13 @@ class Operations:
                 reviewed_at=None,
             )
             updated["submission_keys"] = {**updated["submission_keys"], idempotency_key: revision}
+            updated["submission_snapshot"] = dict(
+                company=dict(company),
+                mode=mode,
+                consent=True,
+                revision=revision,
+                submitted_at=updated["submitted_at"],
+            )
             saved = await self._save(updated)
             for d in docs:
                 await self._save(dict(d, case_revision=revision))
