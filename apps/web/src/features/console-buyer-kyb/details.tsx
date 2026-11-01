@@ -24,6 +24,7 @@ const COMPANY_FIELDS: [keyof BuyerKybCompany, string][] = [
 
 export function BuyerKybDetails({
   record,
+  initialAction,
   service,
   onClose,
   onConfirmed,
@@ -31,6 +32,7 @@ export function BuyerKybDetails({
   onAccessDenied,
 }: {
   record: BuyerKybCase;
+  initialAction: 'details' | 'completed' | 'failed';
   service: BuyerKybAdminService;
   onClose: () => void;
   onConfirmed: () => Promise<void>;
@@ -47,7 +49,12 @@ export function BuyerKybDetails({
       <header className="buyer-kyb-modal-header">
         <div>
           <span className="buyer-kyb-eyebrow">
-            {record.mode} · {record.status}
+            {record.mode} ·{' '}
+            {record.status === 'Approved'
+              ? 'Completed'
+              : record.status === 'Rejected'
+                ? 'Failed'
+                : record.status}
           </span>
           <h2>Buyer KYB details</h2>
         </div>
@@ -79,6 +86,7 @@ export function BuyerKybDetails({
       <KybDocuments record={record} service={service} onAccessDenied={onAccessDenied} />
       <KybDecision
         record={record}
+        initiallyRejecting={initialAction === 'failed'}
         service={service}
         onConfirmed={onConfirmed}
         onRefresh={onRefresh}

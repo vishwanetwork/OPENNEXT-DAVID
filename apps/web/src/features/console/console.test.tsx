@@ -7,8 +7,21 @@ import { Sidebar } from './components/sidebar';
 import { OverviewPage } from './pages/overview';
 import { SchedulesPage } from './pages/schedules';
 import { useConsoleStore } from './store';
+import { pageFromPath, pagePath } from './pages';
 
 describe('console shell', () => {
+  it('keeps User active with a compact nested Account link', () => {
+    renderConsole(<Sidebar page="users/accounts" />);
+    const nav = within(screen.getByRole('navigation', { name: 'Console navigation' }));
+    expect(nav.getByRole('button', { name: 'User' })).toHaveAttribute('aria-current', 'page');
+    expect(nav.getByRole('link', { name: 'Account' })).toHaveAttribute(
+      'href',
+      '/admin/users/accounts',
+    );
+    expect(nav.getByRole('link', { name: 'Account' })).toHaveAttribute('aria-current', 'page');
+    expect(pageFromPath('/users/accounts/')).toBe('users/accounts');
+    expect(pagePath('users/accounts')).toBe('/users/accounts');
+  });
   it('places Price Source between Instances and Buyer RFQs as an independently active page', () => {
     renderConsole(<Sidebar page="pricing" />);
     const nav = within(screen.getByRole('navigation', { name: 'Console navigation' }));

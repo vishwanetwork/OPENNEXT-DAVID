@@ -85,7 +85,7 @@ describe('Buyer KYB Console', () => {
       '/admin/kyb?tab=supplier',
     );
     expect(screen.getByText(/Awaiting backend · Buyer KYB/)).toHaveAttribute('role', 'status');
-    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Completed' })).not.toBeInTheDocument();
     expect(screen.queryByText('buyer@example.com')).not.toBeInTheDocument();
   });
   it('shows confirmed cases and filters by country, email and status', async () => {
@@ -109,9 +109,9 @@ describe('Buyer KYB Console', () => {
     const service = adapter();
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Completed' })).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
     await waitFor(() =>
       expect(service.decide).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -144,7 +144,7 @@ describe('Buyer KYB Console', () => {
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not fully confirmed');
     expect(
       screen.queryByText(
@@ -167,15 +167,15 @@ describe('Buyer KYB Console', () => {
     });
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
-    const dialog = screen.getByRole('dialog', { name: 'Reject Buyer KYB' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm rejection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Failed' }));
+    const dialog = screen.getByRole('dialog', { name: 'Failed Buyer KYB' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
     expect(service.decide).not.toHaveBeenCalled();
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter the rejection reason');
     fireEvent.change(within(dialog).getByRole('textbox'), {
       target: { value: 'The registration document has expired.' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm rejection' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
     await waitFor(() =>
       expect(service.decide).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -257,7 +257,7 @@ describe('Buyer KYB Console', () => {
     renderConsole(<BuyerKybReviewPage service={service} />);
     await openDetails();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Completed' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close Buyer KYB details' }));
     await act(async () => {
       resolve({

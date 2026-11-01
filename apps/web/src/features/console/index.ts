@@ -3,6 +3,7 @@
  * Specialized review pages live in console-marketplace, console-leads, console-topups and pricing-admin.
  */
 export { ConsoleShell, useConsoleNav } from './components/shell';
+export { useConsoleResource } from './live-hooks';
 export { LiveUsersPage, LiveOrdersPage } from './pages/live-records';
 export { LiveOverviewPage } from './pages/live-records';
 export { useConsoleStore, loadDb, migrateIdentity, STORAGE_KEY } from './store';

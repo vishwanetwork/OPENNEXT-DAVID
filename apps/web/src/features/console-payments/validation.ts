@@ -10,6 +10,8 @@ const cents = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const recordSchema = z.object({
   id: z.string().min(1),
   accountId: z.string().min(1),
+  accountNumber: z.string().trim().min(1).optional(),
+  currentCreditCents: cents.optional(),
   email: z.string().email(),
   revision: z.number().int().positive(),
   kind: z.enum(['topup', 'direct_pay']),
@@ -19,6 +21,7 @@ const recordSchema = z.object({
   reference: z.string().min(1),
   submittedAt: z.string().datetime({ offset: true }),
   orderId: z.string().min(1).optional(),
+  offerId: z.string().min(1).optional(),
   pricingVersion: z.enum(['credit-face-value-v1', 'order-total-v1', 'legacy-credit-v1']),
   creditAmountCents: cents.optional(),
   feeAmountCents: cents.optional(),
@@ -34,6 +37,13 @@ export function reviewable(record: PaymentReviewRecord) {
     record.amountCents > 0 &&
     record.creditAmountCents === record.amountCents &&
     record.feeAmountCents === 0
+  );
+}
+
+export function canComplete(record: PaymentReviewRecord, service?: PaymentReviewService) {
+  return (
+    reviewable(record) &&
+    (record.kind === 'topup' || Boolean(record.offerId && service?.completeDirectPay))
   );
 }
 
@@ -93,11 +103,32 @@ export function confirmedPaymentDecision(
       value.ledgerPosted === true &&
       value.provisioningQueued === false
     );
+  const resolution = value.directPayResolution;
+  if (
+    !reviewable(record) ||
+    !record.offerId ||
+    !resolution ||
+    resolution.policy !== 'recheck-before-purchase-v1' ||
+    resolution.orderId !== record.orderId ||
+    resolution.offerId !== record.offerId ||
+    !z.string().datetime({ offset: true }).safeParse(resolution.availabilityCheckedAt).success ||
+    Date.parse(resolution.availabilityCheckedAt) < Date.parse(record.submittedAt) ||
+    Date.parse(resolution.availabilityCheckedAt) > Date.now() + 60_000 ||
+    value.feeAmountCents !== 0 ||
+    value.provisioningQueued !== false
+  )
+    return false;
+  if (resolution.outcome === 'credited')
+    return (
+      value.creditAmountCents === record.amountCents &&
+      value.ledgerPosted === true &&
+      resolution.purchaseIntentId === undefined
+    );
   return (
-    reviewable(record) &&
+    resolution.outcome === 'awaiting_customer_order' &&
+    typeof resolution.purchaseIntentId === 'string' &&
+    resolution.purchaseIntentId.trim().length > 0 &&
     value.creditAmountCents === 0 &&
-    value.feeAmountCents === 0 &&
-    value.ledgerPosted === false &&
-    value.provisioningQueued === true
+    value.ledgerPosted === false
   );
 }

@@ -75,6 +75,12 @@ export interface BuyerKybAdminService {
     documentId: string;
     expectedRevision: number;
   }) => Promise<{ caseId: string; documentId: string; fileName: string; blob: Blob }>;
+  /** Optional private, server-produced ZIP; no frontend-generated form or replacement documents. */
+  downloadBundle?: (input: {
+    caseId: string;
+    accountId: string;
+    expectedRevision: number;
+  }) => Promise<BuyerKybBundle>;
   decide: (input: {
     caseId: string;
     accountId: string;
@@ -93,6 +99,18 @@ export interface BuyerKybAdminService {
     notificationQueued: boolean;
     emailQueued: boolean;
   }>;
+}
+
+export interface BuyerKybBundle {
+  confirmed: boolean;
+  caseId: string;
+  accountId: string;
+  revision: number;
+  fileName: string;
+  blob: Blob;
+  /** Backend confirms this manifest matches the archive at the requested case revision. */
+  form: { fileName: string; contentType: 'application/pdf'; sizeBytes: number };
+  documents: BuyerKybDocument[];
 }
 
 export interface BankTransferRequest {

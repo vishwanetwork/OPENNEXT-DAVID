@@ -6,7 +6,7 @@ import { useApi } from '@/components/providers/api-context';
 import type { BuyerKybAdminService } from '@/lib/buyer-kyb';
 import type { PaymentReviewService } from '@/lib/payment-review';
 import { base64ToBytes } from '@/lib/base64';
-import { ConsoleTopupsPage } from '@/features/console-topups';
+import { PaymentReviewQueue } from '@/features/console-payments';
 import { KybReviewWorkspace } from '@/features/console-buyer-kyb';
 import { PaymentsPage } from '@/features/console';
 
@@ -19,12 +19,15 @@ function useOperationsScope(): string | undefined {
   const query = useQuery({
     queryKey: ['admin', 'operations-session'],
     queryFn: ({ signal }) =>
-      api.get<{ sessionScope?: unknown }>('/api/admin/operations/session', { signal }),
+      api.get<{ confirmed?: unknown; sessionScope?: unknown }>('/api/admin/operations/session', {
+        signal,
+      }),
     retry: false,
     gcTime: 0,
     refetchOnWindowFocus: true,
   });
-  const scope = query.data?.sessionScope;
+  const scope =
+    !query.error && query.data?.confirmed === true ? query.data.sessionScope : undefined;
   return typeof scope === 'string' && scope ? scope : undefined;
 }
 
@@ -85,7 +88,7 @@ export function useBuyerKybAdminService(): BuyerKybAdminService | undefined {
 
 /** Route compositions: each page receives its service once an administrator is signed in. */
 export function TopupRequestsRoute() {
-  return <ConsoleTopupsPage service={usePaymentReviewService()} />;
+  return <PaymentReviewQueue kind="topup" service={usePaymentReviewService()} />;
 }
 
 export function PaymentRequestsRoute() {

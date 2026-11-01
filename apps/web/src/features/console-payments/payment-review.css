@@ -41,6 +41,16 @@
   display: flex;
   gap: 6px;
 }
+.payment-request-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 .payment-review-empty {
   padding: 28px;
   text-align: center;

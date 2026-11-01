@@ -381,14 +381,15 @@ reverse proxy. It also serves the Terminal Spot market: it adds its orderable Sp
 `memory`, `perGpuHourly`), answers `POST /api/marketplace/spot-purchases`, and adds the
 customer's Spot orders to `GET /api/marketplace/me` `instances`.
 
-Buyer KYB and bank transfer are **not connected**. See [the Buyer KYB handoff](BUYER_KYB_HANDOFF.md)
-for frontend-only scope, proposed endpoints, private file transport, ALLScale review, notifications
-and server-side payment gates. Optional ports in `src/lib/buyer-kyb.ts` are not wire contracts.
+Buyer KYB and bank transfer now have existing adapters. See [the Buyer KYB handoff](BUYER_KYB_HANDOFF.md)
+for current endpoints, private file transport, external review, notifications and server-side gates.
+Optional extensions in `src/lib/buyer-kyb.ts` are frontend ports, not agreed wire contracts.
 Never send Buyer data to supplier KYB or disguise bank transfers as card payments.
 
 The 2026-10-29 frontend additions are documented in
 [payment operations and instance usage](PAYMENT_OPERATIONS_HANDOFF.md). These include optional
-review and usage ports, not deployed endpoints or changes to the existing wire schemas.
+review and usage ports with subsequently added adapters. New account, bundle export and revised
+Direct Pay completion capabilities are not connected; see the 2026-11-01 handoff below.
 Top-ups credit the full transferred amount; the tentative 5% fee is purchase-only. Review receipts
 must acknowledge both notification and email outboxes. Instance charts do not calculate charges.
 
@@ -397,8 +398,8 @@ Existing connected front-end features use the contracts in `packages/contracts/s
 Every call the browser makes is in one place per domain: `apps/web/src/features/*/api.ts`
 (plus `terminal-kit/api.ts` for the shared workspace reads and `features/auth/server.ts` for the
 server-side session read). To switch backends, set `API_ORIGIN`; nothing else changes.
-The proposed Console services above remain unimplemented; they must not be mistaken for existing
-contract coverage merely because their pages and read-only view models are present.
+The older proposal list above is historical. The Live Console operations section below identifies
+subsequently connected reads; new proposals must not be mistaken for existing contract coverage.
 
 1. **Same origin is preserved.** The pass-through keeps the browser's `Host`/`Origin`, so the
    backend keeps doing its own same-origin and host-scoping checks; it never sees a Next host.
@@ -424,6 +425,26 @@ contract coverage merely because their pages and read-only view models are prese
 Open questions per domain are collected in `docs/MIGRATION_STATUS.md`.
 
 ## Live Console operations adapter
+
+### 2026-11-01 review and account extension
+
+See [Console account and review handoff](CONSOLE_ACCOUNT_REVIEW_HANDOFF.md) for exact columns,
+new fields and activation tests. Existing queue/review adapters live in
+`features/console-operations/routes.tsx`; these ports are not new approved wire schemas:
+
+| Port / field                                                    | Status                                                                                                                   |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Payment record `accountNumber`, `currentCreditCents`, `offerId` | Optional, backend-supplied; absent values remain unavailable                                                             |
+| `PaymentReviewService.completeDirectPay`                        | Not wired; requires original-offer recheck, full Credit conversion or paid purchase intent, never automatic provisioning |
+| `BuyerKybAdminService.downloadBundle`                           | Not wired; private form-PDF-plus-originals ZIP export                                                                    |
+| `ConsoleAccountService`                                         | Not wired; account/bank/KYB/Credit/purchase enrichment of the existing user directory                                    |
+
+Top-up completion and both payment failures continue to use the existing verified decision
+adapter. Direct Pay Completed is disabled until the new capability exists; never fall back to
+the old Confirm endpoint's automatic provisioning. The Terminal paid-redemption operation is
+also pending and must not reuse an endpoint that debits Credit. No guessed URLs are called.
+
+### Existing connected operations
 
 The updated SpotOrderBot OpenNEXT adapter owns these administrator endpoints. Each
 requires the existing administrator session and returns `Cache-Control: no-store`.
