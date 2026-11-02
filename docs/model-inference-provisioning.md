@@ -195,6 +195,56 @@ Then rotate the key, verify the old key is rejected, retry with the new key, tes
 protected replacement, and end the instance. Confirm the stable URL reconnects only
 after the restored model passes readiness, and is unavailable after ending.
 
+## Preparing reusable runtime and model images
+
+Cold downloads remain supported, but a prepared private AMI can cache both the
+pinned vLLM runtime on the root disk and public model artifacts on `/dev/sdf`.
+It contains no customer data, SSH identity, inference credentials, or AWS keys.
+The model disk is cloned for each rental; customers never share a writable volume.
+
+The CPU-only builder accepts a clean, encrypted account-owned base, the existing
+restricted subnet/security group, immutable preset pins, and a durable state file:
+
+```sh
+PYTHONPATH=. python scripts/prepare_inference_image.py \
+  --profile default --region us-west-2 --account-alias default \
+  --base-image ami-<clean-base> --subnet-id subnet-<approved-subnet> \
+  --security-group sg-<existing-restricted-group> \
+  --pins-env .env.inference.example \
+  --state-file data/inference-build/7b-us-west-2.json
+```
+
+The tool launches exactly one `t3.medium` with Standard CPU credits, no IAM instance
+profile and no GPU. Its root/model disks are encrypted and delete on termination.
+A guest shutdown timer and controller deadline bound CPU runtime to 90 minutes.
+The guest downloads artifacts, checks the complete manifest, removes machine/SSH
+identity, then shuts down. Only a build-specific completion marker permits image
+registration. The controller verifies the private encrypted image, terminates the
+builder and deletes its temporary disks. The retained AMI snapshots incur storage
+charges. Interrupted controllers can resume with the same state file; failed
+partial images are cleaned only when their build ownership tags match.
+
+Add the completed AMI to that preset's `initial_image_ids`, scoped by account alias
+and Region. For example:
+
+```json
+{"default":{"us-west-2":"ami-0123456789abcdef0"}}
+```
+
+The internal selection API returns only the chosen account/Region's mapping.
+Credit holds and Direct Pay intents freeze it as `initialImageIds` in their private
+pricing snapshot; the RFQ receives the existing `initial_image_ids` field. A model
+cache image must match the preset, model revision and runtime digest tags before
+launch. Changing cache configuration does not redirect previously accepted orders.
+Replacement continues to use that rental's own backups. GPU-only orders keep the
+original base image and disk layout.
+
+A completed image means **artifacts prepared**, not model inference validated.
+Actual model loading and token generation still require the intended GPU. EBS
+snapshot blocks may also need initialization on first access, so a warm image does
+not promise instantaneous readiness. The 7B candidate stays disabled until the
+operator explicitly enables an approved GPU acceptance run.
+
 ## Quota display and concurrent admission
 
 GPU count describes each physical instance. GPU Market separately shows a quota

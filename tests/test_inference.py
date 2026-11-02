@@ -86,6 +86,32 @@ def test_storage_quote_does_not_increase_the_native_gpu_bid():
     assert priced.pricing["inferenceVersion"] == spec.version
 
 
+def test_warm_images_are_scoped_and_must_match_immutable_model_and_runtime():
+    from spotbot.inference import Pins, cache_matches
+
+    pins = Pins.model_validate(
+        dict(PINS, initial_image_ids={"default": {"us-west-2": "ami-1234567890abcdef0"}})
+    )
+    assert pins.initial_image_ids.get("b300", {}) == {}
+    spec = selection(configured(), NAME, "B300", 1, 288)
+    image = dict(
+        Public=False,
+        Tags=[
+            dict(Key=k, Value=v)
+            for k, v in {
+                "spotbot-inference-preset": NAME,
+                "spotbot-model-revision": spec.revision,
+                "spotbot-runtime-digest": spec.image.split("@")[1],
+            }.items()
+        ],
+    )
+    assert cache_matches(image, spec)
+    assert not cache_matches(dict(image, Public=True), spec)
+    assert not cache_matches(image, spec.model_copy(update={"revision": "c" * 40}))
+    with pytest.raises(ValidationError):
+        Pins.model_validate(dict(PINS, initial_image_ids={"default": {"us-west-2": "not-an-ami"}}))
+
+
 @pytest.fixture
 def model_env(rental_env, monkeypatch):
     env = rental_env

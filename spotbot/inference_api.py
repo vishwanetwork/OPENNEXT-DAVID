@@ -5,7 +5,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from spotbot.inference import PRESETS, selection
+from spotbot.inference import PRESETS, catalog, selection
 
 
 class SelectionRequest(BaseModel):
@@ -31,13 +31,15 @@ def install(app, service, auth):
                 raise ValueError("aws_account_not_enrolled")
         specs = offer.details.get("gpu_specifications") or []
         memory = min((g.get("MemoryInfo", {}).get("SizeInMiB", 0) for g in specs), default=0)
-        return selection(
+        spec = selection(
             provider.settings,
             preset_id,
             offer.gpu_model,
             offer.gpu_count,
             Decimal(memory) * 1024 * 1024 / Decimal(10**9),
         )
+        images = catalog(provider.settings)[preset_id].initial_image_ids.get(name, {})
+        return spec, {offer.region: images[offer.region]} if offer.region in images else {}
 
     @app.get("/v1/inference/presets", dependencies=auth)
     def presets(offer_id: str):
@@ -69,7 +71,7 @@ def install(app, service, auth):
     @app.post("/v1/inference/selection", dependencies=auth)
     def selected(request: SelectionRequest):
         try:
-            spec = resolved(request.offer_id, request.preset_id)
+            spec, images = resolved(request.offer_id, request.preset_id)
         except ValueError as exc:
             raise HTTPException(
                 409,
@@ -77,4 +79,4 @@ def install(app, service, auth):
                 if str(exc).startswith(("inference_", "aws_account_"))
                 else "inference_configuration_unavailable",
             ) from None
-        return {"spec": spec.model_dump(), "version": spec.version}
+        return {"spec": spec.model_dump(), "version": spec.version, "initial_image_ids": images}

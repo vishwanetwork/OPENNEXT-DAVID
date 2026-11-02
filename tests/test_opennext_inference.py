@@ -24,7 +24,9 @@ def model_market(env):
 
     async def prepare(offer, preset):
         assert preset == spec.preset_id
-        return priced(offer, spec, market.storage_rate)
+        return priced(
+            offer, spec, market.storage_rate, initial_images={"us-west-2": "ami-1234567890abcdef0"}
+        )
 
     market.prepare_offer = prepare
     return client, fakes, calls, market, spec
@@ -42,6 +44,7 @@ async def test_model_purchase_freezes_storage_and_inference_while_preserving_gpu
     rfq = fakes.created[0]
     assert rfq["inference"] == spec.model_dump() and rfq["retail_hourly_cents"] == prepared.cents
     assert rfq["data_disks"] == [dict(device="/dev/sdf", size_gib=100)] and rfq["http_port"] == 8000
+    assert rfq["initial_image_ids"] == {"us-west-2": "ami-1234567890abcdef0"}
     assert rfq["max_price_hourly"] == "0.468"  # Native GPU price, excluding model storage.
     assert (await buy(client, payload)).status_code == 200
     assert len(fakes.created) == 1
@@ -71,6 +74,57 @@ async def test_direct_pay_intent_keeps_original_model_when_runtime_catalog_chang
     assert (await transfer(client, payload)).json() == result.json()
     changed = await transfer(client, dict(payload, inferencePresetId=None))
     assert changed.status_code == 409
+
+
+async def test_model_direct_pay_redemption_preserves_image_storage_and_original_total(model_market):
+    from tests.test_opennext_ops import ADMIN
+    from tests.test_opennext_paid import complete, redeem, wait_background
+
+    client, fakes, _, market, spec = model_market
+    offer = (await market.offers())[body()["offerId"]]
+    prepared = await market.prepare_offer(offer, spec.preset_id)
+    result = await transfer(
+        client,
+        dict(
+            purpose="order",
+            amountCents=prepared.cents,
+            currency="USD",
+            offerId=offer.id,
+            durationHours=1,
+            idempotencyKey="model-paid-1",
+            inferencePresetId=spec.preset_id,
+            inferenceBillingAcknowledged=True,
+        ),
+    )
+    assert result.status_code == 200, result.text
+    records = (
+        await client.get("/api/admin/payment-requests?kind=direct_pay", headers=ADMIN)
+    ).json()["records"]
+    row = next(r for r in records if r["id"] == result.json()["id"])
+    market.preflight = AsyncMock(return_value=dict(eligible=True))
+    confirmation = await complete(
+        client,
+        row,
+        dict(
+            caseId=row["id"],
+            accountId="U1",
+            expectedRevision=row["revision"],
+            idempotencyKey="confirm-model-1",
+            decision="Confirm",
+            fundsVerified=True,
+        ),
+    )
+    assert confirmation.status_code == 200, confirmation.text
+    intent = confirmation.json()["directPayResolution"]["purchaseIntentId"]
+    assert (await redeem(client, intent)).status_code == 200
+    doc = await wait_background(client._transport.app)
+    assert doc["provisioning"]["state"] == "submitted"
+    rfq = fakes.created[0]
+    assert rfq["inference"] == spec.model_dump()
+    assert rfq["retail_hourly_cents"] == prepared.cents
+    assert rfq["initial_image_ids"] == {"us-west-2": "ami-1234567890abcdef0"}
+    assert rfq["data_disks"] == [dict(device="/dev/sdf", size_gib=100)]
+    assert (await redeem(client, intent)).status_code == 200 and len(fakes.created) == 1
 
 
 async def test_inference_status_is_owned_and_service_changes_require_csrf(model_market):

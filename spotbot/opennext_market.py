@@ -270,6 +270,8 @@ def rfq_for(offer, purchase, user_id, now, storage_rate):
             http_health_path="/health",
             data_disks=[dict(device="/dev/sdf", size_gib=model["disk_gib"])],
         )
+        if offer.pricing.get("initialImageIds"):
+            result["initial_image_ids"] = dict(offer.pricing["initialImageIds"])
     return result
 
 
@@ -606,7 +608,7 @@ class SpotMarket:
         spec = InferenceSpec.model_validate(value["spec"])
         if spec.version != value["version"] or spec.preset_id != preset_id:
             raise ValueError("inference_selection_changed")
-        return priced(offer, spec, self.storage_rate)
+        return priced(offer, spec, self.storage_rate, initial_images=value.get("initial_image_ids"))
 
     async def inference_presets(self, offer):
         response = await self.bot(

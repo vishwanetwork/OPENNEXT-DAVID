@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import secrets
 from decimal import ROUND_CEILING, Decimal
 from typing import Literal
@@ -50,6 +51,21 @@ class Pins(BaseModel):
     revision: str = Field(pattern=r"^[a-f0-9]{40}$")
     image: str = Field(pattern=r"^(?:docker\.io/)?vllm/vllm-openai@sha256:[a-f0-9]{64}$")
     validated_gpu_models: list[str] = Field(min_length=1, max_length=20)
+    # Account alias -> Region -> clean, prepared AMI. Never a customer's rental backup.
+    initial_image_ids: dict[str, dict[str, str]] = Field(default_factory=dict, max_length=32)
+
+    @model_validator(mode="after")
+    def valid_images(self):
+        for account, regions in self.initial_image_ids.items():
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", account) or len(regions) > 32:
+                raise ValueError("invalid_inference_image_scope")
+            if any(
+                not re.fullmatch(r"[a-z0-9-]{3,32}", region)
+                or not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", image)
+                for region, image in regions.items()
+            ):
+                raise ValueError("invalid_inference_image_id")
+        return self
 
 
 class InferenceSpec(BaseModel):
@@ -157,7 +173,7 @@ def validate_rfq(settings, rules):
         raise ValueError("inference_model_volume_missing")
 
 
-def priced(offer, spec, storage_rate):
+def priced(offer, spec, storage_rate, *, initial_images=None):
     from spotbot.opennext_market import Offer
 
     # The storage add-on is included in the hourly total; the native GPU bid cap stays separate.
@@ -172,7 +188,19 @@ def priced(offer, spec, storage_rate):
         modelStorageHourlyCents=cents,
         retailCents=offer.cents + cents,
     )
+    if initial_images:
+        pricing["initialImageIds"] = dict(initial_images)
     return Offer(offer.raw, frozen=pricing)
+
+
+def cache_matches(image, spec):
+    tags = {t["Key"]: t["Value"] for t in image.get("Tags", [])}
+    return (
+        image.get("Public") is False
+        and tags.get("spotbot-inference-preset") == spec.preset_id
+        and tags.get("spotbot-model-revision") == spec.revision
+        and tags.get("spotbot-runtime-digest") == spec.image.split("@", 1)[1]
+    )
 
 
 def initialize(row, sealer):

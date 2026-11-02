@@ -305,6 +305,11 @@ class AWSRecovery:
             raise ProviderError("unsupported_image_license")
         if not backup and image_id != offer.details["image_id"] and not approved_initial_image(image):
             raise ProviderError("initial_image_not_approved")
+        if not backup and rules.inference and rules.initial_image_ids:
+            from spotbot.inference import cache_matches
+
+            if not cache_matches(image, rules.inference):
+                raise ProviderError("inference_image_pins_mismatch")
         if not backup and not initial_disk_layout_allowed(
             image,
             rules,
