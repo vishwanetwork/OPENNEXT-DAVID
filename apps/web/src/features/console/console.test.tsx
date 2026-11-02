@@ -62,6 +62,10 @@ describe('console shell', () => {
       </ConsoleShell>,
     );
     expect(screen.getByLabelText('OpenNEXT Operations Console')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'OpenNEXT' })).toHaveAttribute(
+      'src',
+      '/terminal-design/opennext-logo-navy.svg',
+    );
     expect(screen.getByText('Requests')).toBeInTheDocument();
     expect(screen.getAllByText('OPERATIONS').length).toBeGreaterThan(0);
     expect(screen.getByText('Available Price Sources')).toBeInTheDocument();

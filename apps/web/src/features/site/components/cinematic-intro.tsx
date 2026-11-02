@@ -5,10 +5,12 @@ import { CapacityRail } from './capacity-rail';
 import { CinematicPartners } from './cinematic-partners';
 export function CinematicIntro({
   heroCollapsed,
+  partnersHidden,
   buyerHref,
   supplierHref,
 }: {
   heroCollapsed: boolean;
+  partnersHidden: boolean;
   buyerHref: string;
   supplierHref: string;
 }) {
@@ -47,6 +49,7 @@ export function CinematicIntro({
               />
             </div>
             <div className="container hero-copy" inert={heroCollapsed}>
+              <p className="hero-eyebrow hero-enter">Agent-native GPU marketplace</p>
               <h1 id="hero-title">
                 <span className="line-mask">
                   <span>An always-on</span>
@@ -80,7 +83,7 @@ export function CinematicIntro({
               <p>One market. Both sides connected.</p>
             </div>
           </div>
-          <CinematicPartners hidden={heroCollapsed} />
+          <CinematicPartners hidden={partnersHidden} />
         </div>
       </section>
 

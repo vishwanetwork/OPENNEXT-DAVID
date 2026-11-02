@@ -64,6 +64,20 @@ describe('approved cinematic landing navigation', () => {
     renderLanding('preview.example.com');
     expectBuyerLinks('/terminal/market?role=buyer');
   });
+  it('keeps one primary hero CTA and the endorsement strip in its own scroll phase', () => {
+    const { container } = renderLanding('opennextlab.ai');
+    const heroCopy = container.querySelector('.hero-copy');
+    const partners = container.querySelector('.hero-partners');
+    expect(heroCopy).not.toBeNull();
+    expect(partners).toHaveAttribute('inert');
+    expect(screen.getByText('Agent-native GPU marketplace')).toBeInTheDocument();
+    if (!heroCopy) return;
+    expect(heroCopy.querySelectorAll('a')).toHaveLength(1);
+    expect(heroCopy.querySelector('a')).toHaveTextContent('Open Terminal');
+    for (const name of ['Fidelity Labs', 'Anthropic', 'Plug and Play', 'Circle', 'Vishwa']) {
+      expect(screen.getByRole('img', { name })).toBeInTheDocument();
+    }
+  });
   it('uses the same Buyer destination from mobile navigation and expanded preview', () => {
     renderLanding('opennextlab.ai');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
