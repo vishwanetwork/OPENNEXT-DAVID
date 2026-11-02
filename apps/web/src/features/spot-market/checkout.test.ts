@@ -169,6 +169,40 @@ const confirmation = (input: PurchaseInput) => ({
   durationHours: input.durationHours,
   totalCents: input.expectedPricing.totalCents,
 });
+
+it('quotes model storage, requires preparation billing consent and sends the frozen selection', async () => {
+  const sent: PurchaseInput[] = [];
+  const env = setup({
+    rows: [agent],
+    demo: false,
+    service: {
+      getCreditBalance: async () => wallet(),
+      inferenceQuote: async () => ({
+        pricing: checkoutTotals({ instanceHourly: 14.43 }),
+        modelStorageHourlyCents: 3,
+        inferencePresetId: 'deepseek-r1-distill-7b',
+        billingStart: 'gpu_delivery',
+      }),
+      beginPurchase: async (input) => {
+        sent.push(input);
+        return confirmation(input);
+      },
+    },
+  });
+  await env.engine.selectInference('deepseek-r1-distill-7b');
+  await env.engine.reviewPurchase({ durationHours: 1, sshPublicKey: '' });
+  expect(env.engine.pending()?.error).toMatch(/paid GPU time/);
+  env.engine.acknowledgeInference(true);
+  await toPayment(env);
+  await env.engine.chooseCredit();
+  await env.engine.authorizeCredit();
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({
+    inferencePresetId: 'deepseek-r1-distill-7b',
+    inferenceBillingAcknowledged: true,
+    expectedPricing: { hourlyCents: 1443, totalCents: 1443, feeCents: 0 },
+  });
+});
 async function toPayment(env: Env, key = '', hours = '1') {
   await env.engine.reviewPurchase({ durationHours: hours, sshPublicKey: key });
   expect(env.ctx.modal?.type).toBe('spot-payment-choice');

@@ -67,6 +67,12 @@ export function SpotMarketPage() {
       data-source-kind={inventory.kind}
     >
       <MarketOverview rows={allRows} term={ui.term} onNewRfq={newRfq} />
+      {ui.term === 'Spot' ? (
+        <p className="form-note">
+          GPU count is per instance. Quota estimates share a regional allowance across compatible
+          models and update as orders are accepted. They do not guarantee Spot inventory.
+        </p>
+      ) : null}
       <div className="onx-spot-toolbar">
         <div className="onx-spot-tabs" role="tablist" aria-label="GPU market terms">
           {TERMS.map((term) => (

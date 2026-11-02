@@ -105,6 +105,15 @@ export function Manage({ id }: { id?: string }) {
             Autopilot
           </IBtn>
         ) : null}
+        {i.inference && !localDemo(i, demo) ? (
+          <IBtn
+            act="instance-inference"
+            id={i.id}
+            onClick={() => openModal('instance-inference', { id: i.id })}
+          >
+            Model inference
+          </IBtn>
+        ) : null}
         <IBtn
           act="instance-connect"
           id={i.id}

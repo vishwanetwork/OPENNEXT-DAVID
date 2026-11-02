@@ -114,6 +114,8 @@ export interface BuyerKybBundle {
 }
 
 export interface BankTransferRequest {
+  inferencePresetId?: string | null;
+  inferenceBillingAcknowledged?: boolean;
   purpose: 'topup' | 'order';
   amountCents: number;
   currency: 'USD';
