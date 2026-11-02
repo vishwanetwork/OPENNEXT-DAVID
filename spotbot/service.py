@@ -67,6 +67,7 @@ class Service:
         self.collect_lock = asyncio.Lock()
         self.list_prices_due = 0.0
         self.price_regions_due = 0.0
+        self.account_prices_due = 0.0
         self.background_sweeps = {}
         self.worker_lock = asyncio.Lock()
         from spotbot.rentals import RentalEngine
@@ -122,10 +123,14 @@ class Service:
             sweeps = []
             if aws in selected and aws.configured and self.settings.spotbot_aws_list_prices_enabled:
                 sweeps.append(("aws_list", self._collect_list_prices))
-            if aws in selected and aws.configured and len(self.settings.aws_price_regions) > len(
-                aws.regions
+            if (
+                aws in selected
+                and aws.configured
+                and len(self.settings.aws_price_regions) > len(aws.regions)
             ):
                 sweeps.append(("aws_regions", self._collect_price_regions))
+            if aws in selected and aws.configured and self.settings.spotbot_aws_price_profile:
+                sweeps.append(("aws_account_prices", self._collect_account_prices))
             for name, sweep in sweeps:
                 if background_sweeps:
                     # Multi-Region sweeps can take minutes; the worker keeps processing orders.
@@ -137,6 +142,22 @@ class Service:
                 if result:
                     results.append(result)
             return results
+
+    async def _collect_account_prices(self, aws):
+        if time.monotonic() < self.account_prices_due:
+            return None
+        interval = self.settings.spotbot_aws_price_region_interval_seconds
+        try:
+            offers = await aws.collect_account_prices()
+            self.store.record_collection("aws_account_prices", offers)
+            self.account_prices_due = time.monotonic() + interval
+            return {"provider": "aws_account_prices", "status": "ok", "count": len(offers)}
+        except Exception as exc:
+            code = exc.code if isinstance(exc, ProviderError) else "invalid_catalog_schema"
+            self.store.record_collection("aws_account_prices", [], code)
+            self.account_prices_due = time.monotonic() + min(interval, 900)
+            logger.warning("Collection failed for aws_account_prices: %s", code)
+            return {"provider": "aws_account_prices", "status": "error", "count": 0, "error": code}
 
     async def _collect_price_regions(self, aws):
         # Price-only Regions refresh hourly; their change history comes from the Spot backfill.
@@ -468,7 +489,11 @@ class Service:
             try:
                 result = await backfill(self.settings, self.list_history)
                 logger.info("AWS list history cycle completed: %s", result)
-                delay = 600 if result["failed"] else self.settings.spotbot_aws_list_history_interval_seconds
+                delay = (
+                    600
+                    if result["failed"]
+                    else self.settings.spotbot_aws_list_history_interval_seconds
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -483,7 +508,11 @@ class Service:
             try:
                 result = await backfill(self.settings, self.spot_history)
                 logger.info("AWS Spot history cycle completed: %s", result)
-                delay = 600 if result["failed"] else self.settings.spotbot_aws_spot_history_interval_seconds
+                delay = (
+                    600
+                    if result["failed"]
+                    else self.settings.spotbot_aws_spot_history_interval_seconds
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

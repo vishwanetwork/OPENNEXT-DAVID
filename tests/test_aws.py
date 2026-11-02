@@ -655,3 +655,120 @@ async def test_worker_runs_list_price_sweep_in_background(aws_service):
     assert [r["provider"] for r in results] == ["aws"]
     await service.background_sweeps["aws_list"]
     assert any(o.price_kind == "list" for o in service.store.latest(provider="aws"))
+
+
+class ReferenceAWS(FakeAWS):
+    def get_paginator(self, method):
+        if method == "describe_instance_types":
+            return Pages(
+                [
+                    {
+                        "InstanceTypes": [
+                            {
+                                "InstanceType": "p6-b300.48xlarge",
+                                "GpuInfo": {
+                                    "Gpus": [
+                                        {
+                                            "Name": "B300",
+                                            "Manufacturer": "NVIDIA",
+                                            "Count": 8,
+                                            "MemoryInfo": {"SizeInMiB": 275040},
+                                        }
+                                    ]
+                                },
+                                "VCpuInfo": {"DefaultVCpus": 192},
+                                "MemoryInfo": {"SizeInMiB": 4194304},
+                                "ProcessorInfo": {"SupportedArchitectures": ["x86_64"]},
+                            }
+                        ]
+                    }
+                ]
+            )
+        if method == "describe_spot_price_history":
+            return Pages(
+                [
+                    {
+                        "SpotPriceHistory": [
+                            {
+                                "InstanceType": "p6-b300.48xlarge",
+                                "AvailabilityZone": "us-west-2b",
+                                "SpotPrice": "73.1967",
+                                "Timestamp": datetime.now(UTC),
+                            }
+                        ]
+                    }
+                ]
+            )
+        raise AssertionError("Reference collection must not query orders, quotas or networks")
+
+
+async def test_reference_profile_collects_b300_without_switching_order_identity(
+    aws_service, monkeypatch
+):
+    import boto3
+
+    service, original = aws_service
+    service.settings.spotbot_aws_price_profile = "b300-reference"
+    service.settings.spotbot_aws_reference_regions = "us-west-2"
+    reference = ReferenceAWS()
+    profiles = []
+
+    def session_factory(**kwargs):
+        profiles.append(kwargs)
+        return reference
+
+    monkeypatch.setattr(boto3, "Session", session_factory)
+    results = {r["provider"]: r for r in await service.collect("aws")}
+    assert results["aws_account_prices"]["count"] == 1
+    assert profiles == [{"profile_name": "b300-reference"}]
+    provider = service.providers["aws"]
+    assert provider.session is original and provider.reference_session is reference
+    assert provider._client("us-west-2") is original
+    assert provider._client("us-west-2", price_reference=True) is reference
+    offer = next(o for o in service.store.latest() if o.gpu_model == "B300")
+    assert offer.gpu_count == 8 and str(offer.price_hourly) == "73.1967"
+    assert not offer.orderable and not offer.public(600)["can_attempt"]
+    assert offer.details["eligibility_status"] == "price_only_account"
+    with pytest.raises(ValueError, match="aws_price_only_account"):
+        service.create_order(OrderRequest(offer_id=offer.offer_id, max_price_hourly=100), "ref")
+    original_offer = next(o for o in service.store.latest() if o.orderable)
+    service.create_order(OrderRequest(offer_id=original_offer.offer_id, max_price_hourly=3), "orig")
+    await service.tick()
+    assert len(original.creates) == 1 and reference.creates == []
+    # The reference sweep still respects the refresh interval.
+    assert "aws_account_prices" not in {r["provider"] for r in await service.collect("aws")}
+
+
+async def test_reference_auth_failure_preserves_prices_and_original_orders(aws_service):
+    service, original = aws_service
+    service.settings.spotbot_aws_price_profile = "b300-reference"
+    service.settings.spotbot_aws_reference_regions = "us-west-2"
+    provider = service.providers["aws"]
+    provider.reference_session = ReferenceAWS()
+    await service.collect("aws")
+    service.account_prices_due = 0
+
+    class Denied(ReferenceAWS):
+        def get_paginator(self, method):
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "DescribeInstanceTypes")
+
+    provider.reference_session = Denied()
+    provider.clients.pop(("reference", "us-west-2", "ec2"))
+    result = {r["provider"]: r for r in await service.collect("aws")}
+    assert result["aws"]["status"] == "ok"
+    assert result["aws_account_prices"]["error"] == "aws_AccessDenied"
+    assert any(o.gpu_model == "B300" for o in service.store.latest())
+    assert any(o.orderable for o in service.store.latest())
+    assert provider._client("us-west-2") is original
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"spotbot_aws_price_profile": "reference"},
+        {"spotbot_aws_reference_regions": "us-west-2"},
+    ],
+)
+def test_reference_profile_requires_explicit_region_scope(settings):
+    with pytest.raises(ValueError, match="configured together"):
+        Settings(_env_file=None, **settings)
