@@ -16,8 +16,13 @@ def apply_target(target, rental):
     if service.get("state") == "ready":
         cert, key = service.get("certificate", ""), service.get("backend_token", "")
         if not cert or not key or len(key) < 32:
-            raise ValueError("inference_credentials_missing")
-        ssl.create_default_context(cadata=cert)  # Parse the pinned public certificate now.
+            target["inference"]["state"] = "failed"
+            return target
+        try:
+            ssl.create_default_context(cadata=cert)  # Never break SSH on a model certificate error.
+        except ssl.SSLError:
+            target["inference"]["state"] = "failed"
+            return target
         target.update(http=f"https://{target['host']}:8000", certificate=cert, backend_token=key)
     return target
 

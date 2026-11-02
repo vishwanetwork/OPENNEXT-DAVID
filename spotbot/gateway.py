@@ -253,6 +253,17 @@ class Gateway:
             if response.status_code != 200:
                 raise ValueError("http_health_check_failed")
 
+    async def check_inference(self, rental_id, target):
+        if not target.get("certificate") or not target.get("http"):
+            return
+        try:
+            response = await gateway_inference.client_for(self, rental_id, target).get(
+                target["http"] + "/health", timeout=5
+            )
+            response.raise_for_status()
+        except (httpx.HTTPError, OSError, TimeoutError):
+            target.update(http=None, inference=dict(target["inference"], state="unreachable"))
+
     async def listener(self, row):
         if row["id"] in self.listeners:
             return
@@ -375,12 +386,19 @@ class Gateway:
                 )
                 if changed:
                     self.revoke(rental_id)
+                elif previous["target"] != target:
+                    self.revoke_http(rental_id)
+                await self.check_inference(rental_id, target)
+                if changed:
                     await self.probe(target, rental["rfq"])
                 elif previous["target"] != target:
                     self.revoke_http(rental_id)
                 if not previous or previous["target"] != target:
                     for key in list(self.inference_clients):
-                        if key[0] == rental_id:
+                        fingerprint = hashlib.sha256(
+                            target.get("certificate", "").encode()
+                        ).hexdigest()
+                        if key[0] == rental_id and key[1] != fingerprint:
                             await self.inference_clients.pop(key).aclose()
                 await self.listener(row)
                 row.update(
@@ -406,7 +424,9 @@ class Gateway:
                         or rental["tenant_id"] != row["tenant_id"]
                     ):
                         raise ValueError("handoff_acknowledgement_rejected")
-                    if self.target(rental) != target:
+                    acknowledged_target = self.target(rental)
+                    await self.check_inference(rental_id, acknowledged_target)
+                    if acknowledged_target != target:
                         raise ValueError("handoff_target_changed")
                     # The acknowledged response is authoritative, including expiry revisions.
                     expiry = datetime.fromisoformat(rental["rfq"]["expires_at"])

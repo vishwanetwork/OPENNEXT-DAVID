@@ -43,6 +43,11 @@ def certificate(tmp_path):
 async def test_model_readiness_and_key_rotation_preserve_ssh(environment, certificate):
     env, cert = environment, certificate[0]
     gateway, rid = env["gateway"], env["id"]
+
+    async def checked(*args):
+        pass
+
+    gateway.check_inference = checked
     env["rental"]["rfq"]["inference"] = {"preset_id": "deepseek-r1-distill-70b"}
     env["rental"]["inference"] = dict(state="downloading", model="deepseek-r1-distill-70b")
     await gateway.ingest(event(env))
@@ -134,3 +139,31 @@ async def test_backend_requires_pinned_certificate(environment, certificate):
     finally:
         server.close()
         await server.wait_closed()
+
+
+async def test_unreachable_model_withdraws_http_and_preserves_ssh(environment, certificate):
+    env = environment
+    gateway, rid = env["gateway"], env["id"]
+    env["rental"]["rfq"]["inference"] = dict(preset_id="deepseek-r1-distill-7b")
+    env["rental"]["inference"] = dict(state="loading", model="deepseek-r1-distill-7b")
+    await gateway.ingest(event(env))
+    await gateway.reconcile(rid)
+    ssh = asyncio.create_task(asyncio.sleep(60))
+    gateway.sessions.setdefault(rid, set()).add(ssh)
+    pem = certificate[0]
+    env["rental"]["inference"].update(state="ready", certificate=pem, backend_token="k" * 40)
+
+    def unreachable(request):
+        raise httpx.ConnectError("unreachable", request=request)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(unreachable))
+    gateway.inference_clients[(rid, hashlib.sha256(pem.encode()).hexdigest())] = client
+    await gateway.reconcile(rid)
+    assert gateway.authorized(rid) and not ssh.cancelled()
+    assert gateway.live[rid]["target"]["http"] is None
+    assert gateway.public(gateway.db.get("gateway", rid))["inference"]["state"] == "unreachable"
+    env["rental"]["inference"]["certificate"] = "invalid certificate"
+    await gateway.reconcile(rid)
+    assert gateway.authorized(rid) and not ssh.cancelled()
+    ssh.cancel()
+    await asyncio.gather(ssh, return_exceptions=True)
