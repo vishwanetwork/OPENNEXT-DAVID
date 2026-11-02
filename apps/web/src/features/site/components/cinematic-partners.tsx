@@ -28,9 +28,9 @@ const programs = [
   },
 ];
 
-export function CinematicPartners({ hidden }: { hidden: boolean }) {
+export function CinematicPartners() {
   return (
-    <div id="partners" className="hero-partners" inert={hidden}>
+    <div id="partners" className="hero-partners">
       <div className="container partner-network">
         <section
           aria-labelledby="partners-title"

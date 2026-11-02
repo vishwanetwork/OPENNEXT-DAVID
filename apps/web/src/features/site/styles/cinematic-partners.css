@@ -1,17 +1,23 @@
-.opennext-landing .hero-stage {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+.opennext-landing .hero-scroll {
+  --hero-partners-space: 144px;
+  --partners-opacity: 0;
+  --partners-visibility: hidden;
 }
 
 .opennext-landing .hero-visual {
   position: relative;
+  height: calc(100% - var(--hero-progress) * var(--hero-partners-space));
   min-height: 0;
   isolation: isolate;
 }
 
 .opennext-landing .hero-partners {
+  position: absolute;
+  inset: auto 0 0;
   background: #fff;
-  opacity: var(--hero-copy-opacity);
+  opacity: var(--partners-opacity);
+  visibility: var(--partners-visibility);
+  transform: translateY(calc((1 - var(--partners-opacity)) * 16px));
   scroll-margin-top: 100px;
 }
 
@@ -167,14 +173,21 @@
   }
 
   .opennext-landing .hero-stage {
-    display: block;
     overflow: visible;
   }
 
   .opennext-landing .hero-visual {
-    height: max(560px, 75svh);
-    max-height: 760px;
+    height: 100svh;
+    min-height: 700px;
     overflow: hidden;
+  }
+
+  .opennext-landing .hero-partners {
+    position: relative;
+    inset: auto;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
   }
 
   .opennext-landing .partner-network {
@@ -273,5 +286,29 @@
   .opennext-landing .primary-partner h3,
   .opennext-landing .powered-by h3 {
     min-height: 2.8em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opennext-landing .hero-scroll,
+  .opennext-landing .hero-stage {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .opennext-landing .hero-visual {
+    height: 100svh;
+    min-height: 700px;
+    overflow: hidden;
+  }
+
+  .opennext-landing .hero-partners {
+    position: relative;
+    inset: auto;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
   }
 }

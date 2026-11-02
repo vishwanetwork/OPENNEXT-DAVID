@@ -248,3 +248,37 @@ artwork `SOURCES.md`.
 Formatting, lint, typecheck and production build passed. All 488 web tests and
 10 contract tests passed; the three existing max-lines lint warnings are
 unchanged. This update is limited to the landing page and is included in PR #18.
+
+## Full-screen hero and scrolled endorsements — 2026-11-02
+
+This refinement supersedes the initial first-screen endorsement strip from
+merged PR #18. The opening image again fills the viewport. During the final part
+of the desktop scroll morph, the existing partner/program/Vishwa groups fade in
+below the stacked image and caption, filling the lower white area. Reversing the
+scroll hides the groups and restores the full-screen image.
+
+The animation reserves the endorsement block's measured content height, including
+wrapped program labels. Hidden endorsements use CSS visibility so their external
+link is not exposed to keyboard or accessibility navigation. At mobile widths,
+the full-screen hero flows directly into the endorsement block. A reduced-motion
+CSS fallback uses the same natural-flow arrangement without the scroll reveal.
+Fidelity Labs, all three program logos, Powered by Vishwa Lab and its link remain
+unchanged.
+
+Browser checks passed at 1280×720, 1024×768, 390×844 and 320×740. The desktop
+endorsement block measures 144px or 164px depending on wrapping and stays clear
+of the image and caption. Mobile branding and program rows wrap cleanly. All five
+logos load, no duplicate block or horizontal overflow appears, and reverse
+scrolling restores the initial hero. Browser logs contain no warnings or errors.
+Reduced-motion behavior was reviewed in CSS, not emulated in the browser.
+
+Visual evidence is in `../qa-fullscreen-endorsements/`: `hero-desktop.png`,
+`scroll-endorsements-desktop.png`, `scroll-endorsements-compact-desktop.png`,
+`hero-mobile.png`, `endorsements-mobile.png` and
+`endorsements-mobile-narrow.png`.
+
+Formatting, lint, typecheck and production build passed. The web suite passed
+488 tests and the contracts suite passed 10 tests. Lint retains the same three
+existing max-lines warnings with no errors. Changes are limited to the landing
+intro, partner component, scroll choreography and partner styles; authentication,
+API contracts, backend, routing and deployment configuration are unchanged.

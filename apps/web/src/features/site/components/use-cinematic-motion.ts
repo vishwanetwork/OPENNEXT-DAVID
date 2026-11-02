@@ -28,6 +28,7 @@ export function useChoreography(
   useEffect(() => {
     const root = document.querySelector<HTMLElement>('.opennext-landing');
     const hero = root?.querySelector<HTMLElement>('.hero-scroll');
+    const partners = root?.querySelector<HTMLElement>('.hero-partners');
     const product = root?.querySelector<HTMLElement>('.product-story');
     const footer = root?.querySelector<HTMLElement>('.closing');
     if (!root || !hero || !product || !footer) return;
@@ -37,6 +38,7 @@ export function useChoreography(
       frame = 0;
       setScrolled(scrollY > 72);
       const rect = hero.getBoundingClientRect();
+      const partnersHeight = partners?.offsetHeight ?? 0;
       const progress =
         innerWidth > 900 && !reduce.matches
           ? clamp(-rect.top / Math.max(1, rect.height - innerHeight))
@@ -46,6 +48,10 @@ export function useChoreography(
       hero.style.setProperty('--hero-copy-opacity', String(1 - clamp(progress / 0.36)));
       hero.style.setProperty('--hero-copy-y', `${progress * -70}px`);
       hero.style.setProperty('--morph-opacity', String(clamp((progress - 0.4) / 0.35)));
+      const partnersOpacity = clamp((progress - 0.7) / 0.25);
+      hero.style.setProperty('--hero-partners-space', `${partnersHeight}px`);
+      hero.style.setProperty('--partners-opacity', String(partnersOpacity));
+      hero.style.setProperty('--partners-visibility', partnersOpacity > 0 ? 'visible' : 'hidden');
       let closest = 0,
         distance = Infinity;
       root.querySelectorAll('[data-product-step]').forEach((el, index) => {

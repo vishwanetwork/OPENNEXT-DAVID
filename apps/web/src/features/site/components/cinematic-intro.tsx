@@ -80,7 +80,7 @@ export function CinematicIntro({
               <p>One market. Both sides connected.</p>
             </div>
           </div>
-          <CinematicPartners hidden={heroCollapsed} />
+          <CinematicPartners />
         </div>
       </section>
 
