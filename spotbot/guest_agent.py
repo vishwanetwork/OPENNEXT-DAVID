@@ -385,6 +385,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def run():
+    from spotbot_inference import step as step_inference
+
     config_path = Path("/etc/spotbot/agent.json")
     flushed = None
     # (command, mounts, watchdog deadline). While frozen nothing below may write to disk.
@@ -392,6 +394,7 @@ def run():
     thawed = None
     keys_version = None
     task_spec, task_user, task_report = None, "ubuntu", None
+    inference_spec, inference_report = None, None
     last_report = 0.0
     opener = urllib.request.build_opener(NoRedirect)
     while True:
@@ -417,6 +420,7 @@ def run():
                 report["thawed_command"] = thawed
                 report["ssh_keys_version"] = keys_version
                 report["task"] = task_report
+                report["inference"] = inference_report
                 request = urllib.request.Request(
                     config["url"] + "/v1/agents/report",
                     data=json.dumps(report).encode(),
@@ -441,6 +445,16 @@ def run():
                     if instructions.get("task"):
                         task_spec = instructions["task"]
                         task_user = keys["user"] if keys else "ubuntu"
+                    desired = instructions.get("inference")
+                    if desired is not None:
+                        inference_spec = desired
+                    if inference_spec:
+                        desired = (
+                            dict(inference_spec, run=False)
+                            if notice or desired is None
+                            else desired
+                        )
+                        inference_report = step_inference(desired)
                     # A Spot warning moves the rental to recovery, which stops the bot sending
                     # the task; the run it already started must still get its SIGTERM.
                     if task_spec and (instructions.get("task") or notice):

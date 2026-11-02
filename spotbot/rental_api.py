@@ -2,13 +2,14 @@
 
 import secrets
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import Field
 
 from spotbot.models import timestamp
 from spotbot.providers import ProviderError
@@ -36,10 +37,10 @@ class DeliveryPrincipal:
     gateway: bool = False
 
 
-def delivery_view(row, principal):
+def delivery_view(row, principal, engine=None):
     if not principal.gateway:
         return public(row)
-    return {
+    result = {
         "authorization_scope": "gateway_delivery",
         **{
             k: row[k]
@@ -57,6 +58,12 @@ def delivery_view(row, principal):
             k: row["rfq"][k] for k in ("expires_at", "ssh_user", "http_port", "http_health_path")
         },
     }
+    if engine and row["rfq"].get("inference"):
+        from spotbot.inference import gateway_view
+
+        selected = engine.for_row(row) if hasattr(engine, "for_row") else engine
+        result["inference"] = gateway_view(row, engine.current(row), selected.sealer)
+    return result
 
 
 def install(app, service):
@@ -186,7 +193,7 @@ def install(app, service):
 
     @router.get("/{rental_id}")
     def get(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):
-        return delivery_view(guard(lambda: engine.get(rental_id, owner.tenant)), owner)
+        return delivery_view(guard(lambda: engine.get(rental_id, owner.tenant)), owner, engine)
 
     @router.get("/{rental_id}/connection")
     def connection(rental_id: str, owner: Annotated[DeliveryPrincipal, Depends(delivery_tenant)]):
@@ -247,6 +254,28 @@ def install(app, service):
     async def stop_task(rental_id: str, owner: Annotated[str, Depends(tenant)]):
         return await async_guard(lambda: engine.stop_task(rental_id, owner))
 
+    @router.get("/{rental_id}/inference")
+    def inference_status(rental_id: str, owner: Annotated[str, Depends(tenant)]):
+        from spotbot.inference import summary
+
+        return {"inference": summary(guard(lambda: engine.get(rental_id, owner)))}
+
+    class InferenceAction(RulesModel):
+        action: Literal["retry", "stop"]
+        expected_version: int = Field(ge=1)
+
+    @router.post("/{rental_id}/inference")
+    async def inference_action(
+        rental_id: str, request: InferenceAction, owner: Annotated[str, Depends(tenant)]
+    ):
+        return {
+            "inference": await async_guard(
+                lambda: engine.inference_action(
+                    rental_id, owner, request.action, request.expected_version
+                )
+            )
+        }
+
     @router.post("/{rental_id}/release")
     async def release(rental_id: str, owner: Annotated[str, Depends(tenant)]):
         return public(await async_guard(lambda: engine.release(rental_id, owner)))
@@ -269,7 +298,9 @@ def install(app, service):
             # A rejection ends the rental; the gateway credential cannot release servers.
             raise HTTPException(403, "gateway_token_scope_denied")
         return delivery_view(
-            await async_guard(lambda: engine.gateway_ack(rental_id, owner.tenant, request)), owner
+            await async_guard(lambda: engine.gateway_ack(rental_id, owner.tenant, request)),
+            owner,
+            engine,
         )
 
     @router.post("/{rental_id}/policy-revisions")

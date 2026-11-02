@@ -84,6 +84,9 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             raise HTTPException(401, "invalid_api_token", headers={"WWW-Authenticate": "Bearer"})
 
     auth = [Depends(authenticate)]
+    from spotbot.inference_api import install as install_inference
+
+    install_inference(app, svc, auth)
 
     def get_order(order_id):
         order = svc.store.get_order(order_id)

@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from spotbot.inference import InferenceReport, InferenceSpec
 from spotbot.models import gpu_model
 
 PUBLIC_KEY_TYPES = {
@@ -119,6 +120,8 @@ class RFQ(RulesModel):
     customer_ref: str | None = Field(None, min_length=1, max_length=200)
     http_port: int | None = Field(None, ge=1, le=65535)
     http_health_path: str = Field("/health", pattern=r"^/[A-Za-z0-9/_-]*$")
+    inference: InferenceSpec | None = None
+    retail_hourly_cents: int | None = Field(None, gt=0)
     require_gateway_ack: bool = True
 
     @field_validator("gpu_model")
@@ -287,3 +290,4 @@ class AgentReport(RulesModel):
     ssh_keys_version: int | None = Field(None, ge=0)
     # The managed task run on this server, if any.
     task: TaskReport | None = None
+    inference: InferenceReport | None = None

@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     # Base64 of 32 random bytes sealing managed-task secrets (AES-256-GCM). Without it, tasks
     # without secrets still run and tasks with secrets are refused.
     spotbot_rental_task_key: SecretStr = SecretStr("")
+    # Preset ID -> enabled, pinned HF revision/image digest, and validated GPU models.
+    spotbot_inference_presets: str = "{}"
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
     # Read-only transitional account/RFQ projection from the legacy backend's private volume.
@@ -203,6 +205,9 @@ class Settings(BaseSettings):
 
         _ = self.aws_accounts
         _ = self.opennext_aws_accounts
+        from spotbot.inference import catalog
+
+        catalog(self)
 
         if bool(self.spotbot_aws_price_profile.strip()) != bool(self.aws_reference_regions):
             raise ValueError("AWS price profile and reference Regions must be configured together")
