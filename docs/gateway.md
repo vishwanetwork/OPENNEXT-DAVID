@@ -169,3 +169,28 @@ Run `pytest tests/test_gateway.py tests/test_gateway_rentals.py -q` for gateway
 tests, then the full test suite. Network tests require loopback socket access.
 Cloud tests remain simulated until staging validates real DNS/TLS, security
 groups, customer keys, disk restoration, route switching, and retention cleanup.
+# Optional model inference
+
+Managed inference uses the existing public HTTPS listener (443) and a stable
+`https://r-<rental-id>.<public-http-domain>/v1` Base URL. SSH delivery is independent
+of model preparation. The gateway enables inference only after the current guest
+generation reports a successful token-generation smoke test and its public TLS
+certificate. Backend traffic uses HTTPS with that certificate as its trust anchor;
+verification is never disabled. GPU TCP 8000 must remain restricted to the gateway.
+
+The gateway exposes only GET `/v1/models`, POST `/v1/chat/completions`, and POST
+`/v1/completions` for managed models. Customer credentials are replaced by a
+separate encrypted backend credential before forwarding. Request bodies and keys
+must not be logged. Streaming responses are forwarded without buffering.
+
+`SPOTBOT_GATEWAY_INFERENCE_READ_TIMEOUT_SECONDS` defaults to 600 seconds. Configure
+the public reverse proxy with a longer read timeout and `proxy_buffering off`.
+This timeout also bounds the wait for the first generated token. Model engines
+send SSE keepalive comments every 15 seconds after streaming starts.
+
+The restricted gateway administrator API supports POST
+`/v1/gateway/rentals/<id>/inference-key` with `expected_version` from the connection
+response. It verifies the tenant and rotates only that rental's customer key.
+Rotation and model route changes cancel HTTP streams while preserving SSH sessions.
+End, expiry, account ownership loss, and generation changes revoke all routes.
+
