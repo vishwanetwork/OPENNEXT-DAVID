@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from spotbot.config import Settings
 from spotbot.inference import PRESETS, catalog
@@ -32,6 +33,89 @@ def instance(ec2, state):
     value = rows[0]["Instances"][0]
     if not owned(value, state) or value["InstanceType"] != "t3.medium":
         raise RuntimeError("build_instance_ownership_mismatch")
+    return value
+
+
+def progress_channel(s3, state):
+    bucket = "spotbot-inference-prep-" + state["account"] + "-" + state["region"]
+    try:
+        s3.head_bucket(Bucket=bucket, ExpectedBucketOwner=state["account"])
+        tags = {t["Key"]: t["Value"] for t in s3.get_bucket_tagging(Bucket=bucket)["TagSet"]}
+        if (
+            tags.get("spotbot-purpose") != "inference-image-build"
+            or tags.get("spotbot-managed") != "true"
+        ):
+            raise RuntimeError("progress_bucket_not_owned")
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] not in {"404", "NoSuchBucket", "NotFound"}:
+            raise
+        params = dict(Bucket=bucket)
+        if state["region"] != "us-east-1":
+            params["CreateBucketConfiguration"] = dict(LocationConstraint=state["region"])
+        s3.create_bucket(**params)
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging=dict(
+                TagSet=[
+                    dict(Key="spotbot-managed", Value="true"),
+                    dict(Key="spotbot-purpose", Value="inference-image-build"),
+                ]
+            ),
+        )
+    s3.put_public_access_block(
+        Bucket=bucket,
+        PublicAccessBlockConfiguration=dict(
+            BlockPublicAcls=True,
+            IgnorePublicAcls=True,
+            BlockPublicPolicy=True,
+            RestrictPublicBuckets=True,
+        ),
+    )
+    s3.put_bucket_encryption(
+        Bucket=bucket,
+        ServerSideEncryptionConfiguration=dict(
+            Rules=[dict(ApplyServerSideEncryptionByDefault=dict(SSEAlgorithm="AES256"))]
+        ),
+    )
+    s3.put_bucket_lifecycle_configuration(
+        Bucket=bucket,
+        LifecycleConfiguration=dict(
+            Rules=[
+                dict(
+                    ID="expire-temporary-build-progress",
+                    Status="Enabled",
+                    Filter=dict(Prefix="builds/"),
+                    Expiration=dict(Days=1),
+                )
+            ]
+        ),
+    )
+    key = "builds/" + state["build_id"] + ".json"
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=json.dumps(dict(build_id=state["build_id"], state="planned")).encode(),
+        ContentType="application/json",
+    )
+    state.update(
+        status_bucket=bucket,
+        status_key=key,
+        status_url=s3.generate_presigned_url(
+            "put_object",
+            Params=dict(Bucket=bucket, Key=key, ContentType="application/json"),
+            ExpiresIn=7200,
+        ),
+    )
+
+
+def read_progress(s3, state):
+    response = s3.get_object(Bucket=state["status_bucket"], Key=state["status_key"])
+    try:
+        value = json.loads(response["Body"].read(65537))
+    finally:
+        response["Body"].close()
+    if value.get("build_id") != state["build_id"]:
+        raise RuntimeError("progress_identity_mismatch")
     return value
 
 
@@ -84,6 +168,16 @@ def main():
         connect_timeout=5, read_timeout=30, retries={"mode": "standard", "max_attempts": 2}
     )
     ec2 = session.client("ec2", config=config)
+    s3 = session.client(
+        "s3",
+        endpoint_url=f"https://s3.{args.region}.amazonaws.com",
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=5,
+            read_timeout=30,
+            retries={"mode": "standard", "max_attempts": 2},
+        ),
+    )
     account = session.client("sts", config=config).get_caller_identity()["Account"]
     if args.state_file.exists():
         state = json.loads(args.state_file.read_text())
@@ -121,18 +215,53 @@ def main():
         save(args.state_file, state, "planned")
     try:
         if not state.get("instance_id"):
+            progress_channel(s3, state)
+            save(args.state_file, state, "planned")
             source = ec2.describe_images(ImageIds=[state["base_image"]])["Images"][0]
             value = ec2.run_instances(**launch_request(state, source))["Instances"][0]
             state["instance_id"] = value["InstanceId"]
+            while True:
+                value = instance(ec2, state)
+                disks = [
+                    m["Ebs"]["VolumeId"]
+                    for m in value.get("BlockDeviceMappings", [])
+                    if m["DeviceName"] == "/dev/sdf"
+                ]
+                if disks:
+                    ec2.create_tags(
+                        Resources=[state["instance_id"]],
+                        Tags=[dict(Key="spotbot-model-volume", Value=disks[0])],
+                    )
+                    state["model_volume_id"] = disks[0]
+                    break
+                if time.time() - state["created_at"] > 120:
+                    raise TimeoutError("model_disk_attachment_missing")
+                time.sleep(2)
             save(args.state_file, state, "preparing")
         deadline = state["created_at"] + state["max_minutes"] * 60 + 300
         while not state.get("image_id"):
             value = instance(ec2, state)
+            progress = read_progress(s3, state) if state.get("status_bucket") else {}
+            if progress.get("state") != (state.get("guest_progress") or {}).get("state"):
+                state["guest_progress"] = progress
+                save(args.state_file, state, "preparing")
+                print(
+                    json.dumps(
+                        dict(
+                            event="guest_progress",
+                            state=progress.get("state"),
+                            error=progress.get("error"),
+                        )
+                    ),
+                    flush=True,
+                )
+            if progress.get("state") == "failed":
+                raise RuntimeError("guest_preparation_failed:" + progress.get("error", "unknown"))
             if value["State"]["Name"] == "stopped":
                 console = ec2.get_console_output(InstanceId=state["instance_id"], Latest=True).get(
                     "Output", ""
                 )
-                if prepared(console, state):
+                if prepared(console, state) or progress.get("state") == "prepared":
                     name = "spotbot-inference-" + state["build_id"]
                     prior = ec2.describe_images(
                         Owners=[account], Filters=[{"Name": "name", "Values": [name]}]
@@ -205,6 +334,8 @@ def main():
         raise
     finally:
         cleanup(ec2, state)
+        if state.get("status_bucket"):
+            s3.delete_object(Bucket=state["status_bucket"], Key=state["status_key"])
 
 
 if __name__ == "__main__":

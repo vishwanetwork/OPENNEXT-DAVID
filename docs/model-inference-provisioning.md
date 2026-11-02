@@ -217,6 +217,13 @@ PYTHONPATH=. python scripts/prepare_inference_image.py \
 The tool launches exactly one `t3.medium` with Standard CPU credits, no IAM instance
 profile and no GPU. Its root/model disks are encrypted and delete on termination.
 A guest shutdown timer and controller deadline bound CPU runtime to 90 minutes.
+Progress uses a dedicated private, encrypted S3 bucket with public access blocked.
+The guest receives only a two-hour PUT capability for its own build-status object;
+it receives no cloud-management role or access keys. Temporary status objects expire
+after one day and are deleted on normal cleanup. The capability file is removed
+before publishing the image. EC2 console output is a fallback, not the only proof of
+completion. The new model volume is matched by its ID, and disk enumeration always
+keeps the root filesystem's partition hierarchy; an unknown/root disk is not formatted.
 The guest downloads artifacts, checks the complete manifest, removes machine/SSH
 identity, then shuts down. Only a build-specific completion marker permits image
 registration. The controller verifies the private encrypted image, terminates the

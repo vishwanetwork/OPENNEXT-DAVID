@@ -6,18 +6,74 @@ import os
 import shutil
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
+
+REPORT = {}
+PROGRESS = {}
 
 
 def call(args, **kwargs):
     return subprocess.run(args, check=True, stdin=subprocess.DEVNULL, **kwargs)
 
 
-def event(state):
-    print(json.dumps(dict(event="inference_image_build", state=state)), flush=True)
+def event(state, **fields):
+    PROGRESS.update(fields)
+    value = dict(
+        PROGRESS, event="inference_image_build", state=state, build_id=REPORT.get("build_id")
+    )
+    PROGRESS["stage"] = state
+    print(json.dumps(value), flush=True)
+    if REPORT.get("status_url"):
+        request = urllib.request.Request(
+            REPORT["status_url"],
+            data=json.dumps(value).encode(),
+            method="PUT",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=20):
+            pass
+
+
+def model_volume_id():
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        "http://169.254.169.254/latest/api/token",
+        method="PUT",
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"},
+    )
+    with opener.open(request, timeout=5) as response:
+        token = response.read().decode()
+    request = urllib.request.Request(
+        "http://169.254.169.254/latest/meta-data/tags/instance/spotbot-model-volume",
+        headers={"X-aws-ec2-metadata-token": token},
+    )
+    with opener.open(request, timeout=5) as response:
+        return response.read().decode().strip().replace("-", "")
+
+
+def model_disk(devices, volume, size):
+    candidates = [
+        d
+        for d in devices
+        if d["type"] == "disk"
+        and (d.get("serial") or "").replace("-", "") == volume
+        and int(d["size"]) == size * 2**30
+    ]
+    if len(candidates) != 1:
+        return None
+    disk = candidates[0]
+    if disk.get("children"):
+        if len(disk["children"]) != 1:
+            raise RuntimeError("unsupported_model_disk_layout")
+        disk = disk["children"][0]
+    if "/" in (disk.get("mountpoints") or []):
+        raise RuntimeError("model_disk_cannot_be_root")
+    return disk
 
 
 def run(config):
+    REPORT.update(config)
     call(
         [
             "systemd-run",
@@ -36,30 +92,40 @@ def run(config):
         call(["systemctl", "start", "docker"])
         for _ in range(120):
             devices = json.loads(
-                subprocess.check_output(["lsblk", "-Jb", "-o", "PATH,TYPE,FSTYPE,MOUNTPOINTS,SIZE"])
+                subprocess.check_output(
+                    ["lsblk", "-Jb", "--tree", "-o", "PATH,TYPE,FSTYPE,MOUNTPOINTS,SIZE,SERIAL"]
+                )
             )["blockdevices"]
-            blank = [
-                d
-                for d in devices
-                if d["type"] == "disk"
-                and not d.get("fstype")
-                and not d.get("children")
-                and not any(d.get("mountpoints") or [])
-                and int(d["size"]) == config["disk_gib"] * 2**30
-            ]
-            if len(blank) == 1:
+            if _ == 0:
+                event("checking_model_disk", disks=devices)
+            try:
+                volume = model_volume_id()
+            except OSError:
+                time.sleep(2)
+                continue
+            disk = model_disk(devices, volume, config["disk_gib"])
+            if disk:
                 break
             time.sleep(2)
         else:
             raise RuntimeError("unique_empty_model_disk_missing")
-        device = blank[0]["path"]
-        call(["mkfs.ext4", "-m", "0", device], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        device = disk["path"]
+        filesystem = disk.get("fstype")
+        if not filesystem:
+            call(
+                ["mkfs.ext4", "-m", "0", device],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            filesystem = "ext4"
+        if filesystem not in {"ext4", "xfs"}:
+            raise RuntimeError("unsupported_model_filesystem")
         uuid = (
             subprocess.check_output(["blkid", "-s", "UUID", "-o", "value", device]).decode().strip()
         )
         Path("/data/sdf").mkdir(parents=True, exist_ok=True)
         with open("/etc/fstab", "a") as handle:
-            handle.write(f"UUID={uuid} /data/sdf ext4 defaults,nofail 0 2\n")
+            handle.write(f"UUID={uuid} /data/sdf {filesystem} defaults,nofail 0 2\n")
         call(["mount", "/data/sdf"])
         model_dir = Path("/data/sdf/spotbot-models") / config["preset_id"] / config["revision"]
         model_dir.mkdir(parents=True, mode=0o700)
@@ -119,10 +185,17 @@ def run(config):
         Path("/etc/machine-id").write_text("")
         # This marker is checked through the EC2 console before publishing an AMI.
         os.sync()
+        # Remove the one-object, short-lived status capability before taking any image.
+        Path("/opt/spotbot-cache/build.json").unlink(missing_ok=True)
+        event("prepared", artifact_bytes=counts["total_bytes"], gpu_validation=False)
         print("SPOTBOT_IMAGE_PREPARED:" + config["build_id"], flush=True)
     except Exception as exc:
-        print(
-            json.dumps(dict(event="inference_image_failed", error=type(exc).__name__)), flush=True
+        message = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
+        event(
+            "failed",
+            error=message,
+            http_status=getattr(exc, "code", None),
+            stage=PROGRESS.get("stage"),
         )
         raise
     finally:

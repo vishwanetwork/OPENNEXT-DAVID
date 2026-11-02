@@ -86,3 +86,72 @@ def test_only_this_builds_completion_marker_and_resource_tags_are_accepted():
     assert not prepared("SPOTBOT_IMAGE_PREPARED:another-build", state)
     assert owned(dict(Tags=labels(state)), state)
     assert not owned(dict(Tags=labels(dict(state, build_id="another-build"))), state)
+
+
+def test_data_disk_is_identified_by_id_even_when_the_base_automounts_it():
+    from spotbot.guest_image import model_disk
+
+    root = dict(
+        path="/dev/nvme0n1",
+        type="disk",
+        serial="volroot",
+        size=100 * 2**30,
+        fstype="ext4",
+        mountpoints=["/"],
+    )
+    data = dict(
+        path="/dev/nvme1n1",
+        type="disk",
+        serial="voldata",
+        size=100 * 2**30,
+        fstype="xfs",
+        mountpoints=["/opt/dlami/nvme"],
+    )
+    assert model_disk([root, data], "voldata", 100) == data
+    assert model_disk([root, data], "missing", 100) is None
+    with pytest.raises(RuntimeError, match="cannot_be_root"):
+        model_disk([root, data], "volroot", 100)
+
+
+def test_private_progress_capability_is_limited_to_one_temporary_object():
+    from unittest.mock import MagicMock
+
+    from scripts.prepare_inference_image import progress_channel
+
+    state, _ = environment()
+    state["region"] = "us-west-2"
+    s3 = MagicMock()
+    s3.get_bucket_tagging.return_value = dict(
+        TagSet=[
+            dict(Key="spotbot-managed", Value="true"),
+            dict(Key="spotbot-purpose", Value="inference-image-build"),
+        ]
+    )
+    s3.generate_presigned_url.return_value = "https://private.example/limited-capability"
+    progress_channel(s3, state)
+    capability = s3.generate_presigned_url.call_args
+    assert capability.args == ("put_object",)
+    assert capability.kwargs["Params"]["Key"] == "builds/" + state["build_id"] + ".json"
+    assert capability.kwargs["ExpiresIn"] == 7200
+    public = s3.put_public_access_block.call_args.kwargs["PublicAccessBlockConfiguration"]
+    assert all(public.values())
+    assert s3.put_bucket_lifecycle_configuration.call_args.kwargs["LifecycleConfiguration"][
+        "Rules"
+    ][0]["Expiration"] == dict(Days=1)
+
+
+def test_progress_channel_refuses_unrelated_buckets():
+    from unittest.mock import MagicMock
+
+    from scripts.prepare_inference_image import progress_channel
+
+    state, _ = environment()
+    state["region"] = "us-west-2"
+    s3 = MagicMock()
+    s3.get_bucket_tagging.return_value = dict(
+        TagSet=[dict(Key="spotbot-purpose", Value="another-app")]
+    )
+    with pytest.raises(RuntimeError, match="progress_bucket_not_owned"):
+        progress_channel(s3, state)
+    s3.put_object.assert_not_called()
+    s3.put_public_access_block.assert_not_called()

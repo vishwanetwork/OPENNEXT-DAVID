@@ -56,6 +56,8 @@ def user_data(state):
         disk_gib=PRESETS[state["preset_id"]]["disk_gib"],
         download=DOWNLOAD,
     )
+    if state.get("status_url"):
+        config["status_url"] = state["status_url"]
     bundle = json.dumps(
         {
             "build.py": Path(__file__).with_name("guest_image.py").read_text(),
@@ -93,7 +95,11 @@ def launch_request(state, source):
         ClientToken=state["build_id"],
         CreditSpecification={"CpuCredits": "standard"},
         InstanceInitiatedShutdownBehavior="stop",
-        MetadataOptions={"HttpTokens": "required", "HttpEndpoint": "enabled"},
+        MetadataOptions={
+            "HttpTokens": "required",
+            "HttpEndpoint": "enabled",
+            "InstanceMetadataTags": "enabled",
+        },
         NetworkInterfaces=[
             dict(
                 DeviceIndex=0,
