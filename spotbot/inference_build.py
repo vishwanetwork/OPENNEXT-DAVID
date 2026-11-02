@@ -87,13 +87,16 @@ def launch_request(state, source):
         raise ValueError("cpu_build_limits_exceeded")
     if not base_allowed(source, state["account"]):
         raise ValueError("clean_encrypted_base_image_required")
+    credits = state.get("cpu_credits", "standard")
+    if credits not in {"standard", "unlimited"}:
+        raise ValueError("invalid_cpu_credit_mode")
     return dict(
         ImageId=state["base_image"],
         InstanceType=state["instance_type"],
         MinCount=1,
         MaxCount=1,
         ClientToken=state["build_id"],
-        CreditSpecification={"CpuCredits": "standard"},
+        CreditSpecification={"CpuCredits": credits},
         InstanceInitiatedShutdownBehavior="stop",
         MetadataOptions={
             "HttpTokens": "required",

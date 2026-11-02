@@ -119,6 +119,16 @@ def read_progress(s3, state):
     return value
 
 
+def delete_progress(s3, state):
+    expected = "spotbot-inference-prep-" + state["account"] + "-" + state["region"]
+    if (
+        state["status_bucket"] != expected
+        or state["status_key"] != "builds/" + state["build_id"] + ".json"
+    ):
+        raise RuntimeError("progress_cleanup_scope_mismatch")
+    s3.delete_object(Bucket=expected, Key=state["status_key"], ExpectedBucketOwner=state["account"])
+
+
 def cleanup(ec2, state):
     ids = [state["instance_id"]] if state.get("instance_id") else []
     if not ids:
@@ -132,7 +142,12 @@ def cleanup(ec2, state):
                 if owned(i, state) and i["InstanceType"] == "t3.medium"
             ]
     for resource_id in ids:
-        value = instance(ec2, dict(state, instance_id=resource_id))
+        try:
+            value = instance(ec2, dict(state, instance_id=resource_id))
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "InvalidInstanceID.NotFound":
+                continue
+            raise
         if value["State"]["Name"] not in {"terminated", "shutting-down"}:
             ec2.terminate_instances(InstanceIds=[resource_id])
     # Failed partial images are not shared or retained as production candidates.
@@ -161,6 +176,12 @@ def main():
     parser.add_argument("--preset", choices=list(PRESETS), default="deepseek-r1-distill-7b")
     parser.add_argument("--pins-env", type=Path, default=Path(".env.inference.example"))
     parser.add_argument("--max-minutes", type=int, choices=range(10, 91), default=90)
+    parser.add_argument(
+        "--cpu-credits",
+        choices=["standard", "unlimited"],
+        default="standard",
+        help="Unlimited speeds decompression but may add bounded CPU-credit charges",
+    )
     parser.add_argument("--state-file", type=Path, required=True)
     args = parser.parse_args()
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
@@ -188,6 +209,9 @@ def main():
         ):
             parser.error("The state file belongs to another account, Region or preset")
         if state["phase"] == "available":
+            cleanup(ec2, state)
+            if state.get("status_bucket"):
+                delete_progress(s3, state)
             print(json.dumps(dict(image_id=state["image_id"], account=account, region=args.region)))
             return
         if state["phase"] in {"failed", "terminated"}:
@@ -206,6 +230,7 @@ def main():
             subnet_id=args.subnet_id,
             security_groups=args.security_group,
             instance_type="t3.medium",
+            cpu_credits=args.cpu_credits,
             max_minutes=args.max_minutes,
             created_at=time.time(),
         )
@@ -333,9 +358,11 @@ def main():
         save(args.state_file, state, "failed")
         raise
     finally:
-        cleanup(ec2, state)
-        if state.get("status_bucket"):
-            s3.delete_object(Bucket=state["status_bucket"], Key=state["status_key"])
+        try:
+            cleanup(ec2, state)
+        finally:
+            if state.get("status_bucket"):
+                delete_progress(s3, state)
 
 
 if __name__ == "__main__":

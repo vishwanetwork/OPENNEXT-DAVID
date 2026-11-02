@@ -66,6 +66,11 @@ def test_build_request_is_bounded_cpu_only_and_all_disks_are_encrypted_ephemeral
     for update in [dict(instance_type="p6-b300.48xlarge"), dict(max_minutes=100)]:
         with pytest.raises(ValueError, match="cpu_build_limits_exceeded"):
             launch_request(dict(state, **update), source)
+    assert launch_request(dict(state, cpu_credits="unlimited"), source)[
+        "CreditSpecification"
+    ] == dict(CpuCredits="unlimited")
+    with pytest.raises(ValueError, match="invalid_cpu_credit_mode"):
+        launch_request(dict(state, cpu_credits="invalid"), source)
 
 
 def test_customer_images_and_other_accounts_can_never_be_used_as_shared_bases():
@@ -155,3 +160,16 @@ def test_progress_channel_refuses_unrelated_buckets():
         progress_channel(s3, state)
     s3.put_object.assert_not_called()
     s3.put_public_access_block.assert_not_called()
+
+
+def test_progress_cleanup_cannot_delete_an_unrelated_key():
+    from unittest.mock import MagicMock
+
+    from scripts.prepare_inference_image import delete_progress
+
+    state, _ = environment()
+    state.update(region="us-west-2", status_bucket="another-app", status_key="important.json")
+    s3 = MagicMock()
+    with pytest.raises(RuntimeError, match="cleanup_scope_mismatch"):
+        delete_progress(s3, state)
+    s3.delete_object.assert_not_called()

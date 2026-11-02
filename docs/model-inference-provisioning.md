@@ -217,6 +217,9 @@ PYTHONPATH=. python scripts/prepare_inference_image.py \
 The tool launches exactly one `t3.medium` with Standard CPU credits, no IAM instance
 profile and no GPU. Its root/model disks are encrypted and delete on termination.
 A guest shutdown timer and controller deadline bound CPU runtime to 90 minutes.
+For short builds, `--cpu-credits unlimited` avoids credit throttling while preserving
+the same runtime limit; it can add AWS CPU-credit charges. Standard mode is the
+default and may make container decompression much slower after credits run out.
 Progress uses a dedicated private, encrypted S3 bucket with public access blocked.
 The guest receives only a two-hour PUT capability for its own build-status object;
 it receives no cloud-management role or access keys. Temporary status objects expire
