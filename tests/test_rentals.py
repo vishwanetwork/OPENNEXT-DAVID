@@ -184,6 +184,11 @@ class Cloud:
 
 @pytest.fixture
 def rental_env(service_factory, monkeypatch):
+    # Load the lazy backend before replacing the clock: an import during the
+    # fixture would retain the fake clock after monkeypatch restores the model.
+    import importlib
+
+    importlib.import_module("spotbot.storage.sqlite")
     clock = Clock()
     monkeypatch.setattr("spotbot.models.utcnow", clock.now)
     monkeypatch.setattr("spotbot.rentals.utcnow", clock.now)

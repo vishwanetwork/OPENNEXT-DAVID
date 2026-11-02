@@ -101,7 +101,24 @@ async def test_catalog_shadows_default_route_and_retains_target_backoff(monkeypa
     child.note_failure(targets[0], ProviderError("aws_InsufficientInstanceCapacity"))
     assert provider.public_offer(targets[0], 900)["can_attempt"] is False
     provider.account_providers = {}
-    assert provider.public_offer(targets[0], 900)["eligibility_status"] == "aws_account_not_enrolled"
+    assert (
+        provider.public_offer(targets[0], 900)["eligibility_status"] == "aws_account_not_enrolled"
+    )
+
+
+def test_pre_enrollment_default_quote_cannot_still_be_purchased_after_route_changes():
+    settings = Settings(_env_file=None, spotbot_aws_regions="us-west-2")
+    provider = AWSProvider(settings, None, session=FakeAWS())
+    old = next(o for o in provider._collect() if o.sku == "p5.4xlarge")
+    old.orderable = True
+    value = enrollment()
+    value["instance_types"] = [old.sku]
+    settings.spotbot_aws_accounts = json.dumps({"gpuwest": value})
+    exposed = provider.public_offer(old, 900)
+    assert exposed["orderable"] is False and exposed["can_attempt"] is False
+    assert exposed["eligibility_status"] == "aws_account_route_changed"
+    with pytest.raises(ValueError, match="additional_accounts_require_protected_rentals"):
+        provider.plan(old, None, "stale-unprotected-order")
 
 
 @pytest.fixture

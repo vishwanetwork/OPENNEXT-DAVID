@@ -56,6 +56,21 @@ class AWSProvider(Provider):
 
     def public_offer(self, offer, max_age):
         account = offer.details.get("aws_account", "default")
+        if (
+            account == "default"
+            and self.settings.spotbot_aws_account_name == "default"
+            and self._enrolled_route(offer.region, offer.sku)
+            and offer.orderable
+        ):
+            # Catalog rows can outlive enrollment changes. Do not let an old
+            # default-account quote compete with the account now fulfilling it.
+            data = super().public_offer(offer, max_age)
+            data.update(
+                orderable=False,
+                can_attempt=False,
+                eligibility_status="aws_account_route_changed",
+            )
+            return data
         if self.settings.spotbot_aws_account_name == "default" and account != "default":
             provider = self.fulfillment_providers().get(account)
             if (
@@ -158,6 +173,12 @@ class AWSProvider(Provider):
                 for name, account in self.settings.aws_accounts.items()
             }
         return self.account_providers
+
+    def _enrolled_route(self, region, sku):
+        return any(
+            account.region == region and sku in account.instance_types
+            for account in self.settings.aws_accounts.values()
+        )
 
     @property
     def configured(self):
@@ -584,10 +605,7 @@ class AWSProvider(Provider):
             for (sku, zone), quote in effective.items():
                 # Older clients route by Region/SKU. Publish only the enrolled
                 # account for that route so its displayed quote matches fulfillment.
-                if any(
-                    account.region == region and sku in account.instance_types
-                    for account in self.settings.aws_accounts.values()
-                ):
+                if self._enrolled_route(region, sku):
                     continue
                 if (
                     self.settings.spotbot_aws_instance_types
@@ -694,7 +712,9 @@ class AWSProvider(Provider):
         return offers
 
     def plan(self, offer, launch, name, *, max_price_hourly=None):
-        if offer.details.get("aws_account", "default") != "default":
+        if offer.details.get("aws_account", "default") != "default" or self._enrolled_route(
+            offer.region, offer.sku
+        ):
             raise ValueError("additional_accounts_require_protected_rentals")
         validate_launch(
             launch,
