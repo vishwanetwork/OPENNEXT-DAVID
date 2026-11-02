@@ -193,4 +193,3 @@ The restricted gateway administrator API supports POST
 response. It verifies the tenant and rotates only that rental's customer key.
 Rotation and model route changes cancel HTTP streams while preserving SSH sessions.
 End, expiry, account ownership loss, and generation changes revoke all routes.
-

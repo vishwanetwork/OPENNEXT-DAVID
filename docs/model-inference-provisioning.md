@@ -142,9 +142,11 @@ from unit tests or GPU detection alone.
 
 ## Deployment and the small-model acceptance path
 
-Deploy the Bot, Gateway, OpenNEXT adapter, and web changes together. Existing GPU-only
-requests remain compatible. No database migration is needed for the optional JSON
-fields. Old rentals keep their account and do not acquire a model preset implicitly.
+Keep all inference presets disabled while deploying. Update the Gateway first, then
+the Bot, OpenNEXT adapter and web, and enable a test preset last. An older gateway
+cannot acknowledge managed inference correctly. Existing GPU-only requests remain
+compatible. No database migration is needed for the optional JSON fields. Old
+rentals keep their account and do not acquire a model preset implicitly.
 
 Set `SPOTBOT_INFERENCE_PRESETS` on the Bot (default `{}`). Each entry has `enabled`,
 an immutable Hugging Face `revision`, an immutable `vllm/vllm-openai@sha256:...` image,
