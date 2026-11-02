@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Extra Regions collected for price references only (no orders): current Spot, list prices
     # and history. Comma-separated; the order Regions above are always included.
     spotbot_aws_price_regions: str = ""
+    # Separate, read-only current Spot reference identity; never used for rental resources.
+    spotbot_aws_price_profile: str = ""
+    spotbot_aws_reference_regions: str = ""
     spotbot_aws_price_region_interval_seconds: int = Field(3600, ge=600)
     spotbot_aws_vpc_id: str = ""
     spotbot_aws_security_group_ids: str = ""
@@ -155,6 +158,14 @@ class Settings(BaseSettings):
         extra = (r.strip() for r in self.spotbot_aws_price_regions.split(",") if r.strip())
         return list(dict.fromkeys([*self.aws_order_regions, *extra]))
 
+    @property
+    def aws_reference_regions(self) -> list[str]:
+        return list(
+            dict.fromkeys(
+                r.strip() for r in self.spotbot_aws_reference_regions.split(",") if r.strip()
+            )
+        )
+
     def enabled(self, provider: str) -> bool:
         return provider in self.spotbot_enabled_providers.split(",")
 
@@ -163,6 +174,9 @@ class Settings(BaseSettings):
         import json
         import re
         from urllib.parse import urlparse
+
+        if bool(self.spotbot_aws_price_profile.strip()) != bool(self.aws_reference_regions):
+            raise ValueError("AWS price profile and reference Regions must be configured together")
 
         tokens = self.rental_tenant_tokens
         if (

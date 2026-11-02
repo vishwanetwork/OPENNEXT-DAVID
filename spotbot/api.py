@@ -161,6 +161,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                         {
                             "last_list_price_collection": collections.get("aws_list"),
                             "last_price_region_collection": collections.get("aws_regions"),
+                            "last_account_price_collection": collections.get("aws_account_prices"),
                             "price_regions": config.aws_price_regions,
                         }
                         if name == "aws"
@@ -240,11 +241,17 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         data = svc.list_history.query(region, sku, iso(start), iso(end))
         rows = data.pop("items")
         return {
-            "provider": "aws", "region": region, "sku": sku,
-            "kind": "published_price_intervals", "unit": "USD / instance-hour",
+            "provider": "aws",
+            "region": region,
+            "sku": sku,
+            "kind": "published_price_intervals",
+            "unit": "USD / instance-hour",
             "commitment": {"months": 12, "payment": "no_upfront"},
-            **data, "total": len(rows), "limit": limit, "offset": offset,
-            "items": rows[offset:offset + limit],
+            **data,
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "items": rows[offset : offset + limit],
         }
 
     @app.get("/v1/prices/aws-spot-history", dependencies=auth)
@@ -267,10 +274,17 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         coverage = svc.spot_history.coverage(region, sku)
         rows = svc.spot_history.read(region, sku, iso(start), iso(end)) if coverage else []
         return {
-            "provider": "aws", "market": "spot", "region": region, "sku": sku,
-            "kind": "price_change_events", "unit": "USD / instance-hour",
-            "coverage": coverage, "total": len(rows), "limit": limit, "offset": offset,
-            "items": rows[offset:offset + limit],
+            "provider": "aws",
+            "market": "spot",
+            "region": region,
+            "sku": sku,
+            "kind": "price_change_events",
+            "unit": "USD / instance-hour",
+            "coverage": coverage,
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+            "items": rows[offset : offset + limit],
         }
 
     @app.get("/v1/prices/history", dependencies=auth)
@@ -352,7 +366,9 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         offer = svc.store.get_offer(offer_id)
         if not offer:
             raise HTTPException(404, "offer_not_found")
-        return svc.providers[offer.provider].public_offer(offer, config.spotbot_price_max_age_seconds)
+        return svc.providers[offer.provider].public_offer(
+            offer, config.spotbot_price_max_age_seconds
+        )
 
     @app.post("/v1/orders", dependencies=auth)
     def order_create(

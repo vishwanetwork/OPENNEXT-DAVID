@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeB300BotRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::__TARGET_ACCOUNT_ID__:role/SpotOrderBotCrossAccountRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "spotbot-b300-92cdbb87-0ce5-453f-9152-e3a891550a13"
+        }
+      }
+    }
+  ]
+}

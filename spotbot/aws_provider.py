@@ -34,6 +34,7 @@ class AWSProvider(Provider):
     def __init__(self, settings, client, *, session=None):
         super().__init__(settings, client)
         self.session = session
+        self.reference_session = None
         self.clients = {}
         self.sdk_lock = asyncio.Lock()
         self.image_cache = {}
@@ -133,12 +134,23 @@ class AWSProvider(Provider):
         except Exception:
             return False
 
-    def _client(self, region, service="ec2"):
+    def _client(self, region, service="ec2", *, price_reference=False):
         from botocore.config import Config
 
-        key = (region, service)
+        separate = price_reference and bool(self.settings.spotbot_aws_price_profile)
+        key = ("reference", region, service) if separate else (region, service)
         if key not in self.clients:
-            self.clients[key] = self._session().client(
+            if separate:
+                if self.reference_session is None:
+                    import boto3
+
+                    self.reference_session = boto3.Session(
+                        profile_name=self.settings.spotbot_aws_price_profile
+                    )
+                session = self.reference_session
+            else:
+                session = self._session()
+            self.clients[key] = session.client(
                 service,
                 region_name=region,
                 # Retrying an uncertain billable request is handled through reconciliation.
@@ -225,6 +237,12 @@ class AWSProvider(Provider):
         regions = [r for r in self.settings.aws_price_regions if r not in self.regions]
         return await self._each_region(regions, self._collect_price_region)
 
+    async def collect_account_prices(self):
+        return await self._each_region(
+            self.settings.aws_reference_regions,
+            lambda region: self._collect_price_region(region, price_reference=True),
+        )
+
     async def _each_region(self, regions, collect):
         # One SDK call per Region keeps order operations from waiting behind a long sweep,
         # and one failing Region does not discard the others.
@@ -287,9 +305,9 @@ class AWSProvider(Provider):
                 offers.extend(self._list_offers(product, region, specs, no_upfront_only))
         return offers
 
-    def _collect_price_region(self, region):
-        """Current Spot price per GPU type, lowest across zones, for a Region without orders."""
-        ec2 = self._client(region)
+    def _collect_price_region(self, region, *, price_reference=False):
+        """Current Spot references; separate identities never establish launch eligibility."""
+        ec2 = self._client(region, price_reference=price_reference)
         _, specs = self._instance_types(ec2)
         if not specs:
             return []
@@ -335,7 +353,9 @@ class AWSProvider(Provider):
                         **summary["details"],
                         "availability_kind": "price_reference",
                         "capacity_status": "unknown",
-                        "eligibility_status": "price_only_region",
+                        "eligibility_status": "price_only_account"
+                        if price_reference
+                        else "price_only_region",
                         "lowest_zone": quote["AvailabilityZone"],
                         "zone_count": sum(1 for s, _ in zones if s == sku),
                         "vendor_price_timestamp": quote["Timestamp"].isoformat(),

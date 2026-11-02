@@ -1,5 +1,39 @@
 # AWS EC2 Spot
 
+## Separate account for read-only Spot references
+
+Set `SPOTBOT_AWS_PRICE_PROFILE` to a named AWS SDK profile and
+`SPOTBOT_AWS_REFERENCE_REGIONS` to its comma-separated Regions. Mount the AWS
+config file read-only and set `AWS_CONFIG_FILE` to its container path. A profile
+using `role_arn`, `credential_source=Ec2InstanceMetadata`, and `external_id` can
+assume a cross-account role without storing access keys. The source role also
+needs permission to assume that exact target role. The target needs only
+`ec2:DescribeInstanceTypes` and `ec2:DescribeSpotPriceHistory` in these Regions.
+
+Keep the process-wide `AWS_PROFILE` unset to preserve the original identity for
+orders, quotas, snapshots, retained disks, interruption queues and history tasks.
+Only the independent current Spot reference sweep (`aws_account_prices`) uses the separate
+profile. It can collect a reference Region that is also an original order Region.
+Its offers have `orderable=false`, `can_attempt=false`, no Availability Zone, and
+`eligibility_status=price_only_account`. Price charts can display them, but they
+never enter the purchasable GPU Market or rental candidate selection. An account
+with quota still needs separately validated fulfillment before selling capacity.
+
+The ordinary extra-Region, list-price and historical sweeps retain the original
+identity and scope. A
+reference authentication failure retains the previous successful reference batch
+and reports an error without stopping the original account's worker. Refresh and
+retry intervals remain those of `SPOTBOT_AWS_PRICE_REGION_INTERVAL_SECONDS`.
+
+```dotenv
+AWS_CONFIG_FILE=/app/aws/config
+SPOTBOT_AWS_PRICE_PROFILE=spotbot-b300
+SPOTBOT_AWS_REFERENCE_REGIONS=us-west-2
+```
+
+Recreate the container after editing environment variables or mounts. These
+settings do not transfer orders or backups between AWS accounts.
+
 Protected server rentals use a separate lifecycle described in
 [rentals.md](rentals.md). The legacy `/v1/orders` disk-deletion and explicit-release
 behavior below remains unchanged. Rentals preserve all enrolled root/data EBS

@@ -1,0 +1,83 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadRegionalCatalogAndQuota",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances", "ec2:DescribeInstanceTypes",
+        "ec2:DescribeSpotInstanceRequests", "ec2:DescribeSpotPriceHistory",
+        "ec2:DescribeImages", "ec2:DescribeSnapshots", "ec2:DescribeVolumes",
+        "ec2:DescribeVpcs", "ec2:DescribeSubnets", "ec2:DescribeSecurityGroups",
+        "ec2:DescribeKeyPairs", "ec2:DescribeAvailabilityZones",
+        "servicequotas:GetServiceQuota"
+      ],
+      "Resource": "*",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "__REGION__"}}
+    },
+    {
+      "Sid": "ReadPublishedListPrices",
+      "Effect": "Allow",
+      "Action": "pricing:GetProducts",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadPublicGpuImageParameter",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:__REGION__::parameter/aws/service/deeplearning/ami/*"
+    },
+    {
+      "Sid": "LaunchOnlyManagedB300SpotInstances",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:instance/*",
+      "Condition": {"StringEquals": {
+        "ec2:InstanceType": "p6-b300.48xlarge",
+        "ec2:InstanceMarketType": "spot",
+        "ec2:MetadataHttpTokens": "required",
+        "aws:RequestTag/spotbot-managed": "true"
+      }}
+    },
+    {
+      "Sid": "LaunchOnlyManagedVolumes",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:volume/*",
+      "Condition": {"StringEquals": {"aws:RequestTag/spotbot-managed": "true"}}
+    },
+    {
+      "Sid": "UseApprovedLaunchDependencies",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:__REGION__::image/*",
+        "arn:aws:ec2:__REGION__::snapshot/*",
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:network-interface/*",
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:subnet/__SUBNET_ID__",
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:security-group/__SECURITY_GROUP_ID__",
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:key-pair/__KEY_PAIR_NAME__"
+      ]
+    },
+    {
+      "Sid": "TagOnlyAtInstanceLaunch",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": [
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:instance/*",
+        "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:volume/*"
+      ],
+      "Condition": {"StringEquals": {
+        "ec2:CreateAction": "RunInstances",
+        "aws:RequestTag/spotbot-managed": "true"
+      }}
+    },
+    {
+      "Sid": "TerminateOnlyManagedInstances",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:__REGION__:__TARGET_ACCOUNT_ID__:instance/*",
+      "Condition": {"StringEquals": {"ec2:ResourceTag/spotbot-managed": "true"}}
+    }
+  ]
+}
