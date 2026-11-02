@@ -193,3 +193,58 @@ Evidence is in `../qa-placement/`: `partners-before-capacity.png`,
 `partners-mobile.png` and `programs-to-capacity-mobile.png`. Formatting, lint,
 typecheck, all 477 web tests, all 10 contract tests and production build passed.
 The three existing lint warnings are unchanged.
+
+## Fidelity Labs branding correction — 2026-11-02
+
+Replaced the earlier atom artwork with the original 200×200 profile image from
+the product owner's Fidelity Labs LinkedIn reference. The downloaded JPEG is
+preserved unchanged, including its green color and full mark. The adjacent
+company name uses the existing page typography. Pharos, Ondo and Solana and their
+unused artwork have been removed at the owner's request.
+
+The remaining partner and three programs share a compact desktop row. On mobile,
+the groups stack with fine dividers. The module remains below the buyer/supplier
+introduction and above the capacity rail. At 1280×720 and 390×844 all four images
+loaded, removed partners were absent, and there was no horizontal overflow or
+empty grid slot. Scroll reveal remained intact; browser logs had no warnings or
+errors. Screenshots are in `../qa-fidelity/partners-desktop.png` and
+`../qa-fidelity/partners-mobile.png`.
+
+This correction is based on main at `a4b3849`, after PR #16 merged. Formatting,
+lint, typecheck and the production build passed; lint retains the same three
+existing max-lines warnings. The complete web suite passed 488 tests, and the
+contracts suite passed 10 tests. No backend, routing or authentication changes
+were needed.
+
+## Hero endorsements and Vishwa attribution — 2026-11-02
+
+Moved the endorsement module into the bottom of the opening hero and removed its
+former placement between the audience cards and capacity rail. A separate
+"Powered by Vishwa Lab" group uses the original transparent header logo from
+`vishwalab.com`, with a link to that website. Fidelity Labs remains identified as
+a partner; Anthropic, Plug and Play and Circle retain their program names.
+
+The hero uses a flexible visual row above the content-sized white endorsement
+strip. At 1280×720 the complete strip is visible within the first viewport and
+measures 144px high. At 1024×768 it grows naturally to 164px as a program name
+wraps. The existing hero scroll animation continues; the strip fades with the
+hero copy and inherits its collapsed/inert state.
+
+At 390×844 and 320×740 the hero flows into the endorsement area instead of
+squeezing every logo into the viewport. Fidelity Labs and Vishwa share the first
+row, followed by three program rows with readable descriptions. Narrow-screen
+group headings reserve matching line height so the two top logos align. The
+primary CTA is visible, all five logo assets load, and no horizontal overflow or
+duplicate endorsement block was observed. The browser reported no warnings or
+errors. Existing reduced-motion styles and Buyer Terminal link destinations are
+preserved.
+
+Visual evidence is in `../qa-hero-partners/`: `hero-desktop.png`,
+`hero-compact-desktop.png`, `hero-mobile.png`, `hero-mobile-narrow.png`,
+`partners-mobile.png`, `partners-mobile-narrow.png` and
+`hero-scroll-transition.png`. Source provenance is recorded in the partner
+artwork `SOURCES.md`.
+
+Formatting, lint, typecheck and production build passed. All 488 web tests and
+10 contract tests passed; the three existing max-lines lint warnings are
+unchanged. This update is limited to the landing page and is included in PR #18.
