@@ -54,10 +54,11 @@ class AWSProvider(Provider):
                 time.monotonic() + self.settings.spotbot_aws_capacity_backoff_seconds
             )
 
-    def public_offer(self, offer, max_age):
+    def public_offer(self, offer, max_age, *, account_routes=False):
         account = offer.details.get("aws_account", "default")
         if (
             account == "default"
+            and not account_routes
             and self.settings.spotbot_aws_account_name == "default"
             and self._enrolled_route(offer.region, offer.sku)
             and offer.orderable
@@ -603,10 +604,6 @@ class AWSProvider(Provider):
                     ):
                         effective[identity] = quote
             for (sku, zone), quote in effective.items():
-                # Older clients route by Region/SKU. Publish only the enrolled
-                # account for that route so its displayed quote matches fulfillment.
-                if self._enrolled_route(region, sku):
-                    continue
                 if (
                     self.settings.spotbot_aws_instance_types
                     and sku not in self.settings.spotbot_aws_instance_types

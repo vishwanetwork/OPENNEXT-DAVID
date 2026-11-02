@@ -77,6 +77,8 @@ class RFQ(RulesModel):
     server_count: Literal[1] = 1
     providers: list[Literal["aws"]] = Field(default_factory=lambda: ["aws"], min_length=1)
     account: str = Field("default", pattern=r"^[a-z][a-z0-9_-]{0,31}$")
+    # Explicit quote source; absent retains legacy Region/SKU routing.
+    procurement_account: str | None = Field(None, pattern=r"^[a-z][a-z0-9_-]{0,31}$")
     regions: list[str] = Field(min_length=1, max_length=32)
     instance_types: list[str] = Field(default_factory=list, max_length=50)
     market: Literal["spot"] = "spot"

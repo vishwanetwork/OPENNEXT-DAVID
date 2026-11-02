@@ -138,9 +138,14 @@ class Offer:
         }
 
 
-def build_offers(offers, regions, policy=None):
+def build_offers(offers, regions, policy=None, accounts=None):
     cheapest = {}
     for offer in offers:
+        if (
+            accounts is not None
+            and (offer.get("details") or {}).get("aws_account", "default") not in accounts
+        ):
+            continue
         if not eligible(offer, regions):
             continue
         key = (offer["region"], offer["sku"])
@@ -227,6 +232,7 @@ def rfq_for(offer, purchase, user_id, now, storage_rate):
     )
     return {
         "rfq_id": reference,
+        "procurement_account": offer.raw["details"].get("aws_account", "default"),
         "rfq_version": 1,
         "upstream_order_id": reference,
         "regions": [offer.region],
@@ -363,6 +369,7 @@ class SpotMarket:
         gateway_url="",
         gateway_token="",
         storage_rate=Decimal("0.15"),
+        accounts=None,
     ):
         self.client, self.bot_url, self.token, self.tenant = (
             client,
@@ -371,6 +378,7 @@ class SpotMarket:
             tenant,
         )
         self.regions = set(regions)
+        self.accounts = accounts
         self.gateway_url, self.gateway_token = gateway_url.rstrip("/"), gateway_token
         self.storage_rate = storage_rate
         self.pricing_policy = None
@@ -389,6 +397,7 @@ class SpotMarket:
             gateway_url=settings.spotbot_opennext_gateway_url,
             gateway_token=settings.spotbot_opennext_gateway_token.get_secret_value(),
             storage_rate=settings.spotbot_rental_storage_reserve_usd_gib_month,
+            accounts=settings.opennext_aws_accounts,
         )
 
     async def bot(self, method, path, **kwargs):
@@ -412,6 +421,7 @@ class SpotMarket:
                             provider="aws",
                             market="spot",
                             can_attempt_only="true",
+                            account_routes="true",
                             limit=PAGE,
                             offset=offset,
                         ),
@@ -423,9 +433,14 @@ class SpotMarket:
                     offset += PAGE
                     if not page or offset >= body["total"]:
                         break
-                self._offers, self._loaded = build_offers(values, self.regions), time.monotonic()
+                self._offers, self._loaded = (
+                    build_offers(values, self.regions, accounts=self.accounts),
+                    time.monotonic(),
+                )
             policy = await self.pricing_policy.get() if self.pricing_policy else None
-            return build_offers([o.raw for o in self._offers.values()], self.regions, policy)
+            return build_offers(
+                [o.raw for o in self._offers.values()], self.regions, policy, self.accounts
+            )
 
     async def preflight(self, doc):
         """Check the original server specification against live provider quota and price."""

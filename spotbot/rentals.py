@@ -121,6 +121,11 @@ class RentalEngine:
         return sorted(set(rules.regions) - set(queues))
 
     def validate_rules(self, rules):
+        if (
+            rules.procurement_account is not None
+            and rules.procurement_account != self.settings.spotbot_aws_account_name
+        ):
+            raise ValueError("aws_account_quote_mismatch")
         if rules.account != self.settings.spotbot_aws_account_name:
             raise ValueError("aws_account_not_enrolled")
         if not self.settings.spotbot_rentals_enabled:
@@ -214,6 +219,7 @@ class RentalEngine:
                 "http_port",
                 "http_health_path",
                 "account",
+                "procurement_account",
                 "market",
             ]
             a, b = old.model_dump(), rules.model_dump()

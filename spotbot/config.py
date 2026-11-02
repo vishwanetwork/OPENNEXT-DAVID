@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     spotbot_dry_run_enabled: bool = True
     spotbot_aws_regions: str = "us-west-2"
     spotbot_aws_accounts: str = "{}"
+    # OpenNext new purchases only; '*' aggregates all enrolled account routes.
+    spotbot_opennext_aws_accounts: str = "*"
     # These settings are also used by validated, per-account provider copies.
     spotbot_aws_account_name: str = "default"
     spotbot_aws_profile: str = ""
@@ -154,6 +156,18 @@ class Settings(BaseSettings):
         return parse_accounts(self.spotbot_aws_accounts)
 
     @property
+    def opennext_aws_accounts(self):
+        import re
+
+        value = self.spotbot_opennext_aws_accounts.strip()
+        if value == "*":
+            return None
+        names = {v.strip() for v in value.split(",")}
+        if not names or any(not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", v) for v in names):
+            raise ValueError("OpenNext AWS accounts require '*' or explicit account aliases")
+        return names
+
+    @property
     def rental_regions(self) -> list[str]:
         value = self.spotbot_rental_regions or self.spotbot_aws_regions
         return list(dict.fromkeys(r.strip() for r in value.split(",") if r.strip()))
@@ -188,6 +202,7 @@ class Settings(BaseSettings):
         from urllib.parse import urlparse
 
         _ = self.aws_accounts
+        _ = self.opennext_aws_accounts
 
         if bool(self.spotbot_aws_price_profile.strip()) != bool(self.aws_reference_regions):
             raise ValueError("AWS price profile and reference Regions must be configured together")

@@ -82,3 +82,19 @@ price-history reference. A paid acceptance requires an explicit spending limit,
 independent timeout/release supervision and cleanup verification. Roll back by
 removing only the new enrollment/overlay; retain the named account while it owns any
 rentals or backups that still require lifecycle management.
+
+## Environment-only OpenNext purchase filtering
+
+Set `SPOTBOT_OPENNEXT_AWS_ACCOUNTS` on the OpenNext API process and restart it:
+`*` aggregates enrolled accounts, `default` selects the original account, and a
+comma-separated list such as `b300-west` or `default,b300-west` selects those aliases.
+These are Bot enrollment aliases, not local AWS CLI profile names. An empty or
+malformed value fails validation; an unknown alias produces no purchasable offers,
+never an implicit fallback to all accounts.
+
+The adapter asks the Bot for `account_routes=true`, filters raw account offerings
+before cheapest-zone aggregation, and binds each accepted RFQ's
+`procurement_account` to the quote source. Older account-blind clients retain the
+existing Region/SKU routing behavior. Deploy Bot support before upgrading the
+adapter. The purchase filter does not remove credentials, stop collection, or
+change the account of an accepted order, rental, backup, or cleanup operation.

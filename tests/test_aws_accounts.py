@@ -88,14 +88,18 @@ async def test_catalog_shadows_default_route_and_retains_target_backoff(monkeypa
         _env_file=None,
         spotbot_aws_accounts=json.dumps({"gpuwest": value}),
         spotbot_aws_regions="us-west-2",
+        spotbot_aws_key_name="test",
     )
     provider = AWSProvider(settings, None, session=FakeAWS())
     child = provider.fulfillment_providers()["gpuwest"]
     child.session = FakeAWS()
     child.identity_checked = True  # Identity verification is covered separately.
-    assert all(o.sku != "p5.4xlarge" for o in provider._collect())
+    original = [o for o in provider._collect() if o.sku == "p5.4xlarge"]
+    assert original
+    assert all(not provider.public_offer(o, 900)["can_attempt"] for o in original)
+    assert any(provider.public_offer(o, 900, account_routes=True)["can_attempt"] for o in original)
     offers = await provider.collect()
-    targets = [o for o in offers if o.sku == "p5.4xlarge"]
+    targets = [o for o in offers if o.sku == "p5.4xlarge" and o.details["aws_account"] == "gpuwest"]
     assert targets and all(o.details["aws_account"] == "gpuwest" for o in targets)
     assert all(o.details["aws_account_id"] == value["account_id"] for o in targets)
     child.note_failure(targets[0], ProviderError("aws_InsufficientInstanceCapacity"))
@@ -250,3 +254,48 @@ def test_unprotected_orders_cannot_bypass_rental_routing(account_env):
     provider = AWSProvider(env.service.settings, None)
     with pytest.raises(ValueError, match="additional_accounts_require_protected_rentals"):
         provider.plan(env.target, None, "unsafe", max_price_hourly=3)
+
+
+def test_explicit_quote_account_overrides_legacy_sku_route(account_env):
+    env = account_env
+    request = env.request.model_copy(deep=True)
+    request.rfq.procurement_account = "default"
+    row, _ = env.engine.create(request, "tenant-a", "explicit-original-account")
+    assert row["rfq"]["account"] == "default"
+    assert env.engine.for_row(row) is env.engine.default
+    request.rfq.procurement_account = "gpuwest"
+    row, _ = env.engine.create(request, "tenant-a", "explicit-additional-account")
+    assert row["rfq"]["account"] == "gpuwest"
+
+
+@pytest.mark.parametrize("value", ["", "* ,default", "Default", "default,"])
+def test_invalid_purchase_account_filter_fails_closed(value):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, spotbot_opennext_aws_accounts=value)
+
+
+def test_purchase_filter_precedes_cheapest_zone_and_account_aggregation():
+    from decimal import Decimal
+
+    from spotbot.models import utcnow
+    from spotbot.opennext_market import build_offers, rfq_for
+    from tests.test_opennext_market import aws
+
+    original = aws("p5.test", "us-west-2", "3")
+    target = copy.deepcopy(original)
+    target["price_hourly"] = "2"
+    target["details"]["aws_account"] = "gpuwest"
+    chosen = build_offers([original, target], {"us-west-2"}, accounts={"default"})
+    offer = next(iter(chosen.values()))
+    assert offer.raw["price_hourly"] == "3"
+    request = SimpleNamespace(durationHours=1, idempotencyKey="q", sshPublicKey=None)
+    assert (
+        rfq_for(offer, request, "U1", utcnow(), Decimal("0.15"))["procurement_account"] == "default"
+    )
+    chosen = build_offers([original, target], {"us-west-2"}, accounts={"gpuwest"})
+    offer = next(iter(chosen.values()))
+    assert offer.raw["price_hourly"] == "2"
+    assert (
+        rfq_for(offer, request, "U1", utcnow(), Decimal("0.15"))["procurement_account"] == "gpuwest"
+    )
+    assert build_offers([original, target], {"us-west-2"}, accounts={"typo"}) == {}
