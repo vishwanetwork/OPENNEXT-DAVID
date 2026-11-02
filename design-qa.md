@@ -215,3 +215,36 @@ lint, typecheck and the production build passed; lint retains the same three
 existing max-lines warnings. The complete web suite passed 488 tests, and the
 contracts suite passed 10 tests. No backend, routing or authentication changes
 were needed.
+
+## Hero endorsements and Vishwa attribution — 2026-11-02
+
+Moved the endorsement module into the bottom of the opening hero and removed its
+former placement between the audience cards and capacity rail. A separate
+"Powered by Vishwa Lab" group uses the original transparent header logo from
+`vishwalab.com`, with a link to that website. Fidelity Labs remains identified as
+a partner; Anthropic, Plug and Play and Circle retain their program names.
+
+The hero uses a flexible visual row above the content-sized white endorsement
+strip. At 1280×720 the complete strip is visible within the first viewport and
+measures 144px high. At 1024×768 it grows naturally to 164px as a program name
+wraps. The existing hero scroll animation continues; the strip fades with the
+hero copy and inherits its collapsed/inert state.
+
+At 390×844 and 320×740 the hero flows into the endorsement area instead of
+squeezing every logo into the viewport. Fidelity Labs and Vishwa share the first
+row, followed by three program rows with readable descriptions. Narrow-screen
+group headings reserve matching line height so the two top logos align. The
+primary CTA is visible, all five logo assets load, and no horizontal overflow or
+duplicate endorsement block was observed. The browser reported no warnings or
+errors. Existing reduced-motion styles and Buyer Terminal link destinations are
+preserved.
+
+Visual evidence is in `../qa-hero-partners/`: `hero-desktop.png`,
+`hero-compact-desktop.png`, `hero-mobile.png`, `hero-mobile-narrow.png`,
+`partners-mobile.png`, `partners-mobile-narrow.png` and
+`hero-scroll-transition.png`. Source provenance is recorded in the partner
+artwork `SOURCES.md`.
+
+Formatting, lint, typecheck and production build passed. All 488 web tests and
+10 contract tests passed; the three existing max-lines lint warnings are
+unchanged. This update is limited to the landing page and is included in PR #18.
