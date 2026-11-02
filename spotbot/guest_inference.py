@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path("/var/lib/spotbot/inference")
 MODELS = Path("/data/sdf/spotbot-models")
 REPOS = {
+    "deepseek-r1-distill-7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
     "deepseek-r1-distill-70b": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "deepseek-r1-671b": "deepseek-ai/DeepSeek-R1",
 }
@@ -32,6 +33,8 @@ assert files and all(f.size is not None for f in files)
 total=sum(f.size for f in files)
 assert total < os.statvfs('/models').f_bavail*os.statvfs('/models').f_frsize + sum(os.path.getsize(os.path.join('/models/model',f.rfilename)) for f in files if os.path.isfile(os.path.join('/models/model',f.rfilename)))
 done=0
+with open('/models/progress.tmp','w') as h:json.dump({'downloaded_bytes':0,'total_bytes':total},h)
+os.replace('/models/progress.tmp','/models/progress.json')
 for f in files:
  hf_hub_download(repo,f.rfilename,revision=revision,local_dir='/models/model')
  done+=f.size
@@ -203,7 +206,11 @@ def engine_args(spec, directory, model_dir, name):
         "--gpu-memory-utilization",
         "0.85",
         "--dtype",
-        "bfloat16" if cfg["preset_id"].endswith("70b") else "auto",
+        "float16"
+        if cfg["preset_id"].endswith("-7b")
+        else "bfloat16"
+        if cfg["preset_id"].endswith("70b")
+        else "auto",
         "--ssl-keyfile",
         "/run/spotbot/key.pem",
         "--ssl-certfile",

@@ -11,6 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from spotbot.models import gpu_model, timestamp
 
 PRESETS = {
+    "deepseek-r1-distill-7b": dict(
+        label="DeepSeek R1 Distill 7B (test)",
+        repo="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+        precision="float16",
+        disk_gib=100,
+        minimum_vram_gb=24,
+        minimum_gpus=1,
+        estimated_minutes=30,
+    ),
     "deepseek-r1-distill-70b": dict(
         label="DeepSeek R1 Distill 70B",
         repo="deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
@@ -45,7 +54,7 @@ class Pins(BaseModel):
 
 class InferenceSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    preset_id: Literal["deepseek-r1-distill-70b", "deepseek-r1-671b"]
+    preset_id: Literal["deepseek-r1-distill-7b", "deepseek-r1-distill-70b", "deepseek-r1-671b"]
     revision: str = Field(pattern=r"^[a-f0-9]{40}$")
     image: str = Field(pattern=r"^(?:docker\.io/)?vllm/vllm-openai@sha256:[a-f0-9]{64}$")
     tensor_parallel: int = Field(ge=1, le=64)
@@ -60,6 +69,7 @@ class InferenceSpec(BaseModel):
         if (
             self.tensor_parallel & (self.tensor_parallel - 1)
             or self.tensor_parallel < preset["minimum_gpus"]
+            or (self.preset_id == "deepseek-r1-distill-7b" and self.tensor_parallel > 4)
         ):
             raise ValueError("unsupported_inference_parallelism")
         if self.disk_gib < preset["disk_gib"]:
@@ -184,7 +194,11 @@ def summary(row):
         value.update(state="stopped", error=None)
     elif value.get("generation") != row["generation"]:
         value.update(state="queued", downloaded_bytes=0, total_bytes=0, error=None)
-    value.update(preset_id=row["rfq"]["inference"]["preset_id"], billing_start="gpu_delivery")
+    value.update(
+        preset_id=row["rfq"]["inference"]["preset_id"],
+        billing_start="gpu_delivery",
+        estimated_minutes=row["rfq"]["inference"]["preparation_seconds"] // 60,
+    )
     return value
 
 

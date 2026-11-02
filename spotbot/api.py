@@ -87,6 +87,9 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
     from spotbot.inference_api import install as install_inference
 
     install_inference(app, svc, auth)
+    from spotbot.capacity import install as install_capacity
+
+    install_capacity(app, svc, auth)
 
     def get_order(order_id):
         order = svc.store.get_order(order_id)

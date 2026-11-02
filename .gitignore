@@ -3,6 +3,7 @@
 !.env.example
 !.env.gateway.example
 !.env.acceptance.example
+!.env.inference.example
 .venv/
 data/
 __pycache__/

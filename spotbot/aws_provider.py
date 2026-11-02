@@ -111,10 +111,10 @@ class AWSProvider(Provider):
             return "g"
         return "p" if sku.startswith("p") else None
 
-    def _quota_usage(self, ec2, specs):
+    def _quota_usage(self, ec2, specs, *, seen=None):
         used = {"g": 0, "p": 0}
         known = {"g": True, "p": True}
-        counted = set()
+        counted = seen if seen is not None else set()
 
         def count(sku):
             family = self._quota_family(sku)

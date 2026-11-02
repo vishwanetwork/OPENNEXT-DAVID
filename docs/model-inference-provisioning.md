@@ -1,8 +1,9 @@
 # Optional model inference on rented GPU servers
 
-Status: proposed implementation design. The existing repository provides managed
-tasks and an authenticated streaming HTTP gateway; it does not yet provide the
-checkout presets, provisioning controller, or complete inference delivery below.
+Status: implemented in the model-inference development branches. Automated tests
+cover control-plane behavior and TLS forwarding. A paid GPU model acceptance run
+has not been performed; presets remain disabled until an operator validates an
+immutable runtime image on the intended GPU hardware.
 
 ## Accepted product rules
 
@@ -22,10 +23,17 @@ checkout presets, provisioning controller, or complete inference delivery below.
 ## Presets and admission
 
 Initial catalog entries should clearly distinguish `No preinstallation`,
+`deepseek-ai/DeepSeek-R1-Distill-Qwen-7B` (small test preset),
 `deepseek-ai/DeepSeek-R1-Distill-Llama-70B`, and the full
 `deepseek-ai/DeepSeek-R1` 671B model. The 70B distilled model is not the full model.
 Any later R1 revision, V3 variant, quantized checkpoint, or custom model is a
 separate, explicitly named preset/version.
+
+The initial 7B test preset uses float16, one validated GPU with at least 24 GB
+advertised VRAM, an 8,192-token context cap, one concurrent sequence, and a 100 GiB
+protected model volume. This conservatively excludes a 16 GB T4 at this precision.
+The 30-minute cold preparation estimate is not a benchmark. Do not enable a GPU
+model solely because it passes the memory calculation.
 
 Each validated preset pins a repository revision, inference image digest, engine,
 precision/quantization, compatible GPU architectures, parallelism, context limit,
@@ -132,7 +140,80 @@ preset/hardware combination production-supported only after loading its actual
 weights and generating tokens through the customer gateway; do not infer success
 from unit tests or GPU detection alone.
 
+## Deployment and the small-model acceptance path
+
+Deploy the Bot, Gateway, OpenNEXT adapter, and web changes together. Existing GPU-only
+requests remain compatible. No database migration is needed for the optional JSON
+fields. Old rentals keep their account and do not acquire a model preset implicitly.
+
+Set `SPOTBOT_INFERENCE_PRESETS` on the Bot (default `{}`). Each entry has `enabled`,
+an immutable Hugging Face `revision`, an immutable `vllm/vllm-openai@sha256:...` image,
+and `validated_gpu_models`. The OpenNEXT adapter obtains admission from this Bot
+catalog, so it does not need the Bot's encryption key or duplicate model pins.
+
+For the 7B test configuration, run:
+
+`.env.inference.example` contains a resolved, disabled L4 candidate using vLLM
+v0.32.0 and immutable image/model digests. It is a configuration starting point,
+not a statement that this runtime has passed a paid GPU test. To resolve pins again:
+
+```sh
+python scripts/prepare_inference_preset.py \
+  --image vllm/vllm-openai@sha256:<validated-image-digest> \
+  --validated-gpu-model L4
+```
+
+The command resolves the exact public model revision and prints an environment
+assignment without starting a GPU. It leaves the preset disabled. For an explicitly
+approved isolated GPU acceptance run, enable the entry with `--enable`; do not mark
+the combination production-supported until the end-to-end checks below succeed.
+The base AMI must already contain working NVIDIA drivers, Docker, and the NVIDIA
+container toolkit. Missing runtime components cause an explicit preparation failure;
+the system does not run arbitrary package installers as a fallback.
+
+Keep GPU port 8000 restricted to the gateway. Configure its HTTPS wildcard domain,
+set `SPOTBOT_GATEWAY_INFERENCE_READ_TIMEOUT_SECONDS=600`, and configure the public
+reverse proxy with `proxy_buffering off` and a read timeout greater than 600 seconds.
+Public customers continue to use HTTPS 443 and the existing SSH gateway ports.
+
+In GPU Market, select a compatible offer and the 7B test preset, review the storage
+add-on, and acknowledge that preparation uses paid GPU time. Both Credit and Direct
+Pay preserve the selected preset and price. After delivery, open Instances → Manage
+→ Model inference. Wait for `Ready for inference`, then set the displayed customer
+key in `INFERENCE_API_KEY` and run:
+
+```sh
+python scripts/test_inference_endpoint.py \
+  --base-url https://r-<rental-id>.<gateway-domain>/v1
+```
+
+The test verifies `/models`, a non-streaming response with generated token usage,
+and a complete SSE stream. It does not print the credential or model response text.
+Then rotate the key, verify the old key is rejected, retry with the new key, test a
+protected replacement, and end the instance. Confirm the stable URL reconnects only
+after the restored model passes readiness, and is unavailable after ending.
+
+## Quota display and concurrent admission
+
+GPU count describes each physical instance. GPU Market separately shows a quota
+estimate of the maximum instances and GPUs that can still be requested. The estimate
+uses the exact procurement account, Region, Spot quota family, running/pending AWS
+instances and open/active Spot requests. It subtracts local queued and ambiguous
+orders not yet visible in AWS, without counting known instance IDs twice. H100 and
+B300 offers share an allowance only when their actual quota scope matches; displayed
+counts across a shared pool must never be added together.
+
+Snapshots refresh at most every 10 seconds in the Bot and through the existing
+30-second visible-tab marketplace refresh. Unknown usage displays as unavailable,
+never as one unit of stock. Each accepted OpenNEXT rental requests quota admission
+again under the Bot's worker lock; the committed rental becomes a local reservation
+before another checkout enters. Duplicate HTTP requests keep their original rental.
+AWS and other tools can still consume quota outside this service, and Spot inventory
+is known only from a real launch. Rejections follow the existing refund/Credit flow.
+
 References:
+- [Small 7B model card](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B)
+- [AWS Spot quotas](https://docs.aws.amazon.com/ec2/latest/instancetypes/ec2-instance-quotas.html)
 - [DeepSeek-R1 model card](https://huggingface.co/deepseek-ai/DeepSeek-R1)
 - [DeepSeek-R1-Distill-Llama-70B model card](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B)
 - [vLLM online serving](https://docs.vllm.ai/en/latest/serving/online_serving/)

@@ -139,8 +139,24 @@ def install(app, service):
         request: RentalRequest,
         owner: Annotated[str, Depends(tenant)],
         idempotency_key: Annotated[str, Header(min_length=1, max_length=200)],
+        x_spotbot_quota_admission: Annotated[bool, Header()] = False,
     ):
-        value, created = guard(lambda: engine.create(request, owner, idempotency_key))
+        if x_spotbot_quota_admission:
+            from spotbot.capacity import admit
+            from spotbot.rentals import identity
+
+            async with engine.lock:
+                if not engine.db.get("rental", identity("rental", owner, idempotency_key)):
+                    guard(lambda: engine.validate_rules(request.rfq))
+                    try:
+                        await admit(service, request.rfq)
+                    except ProviderError as exc:
+                        raise HTTPException(409, exc.code) from None
+                    except ValueError as exc:
+                        raise HTTPException(409, str(exc)) from None
+                value, created = guard(lambda: engine.create(request, owner, idempotency_key))
+        else:
+            value, created = guard(lambda: engine.create(request, owner, idempotency_key))
         return {"created": created, "rental": public(value)}
 
     @router.post("/preflight")

@@ -184,6 +184,8 @@ class PurchaseRequest(BaseModel):
     # Optional: keys can be set later from the instance (`PUT .../ssh-keys`).
     sshPublicKey: str | None = Field(None, max_length=4096)
     idempotencyKey: str = Field(min_length=1, max_length=100)
+    inferencePresetId: str | None = Field(None, max_length=100)
+    inferenceBillingAcknowledged: bool = False
 
     @field_validator("idempotencyKey")
     @classmethod
@@ -226,11 +228,17 @@ def rfq_for(offer, purchase, user_id, now, storage_rate):
     # Safety bound for the bot, not a charge: the ceiling for the whole duration plus storage
     # (root disk during the rental and its final backup retention), with margin.
     seconds = hours * 3600 + Decimal(int(ACQUISITION.total_seconds()) + FINAL_RETENTION_SECONDS)
-    storage = Decimal(ROOT_GIB) * storage_rate * seconds / Decimal(2592000)
+    model = offer.pricing.get("inference")
+    storage = (
+        Decimal(ROOT_GIB + (model["disk_gib"] if model else 0))
+        * storage_rate
+        * seconds
+        / Decimal(2592000)
+    )
     budget = (cap * hours * Decimal("1.1") + storage * 2 + 1).quantize(
         Decimal("0.01"), ROUND_CEILING
     )
-    return {
+    result = {
         "rfq_id": reference,
         "procurement_account": offer.raw["details"].get("aws_account", "default"),
         "rfq_version": 1,
@@ -254,12 +262,23 @@ def rfq_for(offer, purchase, user_id, now, storage_rate):
         "ssh_user": "ubuntu",
         "customer_ref": customer_ref(user_id),
     }
+    if model:
+        result.update(
+            inference=model,
+            retail_hourly_cents=offer.cents,
+            http_port=8000,
+            http_health_path="/health",
+            data_disks=[dict(device="/dev/sdf", size_gib=model["disk_gib"])],
+        )
+    return result
 
 
 def purchased(rental):
     """Listed instance price, hours and offer of a rental created from a purchase."""
     rfq = rental["rfq"]
-    cents = int(Decimal(rfq["max_price_hourly"]) / PRICE_CAP * 100)
+    cents = rfq.get("retail_hourly_cents") or int(
+        Decimal(rfq["max_price_hourly"]) / PRICE_CAP * 100
+    )
     # Earlier purchases have no `service_seconds`; their window ran from the acquisition deadline.
     seconds = (
         rfq.get("service_seconds")
@@ -325,7 +344,7 @@ def instance_view(row, ssh=None, billing=None):
     status = instance_status(row)
     connection = row.get("connection") or {}
     ready = status == "active" and bool(ssh)
-    return {
+    result = {
         "id": row["id"],
         "name": f"{rfq['gpu_count']} × {rfq['gpu_model']}",
         "model": rfq["gpu_model"],
@@ -353,6 +372,9 @@ def instance_view(row, ssh=None, billing=None):
         "autopilot": summary_view(row.get("task")),
         "endedBy": "autopilot" if str(row.get("end_cause", "")).startswith("task_") else None,
     }
+    if row.get("inference"):
+        result["inference"] = row["inference"]
+    return result
 
 
 class SpotMarket:
@@ -438,9 +460,28 @@ class SpotMarket:
                     time.monotonic(),
                 )
             policy = await self.pricing_policy.get() if self.pricing_policy else None
-            return build_offers(
+            result = build_offers(
                 [o.raw for o in self._offers.values()], self.regions, policy, self.accounts
             )
+            ids = [o.raw["offer_id"] for o in result.values() if o.raw.get("offer_id")]
+            quotas = {}
+            if ids:
+                try:
+                    response = await self.bot("POST", "/v1/capacity/availability", json=ids)
+                    response.raise_for_status()
+                    quotas = response.json()["offers"]
+                except (httpx.HTTPError, KeyError, ValueError):
+                    pass
+            for item in result.values():
+                item.row["quota"] = quotas.get(item.raw.get("offer_id")) or dict(
+                    maxInstances=None,
+                    maxGpus=None,
+                    usageKnown=False,
+                    capacityGuaranteed=False,
+                    capacityStatus="unknown",
+                    basis="quota_estimate",
+                )
+            return result
 
     async def preflight(self, doc):
         """Check the original server specification against live provider quota and price."""
@@ -544,8 +585,35 @@ class SpotMarket:
 
     async def create(self, rfq):
         return await self.bot(
-            "POST", "/v1/rentals", json={"rfq": rfq}, headers={"Idempotency-Key": rfq["rfq_id"]}
+            "POST",
+            "/v1/rentals",
+            json={"rfq": rfq},
+            headers={"Idempotency-Key": rfq["rfq_id"], "X-SpotBot-Quota-Admission": "true"},
         )
+
+    async def prepare_offer(self, offer, preset_id):
+        if not preset_id:
+            return offer
+        from spotbot.inference import InferenceSpec, priced
+
+        response = await self.bot(
+            "POST",
+            "/v1/inference/selection",
+            json=dict(offer_id=offer.raw["offer_id"], preset_id=preset_id),
+        )
+        response.raise_for_status()
+        value = response.json()
+        spec = InferenceSpec.model_validate(value["spec"])
+        if spec.version != value["version"] or spec.preset_id != preset_id:
+            raise ValueError("inference_selection_changed")
+        return priced(offer, spec, self.storage_rate)
+
+    async def inference_presets(self, offer):
+        response = await self.bot(
+            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"])
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def connection(self, rental_id):
         """The gateway's customer SSH entry point, once the gateway serves the rental."""

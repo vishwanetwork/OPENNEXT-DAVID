@@ -60,6 +60,18 @@ def test_full_moe_model_is_not_admitted_by_activated_parameter_count():
     assert selection(s, "deepseek-r1-671b", "B300", 8, 288).disk_gib == 1024
 
 
+def test_small_test_model_is_available_only_on_validated_hardware_with_headroom():
+    s = configured()
+    s.spotbot_inference_presets = json.dumps(
+        {"deepseek-r1-distill-7b": dict(PINS, validated_gpu_models=["L4", "T4"])}
+    )
+    assert selection(s, "deepseek-r1-distill-7b", "L4", 1, 24).disk_gib == 100
+    with pytest.raises(ValueError, match="insufficient_vram"):
+        selection(s, "deepseek-r1-distill-7b", "T4", 1, 16)
+    with pytest.raises(ValueError, match="unsupported_inference_parallelism"):
+        selection(s, "deepseek-r1-distill-7b", "L4", 8, 24)
+
+
 def test_storage_quote_does_not_increase_the_native_gpu_bid():
 
     from spotbot.opennext_market import Offer

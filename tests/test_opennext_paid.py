@@ -182,6 +182,24 @@ async def test_actual_bot_rejection_after_preflight_returns_full_payment(env):
     assert len(doc["emails"]) == 2
 
 
+async def test_quota_admission_conflict_is_a_definite_rejection_and_returns_full_credit(env):
+    client, fakes, _ = env
+    app = client._transport.app
+    market = app.state.ops.paid_purchases.market
+    market.preflight = AsyncMock(return_value=dict(eligible=True))
+    row, request = await pending(client)
+    receipt = (await complete(client, row, request)).json()
+    market.create = AsyncMock(
+        return_value=httpx.Response(409, json=dict(detail="quota_insufficient"))
+    )
+    before = (await balance(client)).json()["availableCredit"]
+    await redeem(client, receipt["directPayResolution"]["purchaseIntentId"])
+    doc = await wait_background(app)
+    assert doc["provisioning"]["state"] == "failed" and not fakes.rentals
+    assert (await balance(client)).json()["availableCredit"] == before + row["amountCents"] / 100
+    assert len(doc["emails"]) == 2
+
+
 async def test_redeeming_recovers_after_restart_and_retries_email_without_recrediting(env):
     client, fakes, _ = env
     app = client._transport.app
