@@ -101,8 +101,8 @@ export function CinematicFooter() {
         <Image
           unoptimized
           src="/landing-design/opennext-wordmark-muted.svg"
-          width="295"
-          height="63"
+          width="193"
+          height="52"
           alt=""
           loading="lazy"
         />

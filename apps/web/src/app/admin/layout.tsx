@@ -6,6 +6,7 @@ import { ConsoleShell } from '@/features/console';
 
 export const metadata: Metadata = {
   title: 'OpenNEXT — Operations Console',
+  icons: { icon: '/terminal-design/favicon.svg' },
   robots: { index: false, follow: false },
 };
 

@@ -10,9 +10,9 @@ export function Brand({ light = false }) {
         unoptimized
         loading={light ? 'eager' : 'lazy'}
         src={`/landing-design/opennext-logo-${light ? 'white' : 'navy'}.svg`}
-        width="369"
-        height="63"
-        alt="OpenNext"
+        width="260"
+        height="52"
+        alt="OpenNEXT"
       />
     </a>
   );
