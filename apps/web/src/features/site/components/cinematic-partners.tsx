@@ -1,19 +1,6 @@
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
 
-const partners = [
-  { name: 'Pharos', asset: 'pharos.png', width: 190, height: 48, className: 'pharos' },
-  {
-    name: 'Fidelity Labs',
-    asset: 'fidelity-labs.png',
-    width: 300,
-    height: 200,
-    className: 'fidelity',
-  },
-  { name: 'Ondo', asset: 'ondo.svg', width: 96, height: 28, className: 'ondo' },
-  { name: 'Solana', asset: 'solana.svg', width: 196, height: 48, className: 'solana' },
-];
-
 const programs = [
   {
     name: 'Anthropic',
@@ -44,27 +31,23 @@ const programs = [
 export function CinematicPartners() {
   return (
     <div id="partners" className="partner-network">
-      <section aria-labelledby="partners-title" className="partner-group" data-reveal>
-        <h3 id="partners-title">Our partners</h3>
-        <ul className="partner-logos" aria-label="OpenNEXT partners">
-          {partners.map((partner, index) => (
-            <li
-              key={partner.name}
-              style={{ '--partner-delay': `${index * 80}ms` } as CSSProperties}
-            >
-              <div className={`partner-logo partner-logo-${partner.className}`}>
-                <Image
-                  unoptimized
-                  src={`/landing-design/partners/${partner.asset}`}
-                  alt={partner.name}
-                  width={partner.width}
-                  height={partner.height}
-                  loading="lazy"
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
+      <section
+        aria-labelledby="partners-title"
+        className="partner-group primary-partner"
+        data-reveal
+      >
+        <h3 id="partners-title">Our partner</h3>
+        <div className="partner-identity">
+          <Image
+            unoptimized
+            src="/landing-design/partners/fidelity-labs.jpeg"
+            alt="Fidelity Labs"
+            width={200}
+            height={200}
+            loading="lazy"
+          />
+          <span>Fidelity Labs</span>
+        </div>
       </section>
 
       <section aria-labelledby="programs-title" className="partner-group program-group" data-reveal>

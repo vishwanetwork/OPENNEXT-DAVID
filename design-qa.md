@@ -193,3 +193,25 @@ Evidence is in `../qa-placement/`: `partners-before-capacity.png`,
 `partners-mobile.png` and `programs-to-capacity-mobile.png`. Formatting, lint,
 typecheck, all 477 web tests, all 10 contract tests and production build passed.
 The three existing lint warnings are unchanged.
+
+## Fidelity Labs branding correction — 2026-11-02
+
+Replaced the earlier atom artwork with the original 200×200 profile image from
+the product owner's Fidelity Labs LinkedIn reference. The downloaded JPEG is
+preserved unchanged, including its green color and full mark. The adjacent
+company name uses the existing page typography. Pharos, Ondo and Solana and their
+unused artwork have been removed at the owner's request.
+
+The remaining partner and three programs share a compact desktop row. On mobile,
+the groups stack with fine dividers. The module remains below the buyer/supplier
+introduction and above the capacity rail. At 1280×720 and 390×844 all four images
+loaded, removed partners were absent, and there was no horizontal overflow or
+empty grid slot. Scroll reveal remained intact; browser logs had no warnings or
+errors. Screenshots are in `../qa-fidelity/partners-desktop.png` and
+`../qa-fidelity/partners-mobile.png`.
+
+This correction is based on main at `a4b3849`, after PR #16 merged. Formatting,
+lint, typecheck and the production build passed; lint retains the same three
+existing max-lines warnings. The complete web suite passed 488 tests, and the
+contracts suite passed 10 tests. No backend, routing or authentication changes
+were needed.

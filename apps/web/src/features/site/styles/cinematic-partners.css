@@ -1,106 +1,66 @@
 .opennext-landing .partner-network {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr);
+  gap: 32px;
   margin-top: 56px;
+  padding-top: 36px;
   scroll-margin-top: 110px;
   border-top: 1px solid var(--line);
 }
 
 .opennext-landing .partner-group {
-  padding-top: 42px;
+  min-width: 0;
 }
 
 .opennext-landing .partner-group h3 {
-  font-size: clamp(24px, 2.4vw, 32px);
+  font-size: 23px;
   letter-spacing: -0.04em;
 }
 
-.opennext-landing .partner-logos,
-.opennext-landing .program-logos {
-  display: grid;
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.opennext-landing .partner-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
 }
 
-.opennext-landing .partner-logos {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 32px;
-  margin-top: 22px;
-}
-
-.opennext-landing .partner-logos > li {
-  min-width: 0;
-  display: grid;
-  place-items: center;
-  height: 100px;
-}
-
-.opennext-landing .partner-logo {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 60px;
-  overflow: hidden;
-}
-
-.opennext-landing .partner-logo img,
-.opennext-landing .program-logo img {
+.opennext-landing .partner-identity img {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
   object-fit: contain;
-  filter: grayscale(1);
 }
 
-.opennext-landing .partner-logo-pharos img {
-  width: 180px;
-  height: auto;
-}
-
-.opennext-landing .partner-logo-fidelity {
-  position: relative;
-  max-width: 218px;
-  height: 46px;
-}
-
-.opennext-landing .partner-logo-fidelity img {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 128%;
-  height: auto;
-  max-width: none;
-  transform: translate(-50%, -50%);
-  filter: grayscale(1) brightness(0.7) contrast(3);
-}
-
-.opennext-landing .partner-logo-ondo img {
-  width: 136px;
-  height: auto;
-}
-
-.opennext-landing .partner-logo-solana img {
-  width: 170px;
-  height: auto;
+.opennext-landing .partner-identity span {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
 }
 
 .opennext-landing .program-group {
-  margin-top: 22px;
-  border-top: 1px solid var(--line);
-}
-
-.opennext-landing .program-group h3 {
-  font-size: 23px;
+  padding-left: 32px;
+  border-left: 1px solid var(--line);
 }
 
 .opennext-landing .program-logos {
+  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 32px;
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
 }
 
 .opennext-landing .program-logos > li {
   min-width: 0;
-  padding: 0 32px;
+  padding: 0 24px;
 }
 
 .opennext-landing .program-logos > li:first-child {
   padding-left: 0;
+}
+
+.opennext-landing .program-logos > li:last-child {
+  padding-right: 0;
 }
 
 .opennext-landing .program-logos > li + li {
@@ -116,8 +76,10 @@
 .opennext-landing .program-logo img {
   width: auto;
   height: auto;
-  max-width: 180px;
+  max-width: min(100%, 180px);
   max-height: 40px;
+  object-fit: contain;
+  filter: grayscale(1);
 }
 
 .opennext-landing .program-logo-anthropic img {
@@ -154,46 +116,41 @@
   }
 }
 
-@media (max-width: 900px) {
-  .opennext-landing .partner-logos {
-    gap: 16px;
+@media (max-width: 1000px) {
+  .opennext-landing .partner-network {
+    grid-template-columns: 1fr;
+    gap: 28px;
   }
 
-  .opennext-landing .partner-logo-fidelity {
-    max-width: 166px;
-    height: 40px;
+  .opennext-landing .primary-partner {
+    display: flex;
+    align-items: center;
+    gap: 48px;
   }
 
-  .opennext-landing .program-logos > li {
-    padding-inline: 20px;
+  .opennext-landing .partner-identity {
+    margin-top: 0;
+  }
+
+  .opennext-landing .program-group {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 28px 0 0;
   }
 }
 
 @media (max-width: 640px) {
   .opennext-landing .partner-network {
     margin-top: 44px;
-  }
-
-  .opennext-landing .partner-group {
     padding-top: 30px;
   }
 
-  .opennext-landing .partner-logos {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px 20px;
-    margin-top: 18px;
+  .opennext-landing .primary-partner {
+    display: block;
   }
 
-  .opennext-landing .partner-logos > li {
-    height: 80px;
-  }
-
-  .opennext-landing .partner-logo-pharos img {
-    width: 140px;
-  }
-
-  .opennext-landing .partner-logo-ondo img {
-    width: 116px;
+  .opennext-landing .partner-identity {
+    margin-top: 20px;
   }
 
   .opennext-landing .program-logos {
