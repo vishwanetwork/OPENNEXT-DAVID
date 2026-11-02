@@ -76,7 +76,7 @@ class RFQ(RulesModel):
     upstream_order_id: str = Field(min_length=1, max_length=100)
     server_count: Literal[1] = 1
     providers: list[Literal["aws"]] = Field(default_factory=lambda: ["aws"], min_length=1)
-    account: Literal["default"] = "default"
+    account: str = Field("default", pattern=r"^[a-z][a-z0-9_-]{0,31}$")
     regions: list[str] = Field(min_length=1, max_length=32)
     instance_types: list[str] = Field(default_factory=list, max_length=50)
     market: Literal["spot"] = "spot"
@@ -148,7 +148,10 @@ class RFQ(RulesModel):
 
         if self.initial_image_ids and (
             set(self.initial_image_ids) != set(self.regions)
-            or any(not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", v) for v in self.initial_image_ids.values())
+            or any(
+                not re.fullmatch(r"ami-(?:[a-f0-9]{8}|[a-f0-9]{17})", v)
+                for v in self.initial_image_ids.values()
+            )
         ):
             raise ValueError("initial_images_must_cover_rfq_regions_with_valid_ami_ids")
         if self.acquisition_deadline >= self.expires_at:

@@ -271,14 +271,21 @@ class Readiness:
                 default = offer.details["image_id"]
                 image_id = initial_image(rules, self.settings, region, default)
                 image = ec2.describe_images(ImageIds=[image_id])["Images"][0]
-                checks.append(check("initial_image_approved", image_id == default or approved_initial_image(image)))
+                checks.append(
+                    check(
+                        "initial_image_approved",
+                        image_id == default or approved_initial_image(image),
+                    )
+                )
                 checks.append(
                     check(
                         "initial_image_disk_layout",
                         initial_disk_layout_allowed(
                             image,
                             rules,
-                            strict_sizes=not operator_image(image_id, self.settings, region, default),
+                            strict_sizes=not operator_image(
+                                image_id, self.settings, region, default
+                            ),
                         ),
                     )
                 )
@@ -345,6 +352,16 @@ class Readiness:
 
     async def run(self, rules, *, aws=False, gateway=None):
         import asyncio
+
+        if self.settings.aws_accounts:
+            from spotbot.aws_accounts import account_settings, resolved_account
+
+            name = resolved_account(self.settings, rules)
+            if name != "default":
+                scoped = account_settings(self.settings, name, self.settings.aws_accounts[name])
+                return await Readiness(scoped).run(
+                    rules.model_copy(update={"account": name}), aws=aws, gateway=gateway
+                )
 
         checks = configuration_checks(self.settings, rules, gateway)
         result = dict(

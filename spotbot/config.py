@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     spotbot_live_orders_enabled: bool = False
     spotbot_dry_run_enabled: bool = True
     spotbot_aws_regions: str = "us-west-2"
+    spotbot_aws_accounts: str = "{}"
+    # These settings are also used by validated, per-account provider copies.
+    spotbot_aws_account_name: str = "default"
+    spotbot_aws_profile: str = ""
+    spotbot_aws_expected_account_id: str = ""
+    spotbot_aws_instance_types: list[str] = Field(default_factory=list)
     # Extra Regions collected for price references only (no orders): current Spot, list prices
     # and history. Comma-separated; the order Regions above are always included.
     spotbot_aws_price_regions: str = ""
@@ -142,6 +148,12 @@ class Settings(BaseSettings):
         )
 
     @property
+    def aws_accounts(self):
+        from spotbot.aws_accounts import parse_accounts
+
+        return parse_accounts(self.spotbot_aws_accounts)
+
+    @property
     def rental_regions(self) -> list[str]:
         value = self.spotbot_rental_regions or self.spotbot_aws_regions
         return list(dict.fromkeys(r.strip() for r in value.split(",") if r.strip()))
@@ -174,6 +186,8 @@ class Settings(BaseSettings):
         import json
         import re
         from urllib.parse import urlparse
+
+        _ = self.aws_accounts
 
         if bool(self.spotbot_aws_price_profile.strip()) != bool(self.aws_reference_regions):
             raise ValueError("AWS price profile and reference Regions must be configured together")

@@ -144,7 +144,7 @@ def install(app, service):
         rejected = []
         for offer in candidates[:8]:
             try:
-                await engine.backend.preflight(offer, request.rfq)
+                await engine.backend_for(request.rfq).preflight(offer, request.rfq)
                 return dict(
                     confirmed=True,
                     eligible=True,

@@ -112,12 +112,17 @@ class RentalEngine:
             raise LookupError("rental_not_found")
         return value
 
+    def backend_for(self, rules):
+        return self.backend
+
     def unmonitored_regions(self, rules):
         # Polling is only a fallback; never buy where interruption warnings cannot arrive.
         queues = json.loads(self.settings.spotbot_rental_interruption_queues)
         return sorted(set(rules.regions) - set(queues))
 
     def validate_rules(self, rules):
+        if rules.account != self.settings.spotbot_aws_account_name:
+            raise ValueError("aws_account_not_enrolled")
         if not self.settings.spotbot_rentals_enabled:
             raise ValueError("rentals_disabled")
         if not self.settings.spotbot_live_orders_enabled:
@@ -158,6 +163,7 @@ class RentalEngine:
             "rental",
             tenant_id,
             rfq=rules.model_dump(mode="json"),
+            aws_account_id=self.settings.spotbot_aws_expected_account_id or None,
             fingerprint=fingerprint,
             state="QUEUED",
             generation=0,
@@ -354,6 +360,7 @@ class RentalEngine:
             "backup",
             row["tenant_id"],
             rental_id=row["id"],
+            aws_account_id=row.get("aws_account_id"),
             generation=gen["generation"],
             generation_id=gen["id"],
             region=gen["region"],
@@ -610,6 +617,11 @@ class RentalEngine:
             ]
             if (
                 offer.orderable
+                and d.get("aws_account", "default") == rules.account
+                and (
+                    not self.settings.spotbot_aws_expected_account_id
+                    or d.get("aws_account_id") == self.settings.spotbot_aws_expected_account_id
+                )
                 and offer.region in rules.regions
                 and offer.region in self.settings.aws_order_regions
                 and (not region or offer.region == region)
@@ -650,6 +662,14 @@ class RentalEngine:
                 self.event_consumer_error = type(exc).__name__
                 logger.warning("Interruption queue polling failed; continuing lifecycle checks")
             for entry in self.db.list("rental"):
+                if entry["rfq"].get("account", "default") != self.settings.spotbot_aws_account_name:
+                    continue
+                if (
+                    entry.get("aws_account_id")
+                    and entry["aws_account_id"] != self.settings.spotbot_aws_expected_account_id
+                ):
+                    logger.error("Rental account enrollment mismatch: rental=%s", entry["id"])
+                    continue
                 async with self.row_lock(entry["id"]):
                     row = self.db.get("rental", entry["id"])
                     try:
@@ -689,6 +709,11 @@ class RentalEngine:
                 )
 
     async def handle_interruption(self, event):
+        if (
+            self.settings.spotbot_aws_expected_account_id
+            and event.get("account") != self.settings.spotbot_aws_expected_account_id
+        ):
+            raise ValueError("interruption_account_mismatch")
         if event.get("source") != "aws.ec2" or event.get("detail-type") not in {
             "EC2 Spot Instance Interruption Warning",
             "EC2 Instance State-change Notification",
@@ -700,6 +725,8 @@ class RentalEngine:
         ) not in {"terminated", "stopped", "shutting-down"}:
             return
         for entry in self.db.list("rental"):
+            if entry["rfq"].get("account", "default") != self.settings.spotbot_aws_account_name:
+                continue
             gen = self.current(entry)
             if (
                 not gen
@@ -900,7 +927,9 @@ class RentalEngine:
         row["attempts"] += 1
         sweep = {}  # Account quota and instance specs cannot change across rejected requests.
         tried = 0
-        for offer in (options[start:] + options[:start])[: self.settings.spotbot_rental_pools_per_attempt]:
+        for offer in (options[start:] + options[:start])[
+            : self.settings.spotbot_rental_pools_per_attempt
+        ]:
             if utcnow() >= deadline:
                 break
             row["pool_cursor"] = row.get("pool_cursor", start) + 1
@@ -935,6 +964,7 @@ class RentalEngine:
             "generation",
             row["tenant_id"],
             rental_id=row["id"],
+            aws_account_id=row.get("aws_account_id"),
             generation=row["generation"] + 1,
             region=offer.region,
             state="SUBMITTING",
@@ -1281,7 +1311,9 @@ class RentalEngine:
             # Lost before this path terminated it: capture the retained disks instead.
             return self._abandon_freeze(row, "server_stopped", backup) if command else False
         report = gen.get("report", {})
-        fresh = gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
+        fresh = (
+            gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
+        )
         if not command:
             if row.get("current_backup_id"):
                 return self._abandon_freeze(row, "explicit_backup_requested")
