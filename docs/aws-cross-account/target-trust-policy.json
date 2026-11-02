@@ -1,10 +1,18 @@
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Sid": "TrustExistingBotRole",
-    "Effect": "Allow",
-    "Principal": {"AWS": "__SOURCE_ROLE_ARN__"},
-    "Action": "sts:AssumeRole",
-    "Condition": {"StringEquals": {"sts:ExternalId": "__EXTERNAL_ID__"}}
-  }]
+  "Statement": [
+    {
+      "Sid": "TrustExistingBotRole",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::860165147463:role/SpotOrderBotEC2Role"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "spotbot-b300-92cdbb87-0ce5-453f-9152-e3a891550a13"
+        }
+      }
+    }
+  ]
 }
