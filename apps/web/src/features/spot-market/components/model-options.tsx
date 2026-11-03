@@ -6,6 +6,22 @@ import { AsyncFeedback } from '@/components/ui/async-feedback';
 import { spotMarketApi } from '../api';
 import { useSpotCheckout } from '../hooks';
 
+const reasons: Record<string, string> = {
+  inference_insufficient_vram: 'Insufficient GPU memory for this precision and serving profile.',
+  inference_insufficient_host_memory: 'This server has insufficient system RAM.',
+  inference_insufficient_vcpus: 'This server has too few vCPUs.',
+  inference_architecture_not_supported:
+    'This server architecture is not supported by the prepared runtime.',
+  inference_whole_gpu_required: 'A whole GPU server is required.',
+  inference_gpu_vendor_not_supported: 'This prepared runtime requires NVIDIA GPUs.',
+  inference_unsupported_gpu_layout: 'This GPU count is unsupported by this model serving profile.',
+  inference_gpu_not_validated:
+    'This GPU and runtime combination has not been enabled after validation.',
+  inference_preset_not_enabled: 'This model preset is not enabled yet.',
+  inference_configuration_unavailable:
+    "This model's runtime configuration is unavailable.",
+};
+
 export function ModelOptions() {
   const checkout = useSpotCheckout();
   const draft = checkout.pending();
@@ -46,6 +62,35 @@ export function ModelOptions() {
           ))}
         </select>
       </label>
+      {models.data?.presets.length ? (
+        <details className="form-note">
+          <summary>Model requirements and availability</summary>
+          <ul>
+            {models.data.presets.map((p) => (
+              <li key={p.id}>
+                <strong>{p.label}</strong> · {p.precision}
+                {p.requirements ? (
+                  <span>
+                    {' '}
+                    · At least {p.requirements.minimumTotalVramGB} GB total GPU memory,{' '}
+                    {p.requirements.minimumHostMemoryGiB} GiB system RAM and{' '}
+                    {p.requirements.minimumVcpus} vCPUs. {p.requirements.modelDiskGiB} GiB model
+                    disk. Context: {p.requirements.maxModelLen} tokens; concurrent requests:{' '}
+                    {p.requirements.maxNumSeqs}.
+                  </span>
+                ) : null}{' '}
+                {p.enabled
+                  ? 'Available for this server.'
+                  : (reasons[p.reason ?? ''] ?? 'Unavailable for this server.')}
+              </li>
+            ))}
+          </ul>
+          <p>
+            These are conservative requirements for the listed precision. Quantized variants have
+            separate requirements. Startup checks must pass before the endpoint becomes ready.
+          </p>
+        </details>
+      ) : null}
       {preset ? (
         <p className="form-note">
           {preset.diskGiB} GiB protected model disk. Estimated preparation:{' '}

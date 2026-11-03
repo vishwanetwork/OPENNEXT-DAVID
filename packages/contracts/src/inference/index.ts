@@ -10,6 +10,20 @@ export const InferencePreset = z.object({
   billingStart: z.literal('gpu_delivery'),
   enabled: z.boolean(),
   reason: z.string().nullable(),
+  requirements: z
+    .object({
+      minimumTotalVramGB: z.number().positive(),
+      minimumHostMemoryGiB: z.number().positive(),
+      minimumVcpus: z.number().int().positive(),
+      modelDiskGiB: z.number().positive(),
+      rootDiskGiB: z.number().positive(),
+      tensorParallelSizes: z.array(z.number().int().positive()),
+      minimumComputeCapability: z.string(),
+      architecture: z.string(),
+      maxModelLen: z.number().int().positive(),
+      maxNumSeqs: z.number().int().positive(),
+    })
+    .optional(),
 });
 export type InferencePreset = z.infer<typeof InferencePreset>;
 export const InferencePresets = z.object({ presets: z.array(InferencePreset) });
