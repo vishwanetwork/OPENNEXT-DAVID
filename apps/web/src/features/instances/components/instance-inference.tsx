@@ -58,6 +58,11 @@ export function InstanceInference({ id, ended }: { id: string; ended: boolean })
   return (
     <div className="onx-instance-inference" aria-busy={Boolean(busy)}>
       <h3>{status.preset_id}</h3>
+      {status.model_gpu_count ? (
+        <p className="form-note">
+          The model uses {status.model_gpu_count} GPU(s). Your rental covers the entire server.
+        </p>
+      ) : null}
       <p role="status">
         {ended
           ? 'Instance ended'

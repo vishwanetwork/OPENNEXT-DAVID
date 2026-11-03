@@ -10,6 +10,7 @@ export const InferencePreset = z.object({
   billingStart: z.literal('gpu_delivery'),
   enabled: z.boolean(),
   reason: z.string().nullable(),
+  modelGpuCount: z.number().int().positive().nullable().optional(),
   requirements: z
     .object({
       minimumTotalVramGB: z.number().positive(),
@@ -28,6 +29,7 @@ export const InferencePreset = z.object({
 export type InferencePreset = z.infer<typeof InferencePreset>;
 export const InferencePresets = z.object({ presets: z.array(InferencePreset) });
 export const InferenceQuote = z.object({
+  modelGpuCount: z.number().int().positive().nullable().optional(),
   pricing: z.object({
     currency: z.literal('USD'),
     durationHours: z.number(),
@@ -67,6 +69,7 @@ export const InferenceStatus = z
     total_bytes: z.number().nonnegative().optional(),
     error: z.string().nullable().optional(),
     estimated_minutes: z.number().positive().optional(),
+    model_gpu_count: z.number().int().positive().optional(),
     billing_start: z.literal('gpu_delivery'),
   })
   .passthrough();

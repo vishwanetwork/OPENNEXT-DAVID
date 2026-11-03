@@ -18,8 +18,7 @@ const reasons: Record<string, string> = {
   inference_gpu_not_validated:
     'This GPU and runtime combination has not been enabled after validation.',
   inference_preset_not_enabled: 'This model preset is not enabled yet.',
-  inference_configuration_unavailable:
-    "This model's runtime configuration is unavailable.",
+  inference_configuration_unavailable: "This model's runtime configuration is unavailable.",
 };
 
 export function ModelOptions() {
@@ -37,6 +36,7 @@ export function ModelOptions() {
   if (!draft || draft.row.sourceKind !== 'agent') return null;
   const selected = draft.inferenceQuote?.inferencePresetId ?? '';
   const preset = models.data?.presets.find((p) => p.id === selected);
+  const modelGpuCount = draft.inferenceQuote?.modelGpuCount ?? preset?.modelGpuCount;
   return (
     <fieldset disabled={draft.busy} aria-busy={models.isFetching || draft.busy}>
       <legend>Optional model preinstallation</legend>
@@ -93,6 +93,9 @@ export function ModelOptions() {
       ) : null}
       {preset ? (
         <p className="form-note">
+          {modelGpuCount
+            ? `The model uses ${modelGpuCount} GPU(s). The rental covers the entire server. `
+            : ''}
           {preset.diskGiB} GiB protected model disk. Estimated preparation:{' '}
           {preset.estimatedMinutes} minutes; network and engine startup may take longer. This
           estimate is not a readiness guarantee.

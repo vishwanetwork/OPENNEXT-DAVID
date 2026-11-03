@@ -8,6 +8,7 @@ const status = {
   state: 'downloading',
   billing_start: 'gpu_delivery',
   version: 1,
+  model_gpu_count: 1,
   downloaded_bytes: 2 ** 30,
   total_bytes: 2 ** 31,
 };
@@ -24,6 +25,7 @@ it('shows preparation progress without claiming a usable endpoint', async () => 
   );
   expect(screen.queryByLabelText('Inference Base URL')).not.toBeInTheDocument();
   expect(screen.getByText(/paid GPU time/)).toBeInTheDocument();
+  expect(screen.getByText(/The model uses 1 GPU/)).toBeInTheDocument();
 });
 
 it('reveals the customer key on request and never embeds it in the example command', async () => {
