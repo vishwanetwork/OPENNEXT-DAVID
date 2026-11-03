@@ -177,6 +177,10 @@ class Accounts:
                             or charge["created_at"],
                         )
                     )
+        for refund in await asyncio.to_thread(self.db.list, "spot_wallet_credit", account_id(user_id)):
+            entries.append(dict(id=refund["id"], kind="Refund", amountCents=refund["cents"],
+                                reference="opennext-" + refund["order_id"],
+                                description=refund["reason"], at=refund["created_at"]))
         entries.sort(key=lambda r: (r["at"], r["id"]), reverse=True)
         # Historic balance-after is unknown: current snapshots cannot reconstruct past revisions.
         entries = [dict(r, balanceAfterCents=None) for r in entries]
@@ -189,7 +193,8 @@ class Accounts:
         marketplace = await asyncio.to_thread(self.snapshots.read, "marketplace.json")
         legacy_orders = [o for o in marketplace.get("orders", []) if o.get("buyerId") == user_id]
         orders = order_rows(
-            rentals, charges, legacy_orders, [], await self.ops.transfers(user_id=user_id)
+            rentals, charges, legacy_orders, [], await self.ops.transfers(user_id=user_id),
+            await asyncio.to_thread(self.db.list, "spot_order", account_id(user_id))
         )
         purchases = [
             dict(

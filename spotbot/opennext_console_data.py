@@ -68,7 +68,7 @@ def user_growth(rows):
     }
 
 
-def order_rows(rentals, charges, legacy_orders, users, transfers=()):
+def order_rows(rentals, charges, legacy_orders, users, transfers=(), funding_orders=()):
     accounts = {row["id"]: row for row in users}
     by_rental = {row.get("rental_id"): row for row in charges if row.get("rental_id")}
     by_reference = {row.get("reference"): row for row in charges if row.get("reference")}
@@ -172,6 +172,7 @@ def order_rows(rentals, charges, legacy_orders, users, transfers=()):
                 submittedAt=transfer["created_at"],
             )
         )
+        known.add(reference)
     for order in legacy_orders:
         if order.get("demo") or order.get("workspaceId"):
             continue
@@ -197,6 +198,24 @@ def order_rows(rentals, charges, legacy_orders, users, transfers=()):
                 submittedAt=order.get("createdAt") or order.get("created") or timestamp(),
             )
         )
+    by_id = {row["id"]: row for row in result}
+    for funding in funding_orders:
+        reference = "opennext-" + funding["id"]
+        row = by_id.get(reference)
+        if row is None:
+            row = dict(id=reference, kind="Instance", currency="USD", submittedAt=funding["created_at"])
+            result.append(row)
+        quote = funding["agreement"]
+        raw = quote["offer"]
+        ended = funding["runtime_state"] == "ended"
+        row.update(
+            email=funding.get("email") or "", model=funding["model"], gpuCount=raw["gpu_count"],
+            country=raw["region"], term="Spot", rentalId=funding.get("rental_id"), amountKnown=True,
+            paymentMethod=funding["payment_method"], total=(funding["funded_cents"] + funding["storage_funded_cents"]) / 100,
+            settledTotal=(funding["compute_cents"] + funding["storage_cents"]) / 100 if ended else None,
+            state="completed" if ended and funding["used_seconds"] else "cancelled" if ended else "processing",
+            status="Awaiting payment" if funding["awaiting_payment"] else funding["runtime_state"],
+        )
     return sorted(result, key=lambda row: (row["submittedAt"], row["id"]), reverse=True)
 
 
@@ -210,7 +229,8 @@ def settled_cents(charge):
         return charge["billed_cents"]
     if charge.get("state") == "refunded":
         return 0
-    if charge.get("state") == "charged" and charge.get("hourly_cents") is None:
+    if (charge.get("state") == "charged" and charge.get("hourly_cents") is None
+            and charge.get("pricing_version") != "spot-hourly-v1"):
         return charge["cents"]
     return None
 

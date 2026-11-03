@@ -202,6 +202,8 @@ def review_record(transfer):
         )
     else:
         record.update(pricingVersion="order-total-v1", orderId=transfer["order_reference"])
+        if transfer.get("funding_order_id"):
+            record.update(fundingPolicy="spot-hourly-v1", fundingOrderId=transfer["funding_order_id"])
         if transfer.get("offer_id"):
             record["offerId"] = transfer["offer_id"]
     return record

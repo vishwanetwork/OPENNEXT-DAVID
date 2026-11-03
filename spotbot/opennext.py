@@ -502,6 +502,10 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     )
                 return await confirmation(existing, user["id"])
             held = await ledger.find(user["id"], reference)
+            if (not held and funding_service.ctx.settings
+                    and funding_service.ctx.settings.spotbot_floating_enabled):
+                return error(409, "Review a floating Spot quote and its budget limits before purchasing.",
+                             code="FLOATING_CONSENT_REQUIRED")
             if held and held["state"] in {"billed", "refunded"}:
                 return error(
                     409,

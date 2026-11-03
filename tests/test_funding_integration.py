@@ -9,8 +9,8 @@ import pytest
 
 from spotbot.funding_ledger import guard
 from spotbot.models import utcnow
-from spotbot.opennext_market import Offer
-from tests.test_opennext_market import CATALOG, HOST
+from spotbot.opennext_market import Offer, SpotMarket
+from tests.test_opennext_market import CATALOG, HOST, body
 from tests.test_opennext_market import env as env  # noqa: F401
 
 
@@ -22,7 +22,8 @@ async def floating(env, monkeypatch):
     service.ctx.settings = SimpleNamespace(spotbot_floating_enabled=True,
                                            spotbot_floating_grant_seconds=120)
     monkeypatch.setattr(service, "capabilities", AsyncMock(return_value=dict(enabled=True, pricingVersion="spot-hourly-v1")))
-    monkeypatch.setattr(service.market, "offers", AsyncMock(return_value=[Offer(CATALOG[0])]))
+    offer = Offer(CATALOG[0])
+    monkeypatch.setattr(service.market, "offers", AsyncMock(return_value={offer.id: offer}))
     fakes.credit["U1"] = (0, 100)
 
     async def wallet(user):
@@ -42,7 +43,8 @@ def headers(user="buyer"):
 
 async def purchase(env, method="Credit", key="purchase"):
     client, _, service, _ = env
-    offer = (await service.market.offers())[0]
+    offer = next(o for o in (await service.market.offers()).values()
+                 if o.region == "us-west-2" and o.sku == "g6.xlarge")
     response = await client.post("/api/billing/spot-quotes", headers=headers(), json=dict(
         offerId=offer.id, durationHours=2, paymentMethod=method,
         maxHourlyCents=100, maxTotalCents=2000))
@@ -72,6 +74,35 @@ async def test_credit_purchase_consent_owner_isolation_and_legacy_billing(floati
     # The historical reconciliation routine must not mark a floating order prepaid or refund it.
     await service.ctx.legacy_ledger.reconcile("U1", [])
     assert service.ledger.order("U1", order_id)["funded_cents"] == quote["computeFundingCents"]
+    detail = await client.get(f"/api/instances/{row['rental_id']}/funding", headers=headers())
+    assert detail.status_code == 200 and detail.json()["order"]["orderId"] == order_id
+    other = await client.get(f"/api/instances/{row['rental_id']}/funding", headers=headers("other"))
+    assert other.status_code == 404
+
+
+async def test_quote_uses_the_real_catalog_adapter_and_keeps_existing_reads_when_disabled(floating, monkeypatch):
+    client, _, service, _ = floating
+    monkeypatch.setattr(service.market, "offers", SpotMarket.offers.__get__(service.market))
+    result, quote = await purchase(floating)
+    assert quote["hourlyCents"] > 0
+    monkeypatch.setattr(service, "capabilities", AsyncMock(return_value=dict(enabled=False, pricingVersion="spot-hourly-v1")))
+    capability = (await client.get("/api/billing/spot-funding/capabilities", headers=headers())).json()
+    assert capability["enabled"] is False and capability["readEnabled"] is True
+    replay = await client.post("/api/billing/spot-purchases", headers=headers(), json=dict(
+        pricingVersion="spot-hourly-v1", quoteId=quote["quoteId"], idempotencyKey="purchase",
+        consent=True, storageRetentionAcknowledged=True))
+    assert replay.status_code == 200 and replay.json()["order"]["orderId"] == result["order"]["orderId"]
+
+
+async def test_enabled_floating_policy_cannot_be_bypassed_through_legacy_checkout(floating):
+    client, fakes, service, _ = floating
+    credit = await client.post("/api/marketplace/spot-purchases", headers=headers(), json=body())
+    assert credit.status_code == 409 and credit.json()["code"] == "FLOATING_CONSENT_REQUIRED"
+    direct = await client.post("/api/billing/bank-transfer-intents", headers=headers(), json=dict(
+        purpose="order", currency="USD", amountCents=39, offerId="spotbot-us-west-2-g6.xlarge",
+        durationHours=1, idempotencyKey="legacy-consent-check-1"))
+    assert direct.status_code == 409 and direct.json()["code"] == "FLOATING_CONSENT_REQUIRED"
+    assert not fakes.created and not service.db.list("opennext_charge")
 
 
 async def test_direct_pay_requires_review_and_confirm_is_atomic_idempotent(floating):
@@ -85,6 +116,12 @@ async def test_direct_pay_requires_review_and_confirm_is_atomic_idempotent(float
                 fundsVerified=True, idempotencyKey="confirm", caseId=transfer_id)
     receipt = await service.ops.paid_purchases.complete(transfer_id, body, "operator")
     assert receipt["ledgerPosted"] and receipt["provisioningQueued"]
+    from spotbot.opennext_ops import review_record
+
+    review = review_record(await service.ops.get_transfer(transfer_id))
+    assert review["fundingPolicy"] == "spot-hourly-v1" and review["fundingOrderId"] == order_id
+    assert receipt["fundingResolution"] == dict(policy="spot-hourly-v1", fundingOrderId=order_id,
+                                              orderId=review["orderId"], outcome="funded")
     assert await service.ops.decide_payment(transfer_id, body, "operator") == receipt
     assert await service.ops.credits("U1") == 0
     row = service.ledger.order("U1", order_id)
@@ -180,3 +217,57 @@ async def test_effective_rates_pause_and_restore_without_new_payment_path(floati
     await worker.step(order)
     assert commands[-1]["action"] == "resume"
     assert service.ledger.order("U1", order_id)["purchased_seconds"] == 7200
+
+
+@pytest.mark.parametrize("method", ["Credit", "Direct Pay"])
+async def test_model_storage_and_preparation_consent_reach_both_funding_paths(floating, method):
+    from spotbot.inference import InferenceSpec, priced
+
+    client, fakes, service, worker = floating
+    spec = InferenceSpec(preset_id="deepseek-r1-distill-7b", revision="a" * 40,
+                         image="vllm/vllm-openai@sha256:" + "b" * 64, tensor_parallel=1,
+                         disk_gib=100, preparation_seconds=1800)
+
+    async def prepare(offer, preset):
+        assert preset == spec.preset_id
+        return priced(offer, spec, service.market.storage_rate,
+                      initial_images={"us-west-2": "ami-1234567890abcdef0"})
+
+    service.market.prepare_offer = prepare
+    quote = (await client.post("/api/billing/spot-quotes", headers=headers(), json=dict(
+        offerId="spotbot-us-west-2-g6.xlarge", durationHours=2, paymentMethod=method,
+        maxHourlyCents=100, maxTotalCents=5000, inferencePresetId=spec.preset_id))).json()
+    assert quote["protectedGiB"] == 200 and quote["storageReserveCents"] == 700
+    acceptance = dict(pricingVersion="spot-hourly-v1", quoteId=quote["quoteId"], idempotencyKey="model",
+                      consent=True, storageRetentionAcknowledged=True)
+    refused = await client.post("/api/billing/spot-purchases", headers=headers(), json=acceptance)
+    assert refused.status_code == 400 and not service.ledger.orders("U1")
+    acceptance["inferenceBillingAcknowledged"] = True
+    result = (await client.post("/api/billing/spot-purchases", headers=headers(), json=acceptance)).json()
+    if method == "Direct Pay":
+        transfer_id = result["transfer"]["id"]
+        await service.ops.decide_payment(transfer_id, dict(accountId="U1", expectedRevision=1,
+            decision="Confirm", fundsVerified=True, idempotencyKey="model-confirm"), "operator")
+    await worker.tick()
+    assert fakes.created[0]["inference"] == spec.model_dump()
+    assert fakes.created[0]["data_disks"] == [dict(device="/dev/sdf", size_gib=100)]
+    assert fakes.created[0]["initial_image_ids"] == {"us-west-2": "ami-1234567890abcdef0"}
+
+
+async def test_console_aggregates_direct_pay_funding_without_calling_a_hold_settled(floating):
+    from spotbot.opennext_console_data import order_rows, settled_cents
+
+    _, _, service, _ = floating
+    result, quote = await purchase(floating, "Direct Pay")
+    transfer_id, order_id = result["transfer"]["id"], result["order"]["orderId"]
+    await service.ops.decide_payment(transfer_id, dict(accountId="U1", expectedRevision=1,
+        decision="Confirm", fundsVerified=True, idempotencyKey="first"), "operator")
+    order = service.ledger.order("U1", order_id)
+    transfer = await service.transfer(order, 100, "replenish")
+    await service.ops.decide_payment(transfer["id"], dict(accountId="U1", expectedRevision=1,
+        decision="Confirm", fundsVerified=True, idempotencyKey="second"), "operator")
+    rows = order_rows([], [], [], [], await service.ops.transfers(), service.ledger.orders("U1"))
+    assert len(rows) == 1 and rows[0]["total"] == (quote["initialPaymentCents"] + 100) / 100
+    assert rows[0]["model"] == "L4" and rows[0]["settledTotal"] is None
+    assert settled_cents(dict(pricing_version="spot-hourly-v1", state="charged",
+                              hourly_cents=None, cents=999)) is None

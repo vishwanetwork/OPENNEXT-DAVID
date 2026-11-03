@@ -71,6 +71,11 @@ async def decide(service, transfer_id, body, operator):
             creditAmountCents=row["amount_cents"] if credit_back else 0,
             ledgerPosted=confirmed, provisioningQueued=confirmed and not credit_back,
         )
+        if confirmed:
+            receipt["fundingResolution"] = dict(
+                policy="spot-hourly-v1", fundingOrderId=order["id"],
+                orderId=row["order_reference"], outcome="credited" if credit_back else "funded",
+            )
         subject = "Spot funding confirmed" if confirmed else "Payment could not be confirmed"
         message = (
             "Your confirmed payment was added to Credit because the order ended, its payment "

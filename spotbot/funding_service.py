@@ -52,7 +52,7 @@ class FundingService:
     async def quote(self, user, request):
         await self.require_enabled()
         offers = await self.market.offers()
-        offer = next((o for o in offers if o.id == request.offerId), None)
+        offer = offers.get(request.offerId)
         if not offer:
             raise OperationError(409, "This offer is no longer available. Refresh the market.")
         if request.inferencePresetId:
@@ -99,7 +99,6 @@ class FundingService:
         return checkpoint, summary["currentCreditCents"]
 
     async def accept(self, user, request, browser_request):
-        await self.require_enabled()
         quote = await self.call(self.db.get, "spot_quote", request.quoteId)
         if not quote or quote["tenant_id"] != account_id(user["id"]):
             raise OperationError(404, "Quote not found.")
@@ -109,8 +108,9 @@ class FundingService:
             if prior["quote_id"] != quote["id"]:
                 raise OperationError(409, "This purchase reference was already used.")
             return await self.purchase_view(prior)
+        await self.require_enabled()
         if at(quote["expires_at"]) <= utcnow():
-            raise OperationError(409, "Your quote expired. Review a new quote.")
+            raise OperationError(409, "Your quote expired. Review a new quote.", "QUOTE_EXPIRED")
         if quote["pricing"].get("inference") and not request.inferenceBillingAcknowledged:
             raise OperationError(400, "Acknowledge billing during model preparation.")
         async with self.ctx.legacy_ledger.lock(user["id"]):
@@ -123,7 +123,13 @@ class FundingService:
                 if account["_creditGuardVersion"] != checkpoint.get("version", 0):
                     raise ConflictError("wallet_changed")
                 available = cents(account["availableCredit"])
-            row = await self.call(self.ledger.create, quote, request, user, checkpoint, available)
+            try:
+                row = await self.call(self.ledger.create, quote, request, user, checkpoint, available)
+            except ValueError as exc:
+                if str(exc) == "insufficient_credit":
+                    raise OperationError(409, "Insufficient Credit. Top up or choose Direct Pay.",
+                                         "INSUFFICIENT_CREDIT") from exc
+                raise
         return await self.purchase_view(row)
 
     async def purchase_view(self, order):

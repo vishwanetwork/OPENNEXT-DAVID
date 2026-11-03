@@ -82,18 +82,16 @@ class FundingLedger:
     def charge(self, order):
         charge_id = identity("floating-charge", order["id"])
         existing = self.db.get("opennext_charge", charge_id)
+        total = order["funded_cents"] + order["storage_funded_cents"]
+        committed = (order["compute_cents"] + (order["storage_cents"] if order.get("storage_released")
+                     else order["storage_funded_cents"]) if order["runtime_state"] == "ended" else total)
         return dict(
             existing or dict(id=charge_id, kind="opennext_charge",
                              tenant_id=order["tenant_id"], created_at=timestamp(), version=0),
             reference="opennext-" + order["id"], offer_id=order["agreement"]["offer_id"],
             pricing_version="spot-hourly-v1", hourly_cents=None, email=order.get("email"),
             funding_order_id=order["id"],
-            cents=order["funded_cents"] + order["storage_funded_cents"],
-            wallet_committed_cents=(order["compute_cents"] + (
-                order["storage_cents"] if order.get("storage_released")
-                else order["storage_funded_cents"])
-                                    if order["runtime_state"] == "ended"
-                                    else order["funded_cents"] + order["storage_funded_cents"]),
+            cents=total, wallet_committed_cents=committed, released_cents=total-committed,
             state="billed" if order["runtime_state"] == "ended" else "charged",
             billed_cents=order["compute_cents"] + order["storage_cents"],
             rental_id=order.get("rental_id"), service_fee_bps=0,

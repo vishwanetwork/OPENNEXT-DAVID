@@ -66,6 +66,11 @@ def order_view(order):
         runtimeState=order["runtime_state"], retention=order.get("retention", "pending"),
         storageReserveCents=order["storage_funded_cents"] - order["storage_cents"],
         retentionExpiresAt=order.get("retention_expires_at"),
+        maxHourlyCents=order["agreement"]["max_hourly_cents"],
+        maxTotalCents=order["agreement"]["max_total_cents"],
+        totalFundedCents=order["funded_cents"] + order["storage_funded_cents"],
+        storageReserveTargetCents=order["agreement"]["storage_reserve_cents"],
+        pauseReason=order.get("pause_reason"),
         funding=position(order["cycle_id"], order["cycle_baseline_cents"], funds,
                          next_hour, projected),
     )

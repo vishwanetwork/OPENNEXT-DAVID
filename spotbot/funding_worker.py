@@ -130,7 +130,7 @@ class FundingWorker:
                 return None
             return retail_cents(prices[-1]["source_hourly"], quote["pricing"]["markupBps"],
                                 quote["pricing"].get("modelStorageHourlyCents", 0))
-        offer = next((o for o in await self.market.offers()
+        offer = next((o for o in (await self.market.offers()).values()
                       if o.id == quote["offer_id"] and o.raw["details"].get("aws_account", "default")
                       == quote["offer"]["details"].get("aws_account", "default")), None)
         return retail_cents(offer.raw["price_hourly"], quote["pricing"]["markupBps"],
@@ -138,6 +138,8 @@ class FundingWorker:
 
     async def funded(self, order, rate):
         if rate is None or rate > order["agreement"]["max_hourly_cents"] or order.get("must_pause"):
+            order["pause_reason"] = ("price_unavailable" if rate is None else "hourly_limit"
+                                     if rate > order["agreement"]["max_hourly_cents"] else "execution_review")
             return False
         remaining = max(0, order["purchased_seconds"] - order["used_seconds"])
         needed = required(order, rate, min(3600, remaining))
@@ -157,7 +159,10 @@ class FundingWorker:
                 order.update(updated)
                 missing = 0
         if missing:
+            order["pause_reason"] = ("total_limit" if order["funded_cents"] + order["storage_funded_cents"]
+                                     + missing > order["agreement"]["max_total_cents"] else "insufficient_funding")
             return False
+        order["pause_reason"] = None
         await self.service.call(self.ledger.reserve, order, await self.service.checkpoint(order["account"]), needed)
         return True
 

@@ -45,7 +45,11 @@ def install(app, service):
     @app.get("/api/billing/spot-funding/capabilities")
     async def capabilities(request: Request):
         async def action(user, _):
-            return dict(accountId=user["id"], confirmed=True, demo=False, **await service.capabilities())
+            capability = await service.capabilities()
+            existing = await service.call(service.ledger.orders, user["id"])
+            return dict(accountId=user["id"], confirmed=True, demo=False,
+                        required=bool(ctx.settings and ctx.settings.spotbot_floating_enabled),
+                        readEnabled=capability["enabled"] or bool(existing), **capability)
         return await run(request, action)
 
     @app.post("/api/billing/spot-quotes")
@@ -66,10 +70,15 @@ def install(app, service):
             return await account_view(service, user["id"], rows)
         return await run(request, action)
 
-    @app.get("/api/billing/spot-orders/{order_id}/funding")
-    async def order(request: Request, order_id: str, cursor: int = 0):
+    async def details(request, order_id, cursor, *, instance_id=None):
         async def action(user, _):
-            row = await service.call(service.ledger.order, user["id"], order_id)
+            if instance_id:
+                rows = await service.call(service.ledger.orders, user["id"])
+                row = next((r for r in rows if r.get("rental_id") == instance_id), None)
+                if not row:
+                    raise LookupError("funding_order_not_found")
+            else:
+                row = await service.call(service.ledger.order, user["id"], order_id)
             entries = await service.call(service.ledger.entries, row)
             start = max(0, cursor)
             page = entries[start:start + 100]
@@ -82,6 +91,14 @@ def install(app, service):
             ) for e in page], nextCursor=str(start + len(page)) if start + len(page) < len(entries) else None,
                 complete=start == 0 and len(page) == len(entries)))
         return await run(request, action)
+
+    @app.get("/api/billing/spot-orders/{order_id}/funding")
+    async def order(request: Request, order_id: str, cursor: int = 0):
+        return await details(request, order_id, cursor)
+
+    @app.get("/api/instances/{instance_id}/funding")
+    async def instance_funding(request: Request, instance_id: str, cursor: int = 0):
+        return await details(request, None, cursor, instance_id=instance_id)
 
     @app.post("/api/billing/spot-orders/{order_id}/replenishments")
     async def replenish(request: Request, order_id: str):
