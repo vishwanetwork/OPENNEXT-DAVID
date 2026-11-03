@@ -1,7 +1,7 @@
 'use client';
 
 import { usd, type SpotRow } from '../inventory';
-import { totalsView, type CheckoutDraft } from '../checkout';
+import { pricedRow, totalsView, type CheckoutDraft } from '../checkout';
 
 function Totals({ row, hours }: { row: SpotRow; hours: unknown }) {
   const { total, hourly } = totalsView(row, hours);
@@ -73,13 +73,20 @@ export function Summary({
         </label>
       ) : null}
       <div className="onx-spot-checkout-summary" data-spot-checkout-totals aria-live="polite">
-        <Totals row={row} hours={draft.hoursRaw} />
+        <Totals row={pricedRow(draft, row)} hours={draft.hoursRaw} />
       </div>
       <p className="form-note" data-spot-usage-billing>
         The total is held from your Credit. You pay per minute for the time your server runs, with a
         1-hour minimum, and the rest is returned when the order ends. Paid time starts when the
         server is ready.
       </p>
+      {draft.inferenceQuote ? (
+        <p className="form-note">
+          Model: {draft.inferenceQuote.inferencePresetId}. The hourly rate includes{' '}
+          {usd(draft.inferenceQuote.modelStorageHourlyCents / 100)} for the protected model disk.
+          Model download and loading use paid GPU time from GPU delivery.
+        </p>
+      ) : null}
     </>
   );
 }

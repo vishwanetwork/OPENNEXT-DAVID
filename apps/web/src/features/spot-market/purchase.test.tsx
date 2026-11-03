@@ -9,6 +9,7 @@ import type { SpotRow } from './inventory';
 import { serviceFixture } from '@/features/buyer-kyb/test-fixtures';
 import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
 import { CreditConfirmBody } from './components/checkout-bodies';
+import { ModelOptions } from './components/model-options';
 
 const offer = {
   id: 'spotbot-us-west-2-g6.xlarge',
@@ -40,6 +41,76 @@ function Probe() {
 }
 
 describe('Spot purchase', () => {
+  it('shows server-specific requirements and disables models that do not fit', async () => {
+    const small = {
+      id: 'deepseek-r1-distill-7b',
+      label: 'DeepSeek 7B',
+      model: 'deepseek-ai/test',
+      precision: 'float16',
+      diskGiB: 100,
+      estimatedMinutes: 30,
+      billingStart: 'gpu_delivery',
+      enabled: true,
+      reason: null,
+      requirements: {
+        minimumTotalVramGB: 24,
+        minimumHostMemoryGiB: 16,
+        minimumVcpus: 4,
+        modelDiskGiB: 100,
+        rootDiskGiB: 100,
+        tensorParallelSizes: [1, 2, 4],
+        minimumComputeCapability: '7.5',
+        architecture: 'x86_64',
+        maxModelLen: 8192,
+        maxNumSeqs: 1,
+      },
+    };
+    mockFetch((path) => {
+      if (path.includes('/api/marketplace/public'))
+        return json(200, { rfqs: [], supplies: [offer] });
+      if (path.includes('/api/marketplace/inference-presets'))
+        return json(200, {
+          presets: [
+            small,
+            {
+              ...small,
+              id: 'deepseek-r1-distill-70b',
+              label: 'DeepSeek 70B',
+              precision: 'bfloat16',
+              enabled: false,
+              reason: 'inference_insufficient_vram',
+              requirements: {
+                ...small.requirements,
+                minimumTotalVramGB: 192,
+                minimumHostMemoryGiB: 64,
+              },
+            },
+          ],
+        });
+      return json(200, {});
+    });
+    signIn();
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+        <ModelOptions />
+      </SpotCheckoutProvider>,
+      { workspace: {} },
+    );
+    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+    act(() => seen.engine!.beginCheckout(seen.rows[0]!));
+    expect(await screen.findByRole('option', { name: 'DeepSeek 7B' })).not.toBeDisabled();
+    expect(screen.getByRole('option', { name: /DeepSeek 70B/ })).toBeDisabled();
+    fireEvent.click(screen.getByText('Model requirements and availability'));
+    expect(screen.getByText(/Insufficient GPU memory for this precision/)).toBeInTheDocument();
+    expect(screen.getByText(/At least 192 GB total GPU memory/)).toBeInTheDocument();
+  });
   it('shows payment progress while the order is uncertain and blocks a duplicate confirmation', async () => {
     const gate = Promise.withResolvers<Response>();
     let posts = 0;

@@ -138,9 +138,16 @@ function buildEngine(client: QueryClient): SpotCheckout {
     inventory: () => useSpotEngineStore.getState().inventory,
     // Purchases go to the backend's Spot purchase endpoint unless the host injects a service.
     service: () => ({
+      inferenceQuote: (offerId, presetId, hours) =>
+        spotMarketApi.inferenceQuote(deps().api, offerId, presetId, hours),
       refreshBillingAccount: () => deps().refreshBilling(),
       beginPurchase: async (input) => {
-        const result = await spotMarketApi.purchase(deps().api, input);
+        let result;
+        try {
+          result = await spotMarketApi.purchase(deps().api, input);
+        } finally {
+          void client.invalidateQueries({ queryKey: queryKeys.marketplace.public });
+        }
         void deps().invalidateWorkspace();
         return result;
       },

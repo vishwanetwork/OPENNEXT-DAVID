@@ -376,3 +376,10 @@
   border: 1px solid var(--line, rgba(127, 127, 127, 0.25));
   border-radius: 6px;
 }
+.onx-instance-inference pre {
+  overflow: auto;
+  max-width: 100%;
+  padding: 12px;
+  background: var(--surface-muted);
+  border-radius: 6px;
+}

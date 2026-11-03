@@ -580,3 +580,44 @@ Raw price observations and history retain supplier prices. Procurement ceilings 
 costs independently of the retail markup. New checkout/usage service fees are zero. New marketplace quotes use `opennext-markup-only-v2` with zero buyer/seller fees; historical `opennext-explicit-5pct-v1` records retain their saved amounts. The adapter freezes `service_fee_bps` on every new charge; historical charges without the field retain their original 500 bps.
 Credit holds and Direct Pay intents store immutable retail and source quote snapshots, so later
 changes cannot reprice accepted purchases, delayed provisioning, instances or idempotent retries.
+
+## Optional inference presets and Spot quota estimates
+
+The Bot/OpenNEXT adapter owns these routes. They do not allocate or bill for token
+usage separately; model preparation uses the purchased GPU service window.
+
+- GET `/api/marketplace/inference-presets?offerId=...` returns `{presets: [...]}`.
+  Each preset has `id`, `label`, `model`, `precision`, `diskGiB`, `estimatedMinutes`,
+  `billingStart: "gpu_delivery"`, `enabled`, and nullable `reason`. Unvalidated
+  runtime/hardware combinations remain disabled. No operator image credentials,
+  cloud accounts, or supplier keys are returned.
+- POST `/api/marketplace/inference-quote` accepts `offerId`, `inferencePresetId`,
+  and `durationHours`. It returns `pricing` with the existing checkout arithmetic,
+  `modelStorageHourlyCents`, the selected preset ID, and `billingStart`. It is a
+  read-only quote. No fixed service fee is added.
+- Credit Spot purchases and Direct Pay bank transfer intents optionally carry
+  `inferencePresetId` and `inferenceBillingAcknowledged: true`. The server validates
+  the current immutable preset and storage before accepting payment. The original
+  model selection and price remain frozen for retries and paid redemption.
+- GET `/api/marketplace/instances/:id/inference` is owner-authenticated and returns
+  `{status, connection}`. Status includes `version`, `preset_id`, `state`, download
+  byte counters, nullable `error`, and `billing_start: "gpu_delivery"`. States are
+  `queued`, `preparing_runtime`, `downloading`, `loading`, `ready`, `failed`, or
+  `stopped`. A ready, securely reachable service returns connection `{baseUrl,
+model, apiKey, keyVersion}`. Responses use `Cache-Control: no-store`; keys must
+  never enter localStorage, analytics, logs, or persisted query caches.
+- POST the same instance route with `{action: "retry" | "stop" | "rotate_key",
+expectedVersion}` requires the customer session, CSRF and same-origin checks.
+  Retry/stop use the model service version; rotation uses `keyVersion`. A changed
+  version returns 409. Stopping the model does not end the GPU rental. Rotation
+  cancels inference streams without disconnecting SSH.
+
+GPU Market supply rows optionally contain `quota` (see `CapacityQuota` in contracts).
+`maxInstances` and `maxGpus` are nullable quota estimates for that offer's exact
+procurement scope. `usageKnown: false` means the quota is unavailable, not unlimited.
+`capacityGuaranteed` is always false and `capacityStatus` is `unknown`. The opaque
+`sharedPoolId` identifies estimates consuming the same regional allowance; they
+must not be summed as separate inventory. `gpuCount` continues to mean GPUs per
+instance. Counts update through the existing marketplace refresh and order
+invalidation. The server serializes purchase admission and counts queued orders,
+but an AWS launch can still fail because of external usage or Spot capacity.
