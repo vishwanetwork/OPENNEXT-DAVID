@@ -39,7 +39,7 @@ export function usePreviewScope() {
 
 export const StatusTagLive = ({ life }: { life: Lifecycle }) => (
   <span
-    className={`tag instance-status instance-status-${life.ended ? 'end' : life.connecting ? 'connecting' : life.running ? 'running' : 'unknown'}`}
+    className={`tag instance-status instance-status-${life.ended ? 'end' : life.paused ? 'paused' : life.connecting ? 'connecting' : life.running ? 'running' : 'unknown'}`}
     data-instance-status
   >
     {life.label}

@@ -112,7 +112,13 @@ describe('agreement-linked Spot purchase', () => {
       {
         workspace: {},
         billing: { availableCredit: 100, promotionalCredit: 100 },
-        slots: { services: { buyerKyb: serviceFixture('Approved'), spotAgreement: service } },
+        slots: {
+          services: {
+            buyerKyb: serviceFixture('Approved'),
+            spotAgreementRequired: true,
+            spotAgreement: service,
+          },
+        },
       },
     );
     const engine = await review();
@@ -165,7 +171,13 @@ describe('agreement-linked Spot purchase', () => {
         billing: { availableCredit: 100, promotionalCredit: 100 },
         workspace: {},
         queryClient,
-        slots: { services: { buyerKyb: serviceFixture('Approved'), spotAgreement: service } },
+        slots: {
+          services: {
+            buyerKyb: serviceFixture('Approved'),
+            spotAgreementRequired: true,
+            spotAgreement: service,
+          },
+        },
       },
     );
     const engine = await review();
@@ -223,7 +235,7 @@ describe('agreement-linked Spot purchase', () => {
       {
         billing: { availableCredit: 100 },
         workspace: {},
-        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+        slots: { services: { buyerKyb: serviceFixture('Approved'), spotAgreementRequired: true } },
       },
     );
     const engine = await review();

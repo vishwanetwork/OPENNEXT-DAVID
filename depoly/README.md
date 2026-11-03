@@ -5,6 +5,21 @@ installation**, not a promotion of the testing database. It does not copy testin
 sessions, Credit, orders, KYB files, provider credentials, gateway routes or cloud backups.
 All operator output and documentation are English. No command runs until an operator invokes it.
 
+## Floating Spot billing rollout
+
+Floating `spot-hourly-v1` billing requires reviewed images containing the new
+frontend, embedded adapter and native Bot funding protocol. The older image pin
+below does not include it. Keep `SPOTBOT_FLOATING_ENABLED=false` on the adapter and
+native Bot until those images and the read-only legacy account snapshot mount are
+ready. Set the flag on both services when activating new floating purchases.
+The frontend verifies capabilities before showing the budget/consent checkout.
+
+To stop new floating purchases, disable the flag while keeping both funding and
+rental workers running. Existing orders must still settle, receive confirmed
+replenishments, restore retained data and clean it after seven days. Do not
+downgrade the native Bot to a version without bounded execution grants while
+floating orders remain open. Historical fixed-price orders are never migrated.
+
 ## Images and data are separate
 
 The same reviewed application image can run in testing and production with different runtime

@@ -6,11 +6,29 @@ import {
   InstanceSshKeysRequest,
   InstanceSshKeysResponse,
   ResellResponse,
+  InstanceInference,
+  InferenceAction,
 } from '@opennext/contracts';
 import type { ApiClient } from '@/lib/api/client';
 
 /** Instance actions and key sets; the instance list comes from the workspace (`/api/marketplace/me`). */
 export const instancesApi = {
+  inference: (api: ApiClient, id: string, signal?: AbortSignal) =>
+    api
+      .get(`/api/marketplace/instances/${encodeURIComponent(id)}/inference`, { signal })
+      .then((r) => InstanceInference.parse(r)),
+  inferenceAction: (
+    api: ApiClient,
+    id: string,
+    action: 'retry' | 'stop' | 'rotate_key',
+    expectedVersion: number,
+  ) =>
+    api
+      .post(
+        `/api/marketplace/instances/${encodeURIComponent(id)}/inference`,
+        InferenceAction.parse({ action, expectedVersion }),
+      )
+      .then((r) => InstanceInference.parse(r)),
   resell: (api: ApiClient, id: string, body: { count: number; rate: number; hours: number }) =>
     api
       .post(`/api/marketplace/instances/${encodeURIComponent(id)}/resell`, body)

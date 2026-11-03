@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast';
 import { useApiErrorToast } from '@/components/hooks/use-api-error-toast';
 import { instancesApi } from '../api';
 import { useInvalidateWorkspace, useTerminal } from '@/terminal-kit';
-import { isSpot, lifecycle, moneyOrNa, sshCommand, timestamp } from '../lifecycle';
+import { isSpot, moneyOrNa, sshCommand, timestamp } from '../lifecycle';
 import { localDemo } from '../preview';
 import { IBtn, SshLibrary } from './common';
 import { Cell, OrderField, useInstance } from './instance-shared';
@@ -19,7 +19,7 @@ import { AsyncFeedback, AsyncButton } from '@/components/ui/async-feedback';
 
 export function Manage({ id }: { id?: string }) {
   const { openModal, toast } = useTerminal();
-  const { i, life, e, t, demo, role } = useInstance(id, false);
+  const { i, life, e, t, demo, role, funding } = useInstance(id, false);
   const toastError = useApiErrorToast();
   const refreshInstance = useRefreshInstance(id);
   const prefetch = usePrefetchAutopilot();
@@ -63,15 +63,23 @@ export function Manage({ id }: { id?: string }) {
           {i.count} × {i.model}
         </Cell>
         <Cell label="REGION">{instanceCountry(i.region, i.country)}</Cell>
-        <Cell label="UNIT RATE">{moneyOrNa(i.rate)} / GPU-hour</Cell>
+        <Cell label={funding ? 'CURRENT INSTANCE RATE' : 'UNIT RATE'}>
+          {funding
+            ? funding.currentHourlyCents === null
+              ? 'Not available'
+              : `${moneyOrNa(funding.currentHourlyCents / 100)} / hour`
+            : `${moneyOrNa(i.rate)} / GPU-hour`}
+        </Cell>
         <Cell label="UTILIZATION">
-          {life.ended
-            ? 'Not active'
-            : life.connecting
-              ? 'Awaiting reconnection'
-              : t.fresh
-                ? (t.value as number).toFixed(1) + '%'
-                : 'Awaiting telemetry'}
+          {life.paused
+            ? 'Paused — awaiting funds'
+            : life.ended
+              ? 'Not active'
+              : life.connecting
+                ? 'Awaiting reconnection'
+                : t.fresh
+                  ? (t.value as number).toFixed(1) + '%'
+                  : 'Awaiting telemetry'}
         </Cell>
         <OrderField i={i} isExample={false} />
       </div>
@@ -103,6 +111,15 @@ export function Manage({ id }: { id?: string }) {
             onClick={() => openModal('instance-autopilot', { id: i.id })}
           >
             Autopilot
+          </IBtn>
+        ) : null}
+        {i.inference && !localDemo(i, demo) ? (
+          <IBtn
+            act="instance-inference"
+            id={i.id}
+            onClick={() => openModal('instance-inference', { id: i.id })}
+          >
+            Model inference
           </IBtn>
         ) : null}
         <IBtn
@@ -243,7 +260,7 @@ export function Resell({ id }: { id?: string }) {
 
 export function Access({ id, isExample }: { id?: string; isExample: boolean }) {
   const { openModal, closeModal } = useTerminal();
-  const { i, demo } = useInstance(id, isExample);
+  const { i, demo, life } = useInstance(id, isExample);
   if (!i) return <p>Refresh your instances and try again.</p>;
   const notConnected = (
     <p className="form-note instance-access-installation">
@@ -265,7 +282,7 @@ export function Access({ id, isExample }: { id?: string; isExample: boolean }) {
       {isExample || localDemo(i, demo) ? (
         notConnected
       ) : (
-        <InstanceKeys id={i.id} ended={lifecycle(i).ended} fallback={notConnected} />
+        <InstanceKeys id={i.id} ended={life.ended} fallback={notConnected} />
       )}
       <SshLibrary scope="instance-access" />
       <div className="modal-footer">

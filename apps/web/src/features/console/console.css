@@ -159,15 +159,16 @@ h3 {
   color: #111d2c;
 }
 .brand svg {
+  display: none;
   width: 30px;
   height: 34px;
   fill: currentColor;
 }
-.brand strong {
+.brand .console-brand-lockup {
   display: block;
-  font-size: 20px;
-  letter-spacing: -0.7px;
-  line-height: 1.1;
+  width: 150px;
+  height: auto;
+  margin-bottom: 4px;
 }
 .brand span {
   font-size: 8px;
@@ -1516,6 +1517,7 @@ td small {
     display: none;
   }
   .brand svg {
+    display: block;
     width: 27px;
     height: 31px;
   }

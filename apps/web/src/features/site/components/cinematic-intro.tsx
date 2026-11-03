@@ -5,10 +5,12 @@ import { CapacityRail } from './capacity-rail';
 import { CinematicPartners } from './cinematic-partners';
 export function CinematicIntro({
   heroCollapsed,
+  partnersHidden,
   buyerHref,
   supplierHref,
 }: {
   heroCollapsed: boolean;
+  partnersHidden: boolean;
   buyerHref: string;
   supplierHref: string;
 }) {
@@ -16,68 +18,72 @@ export function CinematicIntro({
     <>
       <section id="top" className="hero-scroll" aria-labelledby="hero-title">
         <div className="hero-stage">
-          <div className="hero-frame">
-            <Image
-              unoptimized
-              className="hero-image"
-              src="/landing-design/hero-data-center.webp"
-              alt="A glass-fronted data center illuminated at blue hour"
-              width="1672"
-              height="941"
-              fetchPriority="high"
-            />
-          </div>
-          <div className="hero-inner-frame frame-one" aria-hidden="true">
-            <Image
-              unoptimized
-              src="/landing-design/hero-data-center.webp"
-              alt=""
-              width={1672}
-              height={941}
-            />
-          </div>
-          <div className="hero-inner-frame frame-two" aria-hidden="true">
-            <Image
-              unoptimized
-              src="/landing-design/hero-data-center.webp"
-              alt=""
-              width={1672}
-              height={941}
-            />
-          </div>
-          <div className="container hero-copy" inert={heroCollapsed}>
-            <h1 id="hero-title">
-              <span className="line-mask">
-                <span>An always-on</span>
+          <div className="hero-visual">
+            <div className="hero-frame">
+              <Image
+                unoptimized
+                className="hero-image"
+                src="/landing-design/hero-data-center.webp"
+                alt="A glass-fronted data center illuminated at blue hour"
+                width="1672"
+                height="941"
+                fetchPriority="high"
+              />
+            </div>
+            <div className="hero-inner-frame frame-one" aria-hidden="true">
+              <Image
+                unoptimized
+                src="/landing-design/hero-data-center.webp"
+                alt=""
+                width={1672}
+                height={941}
+              />
+            </div>
+            <div className="hero-inner-frame frame-two" aria-hidden="true">
+              <Image
+                unoptimized
+                src="/landing-design/hero-data-center.webp"
+                alt=""
+                width={1672}
+                height={941}
+              />
+            </div>
+            <div className="container hero-copy" inert={heroCollapsed}>
+              <p className="hero-eyebrow hero-enter">Agent-native GPU marketplace</p>
+              <h1 id="hero-title">
+                <span className="line-mask">
+                  <span>An always-on</span>
+                </span>
+                <span className="line-mask">
+                  <span>compute market.</span>
+                </span>
+              </h1>
+              <p className="hero-description hero-enter">
+                Find GPU capacity. Reach the right buyers.
+                <br />
+                Set the terms. Keep control.
+              </p>
+              <div className="hero-actions hero-enter">
+                <LinkButton href={buyerHref} kind="white">
+                  Open Terminal
+                </LinkButton>
+              </div>
+            </div>
+            <div className="hero-morph-copy" aria-hidden="true">
+              <span>
+                Demand
+                <br />
+                meets
               </span>
-              <span className="line-mask">
-                <span>compute market.</span>
+              <span>
+                the right
+                <br />
+                capacity.
               </span>
-            </h1>
-            <p className="hero-description hero-enter">
-              Find GPU capacity. Reach the right buyers.
-              <br />
-              Set the terms. Keep control.
-            </p>
-            <div className="hero-actions hero-enter">
-              <LinkButton href={buyerHref} kind="white">
-                Open Terminal
-              </LinkButton>
+              <p>One market. Both sides connected.</p>
             </div>
           </div>
-          <div className="hero-morph-copy" aria-hidden="true">
-            <span>
-              Demand
-              <br />
-              meets
-            </span>
-            <span>
-              the right
-              <br />
-              capacity.
-            </span>
-            <p>One market. Both sides connected.</p>
-          </div>
+          <CinematicPartners hidden={partnersHidden} />
         </div>
       </section>
 
@@ -145,7 +151,6 @@ export function CinematicIntro({
               </a>
             </article>
           </div>
-          <CinematicPartners />
         </div>
         <CapacityRail terminalUrl={buyerHref} />
       </section>

@@ -1,0 +1,339 @@
+import { useEffect } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import type { BankTransferRequest } from '@/lib/buyer-kyb';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test/render';
+import { useWorkspaceStore } from '@/terminal-kit';
+import { CHECKOUT_MODALS, durationHours, type SpotCheckout } from './checkout';
+import { spotCheckoutModals } from './components/checkout-modals';
+import type { SpotRow } from './inventory';
+import { serviceFixture } from '@/features/buyer-kyb/test-fixtures';
+import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
+import { CreditConfirmBody } from './components/checkout-bodies';
+import { ModelOptions } from './components/model-options';
+
+const offer = {
+  id: 'spotbot-us-west-2-g6.xlarge',
+  kind: 'rental',
+  side: 'supply',
+  term: 'Spot',
+  model: 'L4',
+  title: '1 × L4',
+  region: 'us-west-2',
+  gpuCount: 1,
+  vcpu: 4,
+  memory: 24,
+  perGpuHourly: 0.39,
+  listedAt: '2026-10-28T01:00:00+00:00',
+  status: 'Published',
+  serverRecord: true,
+  agentStatus: 'Succeeded',
+};
+
+const seen: { engine?: SpotCheckout; rows: SpotRow[] } = { rows: [] };
+function Probe() {
+  const inventory = useSpotInventory();
+  const engine = useSpotCheckout(inventory);
+  useEffect(() => {
+    seen.engine = engine;
+    seen.rows = inventory.rows;
+  });
+  return null;
+}
+
+describe('Spot purchase', () => {
+  it('shows server-specific requirements and disables models that do not fit', async () => {
+    const small = {
+      id: 'deepseek-r1-distill-7b',
+      label: 'DeepSeek 7B',
+      model: 'deepseek-ai/test',
+      precision: 'float16',
+      diskGiB: 100,
+      estimatedMinutes: 30,
+      billingStart: 'gpu_delivery',
+      enabled: true,
+      reason: null,
+      requirements: {
+        minimumTotalVramGB: 24,
+        minimumHostMemoryGiB: 16,
+        minimumVcpus: 4,
+        modelDiskGiB: 100,
+        rootDiskGiB: 100,
+        tensorParallelSizes: [1, 2, 4],
+        minimumComputeCapability: '7.5',
+        architecture: 'x86_64',
+        maxModelLen: 8192,
+        maxNumSeqs: 1,
+      },
+    };
+    mockFetch((path) => {
+      if (path.includes('/api/marketplace/public'))
+        return json(200, { rfqs: [], supplies: [offer] });
+      if (path.includes('/api/marketplace/inference-presets'))
+        return json(200, {
+          presets: [
+            small,
+            {
+              ...small,
+              id: 'deepseek-r1-distill-70b',
+              label: 'DeepSeek 70B',
+              precision: 'bfloat16',
+              enabled: false,
+              reason: 'inference_insufficient_vram',
+              requirements: {
+                ...small.requirements,
+                minimumTotalVramGB: 192,
+                minimumHostMemoryGiB: 64,
+              },
+            },
+          ],
+        });
+      return json(200, {});
+    });
+    signIn();
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+        <ModelOptions />
+      </SpotCheckoutProvider>,
+      { workspace: {} },
+    );
+    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+    act(() => seen.engine!.beginCheckout(seen.rows[0]!));
+    expect(await screen.findByRole('option', { name: 'DeepSeek 7B' })).not.toBeDisabled();
+    expect(screen.getByRole('option', { name: /DeepSeek 70B/ })).toBeDisabled();
+    fireEvent.click(screen.getByText('Model requirements and availability'));
+    expect(screen.getByText(/Insufficient GPU memory for this precision/)).toBeInTheDocument();
+    expect(screen.getByText(/At least 192 GB total GPU memory/)).toBeInTheDocument();
+  });
+  it('shows payment progress while the order is uncertain and blocks a duplicate confirmation', async () => {
+    const gate = Promise.withResolvers<Response>();
+    let posts = 0;
+    mockFetch((path) => {
+      if (path.includes('/api/marketplace/public'))
+        return json(200, { rfqs: [], supplies: [offer] });
+      if (path.includes('/api/billing/account'))
+        return json(200, {
+          confirmed: true,
+          accountId: 'u1',
+          currency: 'USD',
+          availableCredit: 100,
+          paidCredit: 0,
+          promotionalCredit: 100,
+        });
+      if (path.includes('/api/marketplace/spot-purchases')) {
+        posts += 1;
+        return gate.promise;
+      }
+      return json(200, {});
+    });
+    signIn();
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+        <CreditConfirmBody />
+      </SpotCheckoutProvider>,
+      {
+        workspace: {},
+        billing: { availableCredit: 100, promotionalCredit: 100 },
+        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+      },
+    );
+    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+    const engine = seen.engine;
+    const row = seen.rows[0];
+    if (!engine || !row) throw new Error('Expected checkout engine and offer');
+    act(() => engine.beginCheckout(row));
+    await act(async () => engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
+    await act(async () => engine.chooseCredit());
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
+    expect(
+      await screen.findByText('Confirming your payment and order. Please wait…'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(posts).toBe(1));
+    expect(screen.getByRole('button', { name: 'Confirm Credit payment' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Credit payment' }));
+    expect(posts).toBe(1);
+    expect(screen.queryByText(/OpenNEXT Fee 5%/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('$0.78')).toHaveLength(2);
+    await act(async () =>
+      gate.resolve(
+        json(200, {
+          confirmed: true,
+          offerId: offer.id,
+          orderId: 'rental-1',
+          currency: 'USD',
+          durationHours: 2,
+          totalCents: 78,
+        }),
+      ),
+    );
+    await waitFor(() => expect(engine.pending()?.stage).toBe('completed'));
+  });
+  it('orders at least one hour, since usage has a 1-hour minimum', () => {
+    expect(durationHours('1')).toBe(1);
+    expect(durationHours('2.25')).toBe(2.25);
+    for (const value of ['0.5', '0.99', '0', '1.005', 'x'])
+      expect(() => durationHours(value)).toThrow('at least 1 hour');
+  });
+  it('registers a dialog for every checkout step the engine opens', () => {
+    expect(Object.keys(spotCheckoutModals).sort()).toEqual([...CHECKOUT_MODALS].sort());
+  });
+  it('Buy Now sends the confirmed purchase to the backend and shows the order', async () => {
+    const posts: { body: unknown; headers: Record<string, string> }[] = [];
+    mockFetch((path, init) => {
+      if (path.includes('/api/marketplace/public'))
+        return json(200, { rfqs: [], supplies: [offer] });
+      if (path.includes('/api/billing/account'))
+        return json(200, {
+          confirmed: true,
+          accountId: 'u1',
+          currency: 'USD',
+          availableCredit: 100,
+          paidCredit: 0,
+          promotionalCredit: 100,
+        });
+      if (path.includes('/api/marketplace/spot-purchases')) {
+        const body = JSON.parse(String(init?.body)) as { durationHours: number };
+        posts.push({ body, headers: init?.headers as Record<string, string> });
+        return json(200, {
+          confirmed: true,
+          offerId: offer.id,
+          orderId: 'rental-1',
+          currency: 'USD',
+          durationHours: body.durationHours,
+          totalCents: 78,
+        });
+      }
+      return json(200, {});
+    });
+    signIn();
+    const queryClient = testQueryClient();
+    useWorkspaceStore.getState().applySession({
+      id: 'u1',
+      email: 'ada@example.com',
+      role: 'buyer',
+      onboardingCompleted: true,
+    } as never);
+    renderTerminal(
+      <SpotCheckoutProvider>
+        <Probe />
+      </SpotCheckoutProvider>,
+      {
+        billing: { availableCredit: 100, promotionalCredit: 100 },
+        workspace: {},
+        queryClient,
+        // Purchases require an approved Buyer KYB.
+        slots: { services: { buyerKyb: serviceFixture('Approved') } },
+      },
+    );
+    await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+    expect(seen.rows[0]?.sourceKind).toBe('agent');
+    act(() => seen.engine!.beginCheckout(seen.rows[0]!));
+    // The key is checked by the backend; jsdom's SubtleCrypto cannot fingerprint keys here.
+    await act(() => seen.engine!.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
+    await act(() => seen.engine!.chooseCredit());
+    await act(() => seen.engine!.authorizeCredit());
+    expect(seen.engine!.pending()?.error).toBe('');
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.body).toEqual({
+      pricingVersion: 'duration-v1',
+      offerId: offer.id,
+      durationHours: 2,
+      expectedPricing: {
+        currency: 'USD',
+        durationHours: 2,
+        hourlyCents: 39,
+        baseCents: 78,
+        feeCents: 0,
+        totalCents: 78,
+      },
+      sshPublicKey: null,
+      idempotencyKey: expect.any(String),
+    });
+    expect(posts[0]?.headers['X-CSRF-Token']).toBe('csrf');
+    expect(seen.engine!.pending()?.stage).toBe('completed');
+    expect(seen.engine!.pending()?.orderId).toBe('rental-1');
+    // The workspace (and with it Instances) is refreshed for the new order.
+    const workspace = queryClient.getQueryCache().findAll({ queryKey: ['account', 'workspace'] });
+    expect(workspace.length).toBeGreaterThan(0);
+    expect(workspace.every((query) => query.state.isInvalidated)).toBe(true);
+    act(() => seen.engine!.action('spot-checkout-instances'));
+    expect(useWorkspaceStore.getState().modal).toBeNull();
+  });
+});
+
+it('keeps Direct Pay connected without signing when the agreement rollout is disabled', async () => {
+  mockFetch((path) =>
+    path.includes('/api/marketplace/public')
+      ? json(200, { rfqs: [], supplies: [offer] })
+      : json(200, {}),
+  );
+  signIn();
+  useWorkspaceStore.getState().applySession({
+    id: 'u1',
+    email: 'ada@example.com',
+    role: 'buyer',
+    onboardingCompleted: true,
+  } as never);
+  const create = vi.fn(async (request: BankTransferRequest) => ({
+    ...request,
+    confirmed: true as const,
+    accountId: 'u1',
+    demo: false as const,
+    id: 'transfer-1',
+    reference: 'ONX-1',
+    expiresAt: '2099-01-01T00:00:00Z',
+  }));
+  renderTerminal(
+    <SpotCheckoutProvider>
+      <Probe />
+    </SpotCheckoutProvider>,
+    {
+      workspace: {},
+      slots: {
+        services: {
+          buyerKyb: serviceFixture('Approved'),
+          spotAgreementRequired: false,
+          bankTransfer: {
+            create,
+            reportSent: async () => ({
+              confirmed: true,
+              intentId: 'transfer-1',
+              status: 'Awaiting payment confirmation',
+            }),
+          },
+        },
+      },
+    },
+  );
+  await waitFor(() => expect(seen.rows.map((row) => row.id)).toEqual([offer.id]));
+  const engine = seen.engine;
+  const row = seen.rows[0];
+  if (!engine || !row) throw new Error('Expected checkout engine and offer');
+  act(() => engine.beginCheckout(row));
+  await act(async () => engine.reviewPurchase({ durationHours: '2', sshPublicKey: '' }));
+  await act(async () => engine.chooseDirect());
+  expect(engine.pending()?.error).toBe('');
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(create.mock.calls[0]?.[0]).toMatchObject({
+    purpose: 'order',
+    offerId: offer.id,
+    durationHours: 2,
+    amountCents: 78,
+  });
+  expect(create.mock.calls[0]?.[0]).not.toHaveProperty('agreement');
+  expect(useWorkspaceStore.getState().modal?.type).toBe('bank-transfer');
+});

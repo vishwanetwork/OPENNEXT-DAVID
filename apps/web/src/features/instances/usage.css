@@ -245,6 +245,16 @@
 .instance-event-dot.interrupted {
   background: #d4b877;
 }
+.instance-status-paused {
+  color: #8b3e0a;
+  background: #fff3df;
+}
+.instance-funding-paused {
+  margin-block: 10px;
+  color: #8b3e0a;
+  font-size: 12px;
+  line-height: 1.6;
+}
 @media (max-width: 760px) {
   .instance-page .instance-grid {
     grid-template-columns: minmax(0, 1fr);

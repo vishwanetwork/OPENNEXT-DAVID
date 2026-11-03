@@ -193,3 +193,113 @@ Evidence is in `../qa-placement/`: `partners-before-capacity.png`,
 `partners-mobile.png` and `programs-to-capacity-mobile.png`. Formatting, lint,
 typecheck, all 477 web tests, all 10 contract tests and production build passed.
 The three existing lint warnings are unchanged.
+
+## Fidelity Labs branding correction — 2026-11-02
+
+Replaced the earlier atom artwork with the original 200×200 profile image from
+the product owner's Fidelity Labs LinkedIn reference. The downloaded JPEG is
+preserved unchanged, including its green color and full mark. The adjacent
+company name uses the existing page typography. Pharos, Ondo and Solana and their
+unused artwork have been removed at the owner's request.
+
+The remaining partner and three programs share a compact desktop row. On mobile,
+the groups stack with fine dividers. The module remains below the buyer/supplier
+introduction and above the capacity rail. At 1280×720 and 390×844 all four images
+loaded, removed partners were absent, and there was no horizontal overflow or
+empty grid slot. Scroll reveal remained intact; browser logs had no warnings or
+errors. Screenshots are in `../qa-fidelity/partners-desktop.png` and
+`../qa-fidelity/partners-mobile.png`.
+
+This correction is based on main at `a4b3849`, after PR #16 merged. Formatting,
+lint, typecheck and the production build passed; lint retains the same three
+existing max-lines warnings. The complete web suite passed 488 tests, and the
+contracts suite passed 10 tests. No backend, routing or authentication changes
+were needed.
+
+## Hero endorsements and Vishwa attribution — 2026-11-02
+
+Moved the endorsement module into the bottom of the opening hero and removed its
+former placement between the audience cards and capacity rail. A separate
+"Powered by Vishwa Lab" group uses the original transparent header logo from
+`vishwalab.com`, with a link to that website. Fidelity Labs remains identified as
+a partner; Anthropic, Plug and Play and Circle retain their program names.
+
+The hero uses a flexible visual row above the content-sized white endorsement
+strip. At 1280×720 the complete strip is visible within the first viewport and
+measures 144px high. At 1024×768 it grows naturally to 164px as a program name
+wraps. The existing hero scroll animation continues; the strip fades with the
+hero copy and inherits its collapsed/inert state.
+
+At 390×844 and 320×740 the hero flows into the endorsement area instead of
+squeezing every logo into the viewport. Fidelity Labs and Vishwa share the first
+row, followed by three program rows with readable descriptions. Narrow-screen
+group headings reserve matching line height so the two top logos align. The
+primary CTA is visible, all five logo assets load, and no horizontal overflow or
+duplicate endorsement block was observed. The browser reported no warnings or
+errors. Existing reduced-motion styles and Buyer Terminal link destinations are
+preserved.
+
+Visual evidence is in `../qa-hero-partners/`: `hero-desktop.png`,
+`hero-compact-desktop.png`, `hero-mobile.png`, `hero-mobile-narrow.png`,
+`partners-mobile.png`, `partners-mobile-narrow.png` and
+`hero-scroll-transition.png`. Source provenance is recorded in the partner
+artwork `SOURCES.md`.
+
+Formatting, lint, typecheck and production build passed. All 488 web tests and
+10 contract tests passed; the three existing max-lines lint warnings are
+unchanged. This update is limited to the landing page and is included in PR #18.
+
+## Full-screen hero and scrolled endorsements — 2026-11-02
+
+This refinement supersedes the initial first-screen endorsement strip from
+merged PR #18. The opening image again fills the viewport. During the final part
+of the desktop scroll morph, the existing partner/program/Vishwa groups fade in
+below the stacked image and caption, filling the lower white area. Reversing the
+scroll hides the groups and restores the full-screen image.
+
+The animation reserves the endorsement block's measured content height, including
+wrapped program labels. Hidden endorsements use CSS visibility so their external
+link is not exposed to keyboard or accessibility navigation. At mobile widths,
+the full-screen hero flows directly into the endorsement block. A reduced-motion
+CSS fallback uses the same natural-flow arrangement without the scroll reveal.
+Fidelity Labs, all three program logos, Powered by Vishwa Lab and its link remain
+unchanged.
+
+Browser checks passed at 1280×720, 1024×768, 390×844 and 320×740. The desktop
+endorsement block measures 144px or 164px depending on wrapping and stays clear
+of the image and caption. Mobile branding and program rows wrap cleanly. All five
+logos load, no duplicate block or horizontal overflow appears, and reverse
+scrolling restores the initial hero. Browser logs contain no warnings or errors.
+Reduced-motion behavior was reviewed in CSS, not emulated in the browser.
+
+Visual evidence is in `../qa-fullscreen-endorsements/`: `hero-desktop.png`,
+`scroll-endorsements-desktop.png`, `scroll-endorsements-compact-desktop.png`,
+`hero-mobile.png`, `endorsements-mobile.png` and
+`endorsements-mobile-narrow.png`.
+
+Formatting, lint, typecheck and production build passed. The web suite passed
+488 tests and the contracts suite passed 10 tests. Lint retains the same three
+existing max-lines warnings with no errors. Changes are limited to the landing
+intro, partner component, scroll choreography and partner styles; authentication,
+API contracts, backend, routing and deployment configuration are unchanged.
+
+## PR #19 merge-conflict resolution — 2026-11-03
+
+Integrated main at `36ac077`, including the original OpenNEXT branding and the
+model-inference checkout changes. The landing retains main's shared timeline,
+content-height observation, short-viewport fallback and inert controls. The
+endorsement reveal now occupies the final 70–95% of the image morph, preserving
+this PR's late-reveal intent. Initial and reversed states hide the endorsement
+strip through both CSS visibility and inert, and mobile/reduced-motion layouts
+keep the strip in normal document flow. No API, authentication, backend or
+production-routing changes were introduced relative to main.
+
+Validation passed: formatting, lint (zero errors and the three existing size
+warnings), typecheck, 504 web tests, 10 contract tests, 668 legacy API tests and
+the production build. Browser assertions passed at 1280×720 and 1024×768 for
+initial, middle, late and final phases and reverse scrolling. They also passed
+at 1440×600 (the existing 620px minimum hero and normal-flow fallback), 390×844,
+320×740, and 1280×720 with reduced motion actually emulated. All five endorsement
+images loaded, the final caption and strip did not overlap, there was no horizontal
+overflow, and the Vishwa link accepted focus only while active. Local captures
+are stored under the ignored `output/playwright/` directory.

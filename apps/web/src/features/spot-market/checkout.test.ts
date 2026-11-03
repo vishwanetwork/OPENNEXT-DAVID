@@ -79,6 +79,7 @@ function setup({
   begin = true,
   verifyKyb = async () => true,
   beginBankTransfer,
+  agreementRequired = true,
 }: {
   rows?: unknown[];
   demo?: boolean;
@@ -87,6 +88,7 @@ function setup({
   begin?: boolean;
   verifyKyb?: CheckoutDeps['verifyKyb'];
   beginBankTransfer?: CheckoutDeps['beginBankTransfer'];
+  agreementRequired?: boolean;
 } = {}): Env {
   let inventory = normalizeInjected(rows);
   const ctx: Env['ctx'] = {
@@ -102,6 +104,7 @@ function setup({
   };
   const fingerprintGate: Env['fingerprintGate'] = { fn: null };
   const deps: CheckoutDeps = {
+    agreementRequired: () => agreementRequired,
     owner: () =>
       ctx.userId ? (ctx.demo ? 'demo:' : 'account:') + ctx.userId + ':' + ctx.role : null,
     role: () => ctx.role,
@@ -172,6 +175,41 @@ const confirmation = (input: PurchaseInput) => ({
   durationHours: input.durationHours,
   totalCents: input.expectedPricing.totalCents,
 });
+
+it('quotes model storage, requires preparation billing consent and sends the frozen selection', async () => {
+  const sent: PurchaseInput[] = [];
+  const env = setup({
+    agreementRequired: false,
+    rows: [agent],
+    demo: false,
+    service: {
+      getCreditBalance: async () => wallet(),
+      inferenceQuote: async () => ({
+        pricing: checkoutTotals({ instanceHourly: 14.43 }),
+        modelStorageHourlyCents: 3,
+        inferencePresetId: 'deepseek-r1-distill-7b',
+        billingStart: 'gpu_delivery',
+      }),
+      beginPurchase: async (input) => {
+        sent.push(input);
+        return confirmation(input);
+      },
+    },
+  });
+  await env.engine.selectInference('deepseek-r1-distill-7b');
+  await env.engine.reviewPurchase({ durationHours: 1, sshPublicKey: '' });
+  expect(env.engine.pending()?.error).toMatch(/paid GPU time/);
+  env.engine.acknowledgeInference(true);
+  await toPayment(env);
+  await env.engine.chooseCredit();
+  await env.engine.authorizeCredit();
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({
+    inferencePresetId: 'deepseek-r1-distill-7b',
+    inferenceBillingAcknowledged: true,
+    expectedPricing: { hourlyCents: 1443, totalCents: 1443, feeCents: 0 },
+  });
+});
 async function toPayment(
   env: Env,
   key = '',
@@ -180,9 +218,42 @@ async function toPayment(
 ) {
   await env.engine.reviewPurchase({ durationHours: hours, sshPublicKey: key });
   expect(env.ctx.modal?.type).toBe('spot-payment-choice');
-  if (!env.ctx.demo && env.row.sourceKind === 'agent')
+  if (env.engine.requiresAgreement() && !env.ctx.demo && env.row.sourceKind === 'agent')
     env.engine.recordAgreement(signedAgreementFixture(env.engine.agreementContext(method)));
 }
+
+it('carries the model, storage-inclusive quote and consent into Direct Pay', async () => {
+  const requests: Parameters<NonNullable<CheckoutDeps['beginBankTransfer']>>[0][] = [];
+  const env = setup({
+    agreementRequired: false,
+    rows: [agent],
+    demo: false,
+    service: {
+      inferenceQuote: async () => ({
+        pricing: checkoutTotals({ instanceHourly: 14.43 }),
+        modelStorageHourlyCents: 3,
+        inferencePresetId: 'deepseek-r1-distill-7b',
+        billingStart: 'gpu_delivery',
+      }),
+    },
+    beginBankTransfer: async (input) => {
+      requests.push(input);
+      return true;
+    },
+  });
+  await env.engine.selectInference('deepseek-r1-distill-7b');
+  env.engine.acknowledgeInference(true);
+  await toPayment(env);
+  await env.engine.chooseDirect();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    purpose: 'order',
+    amountCents: 1443,
+    inferencePresetId: 'deepseek-r1-distill-7b',
+    inferenceBillingAcknowledged: true,
+  });
+  expect(env.ctx.orders).toHaveLength(0);
+});
 function deposit(env: Env) {
   expect(env.ctx.modal?.type).toBe('spot-credit-confirm');
   env.engine.action('spot-checkout-deposit');
@@ -527,7 +598,7 @@ describe('Spot checkout safety', () => {
       rows: [agent],
       demo: false,
       beginBankTransfer: async (_request, agreement) => {
-        expect(agreement.context.paymentMethod).toBe('bank_transfer');
+        expect(agreement?.context.paymentMethod).toBe('bank_transfer');
         requests++;
         return true;
       },
@@ -565,6 +636,28 @@ describe('Spot checkout safety', () => {
     expect(env.ctx.modal?.type).toBe('spot-agreement');
     expect(draft.stage).toBe('payment');
     expect([...env.storage.values()].join('')).not.toContain('signature-1');
+  });
+  it('restores the same floating authorization and clears its lock after confirmed Direct Pay', () => {
+    const first = setup();
+    const acceptance = {
+      pricingVersion: 'spot-hourly-v1' as const,
+      quoteId: 'quote-1',
+      idempotencyKey: first.engine.pending()?.idempotencyKey ?? 'purchase-1',
+      consent: true as const,
+      storageRetentionAcknowledged: true as const,
+      inferenceBillingAcknowledged: false,
+      sshPublicKey: null,
+    };
+    first.engine.recordFloating(acceptance);
+    const restored = setup({ storage: first.storage, begin: false });
+    expect(restored.engine.pending()?.floatingAcceptance).toEqual(acceptance);
+    expect(restored.engine.pending()?.paymentSubmitted).toBe(true);
+    restored.engine.completeFloating('funding-order', false);
+    expect(restored.engine.pending()?.paymentSubmitted).toBe(false);
+    expect(restored.engine.hasPending()).toBe(false);
+    expect(restored.storage.size).toBe(0);
+    restored.engine.beginCheckout(restored.row);
+    expect(restored.engine.pending()?.stage).toBe('review');
   });
   it('optional SSH accepts blank; Direct Pay never calls a gateway', async () => {
     const env = setup();

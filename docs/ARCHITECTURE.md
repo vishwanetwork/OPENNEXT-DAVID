@@ -320,6 +320,13 @@ proxy.
 
 ### Terminal asynchronous feedback and instance reads
 
+`features/spot-funding` provides read-only floating-price funding summaries and a shared hourly
+ledger for Billing and Instances. Its optional `TerminalServices.spotFunding` port is deliberately
+undefined until SpotOrderBot implements the versioned settlement/alert capability. The browser
+does not debit funds, pause instances or send notifications. Validated funding runtime takes
+precedence over an old wall-clock expiry only for the matching floating-price instance. See
+[the activation handoff](SPOT_HOURLY_BILLING_HANDOFF.md); existing fixed-price checkout is unchanged.
+
 Use the shared `AsyncButton` and `AsyncFeedback` components for asynchronous actions:
 show progress immediately, disable duplicate submissions, keep errors visible, and avoid
 page-wide interaction locks. A successful Autopilot save closes only its matching dialog;

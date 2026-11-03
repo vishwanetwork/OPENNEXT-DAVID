@@ -20,6 +20,7 @@ export function CinematicLandingPage() {
   const supplierHref = crossHref('terminal', workspacePath({ route: 'supply', role: 'seller' }));
   const [scrolled, setScrolled] = useState(false),
     [heroCollapsed, setHeroCollapsed] = useState(false),
+    [partnersHidden, setPartnersHidden] = useState(true),
     [menuOpen, setMenuOpen] = useState(false),
     [activeProduct, setActiveProduct] = useState(0),
     [activeAgent, setActiveAgent] = useState(0),
@@ -30,7 +31,7 @@ export function CinematicLandingPage() {
     agentsRef = useRef<HTMLElement>(null);
   const reduced = useReducedMotion(),
     pageActive = usePageActive();
-  useChoreography(setScrolled, setActiveProduct, setHeroCollapsed);
+  useChoreography(setScrolled, setActiveProduct, setHeroCollapsed, setPartnersHidden);
   useEffect(() => {
     const node = agentsRef.current;
     if (!node) return;
@@ -74,7 +75,7 @@ export function CinematicLandingPage() {
       </a>
       <CinematicHeader {...{ scrolled, menuOpen, setMenuOpen, menuTrigger, buyerHref }} />
       <main id="main">
-        <CinematicIntro {...{ heroCollapsed, buyerHref, supplierHref }} />
+        <CinematicIntro {...{ heroCollapsed, partnersHidden, buyerHref, supplierHref }} />
         <CinematicTerminal
           {...{ activeProduct, chooseStep, buyerHref }}
           openPreview={() => setModal(true)}

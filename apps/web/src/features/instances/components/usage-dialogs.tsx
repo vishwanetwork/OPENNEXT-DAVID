@@ -2,6 +2,7 @@
 
 import type { InstanceUsageSnapshot } from '@/lib/instance-usage';
 import { useTerminal } from '@/terminal-kit';
+import { SpotOrderBilling, useSpotFundingOrder } from '@/features/spot-funding';
 import { moneyOrNa, stampUtcFull } from '../lifecycle';
 import { useInstanceUsage } from '../hooks';
 import { IBtn } from './common';
@@ -131,11 +132,14 @@ export function InterruptionHistory({ snapshot }: { snapshot: InstanceUsageSnaps
 
 export function UsageDialog({ id, view }: { id: string; view: 'billing' | 'history' }) {
   const { openModal } = useTerminal();
+  const { snapshot: funding } = useSpotFundingOrder({ instanceId: view === 'billing' ? id : '' });
   const { snapshot, query } = useInstanceUsage(id);
   const alternate = view === 'billing' ? 'history' : 'billing';
   return (
     <>
-      {snapshot ? (
+      {view === 'billing' && funding ? (
+        <SpotOrderBilling instanceId={id} />
+      ) : snapshot ? (
         view === 'billing' ? (
           <BillingHistory snapshot={snapshot} />
         ) : (

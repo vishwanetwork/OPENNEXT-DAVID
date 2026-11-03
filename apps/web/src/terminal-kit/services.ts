@@ -8,6 +8,7 @@ import type { BankTransferService, BuyerKybService } from '@/lib/buyer-kyb';
 import type { InstanceUsageService } from '@/lib/instance-usage';
 import type { CashoutService } from '@/lib/cashout';
 import type { SignedSpotAgreement, SpotAgreementService } from '@/lib/spot-agreement';
+import type { SpotFundingService } from '@/lib/spot-funding';
 
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
@@ -69,6 +70,8 @@ export interface PurchaseContext {
 }
 
 export interface TerminalServices {
+  /** Disabled by default. Enable only with an approved agreement-linked payment backend. */
+  spotAgreementRequired?: boolean;
   cashout?: CashoutService;
   spotAgreement?: SpotAgreementService;
   buyerKyb?: BuyerKybService;
@@ -76,6 +79,8 @@ export interface TerminalServices {
   account?: AccountService;
   instanceLifecycle?: InstanceLifecycleAdapter;
   instanceUsage?: InstanceUsageService;
+  /** Read-only floating-price views; never use this port to debit or resume an instance. */
+  spotFunding?: SpotFundingService;
   spotCheckout?: SpotCheckoutService;
   purchaseContext?: PurchaseContext;
 }

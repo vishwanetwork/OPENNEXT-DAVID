@@ -6,6 +6,8 @@ import { usd } from '../inventory';
 import { useSpotCheckout } from '../hooks';
 import { ErrorLine, Notice, Summary, Unavailable } from './checkout-summary';
 import { AsyncFeedback } from '@/components/ui/async-feedback';
+import { ModelOptions } from './model-options';
+import { FloatingCheckout, useFloatingCapabilities } from '@/features/spot-funding';
 
 export function ReviewBody() {
   const checkout = useSpotCheckout();
@@ -33,6 +35,7 @@ export function ReviewBody() {
         onHours={(value) => checkout.setHoursRaw(value)}
       />
       <Notice draft={draft} />
+      <ModelOptions />
       <label className="form-label">
         SSH Public Key <span className="muted">(optional)</span>
         <textarea
@@ -74,8 +77,53 @@ export function ReviewBody() {
 
 export function PaymentChoiceBody() {
   const checkout = useSpotCheckout();
+  const capability = useFloatingCapabilities();
   const draft = checkout.pending();
   if (!draft) return <Unavailable />;
+  if (capability.eligible && capability.query.isPending)
+    return <AsyncFeedback>Checking payment options…</AsyncFeedback>;
+  if (
+    capability.eligible &&
+    (capability.query.isError ||
+      (capability.query.data?.required && !capability.enabled && !draft.floatingAcceptance))
+  )
+    return (
+      <div role="alert">
+        <p>Payment options could not be verified.</p>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => void capability.query.refetch()}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  if ((capability.enabled || draft.floatingAcceptance) && checkout.requiresAgreement())
+    return (
+      <div role="alert">
+        Agreement-linked floating checkout is not connected yet. No payment was submitted.
+      </div>
+    );
+  if (capability.enabled || draft.floatingAcceptance)
+    return (
+      <FloatingCheckout
+        offerId={draft.row.id}
+        durationHours={draft.durationHours}
+        hourlyCents={
+          draft.inferenceQuote?.pricing.hourlyCents ?? Math.round(draft.row.instanceHourly * 100)
+        }
+        sshPublicKey={draft.sshPublicKey || null}
+        inferencePresetId={draft.inferenceQuote?.inferencePresetId ?? undefined}
+        inferenceBillingAcknowledged={draft.inferenceBillingAcknowledged === true}
+        idempotencyKey={draft.idempotencyKey}
+        acceptance={draft.floatingAcceptance}
+        onSubmission={(body) => checkout.recordFloating(body)}
+        onComplete={(orderId, directPay) => checkout.completeFloating(orderId, !directPay)}
+        onRejected={() => checkout.rejectFloating()}
+        onBack={() => checkout.action('spot-checkout-review')}
+      />
+    );
   const credit = checkout.availableCredit();
   return (
     <div className="onx-spot-purchase">

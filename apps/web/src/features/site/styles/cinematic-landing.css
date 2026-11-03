@@ -217,7 +217,7 @@ html:has(.opennext-landing) {
   display: block;
   width: 188px;
   height: auto;
-  aspect-ratio: 369/63;
+  aspect-ratio: 260/52;
   object-fit: contain;
 }
 .opennext-landing .header nav {
@@ -282,12 +282,14 @@ html:has(.opennext-landing) {
   display: none;
 }
 .opennext-landing .hero-scroll {
-  height: 180svh;
+  height: 240svh;
   position: relative;
   --hero-progress: 0;
   --hero-copy-opacity: 1;
   --hero-copy-y: 0px;
   --morph-opacity: 0;
+  --partners-progress: 0;
+  --partners-height: 0px;
   background: #fff;
 }
 .opennext-landing .hero-stage {
@@ -370,6 +372,14 @@ html:has(.opennext-landing) {
   line-height: 1.02;
   font-weight: 500;
   letter-spacing: -0.06em;
+}
+.opennext-landing .hero-eyebrow {
+  margin-bottom: 32px;
+  color: #c4d4df;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 .opennext-landing .line-mask {
   display: block;

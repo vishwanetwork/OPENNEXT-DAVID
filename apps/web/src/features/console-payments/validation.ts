@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FloatingPaymentResolution } from '@opennext/contracts';
 import type {
   PaymentReviewDecision,
   PaymentReviewKind,
@@ -22,6 +23,8 @@ const recordSchema = z.object({
   submittedAt: z.string().datetime({ offset: true }),
   orderId: z.string().min(1).optional(),
   offerId: z.string().min(1).optional(),
+  fundingPolicy: z.literal('spot-hourly-v1').optional(),
+  fundingOrderId: z.string().min(1).optional(),
   pricingVersion: z.enum(['credit-face-value-v1', 'order-total-v1', 'legacy-credit-v1']),
   creditAmountCents: cents.optional(),
   feeAmountCents: cents.optional(),
@@ -30,7 +33,12 @@ const recordSchema = z.object({
 export function reviewable(record: PaymentReviewRecord) {
   if (record.status !== 'Pending') return false;
   if (record.kind === 'direct_pay')
-    return record.pricingVersion === 'order-total-v1' && Boolean(record.orderId);
+    return (
+      record.pricingVersion === 'order-total-v1' &&
+      Boolean(record.orderId) &&
+      (!record.fundingPolicy ||
+        Boolean(record.fundingOrderId && record.orderId === `opennext-${record.fundingOrderId}`))
+    );
   return (
     record.pricingVersion === 'credit-face-value-v1' &&
     Number.isSafeInteger(record.amountCents) &&
@@ -103,6 +111,23 @@ export function confirmedPaymentDecision(
       value.ledgerPosted === true &&
       value.provisioningQueued === false
     );
+  if (record.fundingPolicy === 'spot-hourly-v1') {
+    const parsed = FloatingPaymentResolution.safeParse(value.fundingResolution);
+    if (
+      !reviewable(record) ||
+      !parsed.success ||
+      value.feeAmountCents !== 0 ||
+      value.ledgerPosted !== true ||
+      parsed.data.fundingOrderId !== record.fundingOrderId ||
+      parsed.data.orderId !== record.orderId ||
+      value.directPayResolution !== undefined
+    )
+      return false;
+    return parsed.data.outcome === 'funded'
+      ? value.creditAmountCents === 0 && value.provisioningQueued === true
+      : value.creditAmountCents === record.amountCents && value.provisioningQueued === false;
+  }
+  if (value.fundingResolution !== undefined) return false;
   const resolution = value.directPayResolution;
   if (
     !reviewable(record) ||

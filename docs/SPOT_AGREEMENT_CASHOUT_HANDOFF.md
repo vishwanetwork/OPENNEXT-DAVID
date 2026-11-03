@@ -1,6 +1,39 @@
 # Spot agreements and Credit Cashout
 
-Status: frontend and typed capability ports only. No new backend endpoint, ledger,
+Status: frontend and typed capability ports only. Merged with capabilities disabled.
+
+## Integration review against current main (2026-11-03)
+
+- Existing Credit and Direct Pay checkout, inference selection and floating funding
+  remain connected. `TerminalServices.spotAgreementRequired` defaults to false;
+  the composition root installs neither signing nor Cashout ports. Console Cashout
+  is an unavailable view without a private, authenticated adapter.
+- Explicit agreement activation must never fall back to unsigned payment. The
+  current agreement type describes `duration-v1` only. Signed model purchases and
+  floating checkout are blocked even if enforcement is enabled. Extend the signed
+  context to cover model revisions, storage, hourly/total limits, seven-day retention
+  and provider account binding before enabling them.
+- Missing backend: owner/KYB/revision-bound prepare, provider and customer execution,
+  immutable document storage/download, signature evidence and payment linkage.
+  Reload/unknown-payment reconciliation must recover authoritative receipts without
+  permitting a new debit or a replacement signature for an uncertain payment.
+- Missing Cashout backend: authoritative withdrawable paid Credit, atomic wallet
+  reservation shared with purchases, idempotent payout review, failure release,
+  restricted beneficiary storage, audit trail and durable notification/email outbox.
+  Console Completed records an externally verified bank payout; it must not fabricate
+  a transfer or assume that an operator click moved funds.
+- The Console Account Bank tab also remains incomplete: the account detail adapter
+  returns `bankAccounts: null`, not an empty registered-account list. Customer bank
+  enrollment and verification must precede reusable payout destinations; do not
+  treat the existing payment collection instructions as customer beneficiary data.
+- David's merged PR #22 floating views have native/adapter implementations and shared
+  HTTP schemas on main. Their internal funding authorization record is not a signed
+  legal agreement. PR #20 changes branding and requires no backend adapter. The
+  existing Console payment/KYB/account flows from PR #15 remain connected.
+- This merge enables no backend financial feature, changes no production rollout
+  flag and makes no claim that real signatures or payouts have been acceptance-tested.
+
+Frontend and typed capability ports only. No new backend endpoint, ledger,
 signature, email delivery or bank payout is implemented here. Legacy, host routing,
 the API proxy, wire contracts and deployment configuration are unchanged.
 
@@ -9,7 +42,7 @@ The reviewed [English Word template](legal/spot-rental-agreement-en.docx) and
 
 ## Checkout and agreement
 
-The flow is: review Spot offer/hours, choose Credit or Direct Pay, review and sign
+When explicitly activated, the flow is: review Spot offer/hours, choose Credit or Direct Pay, review and sign
 the agreement, then authorize payment or obtain bank transfer instructions.
 Insufficient Credit still leads to Top-up before the purchase can proceed.
 
@@ -31,8 +64,9 @@ checkboxes never create an executed agreement.
 These are ports, not URLs. Agree backend wire schemas/endpoints, add them to
 `packages/contracts`, and implement feature `api.ts` adapters through `useApi()`
 before assigning `TerminalServices.spotAgreement` in the composition root.
-There is no fallback to an unsigned legacy purchase endpoint. **Do not deploy this
-frontend as a working payment flow before that capability and legal/policy approval.**
+When agreement enforcement is enabled, there is no fallback to an unsigned purchase
+endpoint. **Do not activate signing before backend capability and legal/policy approval.**
+The default disabled rollout continues to use the existing purchase endpoints.
 
 The signing service must render the same canonical clause version and frozen
 commercial fields shown in the UI in the downloadable/executed PDF. The DOCX is an
@@ -45,7 +79,7 @@ of completed bilateral execution.
 
 Changed price, duration, configuration, payment method or identity needs a matching
 agreement again. Receipts stay in memory, not browser storage. Uncertain payment
-retains its key. After reload without a receipt, another payment/signature is
+retains its key. In signed checkout, after reload without a receipt, another payment/signature is
 blocked: check order status instead. Add an owner-bound reconciliation read in the
 backend; never sign again and accidentally pay twice.
 

@@ -34,6 +34,10 @@ export const queryKeys = {
       ['account', 'spot-agreement', identity, context, kybRevision] as const,
     instanceUsage: (identity: string, id: string) =>
       ['account', 'instance-usage', identity, id] as const,
+    spotFunding: (identity: string, scope: string) =>
+      ['account', 'spot-funding', identity, scope] as const,
+    spotFundingOrder: (identity: string, scope: string, lookup: string, cursor: string) =>
+      ['account', 'spot-funding-order', identity, scope, lookup, cursor] as const,
     bankTransfer: (identity: string, id: string) =>
       ['account', 'bank-transfer', identity, id] as const,
     paidPurchases: (identity: string) => ['account', 'paid-purchases', identity] as const,

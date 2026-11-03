@@ -32,6 +32,7 @@ import {
 } from '@/features/buyer-kyb';
 import { bankTransferModals, useBankTransferApiService } from '@/features/bank-transfer';
 import { cashoutModals } from '@/features/cashout';
+import { useLiveSpotFundingService } from '@/features/spot-funding';
 
 /**
  * Composition root of the Capacity Terminal. This is the only module that knows every
@@ -58,6 +59,7 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
   const buyerKyb = useBuyerKybApiService();
   const bankTransfer = useBankTransferApiService();
   const instanceUsage = useInstanceUsageApiService();
+  const spotFunding = useLiveSpotFundingService();
   return useMemo<TerminalSlots>(
     () => ({
       ...EMPTY_SLOTS,
@@ -72,6 +74,7 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       // termination and usage, Buyer KYB and bank transfers. Agreement-linked Spot purchases
       // and Cashout remain disabled until their separately approved backend ports are supplied.
       services: {
+        spotFunding,
         purchaseContext,
         account,
         instanceLifecycle,
@@ -89,6 +92,7 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       instanceUsage,
       buyerKyb,
       bankTransfer,
+      spotFunding,
     ],
   );
 }

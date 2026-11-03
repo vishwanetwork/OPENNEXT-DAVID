@@ -128,13 +128,23 @@ export function PaymentDecisionDialog({
           credited with no top-up fee.
         </p>
       )}
-      {!fail && record.kind === 'direct_pay' && (
+      {!fail && record.kind === 'direct_pay' && record.fundingPolicy === 'spot-hourly-v1' ? (
         <p>
-          Provider eligibility for the original resource will be checked again. If preflight passes,
-          the customer can continue their paid purchase in Instances. Spot stock is confirmed only
-          when allocation succeeds. If the check or allocation fails, the full payment becomes
-          Credit. This action does not provision an instance.
+          This payment funds the linked floating Spot order. After confirmation, the Agent checks
+          the accepted price, budget and provider eligibility, then acquires or restores capacity
+          automatically. Spot inventory is confirmed at allocation. Expired or unusable funding is
+          added to Credit; it does not authorize spending beyond the accepted limits.
         </p>
+      ) : (
+        !fail &&
+        record.kind === 'direct_pay' && (
+          <p>
+            Provider eligibility for the original resource will be checked again. If preflight
+            passes, the customer can continue their paid purchase in Instances. Spot stock is
+            confirmed only when allocation succeeds. If the check or allocation fails, the full
+            payment becomes Credit. This action does not provision an instance.
+          </p>
+        )
       )}
       <form onSubmit={submit} noValidate>
         {fail ? (

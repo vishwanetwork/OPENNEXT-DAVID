@@ -5,8 +5,13 @@
 The new agreement and Cashout frontends are **not connected to production endpoints**.
 See [Spot agreement and Cashout handoff](SPOT_AGREEMENT_CASHOUT_HANDOFF.md) for the
 typed ports, enforcement requirements and activation blockers. No wire contract
-was changed. New Spot checkout requires an executed, order-bound agreement and
-cannot fall back to an unsigned legacy payment adapter. Cashout cannot submit,
+was changed. Agreement enforcement is **disabled by default**. The composition
+root does not install `spotAgreement`, `cashout`, or `spotAgreementRequired: true`;
+existing Credit, Direct Pay, model selection and floating funding remain active.
+Only explicit `spotAgreementRequired: true` enables signed checkout. In that mode,
+new fixed Spot checkout requires an executed, order-bound agreement and cannot
+fall back to an unsigned payment adapter. Signed model/floating checkout remains
+blocked until its protocol is approved and implemented. Cashout cannot submit,
 settle Credit or report a completed payout without the corresponding verified
 backend capability. Existing orders retain their original frozen policies.
 
@@ -16,6 +21,57 @@ SSH/workload use; idle available time counts. Interruptions pause runtime and bi
 and replacements resume the remaining hours. There is no fixed first-ready calendar
 deadline. The backend must implement this accounting before enabling the capability;
 this frontend change does not modify existing metering or historical order policies.
+
+## Floating Spot funding adapter (2026-11-03)
+
+The shared `spot-funding` schemas describe the Python adapter's new
+`spot-hourly-v1` protocol. Historical `duration-v1` purchases retain their original
+contract. The composition root connects the adapter after a verified capability
+response; the server-side rollout flag remains disabled by default.
+
+- `GET /api/billing/spot-funding/capabilities`: authenticated buyer capability;
+  new purchases require `enabled: true` on both adapter and native Bot.
+  `required` prevents fallback to an old purchase flow when floating checkout is
+  required but unavailable; `readEnabled` keeps existing funding views connected
+  after new purchases are disabled. A missing endpoint on an older adapter is
+  treated as unsupported. Service errors block new checkout until retried.
+- `POST /api/billing/spot-quotes`: owner-scoped ten-minute quote, chosen payment
+  method, whole-instance hourly and total budget ceilings, optional model preset.
+- `POST /api/billing/spot-purchases`: quote acceptance with explicit variable-price,
+  seven-day storage and (when selected) paid model-preparation acknowledgements.
+- `GET /api/billing/spot-funding`: authoritative aggregate across all active Credit
+  orders, dedicated Direct Pay positions, runtime and retention states.
+- `GET /api/billing/spot-orders/{orderId}/funding?cursor=0`: owner-bound funding and
+  immutable effective-rate ledger, at most 100 entries per page. `ledger.totalCents`
+  covers every compute entry; `complete` is true only when the returned page is the
+  entire ledger. Storage is separately disclosed as `storageReserveCents` with a
+  nullable `retentionExpiresAt` deadline.
+- `GET /api/instances/{instanceId}/funding?cursor=0`: the same owner-bound detail
+  resolved by instance identity. A failed floating read renders Awaiting status,
+  without falling back to a historical wall-clock expiry or Running status.
+- `POST /api/billing/spot-orders/{orderId}/replenishments`: allocate verified Credit
+  or create an order-linked bank transfer for Direct Pay. Pending transfers do not
+  fund execution. Existing Console Confirm/Fail actions review these transfers.
+
+All writes use existing session/CSRF/KYB checks. Amounts are integer USD cents.
+The initial payment includes compute funding plus seven-day protected-storage
+reserve. No fixed service fee is added. An explained `entryKind: adjustment` may
+have equal start/end timestamps and zero billable seconds for the once-per-order
+minimum or final rounding; usage entries must have positive elapsed time.
+
+Order details also expose accepted `maxHourlyCents`, `maxTotalCents`, cumulative
+`totalFundedCents` and `storageReserveTargetCents`. Purchase limits cover the whole
+instance; model storage and seven-day protected-storage reserve are disclosed
+before acceptance. Model compatibility and billing-from-delivery acknowledgement
+are preserved on both Credit and Direct Pay paths.
+
+Console payment records for these orders include `fundingPolicy: spot-hourly-v1`
+and an owner-bound `fundingOrderId`. A confirmed payment returns
+`fundingResolution: {policy, fundingOrderId, orderId, outcome}`. `funded` requires
+`ledgerPosted: true`, `provisioningQueued: true` and zero wallet credit; `credited`
+requires the full received amount as Credit and no provisioning. Historical
+Direct Pay continues to require its original `directPayResolution` and customer
+continuation. Fail keeps the existing reason/notification/email contract.
 
 ## Console review adapters (2026-11-01)
 
@@ -586,6 +642,11 @@ queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules
 
 ### Dynamic Spot retail pricing
 
+The 2026-11-03 runtime floating-price proposal is separate from this existing catalog policy.
+See [floating Spot billing and funding alerts](SPOT_HOURLY_BILLING_HANDOFF.md). Its frontend
+read ports are not wired, no new endpoint is called, and accepted orders remain fixed until
+a versioned backend contract and renewed customer consent are implemented.
+
 `GET /api/admin/pricing/retail-policy` returns `version`, `defaultMarkupBps`, ordered `rules`,
 `changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=0`, independent
 `procurementToleranceBps=2000`, and `scope=executable_spot_offers`. A rule has `id`, nullable
@@ -601,3 +662,44 @@ Raw price observations and history retain supplier prices. Procurement ceilings 
 costs independently of the retail markup. New checkout/usage service fees are zero. New marketplace quotes use `opennext-markup-only-v2` with zero buyer/seller fees; historical `opennext-explicit-5pct-v1` records retain their saved amounts. The adapter freezes `service_fee_bps` on every new charge; historical charges without the field retain their original 500 bps.
 Credit holds and Direct Pay intents store immutable retail and source quote snapshots, so later
 changes cannot reprice accepted purchases, delayed provisioning, instances or idempotent retries.
+
+## Optional inference presets and Spot quota estimates
+
+The Bot/OpenNEXT adapter owns these routes. They do not allocate or bill for token
+usage separately; model preparation uses the purchased GPU service window.
+
+- GET `/api/marketplace/inference-presets?offerId=...` returns `{presets: [...]}`.
+  Each preset has `id`, `label`, `model`, `precision`, `diskGiB`, `estimatedMinutes`,
+  `billingStart: "gpu_delivery"`, `enabled`, and nullable `reason`. Unvalidated
+  runtime/hardware combinations remain disabled. No operator image credentials,
+  cloud accounts, or supplier keys are returned.
+- POST `/api/marketplace/inference-quote` accepts `offerId`, `inferencePresetId`,
+  and `durationHours`. It returns `pricing` with the existing checkout arithmetic,
+  `modelStorageHourlyCents`, the selected preset ID, and `billingStart`. It is a
+  read-only quote. No fixed service fee is added.
+- Credit Spot purchases and Direct Pay bank transfer intents optionally carry
+  `inferencePresetId` and `inferenceBillingAcknowledged: true`. The server validates
+  the current immutable preset and storage before accepting payment. The original
+  model selection and price remain frozen for retries and paid redemption.
+- GET `/api/marketplace/instances/:id/inference` is owner-authenticated and returns
+  `{status, connection}`. Status includes `version`, `preset_id`, `state`, download
+  byte counters, nullable `error`, and `billing_start: "gpu_delivery"`. States are
+  `queued`, `preparing_runtime`, `downloading`, `loading`, `ready`, `failed`, or
+  `stopped`. A ready, securely reachable service returns connection `{baseUrl,
+model, apiKey, keyVersion}`. Responses use `Cache-Control: no-store`; keys must
+  never enter localStorage, analytics, logs, or persisted query caches.
+- POST the same instance route with `{action: "retry" | "stop" | "rotate_key",
+expectedVersion}` requires the customer session, CSRF and same-origin checks.
+  Retry/stop use the model service version; rotation uses `keyVersion`. A changed
+  version returns 409. Stopping the model does not end the GPU rental. Rotation
+  cancels inference streams without disconnecting SSH.
+
+GPU Market supply rows optionally contain `quota` (see `CapacityQuota` in contracts).
+`maxInstances` and `maxGpus` are nullable quota estimates for that offer's exact
+procurement scope. `usageKnown: false` means the quota is unavailable, not unlimited.
+`capacityGuaranteed` is always false and `capacityStatus` is `unknown`. The opaque
+`sharedPoolId` identifies estimates consuming the same regional allowance; they
+must not be summed as separate inventory. `gpuCount` continues to mean GPUs per
+instance. Counts update through the existing marketplace refresh and order
+invalidation. The server serializes purchase admission and counts queued orders,
+but an AWS launch can still fail because of external usage or Spot capacity.

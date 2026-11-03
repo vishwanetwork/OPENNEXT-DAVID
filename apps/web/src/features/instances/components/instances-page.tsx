@@ -5,16 +5,27 @@ import { useEffect, useRef, useState } from 'react';
 import { useTerminal, useWorkspace, useWorkspaceStore } from '@/terminal-kit';
 import { AsyncFeedback } from '@/components/ui/async-feedback';
 import { PaidPurchases } from '@/features/bank-transfer';
-import { lifecycle, moneyOrNa, stampUtcFull, isSpot } from '../lifecycle';
+import { SpotFundingAlerts, useSpotFundingInstances } from '@/features/spot-funding';
+import type { SpotFundingOrder } from '@/lib/spot-funding';
+import { moneyOrNa, stampUtcFull, isSpot } from '../lifecycle';
+import { fundingLifecycle } from '../funding-lifecycle';
 import { instanceView } from '../preview';
 import { useInstanceUsage, usePrefetchAutopilot, useRefreshInstance } from '../hooks';
 import { instanceTitle, purchasedHours } from '../usage';
 import { IBtn, SshLibrary, StatusTagLive, usePreviewScope, useTick } from './common';
 import { ReconnectingNote, UsageChart } from './usage-chart';
 
-function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[] }) {
+function InstanceCard({
+  instance,
+  orders,
+  funding,
+}: {
+  instance: Instance;
+  orders: Order[];
+  funding?: SpotFundingOrder;
+}) {
   const { openModal, toast } = useTerminal();
-  const life = lifecycle(instance);
+  const life = fundingLifecycle(instance, funding);
   const card = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(
     () => typeof window !== 'undefined' && !('IntersectionObserver' in window),
@@ -56,19 +67,53 @@ function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[
       data-instance-life={life.label}
     >
       <div className="row spread">
-        <h3>{instanceTitle(instance, purchasedHours(instance, orders, snapshot))}</h3>
+        <h3>
+          {instanceTitle(
+            instance,
+            funding ? funding.purchasedSeconds / 3600 : purchasedHours(instance, orders, snapshot),
+          )}
+        </h3>
         <StatusTagLive life={life} />
       </div>
       <div className="instance-compact-meta">
-        <span>{moneyOrNa(instance.rate)} / GPU-hour</span>
-        <span>
-          {life.ended ? 'Ended' : 'Ends'}{' '}
-          {stampUtcFull(instance.endedAt || instance.serviceEnd || instance.end)}
-        </span>
+        {funding ? (
+          <>
+            <span>
+              Current rate:{' '}
+              {funding.currentHourlyCents === null
+                ? 'Not available'
+                : `${moneyOrNa(funding.currentHourlyCents / 100)} / hour`}
+            </span>
+            <span>{(funding.remainingSeconds / 3600).toFixed(2)} running hours remaining</span>
+          </>
+        ) : (
+          <>
+            <span>{moneyOrNa(instance.rate)} / GPU-hour</span>
+            <span>
+              {life.ended ? 'Ended' : 'Ends'}{' '}
+              {stampUtcFull(instance.endedAt || instance.serviceEnd || instance.end)}
+            </span>
+          </>
+        )}
       </div>
       <UsageChart snapshot={snapshot} loading={query.isFetching} />
       {life.connecting ? (
-        <ReconnectingNote retained={snapshot?.retainedDataConfirmed === true} />
+        <ReconnectingNote
+          retained={
+            funding ? funding.retention === 'confirmed' : snapshot?.retainedDataConfirmed === true
+          }
+        />
+      ) : null}
+      {life.paused ? (
+        <p className="instance-funding-paused" role="status">
+          Paused after funding became insufficient. Remaining runtime is preserved.
+          {funding?.retention === 'confirmed'
+            ? ' Your data is retained.'
+            : funding?.retention === 'unavailable'
+              ? ' Data retention is not confirmed. Contact support before resuming.'
+              : ' Data retention is awaiting confirmation.'}{' '}
+          Resume requires confirmed funding and backend checks.
+        </p>
       ) : null}
       <div className="row instance-card-actions">
         <IBtn
@@ -91,6 +136,11 @@ function InstanceCard({ instance, orders }: { instance: Instance; orders: Order[
         >
           Manage
         </IBtn>
+        {life.paused ? (
+          <IBtn act="pay-start" onClick={() => openModal('pay-start')}>
+            Add credit
+          </IBtn>
+        ) : null}
       </div>
     </article>
   );
@@ -100,10 +150,12 @@ function InstanceGroup({
   title,
   items,
   orders,
+  fundingOrders,
 }: {
   title: string;
   items: Instance[];
   orders: Order[];
+  fundingOrders: SpotFundingOrder[];
 }) {
   return (
     <details className="instance-state-group" open>
@@ -117,7 +169,12 @@ function InstanceGroup({
       {items.length ? (
         <div className="instance-grid">
           {items.map((instance) => (
-            <InstanceCard key={instance.id} instance={instance} orders={orders} />
+            <InstanceCard
+              key={instance.id}
+              instance={instance}
+              orders={orders}
+              funding={fundingOrders.find((order) => order.instanceId === instance.id)}
+            />
           ))}
         </div>
       ) : (
@@ -132,6 +189,16 @@ export function InstancesPage() {
   const role = useWorkspaceStore((state) => state.role);
   const query = useWorkspace();
   const workspace = query.data;
+  const { orders: fundingOrders } = useSpotFundingInstances(
+    ((workspace?.instances ?? []) as Instance[])
+      .filter((instance) => isSpot(instance))
+      .map((instance) => instance.id),
+  );
+  const lifeOf = (instance: Instance) =>
+    fundingLifecycle(
+      instance,
+      fundingOrders.find((order) => order.instanceId === instance.id),
+    );
   const refresh = useRefreshInstance();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
@@ -156,13 +223,20 @@ export function InstancesPage() {
     {
       // Paid orders still waiting for Spot capacity; their autopilot can be set from Manage.
       title: 'Waiting',
-      items: items.filter((instance) => lifecycle(instance).waiting),
+      items: items.filter((instance) => lifeOf(instance).waiting),
     },
-    { title: 'Running', items: items.filter((instance) => lifecycle(instance).running) },
-    { title: 'Reconnecting', items: items.filter((instance) => lifecycle(instance).connecting) },
-    { title: 'End', items: items.filter((instance) => lifecycle(instance).ended) },
-  ].filter((group) => group.title !== 'Waiting' || group.items.length);
-  const unknown = items.filter((instance) => lifecycle(instance).label === 'Awaiting status');
+    { title: 'Running', items: items.filter((instance) => lifeOf(instance).running) },
+    { title: 'Reconnecting', items: items.filter((instance) => lifeOf(instance).connecting) },
+    {
+      title: 'Paused — insufficient funds',
+      items: items.filter((instance) => lifeOf(instance).paused),
+    },
+    { title: 'End', items: items.filter((instance) => lifeOf(instance).ended) },
+  ].filter(
+    (group) =>
+      !['Waiting', 'Paused — insufficient funds'].includes(group.title) || group.items.length,
+  );
+  const unknown = items.filter((instance) => lifeOf(instance).label === 'Awaiting status');
   return (
     <>
       <div className="page-content instance-page">
@@ -192,6 +266,7 @@ export function InstancesPage() {
           </div>
         </div>
         <PaidPurchases />
+        {role === 'buyer' ? <SpotFundingAlerts /> : null}
         {query.isFetching ? (
           <AsyncFeedback>
             {workspace ? 'Refreshing instances…' : 'Loading instances…'}
@@ -224,6 +299,7 @@ export function InstancesPage() {
                 key={group.title}
                 {...group}
                 orders={(workspace?.orders ?? []) as Order[]}
+                fundingOrders={fundingOrders}
               />
             ))}
             {unknown.length ? (
@@ -231,6 +307,7 @@ export function InstancesPage() {
                 title="Awaiting status"
                 items={unknown}
                 orders={(workspace?.orders ?? []) as Order[]}
+                fundingOrders={fundingOrders}
               />
             ) : null}
           </>

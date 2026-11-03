@@ -48,6 +48,8 @@ export const transferRequestSchema = z
     offerId: identifier.optional(),
     durationHours: duration.optional(),
     sshPublicKey: z.string().max(16384).nullable().optional(),
+    inferencePresetId: z.string().max(100).nullable().optional(),
+    inferenceBillingAcknowledged: z.boolean().optional(),
     idempotencyKey: identifier,
   })
   .superRefine((request, context) => {

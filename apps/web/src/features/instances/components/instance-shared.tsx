@@ -3,7 +3,9 @@
 import { type ReactNode } from 'react';
 import type { Instance, Order } from '@opennext/contracts';
 import { useTerminal, useWorkspaceData } from '@/terminal-kit';
-import { eligibility, lifecycle, telemetry } from '../lifecycle';
+import { useSpotFundingOrder } from '@/features/spot-funding';
+import { eligibility, telemetry } from '../lifecycle';
+import { fundingLifecycle } from '../funding-lifecycle';
 import { example, instanceView } from '../preview';
 import { usePreviewScope, useTick } from './common';
 
@@ -20,6 +22,8 @@ export function useInstance(id: string | undefined, isExample: boolean) {
   const now = useTick();
   const original = isExample ? example(scope) : instances.find((row) => row.id === id);
   const i = original ? (isExample ? original : instanceView(original, scope, demo)) : undefined;
+  const fundingRead = useSpotFundingOrder({ instanceId: isExample ? '' : (id ?? '') });
+  const funding = fundingRead.snapshot?.order;
   return {
     i,
     original,
@@ -27,11 +31,14 @@ export function useInstance(id: string | undefined, isExample: boolean) {
     demo,
     role,
     now,
+    funding,
     life: i
-      ? lifecycle(i)
+      ? fundingLifecycle(i, funding)
       : { label: 'End' as const, ended: true, running: false, connecting: false },
     e: i
-      ? eligibility(i, role)
+      ? funding
+        ? { allowed: false, reason: 'Resale is unavailable for hourly floating-price orders.' }
+        : eligibility(i, role)
       : { allowed: false, reason: 'The allocation is no longer available.' },
     t: i ? telemetry(i) : { fresh: false, value: null, at: null },
   };

@@ -137,6 +137,8 @@ export type SpotCheckoutPricing = z.infer<typeof SpotCheckoutPricing>;
  * `idempotencyKey`; never falls back to metered billing.
  */
 export const SpotPurchaseRequest = z.object({
+  inferencePresetId: z.string().max(100).nullable().optional(),
+  inferenceBillingAcknowledged: z.boolean().optional(),
   pricingVersion: z.literal('duration-v1'),
   offerId: z.string().min(1).max(160),
   durationHours: z.number().positive(),
