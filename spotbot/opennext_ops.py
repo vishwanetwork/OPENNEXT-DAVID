@@ -633,6 +633,9 @@ class Operations:
         return sorted(rows, key=lambda r: r["created_at"], reverse=True)
 
     async def decide_payment(self, transfer_id, body, operator):
+        linked = await self.get_transfer(transfer_id)
+        if linked and linked.get("funding_order_id"):
+            return await self.funding_service.decide_payment(transfer_id, body, operator)
         decision = body.get("decision")
         reason = str(body.get("reason") or "").strip()
         if decision not in {"Confirm", "Fail"}:
@@ -745,7 +748,8 @@ class Operations:
 
     async def credits(self, user_id):
         """Cents added to the account: confirmed top-ups and held Direct Pay payments."""
-        return sum(
+        refunds = await self._list("spot_wallet_credit", account_id(user_id))
+        return sum(d["cents"] for d in refunds) + sum(
             [await self.credits_for_transfer(d) for d in await self.transfers(user_id=user_id)]
         )
 
@@ -781,6 +785,10 @@ class Operations:
                 if n.get("kyb_status"):
                     row["kybStatus"] = n["kyb_status"]
                 rows.append(row)
+        for n in await self._list("spot_notice", account_id(user_id)):
+            rows.append(dict(id=n["id"], ownerId=user_id, subject=n["subject"],
+                             message=n["message"], created=n["created_at"],
+                             createdAt=n["created_at"], read=False, kind="payment"))
         return rows
 
     async def outbox(self):

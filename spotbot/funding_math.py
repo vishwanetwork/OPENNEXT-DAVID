@@ -38,7 +38,7 @@ def position(cycle, baseline, remaining, next_hour, projected):
         nextHourRequiredCents=next_hour, projectedRemainingCents=projected,
         status="unavailable" if next_hour is None else "insufficient"
         if "next_hour_unfunded" in warnings else "low"
-        if "remaining_20_percent" in warnings else "healthy",
+        if warnings else "healthy",
         warnings=warnings,
     )
 

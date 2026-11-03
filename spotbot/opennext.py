@@ -186,11 +186,16 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         # Bills usage and sends order notices while customers are away; one adapter instance.
         task = asyncio.create_task(notifier.run()) if notifier else None
         console_task = asyncio.create_task(console.run())
+        # Disabling new purchases must not disable existing agreement settlement.
+        funding_task = asyncio.create_task(funding_worker.run()) if settings and market else None
         yield
         console_task.cancel()
+        if funding_task:
+            funding_task.cancel()
         if task:
             task.cancel()
-        await asyncio.gather(console_task, *([task] if task else []), return_exceptions=True)
+        await asyncio.gather(console_task, *([task] if task else []),
+                             *([funding_task] if funding_task else []), return_exceptions=True)
         if own_client:
             await client.aclose()
 
@@ -366,7 +371,7 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         return {
             c["rental_id"]: billing_view(c, by_id[c["rental_id"]])
             for c in await ledger.charges(user_id)
-            if c.get("rental_id") in by_id
+            if c.get("rental_id") in by_id and c.get("pricing_version") != "spot-hourly-v1"
         }
 
     async def credit(request, user_id):
@@ -378,7 +383,13 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
         if account.get("demo") or account.get("accountId") != user_id:
             return None
         charges = await ledger.reconcile(user_id, await market.rentals(customer_ref(user_id)))
-        return adjusted_account(account, charges, await ops.credits(user_id))
+        from spotbot.funding_ledger import guard
+
+        checkpoint = await asyncio.to_thread(guard, db, user_id)
+        charges = await ledger.charges(user_id)
+        result = adjusted_account(account, charges, await ops.credits(user_id))
+        result["_creditGuardVersion"] = checkpoint.get("version", 0)
+        return result
 
     @app.get("/api/billing/account")
     async def billing_account(request: Request):
@@ -559,16 +570,20 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     code="INSUFFICIENT_CREDIT",
                 )
         email = user.get("email")
-        charge = await ledger.hold(
-            user["id"],
-            reference,
-            totals["totalCents"],
-            offer.id,
-            hourly_cents=offer.cents,
-            pricing_snapshot=dict(offer.pricing, durationHours=purchase.durationHours),
-            offer_snapshot=offer.raw,
-            email=email if isinstance(email, str) and "@" in email else None,
-        )
+        from spotbot.storage.workflows import ConflictError
+
+        try:
+            charge = await ledger.hold(
+                user["id"], reference, totals["totalCents"], offer.id,
+                hourly_cents=offer.cents,
+                pricing_snapshot=dict(offer.pricing, durationHours=purchase.durationHours),
+                offer_snapshot=offer.raw,
+                email=email if isinstance(email, str) and "@" in email else None,
+                expected_guard=account.get("_creditGuardVersion") if held is None else None,
+            )
+        except ConflictError:
+            return error(409, "Your Credit changed. Refresh your balance before purchasing.",
+                         code="CREDIT_CHANGED")
         if charge["state"] not in {"held", "charged"}:
             return error(
                 409,
@@ -931,6 +946,20 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
             ),
         ),
     )
+
+    from spotbot.funding_api import install as install_funding
+    from spotbot.funding_service import FundingService
+    from spotbot.funding_worker import FundingWorker
+
+    funding_service = FundingService(SimpleNamespace(
+        db=db, market=market, ops=ops, legacy_ledger=ledger, settings=settings,
+        accounts=console.accounts, credit=credit, customer=customer, no_store=no_store,
+        error=error, mailer=notifier.mailer if notifier else None,
+    ))
+    funding_worker = FundingWorker(funding_service)
+    install_funding(app, funding_service)
+    app.state.funding = funding_service
+    app.state.funding_worker = funding_worker
 
     @app.api_route("/api/{path:path}", methods=METHODS)
     async def passthrough(request: Request, path: str):

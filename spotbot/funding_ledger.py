@@ -103,6 +103,16 @@ class FundingLedger:
         records = [wallet_guard, order, *extra]
         if order["payment_method"] == "Credit":
             records.append(self.charge(order))
+        elif order["runtime_state"] == "ended":
+            refundable = order["funded_cents"] - order["compute_cents"]
+            if order.get("storage_released"):
+                refundable += order["storage_funded_cents"] - order["storage_cents"]
+            delta = refundable - order.get("refunded_cents", 0)
+            if delta > 0:
+                records.append(doc("spot_wallet_credit", order["account"],
+                                   [order["id"], refundable], cents=delta,
+                                   order_id=order["id"], reason="Unused confirmed Spot funding"))
+                order["refunded_cents"] = refundable
         records.extend(self.notices(order))
         atomic(self.db, records)
         return order
@@ -220,7 +230,7 @@ class FundingLedger:
 
     def finish(self, order, wallet_guard, ended_at):
         if order["runtime_state"] == "ended":
-            return order
+            return self.save(order, wallet_guard)
         due = final_adjustment(order)
         charged = min(due, order["funded_cents"] - order["compute_cents"])
         records = []

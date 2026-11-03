@@ -3,6 +3,54 @@
 Status: implementation in progress. Legacy `duration-v1` orders are immutable.
 Frontend integration target: OPENNEXT-DAVID PR #22, merged into main.
 
+## Implemented adapter and execution boundaries
+
+The adapter exposes authenticated `/api/billing/spot-quotes`, `/spot-purchases`,
+`/spot-funding`, `/spot-orders/{id}/funding`, and
+`/spot-orders/{id}/replenishments` under `/api/billing`. Writes require the
+existing buyer session, same-origin CSRF check and approved KYB. Quotes expire
+after ten minutes. Acceptance requires explicit variable-price and seven-day
+storage consent, plus paid model-preparation consent when applicable.
+
+`SPOTBOT_FLOATING_ENABLED=false` remains the default on both native Bot and
+OpenNEXT adapter. New purchases require matching native protocol capabilities.
+The settlement worker must continue running for existing agreements even when
+new purchases are disabled. Do not migrate historical orders to this version.
+
+Direct Pay requests appear in the existing Console payment queue. Confirming a
+linked request atomically posts its dedicated funding receipt and payment
+decision. It cannot provision through the historical fixed-price redemption
+path. Failed requests require a reason and queue the existing notification and
+email. Funds received after order closure or beyond its accepted budget become
+Credit once; unused compute funding also becomes Credit on closure. Unused
+storage reserve is released only after native cleanup is confirmed.
+
+Background Credit allocation requires the adapter's read-only shared legacy
+data directory (`SPOTBOT_OPENNEXT_LEGACY_DATA_DIR`). Its account directory and
+approved top-up ledger are verified before allocating additional wallet funds.
+Missing or inconsistent snapshots do not authorize further debits. SQLite,
+MySQL and DynamoDB use the same account-level compare-and-swap guard across
+historical and floating charges.
+
+Settlement uses AWS price history for the actual account, instance type and
+availability zone. Provider interruption periods are excluded. Price gaps
+prevent execution-grant renewal. Execution grants expire within five minutes;
+the native lifecycle and guest deadline watcher independently stop continued
+execution. The guest watcher is defense in depth: customers with root access
+can modify their guest, so native Bot availability remains an operational
+requirement. This implementation does not install an independent cloud-level
+watchdog against simultaneous control-plane failure and guest tampering.
+
+Native retention evidence includes verified backup availability and physical
+cleanup completion. A paused order never promises a verified backup until the
+snapshot workflow confirms it. Seven-day storage charging uses the disclosed
+protected-storage tariff and never exceeds its reserved funding; delayed
+cleanup costs beyond that reserve are absorbed by the platform.
+
+Email delivery uses the existing SMTP outbox conventions and retries. Financial
+transactions are idempotent; SMTP delivery is at least once across process
+failure, so duplicate transport delivery is possible.
+
 ## Accepted product policy
 
 - Warn when confirmed funding reaches 20% remaining, once per funding cycle.

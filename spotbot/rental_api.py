@@ -9,7 +9,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import Field
+from pydantic import AwareDatetime, Field
 
 from spotbot.models import timestamp
 from spotbot.providers import ProviderError
@@ -163,6 +163,10 @@ def install(app, service):
             value, created = guard(lambda: engine.create(request, owner, idempotency_key))
         return {"created": created, "rental": public(value)}
 
+    @router.get("/funding-capabilities")
+    async def funding_capabilities(owner: Annotated[str, Depends(tenant)]):
+        return dict(pricingVersion="spot-hourly-v1", enabled=config.spotbot_floating_enabled)
+
     @router.post("/preflight")
     async def preflight(request: RentalRequest, owner: Annotated[str, Depends(tenant)]):
         """Read-only account/quota/price checks; this never reserves or guarantees capacity."""
@@ -301,6 +305,15 @@ def install(app, service):
         return public(await async_guard(lambda: engine.release(rental_id, owner)))
 
     from spotbot.funding_models import ExecutionGrant
+
+    @router.get("/{rental_id}/price-evidence")
+    async def effective_prices(
+        rental_id: str, owner: Annotated[str, Depends(tenant)], since: AwareDatetime | None = None
+    ):
+        from spotbot.rental_prices import evidence
+
+        selected = engine.for_id(rental_id, owner) if hasattr(engine, "for_id") else engine
+        return await async_guard(lambda: evidence(selected, rental_id, owner, since))
 
     @router.post("/{rental_id}/execution-grant")
     async def execution_grant(
