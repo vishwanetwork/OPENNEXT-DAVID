@@ -207,6 +207,38 @@ async function toPayment(env: Env, key = '', hours = '1') {
   await env.engine.reviewPurchase({ durationHours: hours, sshPublicKey: key });
   expect(env.ctx.modal?.type).toBe('spot-payment-choice');
 }
+
+it('carries the model, storage-inclusive quote and consent into Direct Pay', async () => {
+  const requests: Parameters<NonNullable<CheckoutDeps['beginBankTransfer']>>[0][] = [];
+  const env = setup({
+    rows: [agent],
+    demo: false,
+    service: {
+      inferenceQuote: async () => ({
+        pricing: checkoutTotals({ instanceHourly: 14.43 }),
+        modelStorageHourlyCents: 3,
+        inferencePresetId: 'deepseek-r1-distill-7b',
+        billingStart: 'gpu_delivery',
+      }),
+    },
+    beginBankTransfer: async (input) => {
+      requests.push(input);
+      return true;
+    },
+  });
+  await env.engine.selectInference('deepseek-r1-distill-7b');
+  env.engine.acknowledgeInference(true);
+  await toPayment(env);
+  await env.engine.chooseDirect();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    purpose: 'order',
+    amountCents: 1443,
+    inferencePresetId: 'deepseek-r1-distill-7b',
+    inferenceBillingAcknowledged: true,
+  });
+  expect(env.ctx.orders).toHaveLength(0);
+});
 function deposit(env: Env) {
   expect(env.ctx.modal?.type).toBe('spot-credit-confirm');
   env.engine.action('spot-checkout-deposit');
