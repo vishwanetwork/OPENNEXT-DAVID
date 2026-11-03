@@ -58,7 +58,10 @@ def initial_disk_layout_allowed(image, rules, *, strict_sizes=False):
 
 
 def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", public_key=None):
-    source = Path(__file__).with_name("guest_agent.py").read_bytes()
+    source = json.dumps({
+        'agent.py': Path(__file__).with_name('guest_agent.py').read_text(),
+        'spotbot_inference.py': Path(__file__).with_name('guest_inference.py').read_text(),
+    }).encode()
     config = json.dumps(
         dict(url=base_url.rstrip("/"), rental_id=rental_id, generation=generation, token=token)
     ).encode()
@@ -75,7 +78,7 @@ def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", publ
             "ssh_deletekeys: false",
             "SPOTBOT_SSH_IDENTITY",
             # Compressed so the agent plus a customer key stay well inside 16 KB of user data.
-            "base64 -d <<'SPOTBOT_AGENT' | gunzip > /opt/spotbot/agent.py",
+            "base64 -d <<'SPOTBOT_AGENT' | python3 -c \"import gzip,json,sys,pathlib; [pathlib.Path('/opt/spotbot/'+n).write_text(s) for n,s in json.loads(gzip.decompress(sys.stdin.buffer.read())).items()]\"",
             base64.b64encode(gzip.compress(source, 9, mtime=0)).decode(),
             "SPOTBOT_AGENT",
             "base64 -d > /etc/spotbot/agent.json <<'SPOTBOT_CONFIG'",
@@ -302,6 +305,11 @@ class AWSRecovery:
             raise ProviderError("unsupported_image_license")
         if not backup and image_id != offer.details["image_id"] and not approved_initial_image(image):
             raise ProviderError("initial_image_not_approved")
+        if not backup and rules.inference and rules.initial_image_ids:
+            from spotbot.inference import cache_matches
+
+            if not cache_matches(image, rules.inference):
+                raise ProviderError("inference_image_pins_mismatch")
         if not backup and not initial_disk_layout_allowed(
             image,
             rules,
@@ -392,6 +400,12 @@ class AWSRecovery:
         )
         if rules.ssh_key_name:
             payload["KeyName"] = rules.ssh_key_name
+        # Cloud-init recognizes binary gzip user data; boto3 performs the base64 encoding.
+        # Large public keys plus the independent service must still fit EC2's raw 16 KiB cap.
+        if len(payload["UserData"].encode()) >= 16384:
+            payload["UserData"] = gzip.compress(payload["UserData"].encode(), 9, mtime=0)
+        if len(payload["UserData"]) >= 16384:
+            raise ProviderError("bootstrap_payload_too_large")
         response = await self.call(region, "run_instances", mutation=True, **payload)
         instances = response.get("Instances", [])
         if len(instances) != 1 or not instances[0].get("InstanceId"):

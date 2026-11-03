@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     spotbot_live_orders_enabled: bool = False
     spotbot_dry_run_enabled: bool = True
     spotbot_aws_regions: str = "us-west-2"
+    spotbot_aws_accounts: str = "{}"
+    # OpenNext new purchases only; '*' aggregates all enrolled account routes.
+    spotbot_opennext_aws_accounts: str = "*"
+    # These settings are also used by validated, per-account provider copies.
+    spotbot_aws_account_name: str = "default"
+    spotbot_aws_profile: str = ""
+    spotbot_aws_expected_account_id: str = ""
+    spotbot_aws_instance_types: list[str] = Field(default_factory=list)
     # Extra Regions collected for price references only (no orders): current Spot, list prices
     # and history. Comma-separated; the order Regions above are always included.
     spotbot_aws_price_regions: str = ""
@@ -74,6 +82,8 @@ class Settings(BaseSettings):
     # Base64 of 32 random bytes sealing managed-task secrets (AES-256-GCM). Without it, tasks
     # without secrets still run and tasks with secrets are refused.
     spotbot_rental_task_key: SecretStr = SecretStr("")
+    # Preset ID -> enabled, pinned HF revision/image digest, and validated GPU models.
+    spotbot_inference_presets: str = "{}"
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
     # Read-only transitional account/RFQ projection from the legacy backend's private volume.
@@ -142,6 +152,24 @@ class Settings(BaseSettings):
         )
 
     @property
+    def aws_accounts(self):
+        from spotbot.aws_accounts import parse_accounts
+
+        return parse_accounts(self.spotbot_aws_accounts)
+
+    @property
+    def opennext_aws_accounts(self):
+        import re
+
+        value = self.spotbot_opennext_aws_accounts.strip()
+        if value == "*":
+            return None
+        names = {v.strip() for v in value.split(",")}
+        if not names or any(not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", v) for v in names):
+            raise ValueError("OpenNext AWS accounts require '*' or explicit account aliases")
+        return names
+
+    @property
     def rental_regions(self) -> list[str]:
         value = self.spotbot_rental_regions or self.spotbot_aws_regions
         return list(dict.fromkeys(r.strip() for r in value.split(",") if r.strip()))
@@ -174,6 +202,12 @@ class Settings(BaseSettings):
         import json
         import re
         from urllib.parse import urlparse
+
+        _ = self.aws_accounts
+        _ = self.opennext_aws_accounts
+        from spotbot.inference import catalog
+
+        catalog(self)
 
         if bool(self.spotbot_aws_price_profile.strip()) != bool(self.aws_reference_regions):
             raise ValueError("AWS price profile and reference Regions must be configured together")

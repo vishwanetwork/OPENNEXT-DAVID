@@ -35,6 +35,8 @@ class AWSProvider(Provider):
         super().__init__(settings, client)
         self.session = session
         self.reference_session = None
+        self.account_providers = None
+        self.identity_checked = False
         self.clients = {}
         self.sdk_lock = asyncio.Lock()
         self.image_cache = {}
@@ -52,7 +54,41 @@ class AWSProvider(Provider):
                 time.monotonic() + self.settings.spotbot_aws_capacity_backoff_seconds
             )
 
-    def public_offer(self, offer, max_age):
+    def public_offer(self, offer, max_age, *, account_routes=False):
+        account = offer.details.get("aws_account", "default")
+        if (
+            account == "default"
+            and not account_routes
+            and self.settings.spotbot_aws_account_name == "default"
+            and self._enrolled_route(offer.region, offer.sku)
+            and offer.orderable
+        ):
+            # Catalog rows can outlive enrollment changes. Do not let an old
+            # default-account quote compete with the account now fulfilling it.
+            data = super().public_offer(offer, max_age)
+            data.update(
+                orderable=False,
+                can_attempt=False,
+                eligibility_status="aws_account_route_changed",
+            )
+            return data
+        if self.settings.spotbot_aws_account_name == "default" and account != "default":
+            provider = self.fulfillment_providers().get(account)
+            if (
+                provider is None
+                or offer.details.get("aws_account_id")
+                != provider.settings.spotbot_aws_expected_account_id
+                or offer.region not in provider.regions
+                or offer.sku not in provider.settings.spotbot_aws_instance_types
+            ):
+                data = super().public_offer(offer, max_age)
+                data.update(
+                    orderable=False,
+                    can_attempt=False,
+                    eligibility_status="aws_account_not_enrolled",
+                )
+                return data
+            return provider.public_offer(offer, max_age)
         data = super().public_offer(offer, max_age)
         remaining = self.capacity_failures.get(offer.offer_id, 0) - time.monotonic()
         if remaining > 0:
@@ -75,10 +111,10 @@ class AWSProvider(Provider):
             return "g"
         return "p" if sku.startswith("p") else None
 
-    def _quota_usage(self, ec2, specs):
+    def _quota_usage(self, ec2, specs, *, seen=None):
         used = {"g": 0, "p": 0}
         known = {"g": True, "p": True}
-        counted = set()
+        counted = seen if seen is not None else set()
 
         def count(sku):
             family = self._quota_family(sku)
@@ -122,8 +158,28 @@ class AWSProvider(Provider):
                 import boto3
             except ImportError as exc:
                 raise ProviderError("aws_sdk_not_installed") from exc
-            self.session = boto3.Session()
+            self.session = (
+                boto3.Session(profile_name=self.settings.spotbot_aws_profile)
+                if self.settings.spotbot_aws_profile
+                else boto3.Session()
+            )
         return self.session
+
+    def fulfillment_providers(self):
+        if self.account_providers is None:
+            from spotbot.aws_accounts import account_settings
+
+            self.account_providers = {
+                name: AWSProvider(account_settings(self.settings, name, account), self.client)
+                for name, account in self.settings.aws_accounts.items()
+            }
+        return self.account_providers
+
+    def _enrolled_route(self, region, sku):
+        return any(
+            account.region == region and sku in account.instance_types
+            for account in self.settings.aws_accounts.values()
+        )
 
     @property
     def configured(self):
@@ -138,6 +194,25 @@ class AWSProvider(Provider):
         from botocore.config import Config
 
         separate = price_reference and bool(self.settings.spotbot_aws_price_profile)
+        if (
+            not separate
+            and self.settings.spotbot_aws_expected_account_id
+            and not self.identity_checked
+        ):
+            identity = (
+                self._session()
+                .client(
+                    "sts",
+                    region_name=region,
+                    config=Config(
+                        retries={"total_max_attempts": 1}, connect_timeout=5, read_timeout=10
+                    ),
+                )
+                .get_caller_identity()
+            )
+            if identity.get("Account") != self.settings.spotbot_aws_expected_account_id:
+                raise ProviderError("aws_account_identity_mismatch")
+            self.identity_checked = True
         key = ("reference", region, service) if separate else (region, service)
         if key not in self.clients:
             if separate:
@@ -228,7 +303,27 @@ class AWSProvider(Provider):
         return result
 
     async def collect(self):
-        return await self._execute(self._collect)
+        offers, failures, successes = [], [], 0
+        try:
+            offers = await self._execute(self._collect)
+            successes += 1
+        except Exception as exc:
+            failures.append(exc)
+        for name, provider in self.fulfillment_providers().items():
+            try:
+                offers.extend(await provider.collect())
+                successes += 1
+            except Exception as exc:
+                code = exc.code if isinstance(exc, ProviderError) else type(exc).__name__
+                logger.warning(
+                    "Additional AWS account collection failed: account=%s code=%s", name, code
+                )
+                failures.append(exc)
+        if not successes and failures:
+            raise failures[0]
+        if failures:
+            logger.warning("AWS collection completed with account gaps: count=%d", len(failures))
+        return offers
 
     async def collect_list_prices(self):
         return await self._each_region(self.settings.aws_price_regions, self._collect_list_prices)
@@ -509,6 +604,11 @@ class AWSProvider(Provider):
                     ):
                         effective[identity] = quote
             for (sku, zone), quote in effective.items():
+                if (
+                    self.settings.spotbot_aws_instance_types
+                    and sku not in self.settings.spotbot_aws_instance_types
+                ):
+                    continue
                 spec = specs[sku]
                 gpus = spec["GpuInfo"]["Gpus"]
                 architecture = spec["ProcessorInfo"]["SupportedArchitectures"][0]
@@ -540,6 +640,8 @@ class AWSProvider(Provider):
                     continue
                 description = ", ".join(f"{g['Manufacturer']} {g['Name']}" for g in gpus)
                 details = {
+                    "aws_account": self.settings.spotbot_aws_account_name,
+                    "aws_account_id": self.settings.spotbot_aws_expected_account_id or None,
                     "aws_region": region,
                     "architecture": architecture,
                     "gpu_specifications": gpus,
@@ -582,7 +684,9 @@ class AWSProvider(Provider):
                 offers.append(
                     Offer(
                         provider=self.name,
-                        cloud="aws",
+                        cloud="aws"
+                        if self.settings.spotbot_aws_account_name == "default"
+                        else "aws-" + self.settings.spotbot_aws_account_name,
                         sku=sku,
                         region=region,
                         availability_zone=zone,
@@ -605,6 +709,10 @@ class AWSProvider(Provider):
         return offers
 
     def plan(self, offer, launch, name, *, max_price_hourly=None):
+        if offer.details.get("aws_account", "default") != "default" or self._enrolled_route(
+            offer.region, offer.sku
+        ):
+            raise ValueError("additional_accounts_require_protected_rentals")
         validate_launch(
             launch,
             {

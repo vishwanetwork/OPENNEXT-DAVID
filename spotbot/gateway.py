@@ -17,7 +17,9 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
+from spotbot import gateway_inference
 from spotbot.gateway_config import GatewaySettings
 from spotbot.models import timestamp, utcnow
 from spotbot.storage import create_store
@@ -93,6 +95,7 @@ class Gateway:
         )
         self.own_backend_client = backend_client is None
         self.locks, self.listeners, self.live, self.sessions = {}, {}, {}, {}
+        self.http_sessions, self.inference_clients = {}, {}
         self.expirations = {}
         self.ports_lock = asyncio.Lock()
         self.last_cycle_at = None
@@ -109,9 +112,12 @@ class Gateway:
         return self.db.save(row, row["version"])
 
     def access_token(self, rental_id):
+        row = self.db.get("gateway", rental_id)
+        version = (row or {}).get("http_key_version", 0)
+        suffix = f":{version}" if version else ""
         return hmac.new(
             self.settings.http_token_secret.get_secret_value().encode(),
-            ("rental-http:" + rental_id).encode(),
+            ("rental-http:" + rental_id + suffix).encode(),
             hashlib.sha256,
         ).hexdigest()
 
@@ -125,6 +131,11 @@ class Gateway:
         if timer:
             timer.cancel()
         for task in list(self.sessions.get(rental_id, ())):
+            task.cancel()
+        self.revoke_http(rental_id)
+
+    def revoke_http(self, rental_id):
+        for task in list(self.http_sessions.get(rental_id, ())):
             task.cancel()
 
     async def ingest(self, event):
@@ -220,7 +231,9 @@ class Gateway:
                 raise ValueError("http_target_not_allowed")
         elif http:
             raise ValueError("unexpected_http_target")
-        return dict(host=host, port=22, user=ssh["user"], http=http)
+        return gateway_inference.apply_target(
+            dict(host=host, port=22, user=ssh["user"], http=http), rental
+        )
 
     async def probe(self, target, rules):
         reader, writer = await asyncio.wait_for(
@@ -233,12 +246,23 @@ class Gateway:
             writer.close()
             with suppress(OSError):
                 await writer.wait_closed()
-        if target["http"]:
+        if target["http"] and not target.get("inference"):
             response = await self.backend_client.get(
                 target["http"].rstrip("/") + rules["http_health_path"], timeout=5
             )
             if response.status_code != 200:
                 raise ValueError("http_health_check_failed")
+
+    async def check_inference(self, rental_id, target):
+        if not target.get("certificate") or not target.get("http"):
+            return
+        try:
+            response = await gateway_inference.client_for(self, rental_id, target).get(
+                target["http"] + "/health", timeout=5
+            )
+            response.raise_for_status()
+        except (httpx.HTTPError, OSError, TimeoutError):
+            target.update(http=None, inference=dict(target["inference"], state="unreachable"))
 
     async def listener(self, row):
         if row["id"] in self.listeners:
@@ -281,9 +305,11 @@ class Gateway:
             return False
         # Rows retired before this field existed use their last update as the retirement time.
         retired = row.get("retired_at") or row.get("updated_at")
-        return bool(retired) and (
-            utcnow() - datetime.fromisoformat(retired)
-        ).total_seconds() >= self.settings.ssh_port_reuse_after_seconds
+        return (
+            bool(retired)
+            and (utcnow() - datetime.fromisoformat(retired)).total_seconds()
+            >= self.settings.ssh_port_reuse_after_seconds
+        )
 
     def public(self, row, *, include_token=False):
         ready = self.authorized(row["id"])
@@ -305,6 +331,11 @@ class Gateway:
         )
         if include_token and ready and result["http"]:
             result["http_access_token"] = self.access_token(row["id"])
+        result["http_key_version"] = row.get("http_key_version", 0)
+        if row.get("inference"):
+            result["inference"] = dict(
+                row["inference"], base_url=(result["http"] + "/v1") if result["http"] else None
+            )
         return result
 
     async def reconcile(self, rental_id):
@@ -348,17 +379,33 @@ class Gateway:
                 previous = self.live.get(rental_id)
                 changed = (
                     not previous
-                    or previous["target"] != target
+                    or any(
+                        previous["target"].get(k) != target.get(k) for k in ["host", "port", "user"]
+                    )
                     or previous["generation"] != rental["generation"]
                 )
                 if changed:
                     self.revoke(rental_id)
+                elif previous["target"] != target:
+                    self.revoke_http(rental_id)
+                await self.check_inference(rental_id, target)
+                if changed:
                     await self.probe(target, rental["rfq"])
+                elif previous["target"] != target:
+                    self.revoke_http(rental_id)
+                if not previous or previous["target"] != target:
+                    for key in list(self.inference_clients):
+                        fingerprint = hashlib.sha256(
+                            target.get("certificate", "").encode()
+                        ).hexdigest()
+                        if key[0] == rental_id and key[1] != fingerprint:
+                            await self.inference_clients.pop(key).aclose()
                 await self.listener(row)
                 row.update(
                     generation=rental["generation"],
                     ssh_user=target["user"],
                     has_http=bool(target["http"]),
+                    inference=target.get("inference"),
                 )
                 if rental["state"] == "DELIVERING":
                     rental = await self.bot(
@@ -377,7 +424,9 @@ class Gateway:
                         or rental["tenant_id"] != row["tenant_id"]
                     ):
                         raise ValueError("handoff_acknowledgement_rejected")
-                    if self.target(rental) != target:
+                    acknowledged_target = self.target(rental)
+                    await self.check_inference(rental_id, acknowledged_target)
+                    if acknowledged_target != target:
                         raise ValueError("handoff_target_changed")
                     # The acknowledged response is authoritative, including expiry revisions.
                     expiry = datetime.fromisoformat(rental["rfq"]["expires_at"])
@@ -540,18 +589,25 @@ class Gateway:
         for timer in self.expirations.values():
             timer.cancel()
         self.expirations.clear()
-        for rental_id in list(self.sessions):
+        for rental_id in set(self.sessions) | set(self.http_sessions):
             self.revoke(rental_id)
         for server in self.listeners.values():
             server.close()
             await server.wait_closed()
-        tasks = [task for group in self.sessions.values() for task in group]
+        tasks = [
+            task
+            for groups in [self.sessions, self.http_sessions]
+            for group in groups.values()
+            for task in group
+        ]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         if self.own_client:
             await self.client.aclose()
         if self.own_backend_client:
             await self.backend_client.aclose()
+        for client in self.inference_clients.values():
+            await client.aclose()
         self.store.close()
 
 
@@ -650,6 +706,34 @@ def create_gateway_app(settings=None, gateway=None):
             raise HTTPException(404, "gateway_rental_not_found")
         return svc.public(row, include_token=True)
 
+    class RotateKey(BaseModel):
+        expected_version: int = Field(ge=0)
+
+    @app.post("/v1/gateway/rentals/{rental_id}/inference-key")
+    async def rotate_key(
+        rental_id: UUID,
+        body: RotateKey,
+        authorization: str = Header(""),
+        x_spotbot_tenant: str = Header(""),
+    ):
+        if not secrets.compare_digest(
+            authorization.encode(), ("Bearer " + config.api_key.get_secret_value()).encode()
+        ):
+            raise HTTPException(401, "invalid_gateway_api_token")
+        rid = str(rental_id)
+        async with svc.lock(rid):
+            row = svc.db.get("gateway", rid)
+            if not row or row["tenant_id"] != x_spotbot_tenant:
+                raise HTTPException(404, "gateway_rental_not_found")
+            if not svc.authorized(rid) or not row.get("inference"):
+                raise HTTPException(409, "inference_not_available")
+            if row.get("http_key_version", 0) != body.expected_version:
+                raise HTTPException(409, "inference_key_changed")
+            row["http_key_version"] = body.expected_version + 1
+            svc.save(row)
+            svc.revoke_http(rid)
+            return svc.public(row, include_token=True)
+
     @customer_app.api_route(
         "/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
     )
@@ -681,14 +765,20 @@ def create_gateway_app(settings=None, gateway=None):
             raise HTTPException(503, "gateway_route_unavailable")
         if request.headers.get("upgrade"):
             raise HTTPException(400, "http_upgrades_not_supported")
-        target = svc.live[rental_id]["target"]["http"]
+        route = svc.live[rental_id]["target"]
+        if route.get("inference") and not gateway_inference.allowed(
+            request.method, request.url.path
+        ):
+            raise HTTPException(404, "inference_route_not_found")
+        target = route["http"]
         # Preserve escaped paths and queries without resolving user input as a URL.
         url = httpx.URL(target).copy_with(
             raw_path=request.scope["raw_path"]
             + (b"?" + request.scope["query_string"] if request.scope["query_string"] else b"")
         )
         task = asyncio.current_task()
-        svc.sessions.setdefault(rental_id, set()).add(task)
+        svc.http_sessions.setdefault(rental_id, set()).add(task)
+        backend = gateway_inference.client_for(svc, rental_id, route)
         upstream = None
         try:
 
@@ -698,20 +788,27 @@ def create_gateway_app(settings=None, gateway=None):
                         raise httpx.RequestError("Gateway route revoked during upload")
                     yield chunk
 
-            outbound = svc.backend_client.build_request(
+            headers = proxy_headers(
+                request.headers,
+                request=True,
+                bearer_access=bearer_access or bool(route.get("inference")),
+            )
+            if route.get("inference"):
+                headers.append(("Authorization", "Bearer " + route["backend_token"]))
+            outbound = backend.build_request(
                 request.method,
                 url,
-                headers=proxy_headers(request.headers, request=True, bearer_access=bearer_access)
+                headers=headers
                 + [("Host", host), ("X-Forwarded-Host", host), ("X-Forwarded-Proto", "https")],
                 content=body(),
-                timeout=60,
+                timeout=config.inference_read_timeout_seconds if route.get("inference") else 60,
             )
-            upstream = await svc.backend_client.send(outbound, stream=True)
+            upstream = await backend.send(outbound, stream=True)
         except httpx.HTTPError:
-            svc.sessions[rental_id].discard(task)
+            svc.http_sessions[rental_id].discard(task)
             raise HTTPException(502, "gateway_backend_unreachable") from None
         except BaseException:
-            svc.sessions[rental_id].discard(task)
+            svc.http_sessions[rental_id].discard(task)
             if upstream:
                 await upstream.aclose()
             raise
@@ -723,7 +820,7 @@ def create_gateway_app(settings=None, gateway=None):
                         break
                     yield chunk
             finally:
-                svc.sessions[rental_id].discard(task)
+                svc.http_sessions[rental_id].discard(task)
                 await upstream.aclose()
 
         response = StreamingResponse(stream(), status_code=upstream.status_code)

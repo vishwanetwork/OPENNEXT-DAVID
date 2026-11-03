@@ -73,6 +73,10 @@ class Service:
         from spotbot.rentals import RentalEngine
 
         self.rentals = RentalEngine(self)
+        if settings.aws_accounts:
+            from spotbot.rental_accounts import RentalAccounts
+
+            self.rentals = RentalAccounts(self, self.rentals)
 
     def acquire(self):
         self.store.acquire()

@@ -184,6 +184,11 @@ class Cloud:
 
 @pytest.fixture
 def rental_env(service_factory, monkeypatch):
+    # Load the lazy backend before replacing the clock: an import during the
+    # fixture would retain the fake clock after monkeypatch restores the model.
+    import importlib
+
+    importlib.import_module("spotbot.storage.sqlite")
     clock = Clock()
     monkeypatch.setattr("spotbot.models.utcnow", clock.now)
     monkeypatch.setattr("spotbot.rentals.utcnow", clock.now)
@@ -483,7 +488,8 @@ def test_customer_reference_is_part_of_the_idempotent_request(rental_env):
 def test_rfq_initial_image_validation_and_legacy_idempotency(rental_env):
     env = rental_env
     old = env.request.model_dump(mode="json")
-    for name in ("initial_image_ids", "ssh_public_key", "customer_ref", "service_seconds"):
+    for name in ("initial_image_ids", "ssh_public_key", "customer_ref", "service_seconds",
+                 "procurement_account", "inference", "retail_hourly_cents"):
         old["rfq"].pop(name)  # A client from before these optional fields existed.
     from spotbot.storage.common import dump
 

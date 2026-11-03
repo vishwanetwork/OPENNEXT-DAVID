@@ -84,6 +84,12 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             raise HTTPException(401, "invalid_api_token", headers={"WWW-Authenticate": "Bearer"})
 
     auth = [Depends(authenticate)]
+    from spotbot.inference_api import install as install_inference
+
+    install_inference(app, svc, auth)
+    from spotbot.capacity import install as install_capacity
+
+    install_capacity(app, svc, auth)
 
     def get_order(order_id):
         order = svc.store.get_order(order_id)
@@ -183,6 +189,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         model=None,
         available_only=False,
         can_attempt_only=False,
+        account_routes=False,
     ):
         offers = svc.store.latest(
             provider=provider,
@@ -191,7 +198,11 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
             gpu_model=gpu_model(model) if model else None,
         )
         rows = [
-            svc.providers[o.provider].public_offer(o, config.spotbot_price_max_age_seconds)
+            svc.providers[o.provider].public_offer(
+                o,
+                config.spotbot_price_max_age_seconds,
+                **({"account_routes": True} if account_routes and o.provider == "aws" else {}),
+            )
             for o in offers
             if config.enabled(o.provider)
         ]
@@ -209,10 +220,13 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         gpu: str | None = None,
         available_only: bool = False,
         can_attempt_only: bool = False,
+        account_routes: bool = False,
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
-        rows = latest_offers(provider, cloud, market, gpu, available_only, can_attempt_only)
+        rows = latest_offers(
+            provider, cloud, market, gpu, available_only, can_attempt_only, account_routes
+        )
         selected = rows[offset : offset + limit]
         groups = [
             {"provider": name, "offers": [o for o in selected if o["provider"] == name]}

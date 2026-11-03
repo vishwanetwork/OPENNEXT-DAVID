@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from spotbot import inference
 from spotbot import rental_tasks as tasks
 from spotbot.models import gpu_model, timestamp, utcnow
 from spotbot.providers import ProviderError
@@ -104,6 +105,8 @@ class RentalEngine:
         if doc["kind"] == "rental":
             track_service(doc)
             tasks.scrub(doc)
+            if doc["state"] == "CLOSED":
+                doc["inference_secret"] = None
         return self.db.save(doc, doc["version"], event=event)
 
     def get(self, rental_id, tenant_id):
@@ -112,12 +115,23 @@ class RentalEngine:
             raise LookupError("rental_not_found")
         return value
 
+    def backend_for(self, rules):
+        return self.backend
+
     def unmonitored_regions(self, rules):
         # Polling is only a fallback; never buy where interruption warnings cannot arrive.
         queues = json.loads(self.settings.spotbot_rental_interruption_queues)
         return sorted(set(rules.regions) - set(queues))
 
     def validate_rules(self, rules):
+        inference.validate_rfq(self.settings, rules)
+        if (
+            rules.procurement_account is not None
+            and rules.procurement_account != self.settings.spotbot_aws_account_name
+        ):
+            raise ValueError("aws_account_quote_mismatch")
+        if rules.account != self.settings.spotbot_aws_account_name:
+            raise ValueError("aws_account_not_enrolled")
         if not self.settings.spotbot_rentals_enabled:
             raise ValueError("rentals_disabled")
         if not self.settings.spotbot_live_orders_enabled:
@@ -141,7 +155,14 @@ class RentalEngine:
         # Preserve idempotency fingerprints accepted before these optional fields existed.
         if not payload["rfq"]["initial_image_ids"]:
             payload["rfq"].pop("initial_image_ids")
-        for name in ("ssh_public_key", "customer_ref", "service_seconds"):
+        for name in (
+            "ssh_public_key",
+            "customer_ref",
+            "service_seconds",
+            "procurement_account",
+            "inference",
+            "retail_hourly_cents",
+        ):
             if payload["rfq"][name] is None:
                 payload["rfq"].pop(name)
         fingerprint = hashlib.sha256(dump(payload).encode()).hexdigest()
@@ -158,6 +179,7 @@ class RentalEngine:
             "rental",
             tenant_id,
             rfq=rules.model_dump(mode="json"),
+            aws_account_id=self.settings.spotbot_aws_expected_account_id or None,
             fingerprint=fingerprint,
             state="QUEUED",
             generation=0,
@@ -174,6 +196,7 @@ class RentalEngine:
             ssh_keys=dict(version=1, keys=[rules.ssh_public_key] if rules.ssh_public_key else []),
         )
         row["id"] = rental_id
+        inference.initialize(row, self.sealer)
         try:
             self.save(row, "accepted")
         except ConflictError:
@@ -208,6 +231,9 @@ class RentalEngine:
                 "http_port",
                 "http_health_path",
                 "account",
+                "procurement_account",
+                "inference",
+                "retail_hourly_cents",
                 "market",
             ]
             a, b = old.model_dump(), rules.model_dump()
@@ -354,6 +380,7 @@ class RentalEngine:
             "backup",
             row["tenant_id"],
             rental_id=row["id"],
+            aws_account_id=row.get("aws_account_id"),
             generation=gen["generation"],
             generation_id=gen["id"],
             region=gen["region"],
@@ -446,6 +473,7 @@ class RentalEngine:
             gen.update(
                 report=report.model_dump(mode="json", exclude={"token"}), heartbeat_at=timestamp()
             )
+            inference.record(row, gen, report.inference)
             self.save(gen)
             if report.interruption and row["state"] in {"ACTIVE", "VERIFYING", "DELIVERING"}:
                 await self._guest_interruption(row, gen)
@@ -483,6 +511,7 @@ class RentalEngine:
             self._save_task_run(row)
             return dict(
                 task=instruction,
+                inference=inference.instruction(row, gen, self.sealer),
                 authorized_keys=dict(
                     version=keys["version"],
                     user=row["rfq"].get("ssh_user", "ubuntu"),
@@ -505,8 +534,44 @@ class RentalEngine:
     def _save_task_run(self, row):
         """Save a task report; a report that changed nothing is not written again."""
         stored = self.db.get("rental", row["id"])
-        if any(stored.get(k) != row.get(k) for k in ("task", "task_runs", "task_outcome")):
+        if any(
+            stored.get(k) != row.get(k)
+            for k in (
+                "task",
+                "task_runs",
+                "task_outcome",
+                "inference_state",
+                "inference_secret",
+                "inference_seq",
+                "inference_stop",
+            )
+        ):
             self.save(row, "task_finished" if row.get("task_outcome") else None)
+
+    async def inference_action(self, rental_id, tenant_id, action, expected_version):
+        async with self.row_lock(rental_id):
+            row = self.get(rental_id, tenant_id)
+            if not row["rfq"].get("inference") or row["end_requested"] or row["state"] == "CLOSED":
+                raise ValueError("inference_not_available")
+            if row.get("inference_seq", 1) != expected_version:
+                raise ValueError("inference_version_conflict")
+            if action == "retry":
+                if inference.summary(row)["state"] not in {"failed", "stopped"}:
+                    raise ValueError("inference_not_retryable")
+                row["inference_seq"] = expected_version + 1
+                row["inference_stop"] = False
+                row["inference_state"] = dict(
+                    version=row["inference_seq"],
+                    generation=row["generation"],
+                    state="queued",
+                    downloaded_bytes=0,
+                    total_bytes=0,
+                    error=None,
+                )
+            else:
+                row["inference_stop"] = True
+            self.save(row, "inference_" + action)
+            return inference.summary(row)
 
     async def _guest_interruption(self, row, gen):
         """Recover on a guest-reported Spot warning only when AWS confirms it."""
@@ -610,6 +675,11 @@ class RentalEngine:
             ]
             if (
                 offer.orderable
+                and d.get("aws_account", "default") == rules.account
+                and (
+                    not self.settings.spotbot_aws_expected_account_id
+                    or d.get("aws_account_id") == self.settings.spotbot_aws_expected_account_id
+                )
                 and offer.region in rules.regions
                 and offer.region in self.settings.aws_order_regions
                 and (not region or offer.region == region)
@@ -650,6 +720,14 @@ class RentalEngine:
                 self.event_consumer_error = type(exc).__name__
                 logger.warning("Interruption queue polling failed; continuing lifecycle checks")
             for entry in self.db.list("rental"):
+                if entry["rfq"].get("account", "default") != self.settings.spotbot_aws_account_name:
+                    continue
+                if (
+                    entry.get("aws_account_id")
+                    and entry["aws_account_id"] != self.settings.spotbot_aws_expected_account_id
+                ):
+                    logger.error("Rental account enrollment mismatch: rental=%s", entry["id"])
+                    continue
                 async with self.row_lock(entry["id"]):
                     row = self.db.get("rental", entry["id"])
                     try:
@@ -689,6 +767,11 @@ class RentalEngine:
                 )
 
     async def handle_interruption(self, event):
+        if (
+            self.settings.spotbot_aws_expected_account_id
+            and event.get("account") != self.settings.spotbot_aws_expected_account_id
+        ):
+            raise ValueError("interruption_account_mismatch")
         if event.get("source") != "aws.ec2" or event.get("detail-type") not in {
             "EC2 Spot Instance Interruption Warning",
             "EC2 Instance State-change Notification",
@@ -700,6 +783,8 @@ class RentalEngine:
         ) not in {"terminated", "stopped", "shutting-down"}:
             return
         for entry in self.db.list("rental"):
+            if entry["rfq"].get("account", "default") != self.settings.spotbot_aws_account_name:
+                continue
             gen = self.current(entry)
             if (
                 not gen
@@ -900,7 +985,9 @@ class RentalEngine:
         row["attempts"] += 1
         sweep = {}  # Account quota and instance specs cannot change across rejected requests.
         tried = 0
-        for offer in (options[start:] + options[:start])[: self.settings.spotbot_rental_pools_per_attempt]:
+        for offer in (options[start:] + options[:start])[
+            : self.settings.spotbot_rental_pools_per_attempt
+        ]:
             if utcnow() >= deadline:
                 break
             row["pool_cursor"] = row.get("pool_cursor", start) + 1
@@ -935,6 +1022,7 @@ class RentalEngine:
             "generation",
             row["tenant_id"],
             rental_id=row["id"],
+            aws_account_id=row.get("aws_account_id"),
             generation=row["generation"] + 1,
             region=offer.region,
             state="SUBMITTING",
@@ -1106,7 +1194,7 @@ class RentalEngine:
         ip = instance.get("PublicIpAddress") or instance.get("PrivateIpAddress")
         if not ip:
             return
-        if rules.http_port:
+        if rules.http_port and not rules.inference:
             try:
                 response = await self.service.client.get(
                     f"http://{ip}:{rules.http_port}{rules.http_health_path}", timeout=5
@@ -1281,7 +1369,9 @@ class RentalEngine:
             # Lost before this path terminated it: capture the retained disks instead.
             return self._abandon_freeze(row, "server_stopped", backup) if command else False
         report = gen.get("report", {})
-        fresh = gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
+        fresh = (
+            gen.get("heartbeat_at") and (utcnow() - at(gen["heartbeat_at"])).total_seconds() <= 60
+        )
         if not command:
             if row.get("current_backup_id"):
                 return self._abandon_freeze(row, "explicit_backup_requested")
