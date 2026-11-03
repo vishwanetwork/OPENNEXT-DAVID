@@ -32,6 +32,14 @@ def test_real_gpu_probe_rejects_wrong_memory_count_and_compute_capability(monkey
                 patch.setattr(cuda, key, value)
             with pytest.raises(AssertionError, match=message):
                 exec(guest.runtime_probe(cfg), {})
+    monkeypatch.setattr(cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(
+        cuda,
+        "get_device_properties",
+        lambda i: SimpleNamespace(total_memory=(8 if i == 0 else 40) * 10**9),
+    )
+    with pytest.raises(AssertionError, match="Insufficient GPU memory"):
+        exec(guest.runtime_probe(dict(cfg, tensor_parallel=2)), {})
 
 
 def test_paid_extension_updates_expiry_watcher_and_runtime_without_restarting(

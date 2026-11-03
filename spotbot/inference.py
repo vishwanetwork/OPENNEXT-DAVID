@@ -106,6 +106,7 @@ class InferenceReport(BaseModel):
     error: (
         Literal[
             "runtime_unavailable",
+            "hardware_incompatible",
             "download_failed",
             "model_start_failed",
             "preparation_timeout",

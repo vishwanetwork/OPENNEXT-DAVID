@@ -38,7 +38,7 @@ def runtime_probe(cfg):
             "import torch",
             "assert torch.cuda.is_available(), 'CUDA unavailable'",
             f"assert torch.cuda.device_count() == {cfg['tensor_parallel']}, 'GPU count mismatch'",
-            f"assert sum(torch.cuda.get_device_properties(i).total_memory for i in range(torch.cuda.device_count())) >= {policy['vram_gb']} * 1e9 * 0.98, 'Insufficient GPU memory'",
+            f"assert all(torch.cuda.get_device_properties(i).total_memory * torch.cuda.device_count() >= {policy['vram_gb']} * 1e9 * 0.98 for i in range(torch.cuda.device_count())), 'Insufficient GPU memory'",
             f"assert all(torch.cuda.get_device_capability(i) >= {tuple(policy['cc'])!r} for i in range(torch.cuda.device_count())), 'Unsupported GPU compute capability'",
         ]
     )
@@ -277,12 +277,14 @@ def run(directory):
         ):
             raise RuntimeError("runtime_unavailable")
         policy = HARDWARE[cfg["preset_id"]]
+        phase = "hardware_incompatible"
         physical_memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
         if (
             physical_memory < policy["host_gib"] * 2**30 * 0.90
             or (os.cpu_count() or 0) < policy["vcpus"]
         ):
             raise RuntimeError("runtime_unavailable")
+        phase = "runtime_unavailable"
         ip = str(ipaddress.ip_address(spec["server_ip"]))
         model_dir = MODELS / cfg["preset_id"] / cfg["revision"]
         model_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -300,6 +302,7 @@ def run(directory):
             30,
         )
         timed(["docker", "pull", cfg["image"]])
+        phase = "hardware_incompatible"
         timed(
             [
                 "docker",
