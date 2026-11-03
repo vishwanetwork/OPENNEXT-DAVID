@@ -1,7 +1,7 @@
 # Floating Spot billing (`spot-hourly-v1`)
 
-Status: implementation in progress. Legacy `duration-v1` orders are immutable.
-Frontend integration target: OPENNEXT-DAVID PR #22, merged into main.
+Status: implemented behind a disabled-by-default rollout flag. Legacy `duration-v1` orders are immutable.
+Frontend integration extends OPENNEXT-DAVID PR #22, merged into main.
 
 ## Implemented adapter and execution boundaries
 
@@ -113,6 +113,33 @@ ownership, KYB, funds, equivalent hardware, current price, backup and remaining
 runtime. Only verified restore plus gateway acknowledgement resumes the clock.
 Explicit END remains available while paused. Expired retention closes the order
 and cleans its resources. Model/task recovery keeps its accepted restart policy.
+
+## Rollout and acceptance
+
+Deploy the reviewed frontend and adapter/native Bot versions together. Build a
+new pinned image containing these changes; older image pins do not provide this
+protocol. Keep `SPOTBOT_FLOATING_ENABLED=false` until all services are updated,
+the shared read-only legacy account snapshots are mounted, and native price
+evidence and bounded execution grants are verified. Then set the flag on both
+the adapter and native Bot. The capability response distinguishes required
+floating checkout, new-purchase readiness, and existing funding read support.
+New legacy purchases are refused after activation; existing fixed orders and
+issued fixed-price bank references retain their original agreements.
+
+For rollback, disable new floating purchases while leaving the funding worker
+and native rental worker running. Existing floating orders still require
+settlement, grants, payment review, retention cleanup and customer access.
+The frontend keeps their funding views and retry confirmations available.
+Never roll the native Bot back to a version without funding pause/grant support
+while a floating agreement is open.
+
+Automated acceptance uses isolated accounts, test stores and simulated cloud
+providers. It covers Credit and Direct Pay model-preinstallation handoff, native
+pause/snapshot/restore, account isolation, retries, price changes, budget limits,
+bank confirmation, refunds, Console projections and seven-day cleanup. Browser
+acceptance uses a local simulated backend; it does not allocate paid GPU
+resources. Live financial activation and a paid GPU acceptance require explicit
+deployment authorization and a separate test budget.
 
 ## HTTP and frontend integration
 
