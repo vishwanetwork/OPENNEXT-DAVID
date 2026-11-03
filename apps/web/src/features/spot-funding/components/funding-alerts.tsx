@@ -2,6 +2,7 @@
 
 import { useSpotFundingAccount } from '../hooks';
 import { FundingHelp, FundingRuntime, FundingWarning } from './funding-ui';
+import { OrderFundingActions } from './order-funding-actions';
 
 export function SpotFundingAlerts() {
   const { snapshot } = useSpotFundingAccount();
@@ -40,10 +41,11 @@ export function SpotFundingAlerts() {
           <FundingWarning position={order.funding} />
           {order.paymentMethod === 'Direct Pay' ? (
             <p className="spot-funding-note">
-              This order uses dedicated Direct Pay funds. Contact support to confirm replenishment;
-              adding Credit does not automatically fund it.
+              This order uses dedicated Direct Pay funds. Replenish the order using its linked bank
+              transfer; adding shared Credit does not automatically fund it.
             </p>
           ) : null}
+          <OrderFundingActions order={order} />
         </section>
       ))}
     </aside>

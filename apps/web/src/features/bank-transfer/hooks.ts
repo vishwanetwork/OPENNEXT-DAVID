@@ -92,6 +92,25 @@ export function useStartBankTransfer() {
   };
 }
 
+/** Open an already issued, owner-verified intent without creating a second payment. */
+export function useOpenVerifiedBankTransfer() {
+  const context = useTransferSession();
+  const client = useQueryClient();
+  const { openModal } = useTerminal();
+  return (value: unknown) => {
+    const intent =
+      context.connected && context.kyb.approved
+        ? confirmedTransferIntent(value, context.kyb.accountId)
+        : null;
+    if (!intent) throw new Error('Verified bank transfer instructions are unavailable.');
+    client.setQueryData<TransferRecord>(
+      queryKeys.account.bankTransfer(context.kyb.identity, intent.id),
+      { intent },
+    );
+    openModal('bank-transfer', { id: intent.id });
+  };
+}
+
 export function useBankTransfer(id: string) {
   const context = useTransferSession();
   const client = useQueryClient();

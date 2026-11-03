@@ -6,7 +6,17 @@ export const SpotFundingCapabilities = z.object({
   demo: z.literal(false),
   pricingVersion: z.literal('spot-hourly-v1'),
   enabled: z.boolean(),
+  readEnabled: z.boolean().optional(),
+  required: z.boolean().optional(),
 });
+
+export const FloatingPaymentResolution = z.object({
+  policy: z.literal('spot-hourly-v1'),
+  fundingOrderId: z.string().min(1).max(200),
+  orderId: z.string().min(1).max(200),
+  outcome: z.enum(['funded', 'credited']),
+});
+export type FloatingPaymentResolution = z.infer<typeof FloatingPaymentResolution>;
 
 const safeInteger = z
   .number()
@@ -79,6 +89,20 @@ const order = z
     ]),
     retention: z.enum(['confirmed', 'pending', 'unavailable']),
     storageReserveCents: cents.optional(),
+    storageReserveTargetCents: cents.optional(),
+    maxHourlyCents: cents.positive().optional(),
+    maxTotalCents: cents.positive().optional(),
+    totalFundedCents: cents.optional(),
+    pauseReason: z
+      .enum([
+        'price_unavailable',
+        'hourly_limit',
+        'execution_review',
+        'total_limit',
+        'insufficient_funding',
+      ])
+      .nullable()
+      .optional(),
     retentionExpiresAt: timestamp.nullable().optional(),
     funding: position,
   })

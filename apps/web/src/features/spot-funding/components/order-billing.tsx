@@ -14,6 +14,7 @@ import {
   runtimeHours,
 } from './funding-ui';
 import { HourlySpotLedger } from './hourly-ledger';
+import { OrderFundingActions } from './order-funding-actions';
 
 export function SpotOrderSummary({ order }: { order: SpotFundingOrder }) {
   return (
@@ -40,6 +41,26 @@ export function SpotOrderSummary({ order }: { order: SpotFundingOrder }) {
         <FundingMetric label="Cumulative runtime remaining">
           {runtimeHours(order.remainingSeconds)} / {runtimeHours(order.purchasedSeconds)} hours
         </FundingMetric>
+        {order.storageReserveCents !== undefined ? (
+          <FundingMetric label="Storage reserve remaining">
+            {fundingMoney(order.storageReserveCents)}
+          </FundingMetric>
+        ) : null}
+        {order.maxHourlyCents !== undefined ? (
+          <FundingMetric label="Accepted hourly limit">
+            {fundingMoney(order.maxHourlyCents)}
+          </FundingMetric>
+        ) : null}
+        {order.maxTotalCents !== undefined ? (
+          <FundingMetric label="Accepted total funding limit">
+            {fundingMoney(order.maxTotalCents)}
+          </FundingMetric>
+        ) : null}
+        {order.totalFundedCents !== undefined ? (
+          <FundingMetric label="Total funding allocated">
+            {fundingMoney(order.totalFundedCents)}
+          </FundingMetric>
+        ) : null}
       </div>
       <FundingPositionMetrics position={order.funding} />
       <p className="spot-funding-note">
@@ -49,6 +70,7 @@ export function SpotOrderSummary({ order }: { order: SpotFundingOrder }) {
       </p>
       <FundingWarning position={order.funding} />
       <FundingHelp directPay={order.paymentMethod === 'Direct Pay'} />
+      <OrderFundingActions order={order} />
     </div>
   );
 }

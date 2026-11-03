@@ -5,7 +5,8 @@
  * freeze, demo/preview rows never purchasable) can be unit-tested without a DOM.
  */
 import type { CreditBalanceResult, PurchaseResult } from '@/terminal-kit';
-import { InferenceQuote } from '@opennext/contracts';
+import { FloatingSpotAcceptance, InferenceQuote } from '@opennext/contracts';
+import type { z } from 'zod';
 import type { BankTransferRequest } from '@/lib/buyer-kyb';
 import { round, usd, type SpotRow } from './inventory';
 
@@ -78,6 +79,7 @@ export const signature = (row: SpotRow) =>
 export type CheckoutStage = 'review' | 'payment' | 'confirm' | 'topup' | 'completed';
 
 export interface CheckoutDraft {
+  floatingAcceptance?: z.infer<typeof FloatingSpotAcceptance>;
   inferenceQuote?: InferenceQuote;
   inferenceBillingAcknowledged?: boolean;
   owner: string;
@@ -203,6 +205,7 @@ export class SpotCheckout {
           createdAt: draft.createdAt,
           inferenceQuote: draft.inferenceQuote,
           inferenceBillingAcknowledged: draft.inferenceBillingAcknowledged,
+          floatingAcceptance: draft.floatingAcceptance,
         }),
       );
     } catch {
@@ -260,6 +263,9 @@ export class SpotCheckout {
           ? InferenceQuote.parse(stored.inferenceQuote)
           : undefined,
         inferenceBillingAcknowledged: stored.inferenceBillingAcknowledged === true,
+        floatingAcceptance: FloatingSpotAcceptance.safeParse(stored.floatingAcceptance).success
+          ? FloatingSpotAcceptance.parse(stored.floatingAcceptance)
+          : undefined,
       };
     } catch {
       this.clearStored();
@@ -272,6 +278,36 @@ export class SpotCheckout {
   hasPending(): boolean {
     const draft = this.pending();
     return Boolean(draft && draft.stage !== 'completed');
+  }
+
+  recordFloating(acceptance: z.infer<typeof FloatingSpotAcceptance>) {
+    const draft = this.pending();
+    if (!draft) throw new Error('This purchase is no longer available.');
+    draft.floatingAcceptance = acceptance;
+    draft.paymentSubmitted = true;
+    this.savePending();
+    this.notify();
+  }
+
+  completeFloating(orderId: string, showConfirmation = true) {
+    const draft = this.pending();
+    if (!draft) return;
+    draft.orderId = orderId;
+    draft.stage = 'completed';
+    draft.paymentSubmitted = false;
+    draft.floatingAcceptance = undefined;
+    this.clearStored();
+    this.notify();
+    if (showConfirmation) this.deps.open('spot-purchase-complete');
+  }
+
+  rejectFloating() {
+    const draft = this.pending();
+    if (!draft) return;
+    draft.floatingAcceptance = undefined;
+    draft.paymentSubmitted = false;
+    this.savePending();
+    this.notify();
   }
   purchaseReference(): string | null {
     return this.pending()?.idempotencyKey || null;

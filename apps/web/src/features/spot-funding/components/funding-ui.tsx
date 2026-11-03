@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import type { SpotFundingPosition, SpotFundingOrder } from '@/lib/spot-funding';
-import { money } from '@/lib/format';
+import { money, stampUtc } from '@/lib/format';
 import { useTerminal } from '@/terminal-kit';
 
 export const fundingMoney = (cents: number | null) => money(cents === null ? null : cents / 100);
@@ -67,9 +67,20 @@ const runtimeLabels: Record<SpotFundingOrder['runtimeState'], string> = {
 
 export function FundingRuntime({ order }: { order: SpotFundingOrder }) {
   const interrupted = ['reconnecting', 'paused_insufficient_funds'].includes(order.runtimeState);
+  const reasons = {
+    price_unavailable: 'A current allocation price could not be verified.',
+    hourly_limit: 'The current hourly price exceeds your accepted hourly limit.',
+    total_limit: 'Additional funding would exceed your accepted total budget.',
+    execution_review: 'Execution authorization requires a fresh price and funding review.',
+    insufficient_funding:
+      'Confirmed funding does not cover the next usage period and storage reserve.',
+  };
   return (
     <div className="spot-funding-runtime" data-funding-runtime={order.runtimeState}>
       <span className="tag">{runtimeLabels[order.runtimeState]}</span>
+      {order.runtimeState === 'paused_insufficient_funds' && order.pauseReason ? (
+        <p>{reasons[order.pauseReason]}</p>
+      ) : null}
       {order.runtimeState === 'paused_insufficient_funds' ? (
         <p>
           Runtime and compute billing are paused after funding became insufficient. The pause
@@ -84,6 +95,12 @@ export function FundingRuntime({ order }: { order: SpotFundingOrder }) {
             : order.retention === 'pending'
               ? 'Data retention has not been confirmed yet. Verification is pending; contact support before assuming your data is preserved.'
               : 'Data retention information is unavailable. Contact support to check whether your data can be restored.'}
+        </p>
+      ) : null}
+      {order.retentionExpiresAt ? (
+        <p className="form-note">
+          Data retention ends {stampUtc(order.retentionExpiresAt)}. Retained data is deleted after
+          this deadline.
         </p>
       ) : null}
     </div>

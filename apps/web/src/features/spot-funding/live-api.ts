@@ -29,6 +29,13 @@ export const liveSpotFundingApi = {
         { signal },
       )
       .then((value) => SpotFundingOrderDetailSchema.parse(value)),
+  instance: (api: ApiClient, instanceId: string, cursor = '', signal?: AbortSignal) =>
+    api
+      .get(
+        `/api/instances/${encodeURIComponent(instanceId)}/funding${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+        { signal },
+      )
+      .then((value) => SpotFundingOrderDetailSchema.parse(value)),
   quote: (api: ApiClient, body: z.input<typeof FloatingSpotQuoteRequest>) =>
     api
       .post('/api/billing/spot-quotes', FloatingSpotQuoteRequest.parse(body))
