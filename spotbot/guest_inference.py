@@ -22,6 +22,28 @@ REPOS = {
     "deepseek-r1-distill-70b": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "deepseek-r1-671b": "deepseek-ai/DeepSeek-R1",
 }
+# Conservative single-host admission policy for 8192 context / one sequence at 85% VRAM.
+# These are platform operating floors, not universal minimums for every quantization.
+HARDWARE = {
+    "deepseek-r1-distill-7b": dict(vram_gb=24, host_gib=16, vcpus=4, tp=[1, 2, 4], cc=[7, 5]),
+    "deepseek-r1-distill-70b": dict(vram_gb=192, host_gib=64, vcpus=8, tp=[1, 2, 4, 8], cc=[8, 0]),
+    "deepseek-r1-671b": dict(vram_gb=1120, host_gib=512, vcpus=32, tp=[8], cc=[9, 0]),
+}
+
+
+def runtime_probe(cfg):
+    policy = HARDWARE[cfg["preset_id"]]
+    return "\n".join(
+        [
+            "import torch",
+            "assert torch.cuda.is_available(), 'CUDA unavailable'",
+            f"assert torch.cuda.device_count() == {cfg['tensor_parallel']}, 'GPU count mismatch'",
+            f"assert sum(torch.cuda.get_device_properties(i).total_memory for i in range(torch.cuda.device_count())) >= {policy['vram_gb']} * 1e9 * 0.98, 'Insufficient GPU memory'",
+            f"assert all(torch.cuda.get_device_capability(i) >= {tuple(policy['cc'])!r} for i in range(torch.cuda.device_count())), 'Unsupported GPU compute capability'",
+        ]
+    )
+
+
 DOWNLOAD = """import fnmatch,json,os,sys
 from huggingface_hub import HfApi,hf_hub_download
 repo,revision=sys.argv[1:]
@@ -254,6 +276,13 @@ def run(directory):
             or not os.path.ismount("/data/sdf")
         ):
             raise RuntimeError("runtime_unavailable")
+        policy = HARDWARE[cfg["preset_id"]]
+        physical_memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+        if (
+            physical_memory < policy["host_gib"] * 2**30 * 0.90
+            or (os.cpu_count() or 0) < policy["vcpus"]
+        ):
+            raise RuntimeError("runtime_unavailable")
         ip = str(ipaddress.ip_address(spec["server_ip"]))
         model_dir = MODELS / cfg["preset_id"] / cfg["revision"]
         model_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -279,10 +308,10 @@ def run(directory):
                 "--gpus",
                 "all",
                 "--entrypoint",
-                "python",
+                "python3",
                 cfg["image"],
                 "-c",
-                "import torch; assert torch.cuda.is_available()",
+                runtime_probe(cfg),
             ]
         )
         phase = "download_failed"
@@ -297,7 +326,7 @@ def run(directory):
                 "--mount",
                 f"type=bind,src={model_dir},dst=/models",
                 "--entrypoint",
-                "python",
+                "python3",
                 cfg["image"],
                 "-c",
                 DOWNLOAD,

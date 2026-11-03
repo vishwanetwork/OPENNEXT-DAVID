@@ -40,11 +40,57 @@ precision/quantization, compatible GPU architectures, parallelism, context limit
 concurrency limit, health route, and expected artifact/storage requirements. Do not
 use an unpinned `latest` image or silently substitute a smaller/quantized model.
 
-Before payment, validate actual per-device VRAM, card count, interconnect, driver
-and engine compatibility, and disk space. Weight memory alone is insufficient:
+Before payment, validate provider-reported per-device VRAM, physical card count,
+system RAM, vCPUs, CPU architecture and the model disk allocation. Restrict enabled
+GPU/runtime combinations to operator-validated pins; public instance metadata does
+not prove the installed driver's version or interconnect performance. Check actual
+CUDA availability, per-device memory, GPU count and compute capability on the
+allocated server before loading, then require a real generated token before readiness.
+Weight memory alone is insufficient:
 runtime workspaces, activations and KV cache need headroom. MoE activated parameter
 count does not represent the full weight residency requirement. Estimates must be
 confirmed with the exact preset/hardware combination before marking it supported.
+
+### Hardware admission policy (researched 2026-11-03)
+
+The following are conservative **platform operating floors**, not vendor guarantees
+or universal model minimums. They assume one host, 8,192 context tokens, one sequence,
+85% GPU memory utilization, no CPU offloading, and the stated precision. Longer
+contexts, more concurrent requests and quantized checkpoints require separate profiles.
+
+| Preset | Precision | Total nominal VRAM | System RAM | vCPUs | Supported GPU counts | Model disk |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1 Distill Qwen 7B | FP16 | 24 GB | 16 GiB | 4 | 1, 2, 4 | 100 GiB |
+| R1 Distill Llama 70B | BF16 | 192 GB | 64 GiB | 8 | 1, 2, 4, 8 | 250 GiB |
+| Full R1 671B | Native FP8 | 1,120 GB | 512 GiB | 32 | 8 | 1,024 GiB |
+
+All profiles require the managed x86_64 Linux runtime and at least a 100 GiB root
+volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (70B BF16), and
+9.0 (the managed 671B FP8 recipe). These checks do not replace the validated GPU
+allowlist, correct driver/container pairing, fast interconnect evaluation, or a
+paid hardware acceptance run. API-reported L4 22,888 MiB is treated as marketed
+24 GB, consistent with rental admission; the guest checks reported bytes with 2%
+driver-reservation tolerance. The guest allows 10% system-RAM reservation for firmware
+and the OS; the provider-reported instance size must still meet the full RAM floor.
+
+The official artifact manifests inspected on that date contain approximately
+15.23 GB, 141.11 GB and 688.59 GB of safetensor weights respectively. Loading the
+70B BF16 weights alone already exceeds 85% of 2 x 80 GB, so that layout is rejected.
+Examples meeting the memory floor include 1 x L4 for 7B, 2 x H200 or 4 x H100 for
+70B, and 8 x H200 or 8 x B300 for 671B. They remain unavailable until the specific
+GPU/runtime combination is enabled after validation. A 16 GB T4 is not eligible
+for the single-GPU 7B FP16 profile; a separate 4-bit preset could have different rules.
+
+Source basis: the [DeepSeek model card](https://huggingface.co/deepseek-ai/DeepSeek-R1)
+distinguishes the full 671B MoE weights from the distilled checkpoints; activated
+parameters do not reduce the need to load the full checkpoint. The
+[vLLM R1 recipe](https://recipes.vllm.ai/deepseek-ai/DeepSeek-R1) lists 8 x H200 for
+native FP8. The [vLLM scaling guide](https://docs.vllm.ai/en/stable/serving/parallelism_scaling/)
+explains KV-cache capacity and parallel layouts, and its
+[GPU installation guide](https://docs.vllm.ai/en/stable/getting_started/installation/gpu/)
+documents compute capability and CUDA/runtime compatibility. RAM/vCPU floors and
+the 192 GB safety margin are our conservative operating policy derived from these
+constraints, rather than an official claim that every larger server will work.
 
 Size a dedicated encrypted model volume from the pinned artifact manifest plus
 download/cache headroom. The existing 100 GiB checkout root disk is not an adequate
@@ -225,6 +271,10 @@ when runtime decompression exceeds the medium instance's memory headroom. The
 same single-instance and 90-minute limits apply. Pull/download heartbeats include
 bounded command output, free root space and model byte progress; transient status
 delivery and controller connection errors are retried within the existing deadlines.
+`--instance-type c7i.xlarge` is an explicitly allowed four-vCPU non-burst alternative;
+it does not send T-series credit settings and retains the same runtime bound.
+The pinned official container exposes `python3`, so both CPU downloads and guest
+CUDA probes use that interpreter rather than assuming a `python` alias exists.
 Progress uses a dedicated private, encrypted S3 bucket with public access blocked.
 The guest receives only a two-hour PUT capability for its own build-status object;
 it receives no cloud-management role or access keys. Temporary status objects expire

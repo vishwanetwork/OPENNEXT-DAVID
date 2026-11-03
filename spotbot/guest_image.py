@@ -185,7 +185,7 @@ def run(config):
                 "--mount",
                 f"type=bind,src={model_dir},dst=/models",
                 "--entrypoint",
-                "python",
+                "python3",
                 config["image"],
                 "-c",
                 config["download"],

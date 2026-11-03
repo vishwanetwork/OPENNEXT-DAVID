@@ -5,6 +5,35 @@ from types import SimpleNamespace
 from spotbot import guest_inference as guest
 
 
+def test_real_gpu_probe_rejects_wrong_memory_count_and_compute_capability(monkeypatch):
+    import sys
+
+    import pytest
+
+    cuda = SimpleNamespace(
+        is_available=lambda: True,
+        device_count=lambda: 1,
+        get_device_properties=lambda i: SimpleNamespace(total_memory=24 * 10**9),
+        get_device_capability=lambda i: (8, 9),
+    )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=cuda))
+    cfg = dict(preset_id="deepseek-r1-distill-7b", tensor_parallel=1)
+    exec(guest.runtime_probe(cfg), {})
+    for update, message in [
+        (dict(device_count=lambda: 2), "GPU count mismatch"),
+        (
+            dict(get_device_properties=lambda i: SimpleNamespace(total_memory=16 * 10**9)),
+            "Insufficient GPU memory",
+        ),
+        (dict(get_device_capability=lambda i: (7, 0)), "Unsupported GPU compute capability"),
+    ]:
+        with monkeypatch.context() as patch:
+            for key, value in update.items():
+                patch.setattr(cuda, key, value)
+            with pytest.raises(AssertionError, match=message):
+                exec(guest.runtime_probe(cfg), {})
+
+
 def test_paid_extension_updates_expiry_watcher_and_runtime_without_restarting(
     tmp_path, monkeypatch
 ):

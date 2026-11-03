@@ -37,7 +37,9 @@ def test_preset_pins_and_memory_are_required_before_admission():
     s = configured()
     spec = selection(s, NAME, "B300", 1, 288)
     assert spec.disk_gib == 250 and spec.tensor_parallel == 1
-    assert selection(s, NAME, "H100", 2, 80).tensor_parallel == 2
+    assert selection(s, NAME, "H100", 4, 80).tensor_parallel == 4
+    with pytest.raises(ValueError, match="insufficient_vram"):
+        selection(s, NAME, "H100", 2, 80)
     with pytest.raises(ValueError, match="insufficient_vram"):
         selection(s, NAME, "H100", 1, 80)
     with pytest.raises(ValueError, match="gpu_not_validated"):
@@ -68,12 +70,24 @@ def test_small_test_model_is_available_only_on_validated_hardware_with_headroom(
     assert selection(s, "deepseek-r1-distill-7b", "L4", 1, 24).disk_gib == 100
     with pytest.raises(ValueError, match="insufficient_vram"):
         selection(s, "deepseek-r1-distill-7b", "T4", 1, 16)
-    with pytest.raises(ValueError, match="unsupported_inference_parallelism"):
+    with pytest.raises(ValueError, match="unsupported_gpu_layout"):
         selection(s, "deepseek-r1-distill-7b", "L4", 8, 24)
 
 
-@pytest.mark.parametrize("model,mib,enabled", [("L4", 22888, True), ("T4", 16384, False)])
-def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(model, mib, enabled):
+@pytest.mark.parametrize(
+    "model,mib,ram,cpu,arch,kind,reason",
+    [
+        ("L4", 22888, 16, 4, "x86_64", "physical", None),
+        ("T4", 16384, 16, 4, "x86_64", "physical", "inference_insufficient_vram"),
+        ("L4", 22888, 8, 4, "x86_64", "physical", "inference_insufficient_host_memory"),
+        ("L4", 22888, 16, 2, "x86_64", "physical", "inference_insufficient_vcpus"),
+        ("L4", 22888, 16, 4, "arm64", "physical", "inference_architecture_not_supported"),
+        ("L4", 22888, 16, 4, "x86_64", "logical", "inference_whole_gpu_required"),
+    ],
+)
+def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(
+    model, mib, ram, cpu, arch, kind, reason
+):
     from types import SimpleNamespace
 
     from fastapi import FastAPI
@@ -88,10 +102,16 @@ def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(model, mib,
     )
     offer = SimpleNamespace(
         provider="aws",
+        memory_gb=ram,
+        vcpus=cpu,
         region="us-west-2",
         gpu_model=model,
         gpu_count=1,
-        details={"gpu_specifications": [{"MemoryInfo": {"SizeInMiB": mib}}]},
+        details={
+            "gpu_specifications": [{"Manufacturer": "NVIDIA", "MemoryInfo": {"SizeInMiB": mib}}],
+            "gpu_count_kind": kind,
+            "architecture": arch,
+        },
     )
     provider = SimpleNamespace(
         settings=settings, public_offer=lambda *args, **kwargs: {"can_attempt": True}
@@ -105,13 +125,35 @@ def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(model, mib,
     install(app, service, [])
     with TestClient(app) as client:
         values = client.get("/v1/inference/presets", params={"offer_id": "offer"}).json()["presets"]
-        assert next(v for v in values if v["id"] == name)["enabled"] is enabled
+        preset = next(v for v in values if v["id"] == name)
+        assert preset["enabled"] is (reason is None)
+        assert preset["reason"] == reason
+        assert preset["requirements"]["minimumHostMemoryGiB"] == 16
         result = client.post(
             "/v1/inference/selection", json={"offer_id": "offer", "preset_id": name}
         )
-        assert result.status_code == (200 if enabled else 409)
-        if not enabled:
-            assert result.json()["detail"] == "inference_insufficient_vram"
+        assert result.status_code == (200 if reason is None else 409)
+        if reason:
+            assert result.json()["detail"] == reason
+
+
+def test_large_model_admission_reserves_runtime_headroom_and_keeps_precision_separate():
+    s = configured()
+    s.spotbot_inference_presets = json.dumps(
+        {
+            "deepseek-r1-distill-70b": dict(PINS, validated_gpu_models=["H100", "H200", "B300"]),
+            "deepseek-r1-671b": dict(PINS, validated_gpu_models=["H100", "H200", "B300"]),
+        }
+    )
+    assert selection(s, NAME, "H200", 2, 141).tensor_parallel == 2
+    assert selection(s, NAME, "B300", 1, 288).tensor_parallel == 1
+    with pytest.raises(ValueError, match="insufficient_vram"):
+        selection(s, NAME, "H100", 2, 80)
+    assert selection(s, "deepseek-r1-671b", "H200", 8, 141).tensor_parallel == 8
+    with pytest.raises(ValueError, match="insufficient_vram"):
+        selection(s, "deepseek-r1-671b", "H100", 8, 80)
+    with pytest.raises(ValueError, match="unsupported_gpu_layout"):
+        selection(s, "deepseek-r1-671b", "B300", 16, 288)
 
 
 def test_storage_quote_does_not_increase_the_native_gpu_bid():
@@ -167,9 +209,29 @@ def model_env(rental_env, monkeypatch):
     env.engine.sealer = Sealer(s.spotbot_rental_task_key.get_secret_value())
     env.request = env.request.model_copy(deep=True)
     env.request.rfq.inference = selection(s, NAME, "H100", 1, 80)
+    env.request.rfq.min_memory_gib = 64
+    env.request.rfq.min_vcpus = 8
+    env.request.rfq.root_volume_gib = 100
     env.request.rfq.http_port = 8000
     env.request.rfq.data_disks = [DiskRule(device="/dev/sdf", size_gib=250)]
     return env
+
+
+@pytest.mark.parametrize(
+    "field,value,reason",
+    [
+        ("min_memory_gib", 16, "insufficient_host_memory"),
+        ("min_vcpus", 4, "insufficient_vcpus"),
+        ("root_volume_gib", 50, "root_volume_too_small"),
+        ("architecture", "arm64", "architecture_not_supported"),
+    ],
+)
+def test_direct_rfq_cannot_bypass_model_host_requirements(model_env, field, value, reason):
+    env = model_env
+    setattr(env.request.rfq, field, value)
+    with pytest.raises(ValueError, match=reason):
+        env.engine.create(env.request, "tenant-a", "invalid-model-machine")
+    assert not env.cloud.creates
 
 
 async def test_machine_delivery_and_customer_task_do_not_wait_for_model(model_env):

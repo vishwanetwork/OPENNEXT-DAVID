@@ -8,7 +8,7 @@ from pathlib import Path
 from spotbot.guest_inference import DOWNLOAD
 from spotbot.inference import PRESETS
 
-CPU_TYPES = {"t3.medium", "t3.large"}
+CPU_TYPES = {"t3.medium", "t3.large", "c7i.xlarge"}
 
 
 def labels(state):
@@ -92,13 +92,12 @@ def launch_request(state, source):
     credits = state.get("cpu_credits", "standard")
     if credits not in {"standard", "unlimited"}:
         raise ValueError("invalid_cpu_credit_mode")
-    return dict(
+    request = dict(
         ImageId=state["base_image"],
         InstanceType=state["instance_type"],
         MinCount=1,
         MaxCount=1,
         ClientToken=state["build_id"],
-        CreditSpecification={"CpuCredits": credits},
         InstanceInitiatedShutdownBehavior="stop",
         MetadataOptions={
             "HttpTokens": "required",
@@ -136,6 +135,9 @@ def launch_request(state, source):
         ],
         UserData=user_data(state),
     )
+    if state["instance_type"].startswith("t3."):
+        request["CreditSpecification"] = {"CpuCredits": credits}
+    return request
 
 
 def prepared(output, state):

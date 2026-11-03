@@ -74,6 +74,8 @@ def test_build_request_is_bounded_cpu_only_and_all_disks_are_encrypted_ephemeral
     assert (
         launch_request(dict(state, instance_type="t3.large"), source)["InstanceType"] == "t3.large"
     )
+    compute = launch_request(dict(state, instance_type="c7i.xlarge"), source)
+    assert compute["InstanceType"] == "c7i.xlarge" and "CreditSpecification" not in compute
 
 
 def test_customer_images_and_other_accounts_can_never_be_used_as_shared_bases():

@@ -3,7 +3,7 @@
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from spotbot.inference import PRESETS, catalog, selection
+from spotbot.inference import PRESETS, catalog, requirements, selection, validate_host
 from spotbot.rental_models import nominal_gpu_gb
 
 
@@ -15,6 +15,8 @@ class SelectionRequest(BaseModel):
 
 def install(app, service, auth):
     def resolved(offer_id, preset_id):
+        if preset_id not in PRESETS:
+            raise ValueError("inference_preset_not_enabled")
         offer = service.store.get_offer(offer_id)
         if not offer or offer.provider != "aws":
             raise ValueError("inference_offer_unavailable")
@@ -29,6 +31,11 @@ def install(app, service, auth):
             if provider is None:
                 raise ValueError("aws_account_not_enrolled")
         specs = offer.details.get("gpu_specifications") or []
+        if offer.details.get("gpu_count_kind") != "physical":
+            raise ValueError("inference_whole_gpu_required")
+        if not specs or any(g.get("Manufacturer") != "NVIDIA" for g in specs):
+            raise ValueError("inference_gpu_vendor_not_supported")
+        validate_host(preset_id, offer.memory_gb, offer.vcpus, offer.details.get("architecture"))
         memory = min((g.get("MemoryInfo", {}).get("SizeInMiB", 0) for g in specs), default=0)
         spec = selection(
             provider.settings,
@@ -54,6 +61,7 @@ def install(app, service, auth):
                 billingStart="gpu_delivery",
                 enabled=False,
                 reason=None,
+                requirements=requirements(name),
             )
             try:
                 resolved(offer_id, name)

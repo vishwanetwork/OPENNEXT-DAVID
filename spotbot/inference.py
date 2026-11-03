@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from spotbot.guest_inference import HARDWARE
 from spotbot.models import gpu_model, timestamp
 
 PRESETS = {
@@ -26,7 +27,7 @@ PRESETS = {
         repo="deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
         precision="bfloat16",
         disk_gib=250,
-        minimum_vram_gb=160,
+        minimum_vram_gb=192,
         minimum_gpus=1,
         estimated_minutes=60,
     ),
@@ -35,7 +36,7 @@ PRESETS = {
         repo="deepseek-ai/DeepSeek-R1",
         precision="fp8",
         disk_gib=1024,
-        minimum_vram_gb=900,
+        minimum_vram_gb=1120,
         minimum_gpus=8,
         estimated_minutes=180,
     ),
@@ -82,11 +83,7 @@ class InferenceSpec(BaseModel):
     @model_validator(mode="after")
     def supported_layout(self):
         preset = PRESETS[self.preset_id]
-        if (
-            self.tensor_parallel & (self.tensor_parallel - 1)
-            or self.tensor_parallel < preset["minimum_gpus"]
-            or (self.preset_id == "deepseek-r1-distill-7b" and self.tensor_parallel > 4)
-        ):
+        if self.tensor_parallel not in HARDWARE[self.preset_id]["tp"]:
             raise ValueError("unsupported_inference_parallelism")
         if self.disk_gib < preset["disk_gib"]:
             raise ValueError("inference_disk_too_small")
@@ -148,6 +145,8 @@ def selection(settings, preset_id, model, count, memory_gb):
         or Decimal(str(memory_gb)) * count < preset["minimum_vram_gb"]
     ):
         raise ValueError("inference_insufficient_vram")
+    if count not in HARDWARE[preset_id]["tp"]:
+        raise ValueError("inference_unsupported_gpu_layout")
     return InferenceSpec(
         preset_id=preset_id,
         revision=pins.revision,
@@ -167,10 +166,39 @@ def validate_rfq(settings, rules):
     )
     if spec != expected:
         raise ValueError("inference_preset_changed")
+    validate_host(spec.preset_id, rules.min_memory_gib, rules.min_vcpus, rules.architecture)
+    if rules.root_volume_gib < 100:
+        raise ValueError("inference_root_volume_too_small")
     if rules.http_port != 8000 or rules.http_health_path != "/health":
         raise ValueError("inference_requires_managed_http")
     if not any(d.device == "/dev/sdf" and d.size_gib >= spec.disk_gib for d in rules.data_disks):
         raise ValueError("inference_model_volume_missing")
+
+
+def requirements(preset_id):
+    policy = HARDWARE[preset_id]
+    return dict(
+        minimumTotalVramGB=PRESETS[preset_id]["minimum_vram_gb"],
+        minimumHostMemoryGiB=policy["host_gib"],
+        minimumVcpus=policy["vcpus"],
+        modelDiskGiB=PRESETS[preset_id]["disk_gib"],
+        rootDiskGiB=100,
+        tensorParallelSizes=policy["tp"],
+        minimumComputeCapability=".".join(map(str, policy["cc"])),
+        architecture="x86_64",
+        maxModelLen=8192,
+        maxNumSeqs=1,
+    )
+
+
+def validate_host(preset_id, memory_gib, vcpus, architecture):
+    policy = HARDWARE[preset_id]
+    if architecture != "x86_64":
+        raise ValueError("inference_architecture_not_supported")
+    if memory_gib < policy["host_gib"]:
+        raise ValueError("inference_insufficient_host_memory")
+    if vcpus < policy["vcpus"]:
+        raise ValueError("inference_insufficient_vcpus")
 
 
 def priced(offer, spec, storage_rate, *, initial_images=None):
