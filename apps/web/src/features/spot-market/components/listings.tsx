@@ -3,6 +3,7 @@
 import { LucideIcon } from '@/components/icons';
 import { formatSpec, usd, type SpotRow } from '../inventory';
 import { GpuThumbnail } from './gpu-thumbnail';
+import { QuotaAvailability } from './quota-availability';
 
 export interface RowActions {
   onBuy: (row: SpotRow) => void;
@@ -29,6 +30,7 @@ export function ActionButton({ row, actions }: { row: SpotRow; actions: RowActio
       type="button"
       className={`onx-spot-action ${buy ? 'is-buy' : 'is-quote'}`}
       {...data}
+      disabled={buy && row.quota?.maxInstances === 0}
       aria-label={`${label}: ${row.model}, ${row.country}`}
       onClick={() => (buy ? actions.onBuy(row) : actions.onQuote(row))}
     >
@@ -71,7 +73,11 @@ export function TableView({ rows, actions }: { rows: SpotRow[]; actions: RowActi
                     {row.model}
                   </strong>
                 </td>
-                <td className="onx-spot-number">{row.gpuCount} GPUs</td>
+                <td className="onx-spot-number">
+                  <span>{row.gpuCount} GPUs</span> / instance
+                  <br />
+                  <QuotaAvailability row={row} />
+                </td>
                 <td>
                   <PriceCell row={row} />
                 </td>
@@ -112,6 +118,8 @@ export function CardView({ rows, actions }: { rows: SpotRow[]; actions: RowActio
                     {row.model}
                   </h2>
                   <span>{row.gpuCount} GPUs</span>
+                  <small>per instance</small>
+                  <QuotaAvailability row={row} />
                 </div>
                 <p>
                   <LucideIcon name="map-pin" />

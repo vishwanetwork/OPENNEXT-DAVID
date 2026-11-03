@@ -3,6 +3,8 @@
  * Pure port of the data half of OpenNEXT-spot-market-preview.js.
  */
 
+import { CapacityQuota } from '@opennext/contracts';
+
 export const PAGE_SIZE = 12;
 export const TERMS = ['Spot', 'On-demand', 'Reserved'] as const;
 export type MarketTerm = (typeof TERMS)[number];
@@ -70,6 +72,7 @@ const FIXTURE_EPOCH = Date.parse('2026-10-23T12:00:00Z');
 export type SourceKind = 'agent' | 'preview' | 'fixture';
 
 export interface SpotRow {
+  quota?: CapacityQuota | null;
   _key: string;
   id: string;
   model: string;
@@ -167,6 +170,7 @@ export function normalizeRow(row: unknown, index: number, sourceKind: SourceKind
     provider: String(r.provider || 'Supplier to confirm'),
     previewOnly: sourceKind !== 'agent' || r.previewOnly === true,
     sourceKind,
+    quota: CapacityQuota.safeParse(r.quota).success ? CapacityQuota.parse(r.quota) : null,
   };
 }
 

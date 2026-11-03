@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { heroIsAnimated, heroTimeline } from '../lib/hero-timeline';
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const subscribeReduced = (notify: () => void) => {
   const media = matchMedia('(prefers-reduced-motion: reduce)');
@@ -24,10 +25,12 @@ export function useChoreography(
   setScrolled: (v: boolean) => void,
   setActiveProduct: (v: number) => void,
   setHeroCollapsed: (v: boolean) => void,
+  setPartnersHidden: (v: boolean) => void,
 ) {
   useEffect(() => {
     const root = document.querySelector<HTMLElement>('.opennext-landing');
     const hero = root?.querySelector<HTMLElement>('.hero-scroll');
+    const stage = root?.querySelector<HTMLElement>('.hero-stage');
     const partners = root?.querySelector<HTMLElement>('.hero-partners');
     const product = root?.querySelector<HTMLElement>('.product-story');
     const footer = root?.querySelector<HTMLElement>('.closing');
@@ -38,20 +41,20 @@ export function useChoreography(
       frame = 0;
       setScrolled(scrollY > 72);
       const rect = hero.getBoundingClientRect();
-      const partnersHeight = partners?.offsetHeight ?? 0;
-      const progress =
-        innerWidth > 900 && !reduce.matches
-          ? clamp(-rect.top / Math.max(1, rect.height - innerHeight))
-          : 0;
-      setHeroCollapsed(progress > 0.35);
-      hero.style.setProperty('--hero-progress', progress.toFixed(4));
-      hero.style.setProperty('--hero-copy-opacity', String(1 - clamp(progress / 0.36)));
-      hero.style.setProperty('--hero-copy-y', `${progress * -70}px`);
-      hero.style.setProperty('--morph-opacity', String(clamp((progress - 0.4) / 0.35)));
-      const partnersOpacity = clamp((progress - 0.7) / 0.25);
-      hero.style.setProperty('--hero-partners-space', `${partnersHeight}px`);
-      hero.style.setProperty('--partners-opacity', String(partnersOpacity));
-      hero.style.setProperty('--partners-visibility', partnersOpacity > 0 ? 'visible' : 'hidden');
+      const animated = heroIsAnimated(innerWidth, innerHeight, reduce.matches);
+      const progress = animated
+        ? clamp(-rect.top / Math.max(1, rect.height - (stage?.offsetHeight ?? innerHeight)))
+        : 0;
+      const timeline = heroTimeline(progress);
+      setHeroCollapsed(animated && timeline.copyHidden);
+      setPartnersHidden(animated && timeline.partnersHidden);
+      hero.style.setProperty('--hero-progress', timeline.morph.toFixed(4));
+      hero.style.setProperty('--hero-copy-opacity', String(timeline.copyOpacity));
+      hero.style.setProperty('--hero-copy-y', `${timeline.copyY}px`);
+      hero.style.setProperty('--morph-opacity', String(timeline.morphOpacity));
+      hero.style.setProperty('--partners-progress', String(timeline.partners));
+      hero.style.setProperty('--partners-visibility', timeline.partners > 0 ? 'visible' : 'hidden');
+      hero.style.setProperty('--partners-height', `${partners?.offsetHeight ?? 0}px`);
       let closest = 0,
         distance = Infinity;
       root.querySelectorAll('[data-product-step]').forEach((el, index) => {
@@ -78,6 +81,8 @@ export function useChoreography(
     addEventListener('scroll', schedule, { passive: true });
     addEventListener('resize', schedule);
     reduce.addEventListener('change', schedule);
+    const resizeObserver = new ResizeObserver(schedule);
+    if (partners) resizeObserver.observe(partners);
     schedule();
     const observer = new IntersectionObserver(
       (entries) =>
@@ -96,6 +101,7 @@ export function useChoreography(
       reduce.removeEventListener('change', schedule);
       cancelAnimationFrame(frame);
       observer.disconnect();
+      resizeObserver.disconnect();
     };
-  }, [setScrolled, setActiveProduct, setHeroCollapsed]);
+  }, [setScrolled, setActiveProduct, setHeroCollapsed, setPartnersHidden]);
 }

@@ -5,6 +5,7 @@
  * freeze, demo/preview rows never purchasable) can be unit-tested without a DOM.
  */
 import type { CreditBalanceResult, PurchaseResult } from '@/terminal-kit';
+import { InferenceQuote } from '@opennext/contracts';
 import type { BankTransferRequest } from '@/lib/buyer-kyb';
 import { round, usd, type SpotRow } from './inventory';
 
@@ -77,6 +78,8 @@ export const signature = (row: SpotRow) =>
 export type CheckoutStage = 'review' | 'payment' | 'confirm' | 'topup' | 'completed';
 
 export interface CheckoutDraft {
+  inferenceQuote?: InferenceQuote;
+  inferenceBillingAcknowledged?: boolean;
   owner: string;
   key: string;
   row: SpotRow;
@@ -100,6 +103,8 @@ export interface CheckoutDraft {
 export type { CreditBalanceResult, PurchaseResult };
 
 export interface PurchaseInput {
+  inferencePresetId?: string | null;
+  inferenceBillingAcknowledged?: boolean;
   pricingVersion: 'duration-v1';
   offerId: string;
   durationHours: number;
@@ -114,6 +119,7 @@ export interface PurchaseInput {
  * with no added service fee, check funds and apply idempotency. No client ledger changes.
  */
 export interface SpotCheckoutService {
+  inferenceQuote?: (offerId: string, presetId: string, hours: number) => Promise<InferenceQuote>;
   getCreditBalance?: () => Promise<CreditBalanceResult | null | undefined>;
   beginPurchase?: (input: PurchaseInput) => Promise<PurchaseResult | null | undefined>;
   /** Fallback balance refresh through the verified billing account (legacy exchange). */
@@ -195,6 +201,8 @@ export class SpotCheckout {
           idempotencyKey: draft.idempotencyKey,
           paymentSubmitted: !!draft.paymentSubmitted,
           createdAt: draft.createdAt,
+          inferenceQuote: draft.inferenceQuote,
+          inferenceBillingAcknowledged: draft.inferenceBillingAcknowledged,
         }),
       );
     } catch {
@@ -248,6 +256,10 @@ export class SpotCheckout {
         message: '',
         busy: false,
         error: '',
+        inferenceQuote: InferenceQuote.safeParse(stored.inferenceQuote).success
+          ? InferenceQuote.parse(stored.inferenceQuote)
+          : undefined,
+        inferenceBillingAcknowledged: stored.inferenceBillingAcknowledged === true,
       };
     } catch {
       this.clearStored();
@@ -266,6 +278,10 @@ export class SpotCheckout {
   }
 
   beginCheckout(row: SpotRow) {
+    if (row.quota?.maxInstances === 0)
+      return this.deps.toast(
+        'No quota is currently available for this server. Choose another offer.',
+      );
     if (!this.deps.owner() || this.deps.role() !== 'buyer')
       return this.deps.toast('Sign in to a Buyer account before purchasing capacity.');
     if (this.pending()?.paymentSubmitted)
@@ -307,6 +323,8 @@ export class SpotCheckout {
         'The offer changed while payment confirmation is pending. Check your order status before trying again.',
       );
     if (signature(row) !== signature(draft.row)) {
+      draft.inferenceQuote = undefined;
+      draft.inferenceBillingAcknowledged = false;
       draft.row = { ...row };
       draft.key = row._key;
       draft.reviewRequired = true;
@@ -317,7 +335,7 @@ export class SpotCheckout {
       this.deps.open('spot-review');
       throw new Error(draft.message);
     }
-    return row;
+    return pricedRow(draft, row);
   }
 
   availableCredit(): number | null {
@@ -328,7 +346,7 @@ export class SpotCheckout {
     const balance = this.availableCredit();
     return (
       balance !== null &&
-      Math.round(balance * 100) < checkoutTotals(draft.row, draft.hoursRaw).totalCents
+      Math.round(balance * 100) < checkoutTotals(pricedRow(draft), draft.hoursRaw).totalCents
     );
   }
 
@@ -340,7 +358,7 @@ export class SpotCheckout {
 
   setHoursRaw(value: string) {
     const draft = this.pending();
-    if (!draft) return;
+    if (!draft || draft.busy) return;
     draft.hoursRaw = value;
     draft.error = '';
     this.notify();
@@ -350,6 +368,38 @@ export class SpotCheckout {
     if (!draft) return;
     draft.sshRaw = value;
     this.notify();
+  }
+
+  acknowledgeInference(value: boolean) {
+    const draft = this.pending();
+    if (!draft || draft.busy) return;
+    draft.inferenceBillingAcknowledged = value;
+    this.notify();
+  }
+
+  async selectInference(presetId: string) {
+    const draft = this.pending();
+    if (!draft || draft.busy || draft.paymentSubmitted || draft.stage !== 'review') return;
+    draft.busy = true;
+    draft.error = '';
+    this.notify();
+    try {
+      const service = this.deps.service();
+      const quote = presetId
+        ? await service.inferenceQuote?.(draft.row.id, presetId, durationHours(draft.hoursRaw))
+        : undefined;
+      if (this.pending() !== draft) return;
+      if (presetId && (!quote || quote.inferencePresetId !== presetId))
+        throw new Error('The model quote could not be confirmed.');
+      draft.inferenceQuote = quote;
+      draft.inferenceBillingAcknowledged = false;
+      draft.idempotencyKey = this.deps.uuid();
+    } catch (error) {
+      if (this.pending() === draft) this.showError((error as Error).message);
+    } finally {
+      draft.busy = false;
+      this.notify();
+    }
   }
 
   private async refreshCredit(): Promise<number> {
@@ -528,6 +578,12 @@ export class SpotCheckout {
         expectedPricing,
         sshPublicKey: ssh || null,
         idempotencyKey: draft.idempotencyKey,
+        ...(draft.inferenceQuote
+          ? {
+              inferencePresetId: draft.inferenceQuote.inferencePresetId,
+              inferenceBillingAcknowledged: draft.inferenceBillingAcknowledged === true,
+            }
+          : {}),
       });
       if (this.deps.owner() !== draft.owner || this.pending() !== draft) return;
       if (
@@ -594,6 +650,12 @@ export class SpotCheckout {
         sshPublicKey: draft.sshPublicKey || null,
         purchaseReference: this.purchaseReference() || undefined,
         idempotencyKey: draft.idempotencyKey,
+        ...(draft.inferenceQuote
+          ? {
+              inferencePresetId: draft.inferenceQuote.inferencePresetId,
+              inferenceBillingAcknowledged: draft.inferenceBillingAcknowledged === true,
+            }
+          : {}),
       });
       if (!started && this.pending() === draft)
         throw new Error(
@@ -686,8 +748,10 @@ export class SpotCheckout {
           'Payment confirmation is pending. Check your order status before changing this purchase.',
         );
       const hours = durationHours(data.durationHours);
+      if (draft.inferenceQuote && !draft.inferenceBillingAcknowledged)
+        throw new Error('Confirm that model preparation uses paid GPU time.');
       const reviewedSignature = signature(this.liveRow());
-      checkoutTotals(draft.row, hours);
+      checkoutTotals(pricedRow(draft), hours);
       draft.hoursRaw = String(data.durationHours);
       const ssh = await this.deps.validateSsh(data.sshPublicKey);
       if (this.pending() !== draft) return null;
@@ -723,6 +787,13 @@ export class SpotCheckout {
       this.notify();
     }
   }
+}
+
+export function pricedRow(draft: CheckoutDraft, row = draft.row): SpotRow {
+  const cents = draft.inferenceQuote?.pricing.hourlyCents;
+  return cents
+    ? { ...row, instanceHourly: cents / 100, perGpuHourly: cents / 100 / row.gpuCount }
+    : row;
 }
 
 /** Markup helper data for the totals block (legacy `totalsMarkup`). */

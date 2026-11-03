@@ -6,6 +6,7 @@ import { usd } from '../inventory';
 import { useSpotCheckout } from '../hooks';
 import { ErrorLine, Notice, Summary, Unavailable } from './checkout-summary';
 import { AsyncFeedback } from '@/components/ui/async-feedback';
+import { ModelOptions } from './model-options';
 
 export function ReviewBody() {
   const checkout = useSpotCheckout();
@@ -33,6 +34,7 @@ export function ReviewBody() {
         onHours={(value) => checkout.setHoursRaw(value)}
       />
       <Notice draft={draft} />
+      <ModelOptions />
       <label className="form-label">
         SSH Public Key <span className="muted">(optional)</span>
         <textarea

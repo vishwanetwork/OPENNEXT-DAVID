@@ -282,3 +282,24 @@ Formatting, lint, typecheck and production build passed. The web suite passed
 existing max-lines warnings with no errors. Changes are limited to the landing
 intro, partner component, scroll choreography and partner styles; authentication,
 API contracts, backend, routing and deployment configuration are unchanged.
+
+## PR #19 merge-conflict resolution — 2026-11-03
+
+Integrated main at `36ac077`, including the original OpenNEXT branding and the
+model-inference checkout changes. The landing retains main's shared timeline,
+content-height observation, short-viewport fallback and inert controls. The
+endorsement reveal now occupies the final 70–95% of the image morph, preserving
+this PR's late-reveal intent. Initial and reversed states hide the endorsement
+strip through both CSS visibility and inert, and mobile/reduced-motion layouts
+keep the strip in normal document flow. No API, authentication, backend or
+production-routing changes were introduced relative to main.
+
+Validation passed: formatting, lint (zero errors and the three existing size
+warnings), typecheck, 504 web tests, 10 contract tests, 668 legacy API tests and
+the production build. Browser assertions passed at 1280×720 and 1024×768 for
+initial, middle, late and final phases and reverse scrolling. They also passed
+at 1440×600 (the existing 620px minimum hero and normal-flow fallback), 390×844,
+320×740, and 1280×720 with reduced motion actually emulated. All five endorsement
+images loaded, the final caption and strip did not overlap, there was no horizontal
+overflow, and the Vishwa link accepted focus only while active. Local captures
+are stored under the ignored `output/playwright/` directory.

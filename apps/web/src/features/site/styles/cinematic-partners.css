@@ -1,13 +1,11 @@
-.opennext-landing .hero-scroll {
-  --hero-partners-space: 144px;
-  --partners-opacity: 0;
-  --partners-visibility: hidden;
+.opennext-landing .hero-stage {
+  display: block;
 }
 
 .opennext-landing .hero-visual {
   position: relative;
-  height: calc(100% - var(--hero-progress) * var(--hero-partners-space));
   min-height: 0;
+  height: calc(100% - var(--partners-height) * var(--partners-progress));
   isolation: isolate;
 }
 
@@ -15,15 +13,16 @@
   position: absolute;
   inset: auto 0 0;
   background: #fff;
-  opacity: var(--partners-opacity);
-  visibility: var(--partners-visibility);
-  transform: translateY(calc((1 - var(--partners-opacity)) * 16px));
+  opacity: var(--partners-progress);
+  visibility: var(--partners-visibility, hidden);
+  transform: translateY(calc((1 - var(--partners-progress)) * 100%));
   scroll-margin-top: 100px;
+  will-change: transform, opacity;
 }
 
 .opennext-landing .partner-network {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr) minmax(175px, 0.85fr);
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr) minmax(160px, 0.85fr);
   gap: 26px;
   padding-block: 24px;
 }
@@ -44,19 +43,19 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 48px;
+  height: 44px;
   margin-top: 12px;
 }
 
 .opennext-landing .partner-identity img {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   object-fit: contain;
 }
 
 .opennext-landing .partner-identity span {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
   letter-spacing: -0.04em;
 }
@@ -83,28 +82,30 @@
 .opennext-landing .program-logo {
   display: flex;
   align-items: center;
-  height: 36px;
+  width: 160px;
+  max-width: 100%;
+  height: 44px;
 }
 
 .opennext-landing .program-logo img {
   width: auto;
   height: auto;
-  max-width: min(100%, 142px);
-  max-height: 30px;
+  max-width: 100%;
+  max-height: 36px;
   object-fit: contain;
   filter: grayscale(1);
 }
 
 .opennext-landing .program-logo-anthropic img {
-  width: 142px;
+  width: 160px;
 }
 
 .opennext-landing .program-logo-plug-and-play img {
-  width: 108px;
+  width: 130px;
 }
 
 .opennext-landing .program-logo-circle img {
-  width: 110px;
+  width: 136px;
 }
 
 .opennext-landing .program-logos p {
@@ -117,7 +118,7 @@
 .opennext-landing .powered-by-link {
   display: inline-flex;
   align-items: center;
-  min-height: 48px;
+  height: 44px;
   margin-top: 12px;
   border-radius: 4px;
   transition: opacity 180ms ease;
@@ -128,7 +129,7 @@
 }
 
 .opennext-landing .powered-by-link img {
-  width: 122px;
+  width: 138px;
   max-width: 100%;
   height: auto;
   filter: brightness(0);
@@ -149,6 +150,16 @@
   }
 }
 
+@media (min-width: 901px) and (min-height: 650px) and (prefers-reduced-motion: no-preference) {
+  /* The shared scroll timeline reveals the whole strip without timer-based lag. */
+  .opennext-landing .hero-partners [data-reveal],
+  .opennext-landing .hero-partners .program-logos > li {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 @media (min-width: 901px) and (max-width: 1200px) {
   .opennext-landing .partner-network {
     gap: 18px;
@@ -164,21 +175,23 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (max-height: 649px), (prefers-reduced-motion: reduce) {
   .opennext-landing .hero-scroll,
   .opennext-landing .hero-stage {
+    position: relative;
     height: auto;
     min-height: 0;
     max-height: none;
   }
 
   .opennext-landing .hero-stage {
+    display: block;
     overflow: visible;
   }
 
   .opennext-landing .hero-visual {
     height: 100svh;
-    min-height: 700px;
+    min-height: 620px;
     overflow: hidden;
   }
 
@@ -188,8 +201,11 @@
     opacity: 1;
     visibility: visible;
     transform: none;
+    will-change: auto;
   }
+}
 
+@media (max-width: 900px) {
   .opennext-landing .partner-network {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 24px;
@@ -270,11 +286,11 @@
   }
 
   .opennext-landing .program-logo-anthropic img {
-    width: 126px;
+    width: 144px;
   }
 
   .opennext-landing .program-logo-circle img {
-    width: 104px;
+    width: 124px;
   }
 
   .opennext-landing .program-logos p {
@@ -286,29 +302,5 @@
   .opennext-landing .primary-partner h3,
   .opennext-landing .powered-by h3 {
     min-height: 2.8em;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .opennext-landing .hero-scroll,
-  .opennext-landing .hero-stage {
-    height: auto;
-    min-height: 0;
-    max-height: none;
-    overflow: visible;
-  }
-
-  .opennext-landing .hero-visual {
-    height: 100svh;
-    min-height: 700px;
-    overflow: hidden;
-  }
-
-  .opennext-landing .hero-partners {
-    position: relative;
-    inset: auto;
-    opacity: 1;
-    visibility: visible;
-    transform: none;
   }
 }

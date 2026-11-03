@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useApp } from '@/components/providers/app-context';
 import { CONSOLE_LOGO_PATH, ConsoleIcon as Icon } from '@/components/icons';
 import { CONSOLE_PAGES, REQUEST_PAGES, SIDEBAR_PAGES } from '../pages';
@@ -23,7 +24,14 @@ export function Sidebar({ page }: { page: string }) {
           <path d={CONSOLE_LOGO_PATH} />
         </svg>
         <div>
-          <strong>OpenNEXT</strong>
+          <Image
+            className="console-brand-lockup"
+            src="/terminal-design/opennext-logo-navy.svg"
+            alt="OpenNEXT"
+            width={260}
+            height={52}
+            unoptimized
+          />
           <span>OPERATIONS CONSOLE</span>
         </div>
       </Link>
