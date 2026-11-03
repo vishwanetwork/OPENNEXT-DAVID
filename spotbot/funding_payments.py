@@ -8,6 +8,7 @@ from spotbot.funding_ledger import doc
 from spotbot.funding_store import atomic
 from spotbot.models import timestamp, utcnow
 from spotbot.opennext_ops import PENDING, OperationError, email, footer, intent_view, notice
+from spotbot.rentals import at
 
 
 async def create_transfer(service, order, amount, key):
@@ -60,7 +61,8 @@ async def decide(service, transfer_id, body, operator):
         confirmed = decision == "Confirm"
         over_limit = (order["funded_cents"] + order["storage_funded_cents"] + row["amount_cents"]
                       > order["agreement"]["max_total_cents"])
-        credit_back = confirmed and (order["runtime_state"] == "ended" or over_limit)
+        credit_back = confirmed and (order["runtime_state"] == "ended" or over_limit
+                                     or at(row["expires_at"]) <= utcnow())
         receipt = dict(
             confirmed=True, currency="USD", pricingVersion="order-total-v1", caseId=transfer_id,
             accountId=row["account"], revision=row["revision"] + 1, idempotencyKey=key,
@@ -71,7 +73,8 @@ async def decide(service, transfer_id, body, operator):
         )
         subject = "Spot funding confirmed" if confirmed else "Payment could not be confirmed"
         message = (
-            "Your confirmed payment was added to Credit because this order ended or reached its budget limit."
+            "Your confirmed payment was added to Credit because the order ended, its payment "
+            "reference expired, or its budget limit was reached."
             if credit_back else "Your Spot funding is confirmed. The Agent will acquire or restore your "
             "instance automatically. Watch Instances for readiness and add your SSH public key there."
             if confirmed else f"Your payment could not be confirmed. Reason: {reason}. Please check and retry."

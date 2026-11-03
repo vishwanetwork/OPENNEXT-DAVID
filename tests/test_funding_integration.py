@@ -116,6 +116,22 @@ async def test_failure_reason_and_late_confirmed_money_goes_to_credit_once(float
     assert await service.ops.credits("U1") == quote["initialPaymentCents"]
 
 
+async def test_expired_bank_reference_cannot_restart_an_order(floating):
+    _, fakes, service, worker = floating
+    result, quote = await purchase(floating, "Direct Pay")
+    transfer_id = result["transfer"]["id"]
+    transfer = await service.ops.get_transfer(transfer_id)
+    transfer["expires_at"] = (utcnow() - timedelta(seconds=1)).isoformat()
+    await service.ops._save(transfer)
+    body = dict(accountId="U1", expectedRevision=1, decision="Confirm", fundsVerified=True,
+                idempotencyKey="confirm-expired", caseId=transfer_id)
+    receipt = await service.ops.decide_payment(transfer_id, body, "operator")
+    assert receipt["creditAmountCents"] == quote["initialPaymentCents"]
+    await worker.tick()
+    assert not fakes.created
+    assert await service.ops.credits("U1") == quote["initialPaymentCents"]
+
+
 async def test_effective_rates_pause_and_restore_without_new_payment_path(floating, monkeypatch):
     _, fakes, service, worker = floating
     result, _ = await purchase(floating)
