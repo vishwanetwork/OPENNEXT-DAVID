@@ -6,6 +6,7 @@
 import type { Instance } from '@opennext/contracts';
 import type { BankTransferService, BuyerKybService } from '@/lib/buyer-kyb';
 import type { InstanceUsageService } from '@/lib/instance-usage';
+import type { SpotFundingService } from '@/lib/spot-funding';
 
 export interface AccountService {
   listSshKeys?: () => Promise<{ keys: unknown[] }>;
@@ -71,6 +72,8 @@ export interface TerminalServices {
   account?: AccountService;
   instanceLifecycle?: InstanceLifecycleAdapter;
   instanceUsage?: InstanceUsageService;
+  /** Read-only floating-price views; never use this port to debit or resume an instance. */
+  spotFunding?: SpotFundingService;
   spotCheckout?: SpotCheckoutService;
   purchaseContext?: PurchaseContext;
 }

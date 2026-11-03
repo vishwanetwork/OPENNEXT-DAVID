@@ -70,6 +70,7 @@ function useTerminalSlotsComposition(openContact: TerminalSlots['openContact']):
       // termination and usage, Buyer KYB and bank transfers. Spot purchases use the Spot
       // market feature's own endpoint unless a `spotCheckout` service is injected here.
       services: {
+        // spotFunding remains undefined until the hourly settlement backend contract is approved.
         purchaseContext,
         account,
         instanceLifecycle,

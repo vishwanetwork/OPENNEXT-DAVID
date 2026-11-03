@@ -21,12 +21,19 @@ export const moneyOrNa = (v: unknown): string =>
     : 'Not available';
 
 export interface Lifecycle {
-  label: 'End' | 'Reconnecting' | 'Running' | 'Waiting for capacity' | 'Awaiting status';
+  label:
+    | 'End'
+    | 'Reconnecting'
+    | 'Running'
+    | 'Waiting for capacity'
+    | 'Paused — insufficient funds'
+    | 'Awaiting status';
   ended: boolean;
   connecting: boolean;
   running: boolean;
   /** A paid Spot order that has no server yet. */
   waiting?: boolean;
+  paused?: boolean;
 }
 
 const ENDED = [

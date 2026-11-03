@@ -2,6 +2,7 @@
 
 import { type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
+import { SpotFundingPanel } from '@/features/spot-funding';
 import { downloadText, useBalance, useTerminal } from '@/terminal-kit';
 import { useBillingData } from '../hooks';
 import { analytics, csv, dateKey, exportRows, metrics, num, usd } from '../analytics';
@@ -101,6 +102,7 @@ export function BillingPage() {
           </section>
         )}
       </div>
+      {r === 'buyer' ? <SpotFundingPanel /> : null}
       <div className="bill-controls">
         <form data-form="bill-filter" className="bill-date-filter" onSubmit={applyFilter}>
           <label>
