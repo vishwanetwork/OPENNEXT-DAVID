@@ -2,6 +2,7 @@
 
 import { ModalFrame, type ModalComponent, type ModalComponents } from '@/terminal-kit';
 import { BuyerKybGate } from '@/features/buyer-kyb';
+import { AgreementModal } from './agreement-modal';
 import {
   CompleteBody,
   CreditConfirmBody,
@@ -53,6 +54,7 @@ const CompleteModal: ModalComponent<'spot-purchase-complete'> = ({ close }) => (
 export const spotCheckoutModals: ModalComponents = {
   'spot-review': ReviewModal,
   'spot-payment-choice': PaymentChoiceModal,
+  'spot-agreement': AgreementModal,
   'spot-credit-confirm': CreditConfirmModal,
   'spot-purchase-complete': CompleteModal,
 };

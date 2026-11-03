@@ -1,5 +1,27 @@
 # API contract (what the front-end expects from the backend)
 
+## Spot agreement and Cashout capability handoff (2026-11-02)
+
+The new agreement and Cashout frontends are **not connected to production endpoints**.
+See [Spot agreement and Cashout handoff](SPOT_AGREEMENT_CASHOUT_HANDOFF.md) for the
+typed ports, enforcement requirements and activation blockers. No wire contract
+was changed. Agreement enforcement is **disabled by default**. The composition
+root does not install `spotAgreement`, `cashout`, or `spotAgreementRequired: true`;
+existing Credit, Direct Pay, model selection and floating funding remain active.
+Only explicit `spotAgreementRequired: true` enables signed checkout. In that mode,
+new fixed Spot checkout requires an executed, order-bound agreement and cannot
+fall back to an unsigned payment adapter. Signed model/floating checkout remains
+blocked until its protocol is approved and implemented. Cashout cannot submit,
+settle Credit or report a completed payout without the corresponding verified
+backend capability. Existing orders retain their original frozen policies.
+
+New agreement version `opennext-spot-runtime-v2` uses cumulative available runtime:
+timing starts automatically once an instance is provisioned and ready, even before
+SSH/workload use; idle available time counts. Interruptions pause runtime and billing,
+and replacements resume the remaining hours. There is no fixed first-ready calendar
+deadline. The backend must implement this accounting before enabling the capability;
+this frontend change does not modify existing metering or historical order policies.
+
 ## Floating Spot funding adapter (2026-11-03)
 
 The shared `spot-funding` schemas describe the Python adapter's new
@@ -196,8 +218,12 @@ failures leave the purchase pending for a retry. The order then appears in
 **Credit.** With SpotOrderBot in front, `GET /api/billing/account` returns the account's Credit
 less its open Spot charges (promotional Credit first) and lists them in `spotCharges`
 (`orderId`, `totalCents`, `state`, `createdAt`). A charge is refunded in full when the order was
-refused, never created, or ended before the server was handed over. Ending a delivered instance
-early is not refunded; the duration is prepaid.
+refused, never created, or ended before the server was handed over. The original prepaid
+adapter did not refund early release after delivery; historical prepaid orders retain their
+saved policy. New usage-hold records distinguish the agreed order limit from the final ledger
+charge (see **Order history and Credit payment records** below). Do not apply the historical
+prepaid rule to new usage holds. The proposed agreement's cumulative-runtime and unused-Credit
+settlement policy requires backend activation as described in the handoff above.
 
 **Spot instance actions** (SpotOrderBot; 404 for instances it does not manage):
 

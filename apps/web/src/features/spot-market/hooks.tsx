@@ -14,7 +14,6 @@ import { create } from 'zustand';
 import type { BillingAccount } from '@opennext/contracts';
 import { useApi } from '@/components/providers/api-context';
 import { useToast } from '@/components/ui/toast';
-import type { ApiClient } from '@/lib/api/client';
 import { queryKeys } from '@/lib/api/query-keys';
 import { useSessionStore } from '@/lib/session-store';
 import {
@@ -44,6 +43,7 @@ import {
 } from './inventory';
 import { SpotCheckout } from './checkout';
 import { spotMarketApi } from './api';
+import { purchaseWithAgreement, transferWithAgreement } from './agreement-payment';
 import { useSpotMarketStore } from './store';
 
 export { usePublicMarket };
@@ -82,6 +82,7 @@ interface EngineContextValue {
 const EngineContext = createContext<EngineContextValue | null>(null);
 
 interface LatestDeps {
+  api: ReturnType<typeof useApi>;
   openModal: ReturnType<typeof useTerminal>['openModal'];
   closeModal: () => void;
   go: (route: string) => void;
@@ -93,7 +94,6 @@ interface LatestDeps {
   role: ReturnType<typeof useWorkspaceStore.getState>['role'];
   identity: string;
   refreshBilling: ReturnType<typeof useRefreshBillingAccount>;
-  api: ApiClient;
   invalidateWorkspace: ReturnType<typeof useInvalidateWorkspace>;
   verifyKyb: () => Promise<boolean>;
   beginBankTransfer: ReturnType<typeof useStartBankTransfer>['start'];
@@ -136,25 +136,37 @@ function buildEngine(client: QueryClient): SpotCheckout {
       );
     },
     inventory: () => useSpotEngineStore.getState().inventory,
-    // Purchases go to the backend's Spot purchase endpoint unless the host injects a service.
+    // Agreement enforcement is opt-in until the production backend is connected.
     service: () => ({
       inferenceQuote: (offerId, presetId, hours) =>
         spotMarketApi.inferenceQuote(deps().api, offerId, presetId, hours),
       refreshBillingAccount: () => deps().refreshBilling(),
+      ...deps().services.spotCheckout,
       beginPurchase: async (input) => {
         let result;
         try {
-          result = await spotMarketApi.purchase(deps().api, input);
+          result =
+            deps().services.spotAgreementRequired === true
+              ? await purchaseWithAgreement(deps().services.spotAgreement, input)
+              : await (deps().services.spotCheckout?.beginPurchase?.(input) ??
+                  spotMarketApi.purchase(deps().api, input));
         } finally {
           void client.invalidateQueries({ queryKey: queryKeys.marketplace.public });
         }
         void deps().invalidateWorkspace();
         return result;
       },
-      ...deps().services.spotCheckout,
     }),
+    agreementRequired: () => deps().services.spotAgreementRequired === true,
     verifyKyb: () => deps().verifyKyb(),
-    beginBankTransfer: (input) => deps().beginBankTransfer(input),
+    beginBankTransfer: (input, agreement) => {
+      if (deps().services.spotAgreementRequired !== true) return deps().beginBankTransfer(input);
+      if (!agreement)
+        throw new Error('Agreement-linked bank transfer requires an executed agreement.');
+      return deps().beginBankTransfer(input, (request) =>
+        transferWithAgreement(deps().services.spotAgreement, agreement, request),
+      );
+    },
     validateSsh: async (value) => {
       const text = String(value || '').trim();
       if (!text) return '';
@@ -190,6 +202,7 @@ const setInventory = (rows: SpotRow[]) => useSpotEngineStore.setState({ inventor
 export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
   const { openModal, closeModal, go } = useTerminal();
   const toast = useToast();
+  const api = useApi();
   const demo = useIsDemo();
   const { services } = useTerminalSlots();
   const balance = useBalance();
@@ -197,12 +210,12 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
   const role = useWorkspaceStore((s) => s.role);
   const identity = useAccountIdentity();
   const refreshBilling = useRefreshBillingAccount();
-  const api = useApi();
   const invalidateWorkspace = useInvalidateWorkspace();
   const { refreshApproved: verifyKyb } = useBuyerKyb();
   const bankTransfer = useStartBankTransfer();
   const client = useQueryClient();
   const snapshot: LatestDeps = {
+    api,
     openModal,
     closeModal,
     go,
@@ -214,7 +227,6 @@ export function SpotCheckoutProvider({ children }: { children: ReactNode }) {
     role,
     identity,
     refreshBilling,
-    api,
     invalidateWorkspace,
     verifyKyb,
     beginBankTransfer: bankTransfer.start,

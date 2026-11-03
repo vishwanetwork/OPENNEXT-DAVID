@@ -87,11 +87,12 @@ describe('operations pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(screen.getByText('16.00 USD / hour')).toBeInTheDocument();
   });
-  it('groups the four request queues in the requested order', () => {
+  it('groups customer request queues with cashouts next to top-ups', () => {
     renderConsole(<RequestsPage />);
     expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
       '/admin/payments',
       '/admin/topups',
+      '/admin/cashouts',
       '/admin/leads',
       '/admin/kyb',
     ]);

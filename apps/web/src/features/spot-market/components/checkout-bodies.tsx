@@ -99,6 +99,12 @@ export function PaymentChoiceBody() {
         </button>
       </div>
     );
+  if ((capability.enabled || draft.floatingAcceptance) && checkout.requiresAgreement())
+    return (
+      <div role="alert">
+        Agreement-linked floating checkout is not connected yet. No payment was submitted.
+      </div>
+    );
   if (capability.enabled || draft.floatingAcceptance)
     return (
       <FloatingCheckout

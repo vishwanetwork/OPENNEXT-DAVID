@@ -29,6 +29,9 @@ export const queryKeys = {
       ['account', 'matches', identity, model, region] as const,
     billing: (identity: string) => ['account', 'billing', identity] as const,
     buyerKyb: (identity: string) => ['account', 'buyer-kyb', identity] as const,
+    cashout: (identity: string) => ['account', 'cashout', identity] as const,
+    spotAgreement: (identity: string, context: string, kybRevision: number) =>
+      ['account', 'spot-agreement', identity, context, kybRevision] as const,
     instanceUsage: (identity: string, id: string) =>
       ['account', 'instance-usage', identity, id] as const,
     spotFunding: (identity: string, scope: string) =>

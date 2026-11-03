@@ -11,6 +11,7 @@ const REQUESTS = [
     'Top-up Requests',
     'Review deposits and approve Credit only after receipt is verified.',
   ],
+  ['cashouts', 'Cashout Requests', 'Review verified company bank details and completed payouts.'],
   ['leads', 'Contact Requests', 'Follow up website enquiries and record the response.'],
   ['kyb', 'KYB Review Requests', 'Review company information and due diligence.'],
 ] as const;

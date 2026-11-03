@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBuyerKyb } from '@/features/buyer-kyb';
 import { describeError } from '@/lib/api/errors';
 import { queryKeys } from '@/lib/api/query-keys';
-import type { BankTransferRequest } from '@/lib/buyer-kyb';
+import type { BankTransferRequest, BankTransferService } from '@/lib/buyer-kyb';
 import { useSessionStore } from '@/lib/session-store';
 import { accountIdentity, useTerminal, useTerminalSlots } from '@/terminal-kit';
 import {
@@ -52,7 +52,10 @@ export function useStartBankTransfer() {
   const update = (busy: boolean, error = '') =>
     setState({ identity: context.kyb.identity, busy, error });
 
-  const start = async (request: BankTransferRequest) => {
+  const start = async (
+    request: BankTransferRequest,
+    authorizedCreate?: BankTransferService['create'],
+  ) => {
     if (lock.current) return false;
     if (!context.connected || !context.service) {
       update(false, 'Bank transfers are not connected yet. No payment request has been submitted.');
@@ -65,7 +68,7 @@ export function useStartBankTransfer() {
       const input = transferRequestSchema.parse(request);
       if (!(await context.kyb.refreshApproved()) || !active())
         throw new Error('Approved business verification is required before payment.');
-      const response = await context.service.create(input);
+      const response = await (authorizedCreate ?? context.service.create)(input);
       if (!active()) return false;
       const intent = confirmedTransferIntent(response, context.kyb.accountId, input);
       if (!intent)

@@ -1,0 +1,59 @@
+.cashout-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.cashout-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.cashout-summary strong {
+  font-size: 24px;
+}
+.cashout-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.cashout-field-grid label,
+.cashout-amount {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.cashout-amount {
+  max-width: 260px;
+}
+.cashout-field-grid input[readonly] {
+  background: var(--soft);
+}
+.cashout-consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.cashout-consent input {
+  margin-top: 3px;
+}
+.cashout-form fieldset:disabled {
+  opacity: 0.65;
+}
+.cashout-history {
+  margin-top: 20px;
+}
+.cashout-history .form-note {
+  margin: 16px;
+}
+@media (max-width: 640px) {
+  .cashout-field-grid {
+    grid-template-columns: 1fr;
+  }
+}

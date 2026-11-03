@@ -2,6 +2,7 @@
 
 import { type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
+import { CashoutHistory } from '@/features/cashout';
 import { SpotFundingPanel } from '@/features/spot-funding';
 import { downloadText, useBalance, useTerminal } from '@/terminal-kit';
 import { useBillingData } from '../hooks';
@@ -53,6 +54,11 @@ export function BillingPage() {
           {r !== 'seller' ? (
             <Btn act="pay-start" primary onClick={() => openModal('pay-start')}>
               Add credit
+            </Btn>
+          ) : null}
+          {r === 'buyer' ? (
+            <Btn act="buyer-cashout" onClick={() => openModal('buyer-cashout')}>
+              Cashout
             </Btn>
           ) : null}
           {r !== 'buyer' ? (
@@ -132,6 +138,7 @@ export function BillingPage() {
       <DailyTable billing={billing} a={a} onExport={onExport} />
       <Activity billing={billing} onExport={onExport} />
       <Payouts billing={billing} />
+      {r === 'buyer' ? <CashoutHistory /> : null}
     </div>
   );
 }

@@ -22,11 +22,14 @@ describe('Billing page', () => {
     expect(screen.getByRole('heading', { name: 'Billing & usage' })).toBeInTheDocument();
     expect(screen.getByText('$100.00', { selector: '.bill-wallet strong' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add credit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cashout' })).toBeInTheDocument();
     expect(screen.getByText('No spent history yet')).toBeInTheDocument();
     expect(screen.getByText('No posted activity in this period')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Preview example analytics' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add credit' }));
     expect(useWorkspaceStore.getState().modal?.type).toBe('pay-start');
+    fireEvent.click(screen.getByRole('button', { name: 'Cashout' }));
+    expect(useWorkspaceStore.getState().modal?.type).toBe('buyer-cashout');
   });
   it('ignores an old saved example toggle and reports account records only', () => {
     useBillingUi.setState({ sample: true });
