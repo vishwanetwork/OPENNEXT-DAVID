@@ -61,6 +61,10 @@ def delivery_view(row, principal, engine=None):
     if engine and row["rfq"].get("inference"):
         from spotbot.inference import gateway_view
 
+        # The gateway must recognize a managed inference rental before the engine is
+        # ready. Otherwise it probes the plain HTTP port before acknowledging delivery,
+        # while inference itself correctly waits for that acknowledgement to start.
+        result["rfq"]["inference"] = {"preset_id": row["rfq"]["inference"]["preset_id"]}
         selected = engine.for_row(row) if hasattr(engine, "for_row") else engine
         result["inference"] = gateway_view(row, engine.current(row), selected.sealer)
     return result

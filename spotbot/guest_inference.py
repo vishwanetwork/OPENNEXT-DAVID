@@ -116,9 +116,30 @@ def expire(directory):
 def step(spec):
     try:
         return reconcile(spec)
-    except Exception:
+    except Exception as exc:
+        failure("supervisor_reconcile", exc)
         # A service failure must not prevent SSH, backup or interruption heartbeats.
         return dict(version=spec["version"], state="failed", error="runtime_unavailable")
+
+
+def failure(stage, exc):
+    # Never log exception strings, command arguments or stderr: they can hold keys.
+    print(json.dumps(dict(event="inference_operation_failed", stage=stage,
+                          exception=type(exc).__name__,
+                          exit_code=getattr(exc, "returncode", None))), flush=True)
+
+
+def startup_log(directory, name, key):
+    """Preserve bounded engine diagnostics before removing an exited container."""
+    with suppress(OSError, subprocess.SubprocessError):
+        result = subprocess.run(
+            ["docker", "logs", "--tail", "40", name], capture_output=True, timeout=10
+        )
+        text = (result.stdout + result.stderr).decode(errors="replace").replace(key, "[redacted]")
+        path = directory / "engine-startup.log"
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(text[-8192:])
 
 
 def reconcile(spec):
@@ -237,8 +258,8 @@ def engine_args(spec, directory, model_dir, name):
         "/run/spotbot/key.pem",
         "--ssl-certfile",
         "/run/spotbot/cert.pem",
-        "--disable-log-requests",
-        "--disable-log-outputs",
+        "--no-enable-log-requests",
+        "--no-enable-log-outputs",
         "--disable-fastapi-docs",
         "--sse-keep-alive-interval",
         "15",
@@ -380,6 +401,13 @@ def run(directory):
         )
         tokens = 0
         while time.time() < deadline:
+            status = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Running}}", name],
+                capture_output=True,
+                timeout=10,
+            )
+            if status.returncode or status.stdout.strip() != b"true":
+                raise RuntimeError("model_start_failed")
             try:
                 request = urllib.request.Request(
                     "https://127.0.0.1:8000/v1/chat/completions",
@@ -415,9 +443,13 @@ def run(directory):
         update("stopped", error="lease_expired")
     except (KeyboardInterrupt, SystemExit):
         update("stopped", error="inference_stopped")
-    except (TimeoutError, subprocess.TimeoutExpired):
+    except (TimeoutError, subprocess.TimeoutExpired) as exc:
+        failure(phase, exc)
+        startup_log(directory, name, spec["backend_token"])
         update("failed", error="preparation_timeout")
-    except Exception:
+    except Exception as exc:
+        failure(phase, exc)
+        startup_log(directory, name, spec["backend_token"])
         update("failed", error=phase)
     finally:
         cleanup(name)
