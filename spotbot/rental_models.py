@@ -54,6 +54,11 @@ class DiskRule(RulesModel):
     size_gib: int = Field(ge=1, le=16384)
 
 
+def nominal_gpu_gb(mib):
+    """Use the same marketed per-GPU GB for catalog, inference and rental admission."""
+    return mib // 1024 if mib % 1024 == 0 else round(mib * 2**20 / 1e9)
+
+
 def gpu_memory_sufficient(mib, minimum):
     """Compare reported GPU memory (MiB, as clouds and drivers report it) with an RFQ minimum.
 

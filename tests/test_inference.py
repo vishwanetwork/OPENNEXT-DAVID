@@ -72,6 +72,48 @@ def test_small_test_model_is_available_only_on_validated_hardware_with_headroom(
         selection(s, "deepseek-r1-distill-7b", "L4", 8, 24)
 
 
+@pytest.mark.parametrize("model,mib,enabled", [("L4", 22888, True), ("T4", 16384, False)])
+def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(model, mib, enabled):
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from spotbot.inference_api import install
+
+    name = "deepseek-r1-distill-7b"
+    settings = configured()
+    settings.spotbot_inference_presets = json.dumps(
+        {name: dict(PINS, validated_gpu_models=["L4", "T4"])}
+    )
+    offer = SimpleNamespace(
+        provider="aws",
+        region="us-west-2",
+        gpu_model=model,
+        gpu_count=1,
+        details={"gpu_specifications": [{"MemoryInfo": {"SizeInMiB": mib}}]},
+    )
+    provider = SimpleNamespace(
+        settings=settings, public_offer=lambda *args, **kwargs: {"can_attempt": True}
+    )
+    service = SimpleNamespace(
+        store=SimpleNamespace(get_offer=lambda offer_id: offer),
+        providers={"aws": provider},
+        settings=settings,
+    )
+    app = FastAPI()
+    install(app, service, [])
+    with TestClient(app) as client:
+        values = client.get("/v1/inference/presets", params={"offer_id": "offer"}).json()["presets"]
+        assert next(v for v in values if v["id"] == name)["enabled"] is enabled
+        result = client.post(
+            "/v1/inference/selection", json={"offer_id": "offer", "preset_id": name}
+        )
+        assert result.status_code == (200 if enabled else 409)
+        if not enabled:
+            assert result.json()["detail"] == "inference_insufficient_vram"
+
+
 def test_storage_quote_does_not_increase_the_native_gpu_bid():
 
     from spotbot.opennext_market import Offer

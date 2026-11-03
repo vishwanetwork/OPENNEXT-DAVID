@@ -1,11 +1,10 @@
 """Read-only inference admission using the Bot's enrolled account and pinned catalog."""
 
-from decimal import Decimal
-
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from spotbot.inference import PRESETS, catalog, selection
+from spotbot.rental_models import nominal_gpu_gb
 
 
 class SelectionRequest(BaseModel):
@@ -36,7 +35,7 @@ def install(app, service, auth):
             preset_id,
             offer.gpu_model,
             offer.gpu_count,
-            Decimal(memory) * 1024 * 1024 / Decimal(10**9),
+            nominal_gpu_gb(memory),
         )
         images = catalog(provider.settings)[preset_id].initial_image_ids.get(name, {})
         return spec, {offer.region: images[offer.region]} if offer.region in images else {}

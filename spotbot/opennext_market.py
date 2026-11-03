@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 from spotbot.opennext_autopilot import summary_view
 from spotbot.opennext_pricing import snapshot
-from spotbot.rental_models import gpu_memory_sufficient, valid_public_key
+from spotbot.rental_models import gpu_memory_sufficient, nominal_gpu_gb, valid_public_key
 from spotbot.rentals import at, dump
 
 CACHE_SECONDS = 60
@@ -66,7 +66,7 @@ def checkout_totals(instance_hourly, hours, service_fee_bps=0):
 
 def nominal_gb(mib):
     """Marketed per-GPU memory: 16384 MiB is a 16 GB T4, 22888 MiB a 24 GB L4."""
-    return mib // 1024 if mib % 1024 == 0 else round(mib * 2**20 / 1e9)
+    return nominal_gpu_gb(mib)
 
 
 def offer_id(region, sku):
