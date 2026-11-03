@@ -565,6 +565,11 @@ queue; Credit rows never accept Confirm/Fail decisions. No balances or fee rules
 
 ### Dynamic Spot retail pricing
 
+The 2026-11-03 runtime floating-price proposal is separate from this existing catalog policy.
+See [floating Spot billing and funding alerts](SPOT_HOURLY_BILLING_HANDOFF.md). Its frontend
+read ports are not wired, no new endpoint is called, and accepted orders remain fixed until
+a versioned backend contract and renewed customer consent are implemented.
+
 `GET /api/admin/pricing/retail-policy` returns `version`, `defaultMarkupBps`, ordered `rules`,
 `changedBy`, `changedAt`, the last ten policy revisions, fixed `serviceFeeBps=0`, independent
 `procurementToleranceBps=2000`, and `scope=executable_spot_offers`. A rule has `id`, nullable

@@ -1,0 +1,169 @@
+.spot-funding-panel,
+.spot-funding-alerts {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px;
+  margin: 0 0 20px;
+  background: #fff;
+  color: var(--ink);
+}
+.spot-funding-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.spot-funding-heading h2,
+.spot-funding-heading h3,
+.spot-funding-alerts h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+}
+.spot-funding-heading h3,
+.spot-funding-alerts h3 {
+  font-size: 14px;
+}
+.spot-funding-heading p,
+.spot-funding-heading small,
+.spot-funding-heading > span,
+.spot-funding-asof {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.spot-funding-account,
+.spot-funding-order-summary {
+  padding: 18px 0;
+}
+.spot-order-billing {
+  margin-top: 16px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.spot-funding-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 15px 0;
+}
+.spot-funding-metric {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft);
+}
+.spot-funding-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.spot-funding-metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.spot-funding-note,
+.spot-funding-help p,
+.spot-funding-runtime p {
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.spot-funding-warning {
+  border-left: 3px solid #bc8b3d;
+  padding: 9px 13px;
+  background: #fff9ed;
+  color: #75521b;
+  border-radius: 3px;
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.spot-funding-warning p {
+  margin: 3px 0;
+}
+.spot-funding-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.spot-funding-heading .spot-funding-actions {
+  margin: 0;
+}
+.spot-funding-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.spot-funding-table-wrap table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.spot-funding-table-wrap th,
+.spot-funding-table-wrap td {
+  text-align: left;
+  vertical-align: top;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.spot-funding-table-wrap th {
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.spot-funding-table-wrap tr:last-child td {
+  border-bottom: 0;
+}
+.spot-funding-table-wrap td small {
+  display: block;
+  margin-top: 4px;
+  max-width: 270px;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.spot-hourly-ledger {
+  margin-top: 18px;
+}
+.spot-funding-runtime {
+  max-width: 500px;
+}
+.spot-funding-runtime[data-funding-runtime='paused_insufficient_funds'] .tag {
+  background: #fff1e8;
+  color: #9b4d29;
+}
+.spot-funding-alerts section {
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+}
+@media (max-width: 600px) {
+  .spot-funding-panel,
+  .spot-funding-alerts {
+    padding: 15px;
+  }
+  .spot-funding-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .spot-funding-metric {
+    padding: 10px;
+  }
+  .spot-funding-metric strong {
+    font-size: 15px;
+  }
+}

@@ -5,7 +5,6 @@ import { create } from 'zustand';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useInvalidateWorkspace, useTerminal, useTerminalSlots } from '@/terminal-kit';
-import { lifecycle } from '../lifecycle';
 import { endDemo, endExample, localDemo } from '../preview';
 import { IBtn } from './common';
 import { Cell, useInstance } from './instance-shared';
@@ -55,7 +54,7 @@ export function EndDialog({ id, isExample }: { id?: string; isExample: boolean }
     ending.add(key);
     setBusy(true);
     try {
-      if (lifecycle(i).ended) throw new Error('This instance has already ended.');
+      if (life.ended) throw new Error('This instance has already ended.');
       if (local) {
         if (isExample) endExample(scope);
         else endDemo(scope, i.id);

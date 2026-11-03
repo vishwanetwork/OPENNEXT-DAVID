@@ -15,7 +15,7 @@ import { InstanceAutopilot } from './instance-autopilot';
 import { InstanceInference } from './instance-inference';
 import { Access, Connect, Manage, Resell } from './instance-dialogs';
 import { UsageDialog } from './usage-dialogs';
-import { lifecycle } from '../lifecycle';
+import { useInstance } from './instance-shared';
 import { instanceTitle, purchasedHours } from '../usage';
 
 declare module '@/terminal-kit/modal' {
@@ -57,6 +57,7 @@ type InstanceModalType =
 function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; close: () => void }) {
   const instances = useWorkspaceData().instances as Instance[];
   const id = 'id' in modal ? modal.id : undefined;
+  const { life } = useInstance(id, false);
   const name = () => {
     const i = instances.find((row) => row.id === id);
     return i ? instanceTitle(i, purchasedHours(i, [])) : 'Instance unavailable';
@@ -126,18 +127,16 @@ function InstanceModal({ modal, close }: { modal: ModalOf<InstanceModalType>; cl
         </ModalFrame>
       );
     case 'instance-autopilot': {
-      const row = instances.find((r) => r.id === modal.id);
       return (
         <ModalFrame title="Autopilot" wide close={close}>
-          <InstanceAutopilot id={modal.id} ended={row ? lifecycle(row).ended : true} />
+          <InstanceAutopilot id={modal.id} ended={life.ended} />
         </ModalFrame>
       );
     }
     case 'instance-inference': {
-      const row = instances.find((r) => r.id === modal.id);
       return (
         <ModalFrame title="Model inference" wide close={close}>
-          <InstanceInference id={modal.id} ended={row ? lifecycle(row).ended : true} />
+          <InstanceInference id={modal.id} ended={life.ended} />
         </ModalFrame>
       );
     }

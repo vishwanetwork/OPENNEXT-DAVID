@@ -35,6 +35,15 @@ export function useRefreshInstance(id?: string) {
         { queryKey: queryKeys.account.billing(identity), exact: true },
         { throwOnError: true },
       ),
+      client.invalidateQueries(
+        {
+          predicate: ({ queryKey }) =>
+            queryKey[0] === 'account' &&
+            queryKey[2] === identity &&
+            ['spot-funding', 'spot-funding-order'].includes(String(queryKey[1])),
+        },
+        { throwOnError: true },
+      ),
       ...(id
         ? [
             client.invalidateQueries(
