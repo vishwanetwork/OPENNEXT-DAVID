@@ -73,6 +73,7 @@ class ExecutionPolicy(Strict):
 
 class ExecutionGrant(Strict):
     idempotency_key: str = Field(min_length=1, max_length=150)
+    expected_revision: StrictInt = Field(ge=0)
     expires_at: AwareDatetime
     action: Literal["continue", "pause", "resume"]
 

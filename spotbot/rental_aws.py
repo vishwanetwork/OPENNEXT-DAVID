@@ -57,13 +57,16 @@ def initial_disk_layout_allowed(image, rules, *, strict_sizes=False):
     )
 
 
-def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", public_key=None):
+def bootstrap(base_url, rental_id, generation, token, *, ssh_user="ubuntu", public_key=None,
+              execution_expires_at=None):
     source = json.dumps({
         'agent.py': Path(__file__).with_name('guest_agent.py').read_text(),
         'spotbot_inference.py': Path(__file__).with_name('guest_inference.py').read_text(),
+        'spotbot_lease.py': Path(__file__).with_name('guest_lease.py').read_text(),
     }).encode()
     config = json.dumps(
-        dict(url=base_url.rstrip("/"), rental_id=rental_id, generation=generation, token=token)
+        dict(url=base_url.rstrip("/"), rental_id=rental_id, generation=generation, token=token,
+             execution_expires_at=execution_expires_at)
     ).encode()
     return "\n".join(
         [
@@ -347,6 +350,11 @@ class AWSRecovery:
                 mapping["Ebs"]["KmsKeyId"] = keys[device]
             mappings.append(mapping)
         await self.preflight(offer, rules, sweep)
+        if rules.funding:
+            from spotbot.rental_funding import permitted
+
+            if not permitted(rental):
+                raise ProviderError("funding_authorization_expired")
         if rules.expires_at <= utcnow() or (
             not rental.get("recovery_started_at") and rules.acquisition_deadline <= utcnow()
         ):
@@ -396,6 +404,7 @@ class AWSRecovery:
                 generation["agent_token"],
                 ssh_user=rules.ssh_user,
                 public_key=rules.ssh_public_key,
+                execution_expires_at=rental.get("funding_until"),
             ),
         )
         if rules.ssh_key_name:

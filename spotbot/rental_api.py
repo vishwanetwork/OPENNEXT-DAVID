@@ -300,6 +300,14 @@ def install(app, service):
     async def release(rental_id: str, owner: Annotated[str, Depends(tenant)]):
         return public(await async_guard(lambda: engine.release(rental_id, owner)))
 
+    from spotbot.funding_models import ExecutionGrant
+
+    @router.post("/{rental_id}/execution-grant")
+    async def execution_grant(
+        rental_id: str, request: ExecutionGrant, owner: Annotated[str, Depends(tenant)]
+    ):
+        return public(await async_guard(lambda: engine.execution_grant(rental_id, owner, request)))
+
     @router.post("/{rental_id}/recover")
     async def recover(
         rental_id: str, request: RecoveryRequest, owner: Annotated[str, Depends(tenant)]

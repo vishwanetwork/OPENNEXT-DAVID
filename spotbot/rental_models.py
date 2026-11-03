@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from spotbot.funding_models import ExecutionPolicy
 from spotbot.inference import InferenceReport, InferenceSpec
 from spotbot.models import gpu_model
 
@@ -127,6 +128,7 @@ class RFQ(RulesModel):
     http_health_path: str = Field("/health", pattern=r"^/[A-Za-z0-9/_-]*$")
     inference: InferenceSpec | None = None
     retail_hourly_cents: int | None = Field(None, gt=0)
+    funding: ExecutionPolicy | None = None
     require_gateway_ack: bool = True
 
     @field_validator("gpu_model")
