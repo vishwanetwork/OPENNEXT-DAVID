@@ -58,11 +58,18 @@ or universal model minimums. They assume one host, 8,192 context tokens, one seq
 85% GPU memory utilization, no CPU offloading, and the stated precision. Longer
 contexts, more concurrent requests and quantized checkpoints require separate profiles.
 
-| Preset | Precision | Total nominal VRAM | System RAM | vCPUs | Supported GPU counts | Model disk |
+| Preset | Precision | Total nominal VRAM | System RAM | vCPUs | GPUs used by model | Model disk |
 | --- | --- | --- | --- | --- | --- | --- |
 | R1 Distill Qwen 7B | FP16 | 24 GB | 16 GiB | 4 | 1, 2, 4 | 100 GiB |
 | R1 Distill Llama 70B | BF16 | 192 GB | 64 GiB | 8 | 1, 2, 4, 8 | 250 GiB |
 | Full R1 671B | Native FP8 | 1,120 GB | 512 GiB | 32 | 8 | 1,024 GiB |
+
+The planner chooses the smallest supported tensor-parallel size that fits within
+the physical server and meets the model memory floor. It exposes only that number
+of GPUs to the inference container. An 8-GPU server may therefore run 7B on one GPU
+or 70B on fewer than eight; the customer still rents the whole server, and other
+GPUs remain available through SSH. A larger machine is not rejected just because
+the model's attention-head layout cannot use every installed GPU at once.
 
 All profiles require the managed x86_64 Linux runtime and at least a 100 GiB root
 volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (70B BF16), and

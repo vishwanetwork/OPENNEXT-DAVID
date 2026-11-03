@@ -51,6 +51,7 @@ def install(app, ctx):
                     pricing=checkout_totals(offer.instance_hourly, body.durationHours),
                     modelStorageHourlyCents=offer.pricing.get("modelStorageHourlyCents", 0),
                     inferencePresetId=body.inferencePresetId,
+                    modelGpuCount=(offer.pricing.get("inference") or {}).get("tensor_parallel"),
                     billingStart="gpu_delivery",
                 )
             )

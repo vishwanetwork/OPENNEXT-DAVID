@@ -120,6 +120,7 @@ def test_backend_key_not_in_container_command_and_tls_required(tmp_path):
         backend_token="private-key",
     )
     args = guest.engine_args(spec, tmp_path, tmp_path / "models", "test")
+    assert args[args.index("--gpus") + 1] == "2"
     assert "private-key" not in " ".join(args)
     assert "--ssl-keyfile" in args and "--ssl-certfile" in args
     assert "--disable-log-requests" in args and "--cap-drop=ALL" in args

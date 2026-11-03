@@ -70,8 +70,8 @@ def test_small_test_model_is_available_only_on_validated_hardware_with_headroom(
     assert selection(s, "deepseek-r1-distill-7b", "L4", 1, 24).disk_gib == 100
     with pytest.raises(ValueError, match="insufficient_vram"):
         selection(s, "deepseek-r1-distill-7b", "T4", 1, 16)
-    with pytest.raises(ValueError, match="unsupported_gpu_layout"):
-        selection(s, "deepseek-r1-distill-7b", "L4", 8, 24)
+    assert selection(s, "deepseek-r1-distill-7b", "L4", 8, 24).tensor_parallel == 1
+    assert selection(s, "deepseek-r1-distill-7b", "T4", 2, 16).tensor_parallel == 2
 
 
 @pytest.mark.parametrize(
@@ -147,13 +147,14 @@ def test_large_model_admission_reserves_runtime_headroom_and_keeps_precision_sep
     )
     assert selection(s, NAME, "H200", 2, 141).tensor_parallel == 2
     assert selection(s, NAME, "B300", 1, 288).tensor_parallel == 1
+    assert selection(s, NAME, "B300", 8, 288).tensor_parallel == 1
+    assert selection(s, NAME, "H100", 8, 80).tensor_parallel == 4
     with pytest.raises(ValueError, match="insufficient_vram"):
         selection(s, NAME, "H100", 2, 80)
     assert selection(s, "deepseek-r1-671b", "H200", 8, 141).tensor_parallel == 8
     with pytest.raises(ValueError, match="insufficient_vram"):
         selection(s, "deepseek-r1-671b", "H100", 8, 80)
-    with pytest.raises(ValueError, match="unsupported_gpu_layout"):
-        selection(s, "deepseek-r1-671b", "B300", 16, 288)
+    assert selection(s, "deepseek-r1-671b", "B300", 16, 288).tensor_parallel == 8
 
 
 def test_storage_quote_does_not_increase_the_native_gpu_bid():
@@ -232,6 +233,19 @@ def test_direct_rfq_cannot_bypass_model_host_requirements(model_env, field, valu
     with pytest.raises(ValueError, match=reason):
         env.engine.create(env.request, "tenant-a", "invalid-model-machine")
     assert not env.cloud.creates
+
+
+def test_accepted_supported_gpu_plan_is_not_replaced_by_the_new_default(model_env, monkeypatch):
+    env = model_env
+    monkeypatch.setitem(PRESETS[NAME], "minimum_vram_gb", 192)
+    rules = env.request.rfq
+    rules.gpu_count = 8
+    rules.inference.tensor_parallel = 8
+    inference.validate_rfq(env.service.settings, rules)
+    assert rules.inference.tensor_parallel == 8
+    rules.gpu_count = 4
+    with pytest.raises(ValueError, match="inference_preset_changed"):
+        inference.validate_rfq(env.service.settings, rules)
 
 
 async def test_machine_delivery_and_customer_task_do_not_wait_for_model(model_env):

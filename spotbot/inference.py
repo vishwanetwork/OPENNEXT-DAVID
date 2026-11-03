@@ -146,13 +146,21 @@ def selection(settings, preset_id, model, count, memory_gb):
         or Decimal(str(memory_gb)) * count < preset["minimum_vram_gb"]
     ):
         raise ValueError("inference_insufficient_vram")
-    if count not in HARDWARE[preset_id]["tp"]:
+    parallel = next(
+        (
+            n
+            for n in HARDWARE[preset_id]["tp"]
+            if n <= count and Decimal(str(memory_gb)) * n >= preset["minimum_vram_gb"]
+        ),
+        None,
+    )
+    if parallel is None:
         raise ValueError("inference_unsupported_gpu_layout")
     return InferenceSpec(
         preset_id=preset_id,
         revision=pins.revision,
         image=pins.image,
-        tensor_parallel=count,
+        tensor_parallel=parallel,
         disk_gib=preset["disk_gib"],
         preparation_seconds=preset["estimated_minutes"] * 60,
     )
@@ -165,7 +173,12 @@ def validate_rfq(settings, rules):
     expected = selection(
         settings, spec.preset_id, rules.gpu_model, rules.gpu_count, rules.min_gpu_memory_gib
     )
-    if spec != expected:
+    if (
+        spec.tensor_parallel > rules.gpu_count
+        or rules.min_gpu_memory_gib * spec.tensor_parallel
+        < PRESETS[spec.preset_id]["minimum_vram_gb"]
+        or spec != expected.model_copy(update={"tensor_parallel": spec.tensor_parallel})
+    ):
         raise ValueError("inference_preset_changed")
     validate_host(spec.preset_id, rules.min_memory_gib, rules.min_vcpus, rules.architecture)
     if rules.root_volume_gib < 100:
@@ -255,6 +268,7 @@ def summary(row):
         preset_id=row["rfq"]["inference"]["preset_id"],
         billing_start="gpu_delivery",
         estimated_minutes=row["rfq"]["inference"]["preparation_seconds"] // 60,
+        model_gpu_count=row["rfq"]["inference"]["tensor_parallel"],
     )
     return value
 

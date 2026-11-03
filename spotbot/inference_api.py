@@ -62,10 +62,12 @@ def install(app, service, auth):
                 enabled=False,
                 reason=None,
                 requirements=requirements(name),
+                modelGpuCount=None,
             )
             try:
-                resolved(offer_id, name)
+                spec, _ = resolved(offer_id, name)
                 row["enabled"] = True
+                row["modelGpuCount"] = spec.tensor_parallel
             except ValueError as exc:
                 row["reason"] = (
                     str(exc)
