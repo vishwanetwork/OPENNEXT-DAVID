@@ -53,6 +53,7 @@ export function useChoreography(
       hero.style.setProperty('--hero-copy-y', `${timeline.copyY}px`);
       hero.style.setProperty('--morph-opacity', String(timeline.morphOpacity));
       hero.style.setProperty('--partners-progress', String(timeline.partners));
+      hero.style.setProperty('--partners-visibility', timeline.partners > 0 ? 'visible' : 'hidden');
       hero.style.setProperty('--partners-height', `${partners?.offsetHeight ?? 0}px`);
       let closest = 0,
         distance = Infinity;

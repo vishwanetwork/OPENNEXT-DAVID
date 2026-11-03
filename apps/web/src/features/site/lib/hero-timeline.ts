@@ -8,12 +8,11 @@ export function heroIsAnimated(width: number, height: number, reducedMotion: boo
   return width > 900 && height >= 650 && !reducedMotion;
 }
 
-/** Reveal the endorsements before continuing the existing image-morph sequence. */
+/** Reveal endorsements near the end of the image morph; reverse scroll restores the hero. */
 export function heroTimeline(progress: number) {
   const position = clamp(progress);
-  const reveal = ease(position / 0.24);
-  const morph = ease((position - 0.34) / 0.66);
-  const partners = reveal * (1 - ease(morph / 0.42));
+  const morph = ease(position);
+  const partners = ease((position - 0.7) / 0.25);
   const copyOpacity = 1 - clamp(morph / 0.36);
   return {
     morph,

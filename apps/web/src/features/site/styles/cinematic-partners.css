@@ -14,6 +14,7 @@
   inset: auto 0 0;
   background: #fff;
   opacity: var(--partners-progress);
+  visibility: var(--partners-visibility, hidden);
   transform: translateY(calc((1 - var(--partners-progress)) * 100%));
   scroll-margin-top: 100px;
   will-change: transform, opacity;
@@ -198,6 +199,7 @@
     position: relative;
     inset: auto;
     opacity: 1;
+    visibility: visible;
     transform: none;
     will-change: auto;
   }
