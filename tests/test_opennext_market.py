@@ -328,6 +328,8 @@ async def test_public_market_adds_orderable_spot_offers(env):
         "spotbot-us-west-2-g6.xlarge",
     ]
     t4, l4 = supplies[1], supplies[2]
+    quota = l4.pop("quota")
+    assert quota["maxInstances"] is None and quota["capacityGuaranteed"] is False
     assert l4 == {
         "id": "spotbot-us-west-2-g6.xlarge",
         "kind": "rental",

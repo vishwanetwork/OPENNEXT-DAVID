@@ -37,10 +37,13 @@ class Submission(Strict):
     mode: Literal["Auto", "Full"]
     consent: Literal[True]
     idempotencyKey: str = Field(pattern=IDENTIFIER)
+
     documentIds: list[str] = Field(min_length=1, max_length=20)
 
 
 class TransferRequest(Strict):
+    inferencePresetId: str | None = Field(None, max_length=100)
+    inferenceBillingAcknowledged: bool = False
     purpose: Literal["topup", "order"]
     amountCents: int = Field(gt=0, le=10_000_000)
     currency: Literal["USD"]
@@ -202,6 +205,12 @@ def install(app, ctx):
                     return refused(exc)
             try:
                 offer = (await ctx.market.offers()).get(body.offerId)
+                if offer and body.inferencePresetId:
+                    if not body.inferenceBillingAcknowledged:
+                        return error(
+                            400, "Confirm that model preparation uses paid GPU time before paying."
+                        )
+                    offer = await ctx.market.prepare_offer(offer, body.inferencePresetId)
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 return error(503, "Spot offers are temporarily unavailable. Nothing was created.")
             if offer is None:

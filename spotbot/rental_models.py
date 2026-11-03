@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from spotbot.inference import InferenceReport, InferenceSpec
 from spotbot.models import gpu_model
 
 PUBLIC_KEY_TYPES = {
@@ -53,6 +54,11 @@ class DiskRule(RulesModel):
     size_gib: int = Field(ge=1, le=16384)
 
 
+def nominal_gpu_gb(mib):
+    """Use the same marketed per-GPU GB for catalog, inference and rental admission."""
+    return mib // 1024 if mib % 1024 == 0 else round(mib * 2**20 / 1e9)
+
+
 def gpu_memory_sufficient(mib, minimum):
     """Compare reported GPU memory (MiB, as clouds and drivers report it) with an RFQ minimum.
 
@@ -77,6 +83,8 @@ class RFQ(RulesModel):
     server_count: Literal[1] = 1
     providers: list[Literal["aws"]] = Field(default_factory=lambda: ["aws"], min_length=1)
     account: str = Field("default", pattern=r"^[a-z][a-z0-9_-]{0,31}$")
+    # Explicit quote source; absent retains legacy Region/SKU routing.
+    procurement_account: str | None = Field(None, pattern=r"^[a-z][a-z0-9_-]{0,31}$")
     regions: list[str] = Field(min_length=1, max_length=32)
     instance_types: list[str] = Field(default_factory=list, max_length=50)
     market: Literal["spot"] = "spot"
@@ -117,6 +125,8 @@ class RFQ(RulesModel):
     customer_ref: str | None = Field(None, min_length=1, max_length=200)
     http_port: int | None = Field(None, ge=1, le=65535)
     http_health_path: str = Field("/health", pattern=r"^/[A-Za-z0-9/_-]*$")
+    inference: InferenceSpec | None = None
+    retail_hourly_cents: int | None = Field(None, gt=0)
     require_gateway_ack: bool = True
 
     @field_validator("gpu_model")
@@ -285,3 +295,4 @@ class AgentReport(RulesModel):
     ssh_keys_version: int | None = Field(None, ge=0)
     # The managed task run on this server, if any.
     task: TaskReport | None = None
+    inference: InferenceReport | None = None

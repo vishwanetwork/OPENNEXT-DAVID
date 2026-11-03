@@ -557,6 +557,7 @@ class Operations:
             offer_id=request.get("offerId"),
             duration_hours=request.get("durationHours"),
             purchase_reference=request.get("purchaseReference"),
+            inference_preset_id=request.get("inferencePresetId"),
         )
         async with self.lock("transfer:" + transfer_id):
             existing = await self._get(TRANSFER, transfer_id)

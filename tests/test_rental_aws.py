@@ -5,6 +5,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from botocore.handlers import base64_encode_user_data
 from botocore.session import get_session
 from botocore.validate import validate_parameters
 
@@ -37,7 +38,10 @@ def native_backend(rental_env):
             "describe_snapshots": "DescribeSnapshots",
             "describe_spot_instance_requests": "DescribeSpotInstanceRequests",
         }[method]
-        validate_parameters(kwargs, sdk.operation_model(operation).input_shape)
+        wire = copy.deepcopy(kwargs)
+        if method == "run_instances":
+            base64_encode_user_data(wire)  # The SDK hook runs before schema validation.
+        validate_parameters(wire, sdk.operation_model(operation).input_shape)
         calls.append((region, method, kwargs))
         return {
             "describe_images": {"Images": [image]},
@@ -342,7 +346,12 @@ async def test_customer_public_key_is_installed_at_boot_without_an_ec2_key_pair(
     assert len(big) <= 4096
     rules = rules.model_copy(update={"ssh_public_key": big})
     await backend.launch({"id": "rental"}, gen, env.offer, rules)
-    assert len([p for _, m, p in calls if m == "run_instances"][-1]["UserData"].encode()) < 16384
+    import gzip
+
+    compressed = [p for _, m, p in calls if m == "run_instances"][-1]["UserData"]
+    assert isinstance(compressed, bytes) and len(compressed) < 16384
+    assert base64.b64encode(big.encode()) in gzip.decompress(compressed)
+    assert subprocess.run(["bash", "-n"], input=gzip.decompress(compressed)).returncode == 0
 
 
 async def test_key_pair_and_public_key_can_be_combined(native_backend):

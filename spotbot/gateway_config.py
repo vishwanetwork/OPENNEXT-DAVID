@@ -32,6 +32,7 @@ class GatewaySettings(BaseSettings):
     ssh_port_reuse_after_seconds: int = Field(604800, ge=3600)
     poll_seconds: int = Field(5, ge=1, le=60)
     route_lease_seconds: int = Field(60, ge=10, le=600)
+    inference_read_timeout_seconds: int = Field(600, ge=30, le=1800)
     # Public EC2 addresses by default. Private targets must be explicitly enrolled.
     allowed_target_cidrs: str = ""
     storage_backend: Literal["sqlite", "mysql", "dynamodb"] = "sqlite"

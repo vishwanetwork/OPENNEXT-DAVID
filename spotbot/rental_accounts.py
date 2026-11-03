@@ -138,6 +138,11 @@ class RentalAccounts:
     async def stop_task(self, rental_id, tenant_id):
         return await self.for_id(rental_id, tenant_id).stop_task(rental_id, tenant_id)
 
+    async def inference_action(self, rental_id, tenant_id, action, expected_version):
+        return await self.for_id(rental_id, tenant_id).inference_action(
+            rental_id, tenant_id, action, expected_version
+        )
+
     async def recover(self, rental_id, tenant_id, backup_id=None):
         return await self.for_id(rental_id, tenant_id).recover(rental_id, tenant_id, backup_id)
 

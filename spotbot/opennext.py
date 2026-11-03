@@ -38,6 +38,7 @@ from spotbot.models import timestamp, utcnow
 from spotbot.opennext_autopilot import install as install_autopilot
 from spotbot.opennext_console import install as install_console
 from spotbot.opennext_files import Vault
+from spotbot.opennext_inference import install as install_inference
 from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
 from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
 from spotbot.opennext_market import (
@@ -480,7 +481,9 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 if (bought["offerId"], bought["hours"]) != (
                     purchase.offerId,
                     purchase.durationHours,
-                ):
+                ) or (existing["rfq"].get("inference") or {}).get(
+                    "preset_id"
+                ) != purchase.inferencePresetId:
                     return error(
                         409,
                         "This purchase reference was already used.",
@@ -503,6 +506,8 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 if (
                     held["offer_id"] != purchase.offerId
                     or held["pricing_snapshot"]["durationHours"] != purchase.durationHours
+                    or (held["pricing_snapshot"].get("inference") or {}).get("preset_id")
+                    != purchase.inferencePresetId
                 ):
                     return error(
                         409,
@@ -512,6 +517,13 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 offer = Offer(held["offer_snapshot"], frozen=held["pricing_snapshot"])
             else:
                 offer = (await market.offers()).get(purchase.offerId)
+                if offer and purchase.inferencePresetId:
+                    if not purchase.inferenceBillingAcknowledged:
+                        return error(
+                            400,
+                            "Confirm that model preparation uses paid GPU time before purchasing.",
+                        )
+                    offer = await market.prepare_offer(offer, purchase.inferencePresetId)
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             return error(503, "Spot offers are temporarily unavailable. No order was created.")
         if offer is None:
@@ -588,6 +600,13 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                 if existing:
                     await ledger.settle(charge, existing["id"])
                     return await confirmation(existing, user["id"])
+                if response.json().get("detail") in {"quota_insufficient", "no_eligible_offer"}:
+                    await ledger.refund(charge, "quota_admission_rejected")
+                    return error(
+                        409,
+                        "The remaining quota changed before this order was accepted. No Credit was charged. Refresh the market and choose an available offer.",
+                        code="QUOTA_EXHAUSTED",
+                    )
             if response.status_code not in {200, 201}:
                 logger.error(
                     "opennext_spot_purchase_rejected status=%s body=%s",
@@ -817,6 +836,17 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
                     response = await market.create(rfq)
                     if response.status_code == 409:
                         rental = await market.find(user_id, reference)
+                        if rental is None and response.json().get("detail") in {
+                            "quota_insufficient",
+                            "no_eligible_offer",
+                        }:
+                            await ledger.refund(charge, "quota_admission_rejected")
+                            doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                            return await ops.add_notice(
+                                doc,
+                                "Quota unavailable; payment added to Credit",
+                                "The remaining provider quota changed before your instance could be accepted. Your full payment is in Credit. Please choose another instance.",
+                            )
                     elif response.status_code not in {200, 201}:
                         logger.error("opennext_direct_pay_rejected status=%s", response.status_code)
                         await ledger.refund(charge, "rental_rejected")
@@ -878,6 +908,9 @@ def create_opennext_app(settings, *, origin, store=None, client=None, market=Non
     install_autopilot(
         app,
         SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental),
+    )
+    install_inference(
+        app, SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental)
     )
     install_operations(
         app,

@@ -154,8 +154,15 @@ def detail(row, live=None):
 
 def public(row):
     """A rental row as the tenant API returns it: the task summary instead of the task."""
-    value = {k: v for k, v in row.items() if k not in {"task", "task_runs", "task_outcome"}}
+    from spotbot.inference import summary as inference_summary
+
+    value = {
+        k: v
+        for k, v in row.items()
+        if k not in {"task", "task_runs", "task_outcome", "inference_secret"}
+    }
     value["task"] = summary(row)
+    value["inference"] = inference_summary(row)
     return value
 
 
@@ -189,10 +196,14 @@ def instruction(row, gen, sealer):
     # Reserve the run before the response leaves the bot. A lost response must be
     # replayed with the same identity, never permit editing a possibly running script.
     if not any(r["attempt"] == attempt for r in runs_of(row, task["version"])):
-        row.setdefault("task_runs", []).append(dict(
-            version=task["version"], attempt=attempt, state="dispatched",
-            dispatched_at=timestamp(),
-        ))
+        row.setdefault("task_runs", []).append(
+            dict(
+                version=task["version"],
+                attempt=attempt,
+                state="dispatched",
+                dispatched_at=timestamp(),
+            )
+        )
     return dict(
         version=task["version"],
         attempt=attempt,

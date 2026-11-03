@@ -84,6 +84,11 @@ def account_settings(settings, alias, account):
 
 
 def resolved_account(settings, rules):
+    if rules.procurement_account is not None:
+        name = rules.procurement_account
+        if name != "default" and name not in settings.aws_accounts:
+            raise ValueError("aws_account_not_enrolled")
+        return name
     if rules.account != "default":
         if rules.account not in settings.aws_accounts:
             raise ValueError("aws_account_not_enrolled")
