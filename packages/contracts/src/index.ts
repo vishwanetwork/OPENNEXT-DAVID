@@ -13,3 +13,4 @@ export * from './demo';
 export * from './admin';
 export * from './account';
 export * from './inference';
+export * from './spot-funding';

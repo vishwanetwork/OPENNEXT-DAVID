@@ -1,5 +1,34 @@
 # API contract (what the front-end expects from the backend)
 
+## Floating Spot funding adapter (2026-11-03)
+
+The shared `spot-funding` schemas describe the Python adapter's new
+`spot-hourly-v1` protocol. Historical `duration-v1` purchases retain their original
+contract. These schemas and HTTP clients alone do not activate the new checkout.
+
+- `GET /api/billing/spot-funding/capabilities`: authenticated buyer capability;
+  new purchases require `enabled: true` on both adapter and native Bot.
+- `POST /api/billing/spot-quotes`: owner-scoped ten-minute quote, chosen payment
+  method, whole-instance hourly and total budget ceilings, optional model preset.
+- `POST /api/billing/spot-purchases`: quote acceptance with explicit variable-price,
+  seven-day storage and (when selected) paid model-preparation acknowledgements.
+- `GET /api/billing/spot-funding`: authoritative aggregate across all active Credit
+  orders, dedicated Direct Pay positions, runtime and retention states.
+- `GET /api/billing/spot-orders/{orderId}/funding?cursor=0`: owner-bound funding and
+  immutable effective-rate ledger, at most 100 entries per page. `ledger.totalCents`
+  covers every compute entry; `complete` is true only when the returned page is the
+  entire ledger. Storage is separately disclosed as `storageReserveCents` with a
+  nullable `retentionExpiresAt` deadline.
+- `POST /api/billing/spot-orders/{orderId}/replenishments`: allocate verified Credit
+  or create an order-linked bank transfer for Direct Pay. Pending transfers do not
+  fund execution. Existing Console Confirm/Fail actions review these transfers.
+
+All writes use existing session/CSRF/KYB checks. Amounts are integer USD cents.
+The initial payment includes compute funding plus seven-day protected-storage
+reserve. No fixed service fee is added. An explained `entryKind: adjustment` may
+have equal start/end timestamps and zero billable seconds for the once-per-order
+minimum or final rounding; usage entries must have positive elapsed time.
+
 ## Console review adapters (2026-11-01)
 
 The Python adapter now advertises optional `accounts-v1`, `kyb-bundle-v1`, and

@@ -32,6 +32,8 @@ export interface SpotFundingOrder {
   purchasedSeconds: number;
   remainingSeconds: number;
   runtimeState: SpotRuntimeState;
+  storageReserveCents?: number;
+  retentionExpiresAt?: string | null;
   retention: 'confirmed' | 'pending' | 'unavailable';
   funding: SpotFundingPosition;
 }
@@ -53,6 +55,7 @@ export interface SpotFundingAccount {
 
 export interface SpotHourlyCharge {
   id: string;
+  entryKind?: 'usage' | 'adjustment';
   startedAt: string;
   endedAt: string;
   billableSeconds: number;
