@@ -4,10 +4,15 @@
 
 The shared `spot-funding` schemas describe the Python adapter's new
 `spot-hourly-v1` protocol. Historical `duration-v1` purchases retain their original
-contract. These schemas and HTTP clients alone do not activate the new checkout.
+contract. The composition root connects the adapter after a verified capability
+response; the server-side rollout flag remains disabled by default.
 
 - `GET /api/billing/spot-funding/capabilities`: authenticated buyer capability;
   new purchases require `enabled: true` on both adapter and native Bot.
+  `required` prevents fallback to an old purchase flow when floating checkout is
+  required but unavailable; `readEnabled` keeps existing funding views connected
+  after new purchases are disabled. A missing endpoint on an older adapter is
+  treated as unsupported. Service errors block new checkout until retried.
 - `POST /api/billing/spot-quotes`: owner-scoped ten-minute quote, chosen payment
   method, whole-instance hourly and total budget ceilings, optional model preset.
 - `POST /api/billing/spot-purchases`: quote acceptance with explicit variable-price,
@@ -19,6 +24,9 @@ contract. These schemas and HTTP clients alone do not activate the new checkout.
   covers every compute entry; `complete` is true only when the returned page is the
   entire ledger. Storage is separately disclosed as `storageReserveCents` with a
   nullable `retentionExpiresAt` deadline.
+- `GET /api/instances/{instanceId}/funding?cursor=0`: the same owner-bound detail
+  resolved by instance identity. A failed floating read renders Awaiting status,
+  without falling back to a historical wall-clock expiry or Running status.
 - `POST /api/billing/spot-orders/{orderId}/replenishments`: allocate verified Credit
   or create an order-linked bank transfer for Direct Pay. Pending transfers do not
   fund execution. Existing Console Confirm/Fail actions review these transfers.
@@ -28,6 +36,20 @@ The initial payment includes compute funding plus seven-day protected-storage
 reserve. No fixed service fee is added. An explained `entryKind: adjustment` may
 have equal start/end timestamps and zero billable seconds for the once-per-order
 minimum or final rounding; usage entries must have positive elapsed time.
+
+Order details also expose accepted `maxHourlyCents`, `maxTotalCents`, cumulative
+`totalFundedCents` and `storageReserveTargetCents`. Purchase limits cover the whole
+instance; model storage and seven-day protected-storage reserve are disclosed
+before acceptance. Model compatibility and billing-from-delivery acknowledgement
+are preserved on both Credit and Direct Pay paths.
+
+Console payment records for these orders include `fundingPolicy: spot-hourly-v1`
+and an owner-bound `fundingOrderId`. A confirmed payment returns
+`fundingResolution: {policy, fundingOrderId, orderId, outcome}`. `funded` requires
+`ledgerPosted: true`, `provisioningQueued: true` and zero wallet credit; `credited`
+requires the full received amount as Credit and no provisioning. Historical
+Direct Pay continues to require its original `directPayResolution` and customer
+continuation. Fail keeps the existing reason/notification/email contract.
 
 ## Console review adapters (2026-11-01)
 
