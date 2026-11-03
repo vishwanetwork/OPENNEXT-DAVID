@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     spotbot_rental_task_key: SecretStr = SecretStr("")
     # Preset ID -> enabled, pinned HF revision/image digest, and validated GPU models.
     spotbot_inference_presets: str = "{}"
+    # Applies only to explicitly accepted floating agreements, never historical purchases.
+    spotbot_floating_enabled: bool = False
+    spotbot_floating_worker_seconds: int = Field(30, ge=5, le=60)
+    spotbot_floating_grant_seconds: int = Field(120, ge=60, le=300)
     # Existing OpenNEXT API that `spotbot opennext-api` forwards non-SpotOrderBot routes to.
     spotbot_opennext_legacy_origin: str = ""
     # Read-only transitional account/RFQ projection from the legacy backend's private volume.

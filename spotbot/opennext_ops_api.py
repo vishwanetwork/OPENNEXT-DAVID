@@ -203,6 +203,10 @@ def install(app, ctx):
                     return no_store(intent_view(await ops.create_transfer(user, body.model_dump())))
                 except OperationError as exc:
                     return refused(exc)
+            funding = getattr(ops, "funding_service", None)
+            if funding and funding.ctx.settings and funding.ctx.settings.spotbot_floating_enabled:
+                return error(409, "Review a floating Spot quote before requesting payment instructions.",
+                             code="FLOATING_CONSENT_REQUIRED")
             try:
                 offer = (await ctx.market.offers()).get(body.offerId)
                 if offer and body.inferencePresetId:

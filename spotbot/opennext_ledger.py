@@ -42,6 +42,8 @@ def account_id(user_id):
 
 def amount(charge):
     """Cents the charge takes from the account's Credit."""
+    if charge.get("pricing_version") == "spot-hourly-v1":
+        return charge["wallet_committed_cents"] if charge["state"] in COUNTED else 0
     if charge["state"] == "billed":
         return charge["billed_cents"]
     return charge["cents"] if charge["state"] in OPEN else 0
@@ -78,10 +80,20 @@ class CreditLedger:
         return await asyncio.to_thread(self.db.list, KIND, account_id(user_id))
 
     async def _save(self, charge, **changes):
-        updated = dict(charge, **changes)
-        await asyncio.to_thread(self.db.save, updated, charge["version"])
-        updated["version"] = charge["version"] + 1
-        return updated
+        from spotbot.funding_ledger import guard
+        from spotbot.funding_store import atomic
+
+        for _ in range(8):
+            updated = dict(charge, **changes)
+            checkpoint = await asyncio.to_thread(guard, self.db, charge["tenant_id"].removeprefix("opennext:"))
+            try:
+                await asyncio.to_thread(atomic, self.db, [checkpoint, updated])
+                return updated
+            except ConflictError:
+                current = await asyncio.to_thread(self.db.get, KIND, charge["id"])
+                if not current or current["version"] != charge["version"]:
+                    raise
+        raise ConflictError()
 
     async def find(self, user_id, reference):
         if not reference:
@@ -101,6 +113,7 @@ class CreditLedger:
         pricing_snapshot=None,
         offer_snapshot=None,
         service_fee_bps=0,
+        expected_guard=None,
     ):
         """Hold `cents` for the purchase `reference`; an existing charge is returned as is.
 
@@ -124,11 +137,26 @@ class CreditLedger:
             created_at=timestamp(),
             version=0,
         )
-        try:
-            await asyncio.to_thread(self.db.save, charge, 0)
-        except ConflictError:
-            return await asyncio.to_thread(self.db.get, KIND, charge["id"])
-        return dict(charge, version=1)
+        from spotbot.funding_ledger import guard
+        from spotbot.funding_store import atomic
+
+        for _ in range(8):
+            existing = await asyncio.to_thread(self.db.get, KIND, charge["id"])
+            if existing:
+                return existing
+            checkpoint = await asyncio.to_thread(guard, self.db, user_id)
+            if expected_guard is not None and checkpoint.get("version", 0) != expected_guard:
+                raise ConflictError()
+            try:
+                await asyncio.to_thread(atomic, self.db, [checkpoint, charge])
+                return charge
+            except ConflictError:
+                existing = await asyncio.to_thread(self.db.get, KIND, charge["id"])
+                if existing:
+                    return existing
+                if expected_guard is not None:
+                    raise
+        raise ConflictError()
 
     async def settle(self, charge, rental_id):
         if charge["state"] == "charged" and charge["rental_id"] == rental_id:
@@ -163,6 +191,10 @@ class CreditLedger:
         by_reference = {r["rfq"].get("upstream_order_id"): r for r in rentals}
         result = []
         for charge in await self.charges(user_id):
+            if charge.get("pricing_version") == "spot-hourly-v1":
+                if charge["state"] in COUNTED:
+                    result.append(charge)
+                continue
             rental = by_reference.get(charge["reference"])
             if charge["state"] == "held" and rental:
                 charge = await self.settle(charge, rental["id"])

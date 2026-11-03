@@ -386,8 +386,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def run():
     from spotbot_inference import step as step_inference
+    from spotbot_lease import step as step_lease
 
     config_path = Path("/etc/spotbot/agent.json")
+    initial = json.loads(config_path.read_text())
+    if initial.get("execution_expires_at"):
+        step_lease(dict(expires_at=initial["execution_expires_at"]))
     flushed = None
     # (command, mounts, watchdog deadline). While frozen nothing below may write to disk.
     frozen = None
@@ -430,6 +434,7 @@ def run():
                     instructions = json.load(response)
                 last_report = time.monotonic()
                 if not frozen:
+                    step_lease(instructions.get("execution_lease"))
                     for disk in instructions.get("initialize_disks", []):
                         initialize_disk(disk)
                     if bool(instructions.get("create_canaries")) != bool(
@@ -457,9 +462,10 @@ def run():
                         inference_report = step_inference(desired)
                     # A Spot warning moves the rental to recovery, which stops the bot sending
                     # the task; the run it already started must still get its SIGTERM.
-                    if task_spec and (instructions.get("task") or notice):
+                    funding_pause = bool(instructions.get("execution_pause"))
+                    if task_spec and (instructions.get("task") or notice or funding_pause):
                         previous = (task_report or {}).get("state")
-                        task_report = step_task(task_spec, task_user, notice)
+                        task_report = step_task(task_spec, task_user, notice or funding_pause)
                         if previous != task_report["state"]:
                             last_report = 0.0
                 identity = instructions.get("flush_command")

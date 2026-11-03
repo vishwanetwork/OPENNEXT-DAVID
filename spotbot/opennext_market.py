@@ -283,7 +283,7 @@ def purchased(rental):
     )
     # Earlier purchases have no `service_seconds`; their window ran from the acquisition deadline.
     seconds = (
-        rfq.get("service_seconds")
+        (rfq.get("funding") or {}).get("purchased_seconds") or rfq.get("service_seconds")
         or (at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])).total_seconds()
     )
     return {
@@ -376,6 +376,9 @@ def instance_view(row, ssh=None, billing=None):
     }
     if row.get("inference"):
         result["inference"] = row["inference"]
+    if rfq.get("funding"):
+        result.update(pricingVersion="spot-hourly-v1", serviceEnd=None,
+                      orderId=rfq["upstream_order_id"].removeprefix("opennext-"))
     return result
 
 

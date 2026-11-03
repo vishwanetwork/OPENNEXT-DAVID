@@ -52,6 +52,9 @@ class PaidPurchases:
             raise OperationError(409, "This payment changed. Refresh before continuing.") from exc
 
     async def complete(self, transfer_id, body, operator):
+        linked = await self.ops.get_transfer(transfer_id)
+        if linked and linked.get("funding_order_id"):
+            return await self.ops.funding_service.decide_payment(transfer_id, body, operator)
         if body.get("decision") != "Confirm" or body.get("fundsVerified") is not True:
             raise OperationError(400, "Verify receipt of the full payment before completing it.")
         async with self.ops.lock("transfer:" + transfer_id):

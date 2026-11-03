@@ -141,6 +141,7 @@ class ConsoleBackend:
                 legacy["orders"],
                 users,
                 await self.ops.transfers(),
+                await self.documents("spot_order"),
             )
             kind = request.query_params.get("kind", "")
             if kind not in {"", "All", "Instance", "RFQ"}:

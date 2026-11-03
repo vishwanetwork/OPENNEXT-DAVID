@@ -61,7 +61,7 @@ def track_service(row):
     rfq = row["rfq"]
     if row["state"] in {"DELIVERING", "ACTIVE"} and not row.get("service_started_at"):
         row["service_started_at"] = now.isoformat()
-        if rfq.get("service_seconds"):
+        if rfq.get("service_seconds") and not rfq.get("funding"):
             # The RFQ requires expiry strictly after the acquisition deadline.
             end = max(
                 now + timedelta(seconds=rfq["service_seconds"]),
@@ -74,7 +74,10 @@ def track_service(row):
         intervals.append(dict(start=now.isoformat(), end=None))
     elif not serving and intervals and not intervals[-1]["end"]:
         intervals[-1]["end"] = now.isoformat()
-        intervals[-1]["end_reason"] = "ended" if row.get("end_requested") else "interrupted"
+        intervals[-1]["end_reason"] = (
+            "ended" if row.get("end_requested") else "funding"
+            if row.get("funding_pause") else "interrupted"
+        )
 
 
 def service_seconds(row, now=None):
@@ -125,6 +128,11 @@ class RentalEngine:
 
     def validate_rules(self, rules):
         inference.validate_rfq(self.settings, rules)
+        if rules.funding and not self.settings.spotbot_floating_enabled:
+            raise ValueError("floating_billing_disabled")
+        if rules.funding and not (utcnow() < rules.funding.grant_expires_at
+                                  <= utcnow()+timedelta(minutes=5)):
+            raise ValueError("execution_grant_must_be_bounded")
         if (
             rules.procurement_account is not None
             and rules.procurement_account != self.settings.spotbot_aws_account_name
@@ -162,6 +170,7 @@ class RentalEngine:
             "procurement_account",
             "inference",
             "retail_hourly_cents",
+            "funding",
         ):
             if payload["rfq"][name] is None:
                 payload["rfq"].pop(name)
@@ -196,6 +205,9 @@ class RentalEngine:
             ssh_keys=dict(version=1, keys=[rules.ssh_public_key] if rules.ssh_public_key else []),
         )
         row["id"] = rental_id
+        from spotbot.rental_funding import initialize
+
+        initialize(row, rules)
         inference.initialize(row, self.sealer)
         try:
             self.save(row, "accepted")
@@ -234,6 +246,7 @@ class RentalEngine:
                 "procurement_account",
                 "inference",
                 "retail_hourly_cents",
+                "funding",
                 "market",
             ]
             a, b = old.model_dump(), rules.model_dump()
@@ -318,6 +331,9 @@ class RentalEngine:
         return tasks.detail(row, ((gen or {}).get("report") or {}).get("task"))
 
     def _request_end(self, row):
+        from spotbot.rental_funding import close_retention
+
+        close_retention(row)
         row.update(
             end_requested=True,
             state="ENDING",
@@ -326,6 +342,11 @@ class RentalEngine:
             flush_command=str(uuid4()),
             flush_requested_at=timestamp(),
         )
+
+    async def execution_grant(self, rental_id, tenant_id, request):
+        from spotbot.rental_funding import grant
+
+        return await grant(self, rental_id, tenant_id, request)
 
     async def release(self, rental_id, tenant_id):
         async with self.row_lock(rental_id):
@@ -511,6 +532,11 @@ class RentalEngine:
             self._save_task_run(row)
             return dict(
                 task=instruction,
+                execution_pause=bool(row.get("funding_pause")),
+                execution_lease=(dict(expires_at=row["funding_until"])
+                                 if row["rfq"].get("funding") and not row["end_requested"]
+                                 else dict(expires_at=timestamp())
+                                 if row["rfq"].get("funding") else None),
                 inference=inference.instruction(row, gen, self.sealer),
                 authorized_keys=dict(
                     version=keys["version"],
@@ -861,7 +887,11 @@ class RentalEngine:
         estimate = self.cost(row)
         row["estimated_cost_usd"] = str(estimate)
         self.save(row)
-        if rules.expires_at <= utcnow() or estimate >= rules.budget_usd or row["end_requested"]:
+        from spotbot.rental_funding import PAUSED, PAUSING, before_step
+
+        before_step(self, row, rules, estimate)
+        if ((not rules.funding and (rules.expires_at <= utcnow() or estimate >= rules.budget_usd))
+                or row["end_requested"]):
             if row["state"] != "ENDING":
                 row.update(
                     state="ENDING",
@@ -898,7 +928,7 @@ class RentalEngine:
                     self.save(row, "needs_reconciliation")
                 return
         if (
-            row.get("recovery_started_at")
+            row.get("recovery_started_at") and row["state"] not in {PAUSING, PAUSED}
             and not row["end_requested"]
             and utcnow()
             >= at(row["recovery_started_at"]) + timedelta(seconds=rules.max_recovery_seconds)
@@ -915,7 +945,7 @@ class RentalEngine:
                 self.save(row, "action_required")
         if row["state"] == "ENDING":
             await self._end_or_recover(row, gen, rules, ending=True)
-        elif row["state"] == "RECOVERING":
+        elif row["state"] in {"RECOVERING", PAUSING}:
             await self._end_or_recover(row, gen, rules, ending=False)
         elif row["state"] in {"QUEUED", "WAITING_CAPACITY"}:
             if rules.not_before and utcnow() < rules.not_before:
@@ -926,6 +956,11 @@ class RentalEngine:
         await self._cleanup(row, final=False)
 
     async def _acquire(self, row, rules):
+        from spotbot.rental_funding import pause, permitted
+
+        if not permitted(row):
+            pause(self, row, "execution_authorization_expired")
+            return
         now = utcnow()
         if set(rules.regions) - set(self.settings.rental_regions):
             row.update(state="ACTION_REQUIRED", error="region_not_enabled_for_rentals")
@@ -1000,6 +1035,11 @@ class RentalEngine:
     async def _launch_offer(self, row, rules, offer, source, sweep, *, first):
         """Try one pool. Returns "launched", "retry" (try the next pool), or "stop"."""
         now = utcnow()
+        from spotbot.rental_funding import pause, permitted
+
+        if not permitted(row):
+            pause(self, row, "execution_authorization_expired")
+            return "stop"
         image_id = initial_image(rules, self.settings, offer.region, offer.details["image_id"])
         if source:
             image_id = source["images"].get(offer.region)
@@ -1259,6 +1299,9 @@ class RentalEngine:
             if ending:
                 row.update(state="CLOSED", closed_at=timestamp())
                 self.save(row, "closed")
+            elif row.get("funding_pause"):
+                row["state"] = "PAUSED_FOR_FUNDS"
+                self.save(row, "funding_paused")
             else:
                 row["state"] = (
                     "ACTION_REQUIRED" if row.get("recovery_halted") else "WAITING_CAPACITY"
@@ -1268,7 +1311,7 @@ class RentalEngine:
         if not gen.get("instance_id"):
             return
         instance = await self.backend.instance(gen)
-        if not ending and await self._frozen_switch(row, gen, instance):
+        if not ending and not row.get("funding_pause") and await self._frozen_switch(row, gen, instance):
             return
         stopped = not instance or instance["State"]["Name"] == "terminated"
         if not stopped:
@@ -1316,6 +1359,9 @@ class RentalEngine:
         if ending:
             row.update(state="CLOSED", closed_at=timestamp(), current_backup_id=selected["id"])
             self.save(row, "closed")
+        elif row.get("funding_pause"):
+            row.update(state="PAUSED_FOR_FUNDS", current_backup_id=selected["id"], error=None)
+            self.save(row, "funding_paused")
         else:
             row.update(
                 state="ACTION_REQUIRED" if row.get("recovery_halted") else "WAITING_CAPACITY",

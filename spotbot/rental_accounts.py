@@ -129,6 +129,9 @@ class RentalAccounts:
     async def release(self, rental_id, tenant_id):
         return await self.for_id(rental_id, tenant_id).release(rental_id, tenant_id)
 
+    async def execution_grant(self, rental_id, tenant_id, request):
+        return await self.for_id(rental_id, tenant_id).execution_grant(rental_id, tenant_id, request)
+
     async def set_ssh_keys(self, rental_id, tenant_id, keys):
         return await self.for_id(rental_id, tenant_id).set_ssh_keys(rental_id, tenant_id, keys)
 
