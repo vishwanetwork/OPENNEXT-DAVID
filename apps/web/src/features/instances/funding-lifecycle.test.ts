@@ -33,6 +33,13 @@ const funding = (runtimeState: SpotFundingOrder['runtimeState']): SpotFundingOrd
 });
 
 describe('authoritative floating-price runtime', () => {
+  it('does not fall back to a fixed expiry or running status when a floating read fails', () => {
+    expect(fundingLifecycle({ ...instance, pricingVersion: 'spot-hourly-v1' })).toMatchObject({
+      label: 'Awaiting status',
+      ended: false,
+      running: false,
+    });
+  });
   it('does not pause at 20% or infer completion from an old wall-clock estimate', () => {
     expect(fundingLifecycle(instance, funding('running'))).toMatchObject({
       running: true,

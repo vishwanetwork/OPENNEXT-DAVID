@@ -27,6 +27,62 @@ afterEach(() => {
 });
 
 describe('payment review amounts and acknowledgments', () => {
+  it('confirms order-linked floating funding without accepting it for historical payments', () => {
+    const row = {
+      ...direct,
+      fundingPolicy: 'spot-hourly-v1' as const,
+      fundingOrderId: 'funding-1',
+      orderId: 'opennext-funding-1',
+    };
+    const result: PaymentReviewReceipt = {
+      ...receipt(row, input),
+      directPayResolution: undefined,
+      creditAmountCents: 0,
+      ledgerPosted: true,
+      provisioningQueued: true,
+      fundingResolution: {
+        policy: 'spot-hourly-v1',
+        fundingOrderId: 'funding-1',
+        orderId: row.orderId,
+        outcome: 'funded',
+      },
+    };
+    expect(confirmedPaymentDecision(result, row, input)).toBe(true);
+    expect(confirmedPaymentDecision(result, direct, input)).toBe(false);
+    expect(confirmedPaymentDecision({ ...result, ledgerPosted: false }, row, input)).toBe(false);
+    expect(
+      confirmedPaymentDecision(
+        {
+          ...result,
+          fundingResolution: {
+            policy: 'spot-hourly-v1',
+            fundingOrderId: 'another-order',
+            orderId: row.orderId,
+            outcome: 'funded',
+          },
+        },
+        row,
+        input,
+      ),
+    ).toBe(false);
+    expect(
+      confirmedPaymentDecision(
+        {
+          ...result,
+          provisioningQueued: false,
+          creditAmountCents: row.amountCents,
+          fundingResolution: {
+            policy: 'spot-hourly-v1',
+            fundingOrderId: 'funding-1',
+            orderId: row.orderId,
+            outcome: 'credited',
+          },
+        },
+        row,
+        input,
+      ),
+    ).toBe(true);
+  });
   it('credits top-ups one-to-one and rejects any fee deduction or uplift', () => {
     expect(reviewable(topup)).toBe(true);
     expect(reviewable({ ...topup, amountCents: 10500, feeAmountCents: 500 })).toBe(false);

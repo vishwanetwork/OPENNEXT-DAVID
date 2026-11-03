@@ -379,6 +379,28 @@ describe('Spot checkout totals', () => {
 });
 
 describe('Spot checkout safety', () => {
+  it('restores the same floating authorization and clears its lock after confirmed Direct Pay', () => {
+    const first = setup();
+    const acceptance = {
+      pricingVersion: 'spot-hourly-v1' as const,
+      quoteId: 'quote-1',
+      idempotencyKey: first.engine.pending()?.idempotencyKey ?? 'purchase-1',
+      consent: true as const,
+      storageRetentionAcknowledged: true as const,
+      inferenceBillingAcknowledged: false,
+      sshPublicKey: null,
+    };
+    first.engine.recordFloating(acceptance);
+    const restored = setup({ storage: first.storage, begin: false });
+    expect(restored.engine.pending()?.floatingAcceptance).toEqual(acceptance);
+    expect(restored.engine.pending()?.paymentSubmitted).toBe(true);
+    restored.engine.completeFloating('funding-order', false);
+    expect(restored.engine.pending()?.paymentSubmitted).toBe(false);
+    expect(restored.engine.hasPending()).toBe(false);
+    expect(restored.storage.size).toBe(0);
+    restored.engine.beginCheckout(restored.row);
+    expect(restored.engine.pending()?.stage).toBe('review');
+  });
   it('optional SSH accepts blank; Direct Pay never calls a gateway', async () => {
     const env = setup();
     await toPayment(env);

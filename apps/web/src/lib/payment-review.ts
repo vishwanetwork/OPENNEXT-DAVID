@@ -1,4 +1,5 @@
 /** Operator-facing ports. New account and Direct Pay completion fields need backend agreement. */
+import type { FloatingPaymentResolution } from '@opennext/contracts';
 export type PaymentReviewKind = 'topup' | 'direct_pay';
 export type PaymentReviewStatus = 'Pending' | 'Confirmed' | 'Failed';
 
@@ -18,6 +19,8 @@ export interface PaymentReviewRecord {
   submittedAt: string;
   orderId?: string;
   offerId?: string;
+  fundingPolicy?: 'spot-hourly-v1';
+  fundingOrderId?: string;
   /** Top-ups add the full received amount. Purchase fees belong to order totals only. */
   pricingVersion: 'credit-face-value-v1' | 'order-total-v1' | 'legacy-credit-v1';
   creditAmountCents?: number;
@@ -50,6 +53,7 @@ export interface PaymentReviewReceipt {
   feeAmountCents: number;
   ledgerPosted: boolean;
   provisioningQueued: boolean;
+  fundingResolution?: FloatingPaymentResolution;
   directPayResolution?: {
     policy: 'recheck-before-purchase-v1';
     orderId: string;

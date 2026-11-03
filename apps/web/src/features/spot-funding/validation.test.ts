@@ -84,6 +84,26 @@ const readOrder = (value: unknown) =>
   confirmedSpotFundingOrder(value, 'u1', false, { orderId: 'order-1' });
 
 describe('floating Spot funding validation', () => {
+  it('accepts an explained final minimum without inventing running time', () => {
+    const value = detail();
+    value.ledger.totalCents += 50;
+    value.ledger.entries.push({
+      id: 'final-minimum',
+      entryKind: 'adjustment',
+      startedAt: envelope.observedAt,
+      endedAt: envelope.observedAt,
+      billableSeconds: 0,
+      hourlyCents: 1200,
+      computeCents: 0,
+      adjustmentCents: 50,
+      totalCents: 50,
+      explanation: 'Final started-minute rounding.',
+    });
+    expect(readOrder(value)?.ledger.totalCents).toBe(2250);
+    const final = value.ledger.entries[2];
+    if (final) final.explanation = null;
+    expect(readOrder(value)).toBeNull();
+  });
   it('preserves the server low-funding forecast and actual changing hourly rates', () => {
     expect(readAccount(account())?.credit.warnings).toEqual([
       'remaining_20_percent',
