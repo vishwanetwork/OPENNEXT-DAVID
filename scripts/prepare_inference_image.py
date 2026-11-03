@@ -8,11 +8,11 @@ from uuid import uuid4
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ConnectionError, HTTPClientError
 
 from spotbot.config import Settings
 from spotbot.inference import PRESETS, catalog
-from spotbot.inference_build import base_allowed, labels, launch_request, owned, prepared
+from spotbot.inference_build import CPU_TYPES, base_allowed, labels, launch_request, owned, prepared
 
 
 def save(path, state, phase):
@@ -31,7 +31,11 @@ def save(path, state, phase):
 def instance(ec2, state):
     rows = ec2.describe_instances(InstanceIds=[state["instance_id"]])["Reservations"]
     value = rows[0]["Instances"][0]
-    if not owned(value, state) or value["InstanceType"] != "t3.medium":
+    if (
+        not owned(value, state)
+        or value["InstanceType"] != state["instance_type"]
+        or value["InstanceType"] not in CPU_TYPES
+    ):
         raise RuntimeError("build_instance_ownership_mismatch")
     return value
 
@@ -139,7 +143,9 @@ def cleanup(ec2, state):
                 i["InstanceId"]
                 for r in page["Reservations"]
                 for i in r["Instances"]
-                if owned(i, state) and i["InstanceType"] == "t3.medium"
+                if owned(i, state)
+                and i["InstanceType"] == state["instance_type"]
+                and i["InstanceType"] in CPU_TYPES
             ]
     for resource_id in ids:
         try:
@@ -176,6 +182,7 @@ def main():
     parser.add_argument("--preset", choices=list(PRESETS), default="deepseek-r1-distill-7b")
     parser.add_argument("--pins-env", type=Path, default=Path(".env.inference.example"))
     parser.add_argument("--max-minutes", type=int, choices=range(10, 91), default=90)
+    parser.add_argument("--instance-type", choices=sorted(CPU_TYPES), default="t3.medium")
     parser.add_argument(
         "--cpu-credits",
         choices=["standard", "unlimited"],
@@ -229,7 +236,7 @@ def main():
             base_image=args.base_image,
             subnet_id=args.subnet_id,
             security_groups=args.security_group,
-            instance_type="t3.medium",
+            instance_type=args.instance_type,
             cpu_credits=args.cpu_credits,
             max_minutes=args.max_minutes,
             created_at=time.time(),
@@ -265,8 +272,15 @@ def main():
             save(args.state_file, state, "preparing")
         deadline = state["created_at"] + state["max_minutes"] * 60 + 300
         while not state.get("image_id"):
-            value = instance(ec2, state)
-            progress = read_progress(s3, state) if state.get("status_bucket") else {}
+            try:
+                value = instance(ec2, state)
+                progress = read_progress(s3, state) if state.get("status_bucket") else {}
+            except (ConnectionError, HTTPClientError):
+                if time.time() > deadline:
+                    raise TimeoutError("cpu_build_deadline_exceeded") from None
+                print(json.dumps(dict(event="controller_connection_retry")), flush=True)
+                time.sleep(15)
+                continue
             if progress.get("state") != (state.get("guest_progress") or {}).get("state"):
                 state["guest_progress"] = progress
                 save(args.state_file, state, "preparing")
@@ -321,7 +335,12 @@ def main():
         # The CPU is stopped before snapshots are created; pending snapshots incur no CPU runtime.
         snapshot_deadline = time.time() + 7200
         while time.time() < snapshot_deadline:
-            image = ec2.describe_images(ImageIds=[state["image_id"]])["Images"][0]
+            try:
+                image = ec2.describe_images(ImageIds=[state["image_id"]])["Images"][0]
+            except (ConnectionError, HTTPClientError):
+                print(json.dumps(dict(event="snapshot_connection_retry")), flush=True)
+                time.sleep(20)
+                continue
             if not owned(image, state):
                 raise RuntimeError("build_image_ownership_mismatch")
             if image["State"] == "available":

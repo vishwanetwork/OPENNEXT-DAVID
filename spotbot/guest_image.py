@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -31,8 +32,42 @@ def event(state, **fields):
             method="PUT",
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=20):
-            pass
+        try:
+            with urllib.request.urlopen(request, timeout=20):
+                pass
+        except OSError:
+            # A transient reporting outage must not discard downloaded artifacts.
+            print(json.dumps(dict(event="progress_delivery_retry", state=state)), flush=True)
+
+
+def observed(args, state, *, progress_path=None):
+    """Bound external work and expose progress without filling the serial console."""
+    with tempfile.TemporaryFile() as output:
+        process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=output)
+        try:
+            while True:
+                try:
+                    result = process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    result = None
+                fields = dict(free_root_bytes=shutil.disk_usage("/").free)
+                if progress_path and progress_path.exists():
+                    fields.update(json.loads(progress_path.read_text()))
+                size = os.fstat(output.fileno()).st_size
+                fields["command_output"] = os.pread(
+                    output.fileno(), 1600, max(0, size - 1600)
+                ).decode(errors="replace")
+                event(state, **fields)
+                if result is not None:
+                    if result:
+                        raise RuntimeError(f"{state}_exit_{result}")
+                    return
+                if time.monotonic() > REPORT["deadline"]:
+                    raise RuntimeError("cpu_build_deadline_exceeded")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
 
 
 def model_volume_id():
@@ -74,6 +109,7 @@ def model_disk(devices, volume, size):
 
 def run(config):
     REPORT.update(config)
+    REPORT["deadline"] = time.monotonic() + config["max_minutes"] * 60
     call(
         [
             "systemd-run",
@@ -132,13 +168,9 @@ def run(config):
         if shutil.disk_usage("/").free < 45 * 2**30:
             raise RuntimeError("insufficient_runtime_disk_space")
         event("pulling_runtime")
-        call(
-            ["docker", "pull", config["image"]],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        observed(["docker", "pull", config["image"]], "pulling_runtime")
         event("downloading_model")
-        call(
+        observed(
             [
                 "docker",
                 "run",
@@ -160,8 +192,8 @@ def run(config):
                 config["repo"],
                 config["revision"],
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            "downloading_model",
+            progress_path=model_dir / "progress.json",
         )
         counts = json.loads((model_dir / "progress.json").read_text())
         if not counts["total_bytes"] or counts["downloaded_bytes"] != counts["total_bytes"]:

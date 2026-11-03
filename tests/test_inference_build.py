@@ -71,6 +71,9 @@ def test_build_request_is_bounded_cpu_only_and_all_disks_are_encrypted_ephemeral
     ] == dict(CpuCredits="unlimited")
     with pytest.raises(ValueError, match="invalid_cpu_credit_mode"):
         launch_request(dict(state, cpu_credits="invalid"), source)
+    assert (
+        launch_request(dict(state, instance_type="t3.large"), source)["InstanceType"] == "t3.large"
+    )
 
 
 def test_customer_images_and_other_accounts_can_never_be_used_as_shared_bases():
@@ -173,3 +176,41 @@ def test_progress_cleanup_cannot_delete_an_unrelated_key():
     with pytest.raises(RuntimeError, match="cleanup_scope_mismatch"):
         delete_progress(s3, state)
     s3.delete_object.assert_not_called()
+
+
+def test_status_delivery_outage_does_not_discard_prepared_artifacts(monkeypatch):
+    import urllib.error
+
+    from spotbot import guest_image
+
+    monkeypatch.setattr(
+        guest_image, "REPORT", dict(build_id="test", status_url="https://private.example")
+    )
+    monkeypatch.setattr(guest_image, "PROGRESS", {})
+
+    def unavailable(*args, **kwargs):
+        raise urllib.error.URLError("temporary outage")
+
+    monkeypatch.setattr(guest_image.urllib.request, "urlopen", unavailable)
+    guest_image.event("prepared", artifact_bytes=123)
+    assert guest_image.PROGRESS["stage"] == "prepared"
+
+
+def test_long_running_command_reports_progress_and_obeys_deadline(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from spotbot import guest_image
+
+    process = MagicMock()
+    process.wait.side_effect = [subprocess.TimeoutExpired("docker", 30), 0]
+    process.poll.return_value = None
+    monkeypatch.setattr(guest_image.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(guest_image, "REPORT", dict(deadline=0))
+    events = []
+    monkeypatch.setattr(
+        guest_image, "event", lambda state, **fields: events.append((state, fields))
+    )
+    with pytest.raises(RuntimeError, match="cpu_build_deadline_exceeded"):
+        guest_image.observed(["docker", "pull", "public-pinned-image"], "pulling_runtime")
+    process.kill.assert_called_once()
+    assert events[0][0] == "pulling_runtime" and events[0][1]["free_root_bytes"] > 0

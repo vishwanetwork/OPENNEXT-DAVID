@@ -8,6 +8,8 @@ from pathlib import Path
 from spotbot.guest_inference import DOWNLOAD
 from spotbot.inference import PRESETS
 
+CPU_TYPES = {"t3.medium", "t3.large"}
+
 
 def labels(state):
     values = {
@@ -83,7 +85,7 @@ def user_data(state):
 
 
 def launch_request(state, source):
-    if state["instance_type"] != "t3.medium" or not 10 <= state["max_minutes"] <= 90:
+    if state["instance_type"] not in CPU_TYPES or not 10 <= state["max_minutes"] <= 90:
         raise ValueError("cpu_build_limits_exceeded")
     if not base_allowed(source, state["account"]):
         raise ValueError("clean_encrypted_base_image_required")

@@ -220,6 +220,11 @@ A guest shutdown timer and controller deadline bound CPU runtime to 90 minutes.
 For short builds, `--cpu-credits unlimited` avoids credit throttling while preserving
 the same runtime limit; it can add AWS CPU-credit charges. Standard mode is the
 default and may make container decompression much slower after credits run out.
+Use `--instance-type t3.large --cpu-credits unlimited` for an 8 GiB-memory builder
+when runtime decompression exceeds the medium instance's memory headroom. The
+same single-instance and 90-minute limits apply. Pull/download heartbeats include
+bounded command output, free root space and model byte progress; transient status
+delivery and controller connection errors are retried within the existing deadlines.
 Progress uses a dedicated private, encrypted S3 bucket with public access blocked.
 The guest receives only a two-hour PUT capability for its own build-status object;
 it receives no cloud-management role or access keys. Temporary status objects expire
