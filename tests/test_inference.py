@@ -293,6 +293,39 @@ async def test_machine_delivery_and_customer_task_do_not_wait_for_model(model_en
     assert inference.instruction(row, gen, env.engine.sealer)["run"] is False
 
 
+async def test_scoped_gateway_view_identifies_inference_before_model_start(model_env):
+    import httpx
+
+    from spotbot.api import create_app
+    from spotbot.gateway_inference import apply_target
+
+    env = model_env
+    token = "gateway-delivery-only-" * 3
+    env.service.settings.spotbot_rental_gateway_token = SecretStr(token)
+    row, _ = env.engine.create(env.request, "tenant-a", "scoped-inference-handoff")
+    row = await deliver(env, row["id"])
+    app = create_app(env.service.settings, env.service)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app), base_url="https://bot.example.com"
+    ) as client:
+        response = await client.get(
+            "/v1/rentals/" + row["id"],
+            headers={"Authorization": "Bearer " + token, "X-SpotBot-Tenant": "tenant-a"},
+        )
+    assert response.status_code == 200
+    view = response.json()
+    assert view["rfq"]["inference"]["preset_id"] == NAME
+    assert set(view["rfq"]["inference"]) == {"preset_id"}
+    assert "budget_usd" not in view["rfq"]
+    assert "inference_secret" not in response.text
+    assert view["inference"]["state"] != "ready"
+    target = apply_target({"http": row["connection"]["http"]}, view)
+    # SSH delivery can proceed before the engine starts. A plain HTTP probe here
+    # would deadlock: inference dispatch waits until delivery is acknowledged.
+    assert target["http"] is None
+    assert target["inference"]["model"] == NAME
+
+
 def test_snapshot_must_match_approved_pins_and_reserve_model_disk(model_env):
     env = model_env
     changed = env.request.model_copy(deep=True)
