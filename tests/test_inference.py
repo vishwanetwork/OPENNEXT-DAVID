@@ -135,6 +135,13 @@ def test_live_aws_memory_metadata_matches_the_checkout_model_catalog(
         assert result.status_code == (200 if reason is None else 409)
         if reason:
             assert result.json()["detail"] == reason
+        else:
+            offer.details["gpu_specifications"][0]["Manufacturer"] = "AMD"
+            refused = client.post(
+                "/v1/inference/selection", json={"offer_id": "offer", "preset_id": name}
+            )
+            assert refused.status_code == 409
+            assert refused.json()["detail"] == "inference_gpu_vendor_not_supported"
 
 
 def test_large_model_admission_reserves_runtime_headroom_and_keeps_precision_separate():
