@@ -218,7 +218,9 @@ to enable indexed customer lookups; older bots retain a compatibility fallback.
 
 ### Local Autopilot testing
 
-The model-options read uses the cached hardware catalog without live quota lookup.
+The model-options read uses cached hardware without live quota lookup. Cold reads
+use the native `/v1/prices/latest` `region` and `sku` filters, rather than loading
+the full provider catalog. The filtered result does not mark the full catalog fresh.
 Compatibility retains hardware metadata across price-cache expiry; price quotes and
 purchase admission still refresh pricing independently.
 Slow quota checks do not hold the catalog lock. The adapter bounds the complete

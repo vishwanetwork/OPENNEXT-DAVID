@@ -410,6 +410,7 @@ class SpotMarket:
         self.storage_rate = storage_rate
         self.pricing_policy = None
         self._offers, self._loaded, self._lock = {}, None, asyncio.Lock()
+        self._model_offers = {}
 
     @classmethod
     def from_settings(cls, settings, client):
@@ -629,6 +630,35 @@ class SpotMarket:
         )
         response.raise_for_status()
         return response.json()
+
+    async def model_offer(self, reference):
+        """Resolve one hardware row without fetching the complete price catalog."""
+        cached = self._offers.get(reference) or self._model_offers.get(reference)
+        if cached:
+            return cached
+        region = next((r for r in self.regions if reference.startswith(f"spotbot-{r}-")), None)
+        if region is None:
+            return None
+        sku = reference.removeprefix(f"spotbot-{region}-")
+        if not sku or len(sku) > 128:
+            return None
+        values, offset = [], 0
+        while True:
+            response = await self.bot("GET", "/v1/prices/latest", params=dict(
+                provider="aws", market="spot", region=region, sku=sku,
+                can_attempt_only="true", account_routes="true", limit=PAGE, offset=offset,
+            ), timeout=6)
+            response.raise_for_status()
+            body = response.json()
+            page = [row for group in body["groups"] for row in group["offers"]]
+            values.extend(page)
+            offset += PAGE
+            if not page or offset >= body["total"]:
+                break
+        offer = build_offers(values, self.regions, accounts=self.accounts).get(reference)
+        if offer:
+            self._model_offers[reference] = offer
+        return offer
 
     async def connection(self, rental_id):
         """The gateway's customer SSH entry point, once the gateway serves the rental."""

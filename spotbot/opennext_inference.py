@@ -30,10 +30,7 @@ def install(app, ctx):
     async def presets(offerId: str):
         try:
             async with asyncio.timeout(8):
-                offers = (
-                    await market.offers(with_quota=False, refresh_prices=False) if market else {}
-                )
-                offer = offers.get(offerId)
+                offer = await market.model_offer(offerId) if market else None
                 if not offer:
                     return error(404, "This offer is unavailable.")
                 return no_store(await market.inference_presets(offer))

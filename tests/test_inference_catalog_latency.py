@@ -31,6 +31,31 @@ async def test_model_catalog_does_not_read_quota(env):
     assert not any(call.url.path == "/v1/capacity/availability" for call in calls)
 
 
+async def test_cold_model_read_fetches_only_its_region_and_sku_then_reuses_it(env):
+    client, _, calls = env
+    market = client._transport.app.state.ops.paid_purchases.market
+    market.inference_presets = AsyncMock(return_value={"presets": []})
+    for _ in range(2):
+        result = await client.get("/api/marketplace/inference-presets", params={
+            "offerId": "spotbot-us-west-2-g6.xlarge"
+        })
+        assert result.status_code == 200
+    reads = [call for call in calls if call.url.path == "/v1/prices/latest"]
+    assert len(reads) == 1
+    assert reads[0].url.params["region"] == "us-west-2"
+    assert reads[0].url.params["sku"] == "g6.xlarge"
+    assert market._loaded is None  # A partial read must not populate the whole catalog.
+
+
+async def test_model_read_rejects_regions_outside_the_enrolled_catalog(env):
+    client, _, calls = env
+    result = await client.get("/api/marketplace/inference-presets", params={
+        "offerId": "spotbot-ap-northeast-1-g6.xlarge"
+    })
+    assert result.status_code == 404
+    assert not any(call.url.path == "/v1/prices/latest" for call in calls)
+
+
 async def test_slow_quota_lookup_does_not_hold_the_catalog_lock(env):
     client, _, _ = env
     market = await primed_market(client)
