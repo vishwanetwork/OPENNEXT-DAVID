@@ -29,6 +29,12 @@ FREEZE_ACK_SECONDS = 45
 FREEZE_TRUST_SECONDS = 300
 # Minimum spacing of AWS checks for a guest-reported interruption, per generation.
 INTERRUPTION_CHECK_SECONDS = 15
+# A closed rental only has retention cleanup left (final-snapshot volumes, expired backups),
+# which may run minutes late. Stepping every closed rental on every tick re-read its whole
+# history synchronously and stalled every API request for seconds once rentals accumulated.
+CLOSED_RENTAL_SECONDS = 300
+# At most this many due closed rentals per tick, so they never all come due in one burst.
+CLOSED_RENTALS_PER_TICK = 4
 ACTIVE_BACKUP_STATES = {"REQUESTED", "CAPTURING", "PENDING", "REGISTERING", "IMAGE_PENDING"}
 
 logger = logging.getLogger(__name__)
@@ -99,6 +105,7 @@ class RentalEngine:
         )
         self.lock = asyncio.Lock()
         self.row_locks = {}
+        self.closed_due = {}
         self.sealer = tasks.Sealer(service.settings.spotbot_rental_task_key.get_secret_value())
 
     def row_lock(self, rental_id):
@@ -745,6 +752,7 @@ class RentalEngine:
             except Exception as exc:
                 self.event_consumer_error = type(exc).__name__
                 logger.warning("Interruption queue polling failed; continuing lifecycle checks")
+            closed_budget = CLOSED_RENTALS_PER_TICK
             for entry in self.db.list("rental"):
                 # Closed rentals still need retention cleanup, but a large legacy
                 # history must not monopolize the event loop between account rows.
@@ -757,6 +765,11 @@ class RentalEngine:
                 ):
                     logger.error("Rental account enrollment mismatch: rental=%s", entry["id"])
                     continue
+                if entry["state"] == "CLOSED":
+                    if utcnow() < self.closed_due.get(entry["id"], utcnow()) or not closed_budget:
+                        continue
+                    closed_budget -= 1
+                    self.closed_due[entry["id"]] = utcnow() + timedelta(seconds=CLOSED_RENTAL_SECONDS)
                 async with self.row_lock(entry["id"]):
                     row = self.db.get("rental", entry["id"])
                     try:

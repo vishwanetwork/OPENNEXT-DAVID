@@ -244,6 +244,13 @@ def test_mysql_latest_resolves_batches_before_reading_prices(offer):
         assert adapter.latest()[0].price_hourly == Decimal("2")
         assert adapter.latest(provider="lambda") == []
         assert adapter.get_offer(current.offer_id).price_hourly == Decimal("2")
+        # The newest batches are read once and filtered in memory until a new batch lands.
+        cached = adapter._latest_cache
+        first, second = adapter.get_offer(current.offer_id), adapter.get_offer(current.offer_id)
+        assert adapter._latest_cache is cached and cached[0] == (2,)
+        first.details["mutated"] = True  # Callers get their own objects.
+        assert "mutated" not in second.details and "mutated" not in adapter.latest()[0].details
+        assert adapter.get_offer("unknown") is None
         with engine.begin() as connection:
             connection.execute(
                 collections.insert().values(id=4, provider=offer.provider, status="ok")

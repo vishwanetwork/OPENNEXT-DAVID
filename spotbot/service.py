@@ -524,6 +524,38 @@ class Service:
                 delay = 600
             await asyncio.sleep(delay)
 
+    async def run_price_retention(self):
+        """Thin old price snapshots every ten minutes; see spotbot/price_retention.py."""
+        from spotbot.price_retention import plan
+
+        if not hasattr(self.store, "remove_collections"):
+            logger.warning("Price retention is not supported by this storage backend")
+            return
+        s = self.settings
+        while True:
+            try:
+                collections = await asyncio.to_thread(self.store.collection_index)
+                remove = plan(
+                    collections,
+                    utcnow(),
+                    raw_days=s.spotbot_price_retention_raw_days,
+                    hourly_days=s.spotbot_price_retention_hourly_days,
+                    daily_days=s.spotbot_price_retention_daily_days,
+                )
+                batch = remove[: s.spotbot_price_retention_batch]
+                rows = await asyncio.to_thread(self.store.remove_collections, batch)
+                logger.info(
+                    "Price retention: removed %s collections (%s price rows); %s remain due",
+                    len(batch),
+                    rows,
+                    len(remove) - len(batch),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Price retention failed: error_type=%s", type(exc).__name__)
+            await asyncio.sleep(600)
+
     async def run(self):
         last_collect = 0.0
         while True:

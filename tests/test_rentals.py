@@ -15,7 +15,7 @@ from spotbot.api import create_app
 from spotbot.models import Offer
 from spotbot.providers import ProviderError
 from spotbot.rental_models import AgentReport, GatewayAck, RentalRequest, RevisionRequest
-from spotbot.rentals import RentalEngine
+from spotbot.rentals import CLOSED_RENTAL_SECONDS, CLOSED_RENTALS_PER_TICK, RentalEngine
 
 
 class Clock:
@@ -363,7 +363,8 @@ async def test_full_server_backup_replacement_and_expiry(rental_env):
     await cycle(env, 15)
     assert env.engine.get(row["id"], "tenant-a")["state"] == "CLOSED"
     assert len(env.cloud.creates) == 2
-    env.clock.advance(61)
+    # Retention (60 s here) is enforced at the closed-rental cleanup cadence.
+    env.clock.advance(CLOSED_RENTAL_SECONDS + 1)
     await cycle(env, 2)
     assert not env.cloud.images
     assert all(v in env.cloud.deleted_volumes for v in env.cloud.volumes)
@@ -1333,3 +1334,48 @@ def test_service_window_never_extends_the_requested_expiry(monkeypatch):
     # Launched just before the deadline and delivered after it: capped at the request.
     assert row["rfq"]["expires_at"] == "2026-10-29T02:00:00+00:00"
     assert row["service_intervals"][0]["end"] is None
+
+
+async def test_closed_rentals_are_stepped_at_the_cleanup_cadence(rental_env):
+    """Closed rentals only have retention cleanup left: one step per interval, not per tick."""
+    env = rental_env
+    row, _ = env.engine.create(env.request, "tenant-a", "closed-cadence")
+    row = await deliver(env, row["id"])
+    await env.engine.release(row["id"], "tenant-a")
+    for _ in range(6):
+        env.clock.advance(11)
+        await cycle(env, 4)
+        env.cloud.finish_shutdown()
+    assert env.engine.get(row["id"], "tenant-a")["state"] == "CLOSED"
+    steps = []
+    original = env.engine._step
+
+    async def counted(value):
+        steps.append(value["id"])
+        return await original(value)
+
+    env.engine._step = counted
+    await cycle(env, 5)
+    first = steps.count(row["id"])
+    assert first <= 1
+    env.clock.advance(CLOSED_RENTAL_SECONDS + 1)
+    await cycle(env, 3)
+    assert steps.count(row["id"]) == first + 1
+
+
+async def test_due_closed_rentals_are_spread_across_ticks(rental_env, monkeypatch):
+    env = rental_env
+    rows = [env.engine.create(env.request, "tenant-a", f"closed-{n}")[0] for n in range(6)]
+    for row in rows:
+        row.update(state="CLOSED", closed_at=env.clock.now().isoformat(), end_requested=True)
+        env.engine.save(row)
+    stepped = []
+
+    async def step(value):
+        stepped.append(value["id"])
+
+    monkeypatch.setattr(env.engine, "_step", step)
+    await env.engine.tick()
+    assert len(stepped) == CLOSED_RENTALS_PER_TICK
+    await env.engine.tick()
+    assert sorted(stepped) == sorted(r["id"] for r in rows)

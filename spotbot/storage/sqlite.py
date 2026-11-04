@@ -2,6 +2,7 @@ import fcntl
 import json
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
@@ -89,6 +90,24 @@ class Store:
                         offer.model_dump_json(),
                     ),
                 )
+
+    def collection_index(self):
+        """`(id, provider, observed_at, status)` of every collection, for retention."""
+        with self.connect() as c:
+            return [
+                tuple(row)
+                for row in c.execute("SELECT id, provider, observed_at, status FROM collections")
+            ]
+
+    def remove_collections(self, ids, pause=0.05):
+        """Delete collections and their price rows, one short transaction each."""
+        removed = 0
+        for cid in ids:
+            with self.connect() as c:
+                removed += c.execute("DELETE FROM prices WHERE collection_id=?", (cid,)).rowcount
+                c.execute("DELETE FROM collections WHERE id=?", (cid,))
+            time.sleep(pause)
+        return removed
 
     def collection_status(self):
         with self.connect() as c:

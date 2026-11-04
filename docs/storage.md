@@ -30,6 +30,34 @@ URL-encode special characters in usernames and passwords. Keep the URL in the ig
 
 The adapter uses InnoDB transactions, binary string comparisons, a unique idempotency constraint, and row locks for conditional order transitions. Orders and outbox events commit together. Catalog batches commit atomically. `GET_LOCK` holds a database-scoped singleton worker lock on a dedicated connection; a second process is rejected. A lost lock prevents subsequent resource operations. MySQL releases the advisory lock when its owning connection ends.
 
+## Price snapshot retention
+
+Each collection cycle stores a full snapshot of every offer in `prices`. On the staging Bot
+that was about 430,000 rows (570 MB) a day: 10.6 GB after three weeks. Current prices need only
+each provider's newest successful collection, and AWS Spot and list price history live in
+`aws_spot_changes` and `aws_list_archive`. Only `GET /v1/prices/history` (the legacy Market
+Insight import, up to 90 days) reads older snapshots.
+
+With `SPOTBOT_PRICE_RETENTION_ENABLED=true` (MySQL and SQLite), the Bot thins old collections
+every ten minutes:
+
+| Age | Kept |
+| --- | --- |
+| up to `SPOTBOT_PRICE_RETENTION_RAW_DAYS` (3) | every collection |
+| up to `SPOTBOT_PRICE_RETENTION_HOURLY_DAYS` (30) | the earliest successful collection per provider and hour |
+| up to `SPOTBOT_PRICE_RETENTION_DAILY_DAYS` (90) | the earliest successful collection per provider and day |
+| older | none |
+
+Each provider's newest successful collection is always kept. A run removes at most
+`SPOTBOT_PRICE_RETENTION_BATCH` (500) collections, each in its own short transaction off the
+event loop. A dry run on the staging data on 2026-11-04 planned to remove 18,261 of 23,774
+collections (about 6.0 million of 8.3 million rows); the steady state is about 3.5 GB.
+
+Deleting rows does not shrink an InnoDB file. Before enabling it on an existing database,
+snapshot the database volume; after the backlog is gone, run `OPTIMIZE TABLE prices` at a
+quiet time to return the space (it rebuilds the table online and needs free disk about the size
+of the remaining table). DynamoDB is not supported; the loop logs a warning and stops.
+
 ## DynamoDB
 
 Install the optional adapter:

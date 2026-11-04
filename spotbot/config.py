@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     spotbot_dynamodb_create_table: bool = False
     spotbot_background_enabled: bool = True
     spotbot_collect_interval_seconds: int = Field(300, ge=30)
+    # Tiered retention of price collection snapshots (MySQL and SQLite; see
+    # spotbot/price_retention.py): every collection for RAW days, one per provider and hour
+    # up to HOURLY days, one per day up to DAILY days, none older. Off until enabled.
+    spotbot_price_retention_enabled: bool = False
+    spotbot_price_retention_raw_days: int = Field(3, ge=1, le=365)
+    spotbot_price_retention_hourly_days: int = Field(30, ge=1, le=3650)
+    spotbot_price_retention_daily_days: int = Field(90, ge=1, le=3650)
+    # Collections removed per run (every ten minutes), to keep each run short.
+    spotbot_price_retention_batch: int = Field(500, ge=1, le=10000)
     spotbot_worker_interval_seconds: int = Field(15, ge=12)
     spotbot_price_max_age_seconds: int = Field(600, ge=30)
     spotbot_http_timeout_seconds: int = Field(30, ge=1, le=120)
@@ -209,6 +218,12 @@ class Settings(BaseSettings):
 
         _ = self.aws_accounts
         _ = self.opennext_aws_accounts
+        if not (
+            self.spotbot_price_retention_raw_days
+            <= self.spotbot_price_retention_hourly_days
+            <= self.spotbot_price_retention_daily_days
+        ):
+            raise ValueError("Price retention days must satisfy raw <= hourly <= daily")
         from spotbot.inference import catalog
 
         catalog(self)

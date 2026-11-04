@@ -1,6 +1,7 @@
 """Transactional MySQL storage using SQLAlchemy Core and PyMySQL."""
 
 import hashlib
+import time
 from datetime import timedelta
 
 import sqlalchemy as sa
@@ -196,6 +197,27 @@ class MySQLStore:
             if records:
                 connection.execute(self.prices.insert(), records)
 
+    def collection_index(self):
+        """`(id, provider, observed_at, status)` of every collection, for retention."""
+        c = self.collections.c
+        with self.engine.connect() as connection:
+            return [
+                tuple(row)
+                for row in connection.execute(sa.select(c.id, c.provider, c.observed_at, c.status))
+            ]
+
+    def remove_collections(self, ids, pause=0.05):
+        """Delete collections and their price rows, one short transaction each."""
+        removed = 0
+        for cid in ids:
+            with self.engine.begin() as connection:
+                removed += connection.execute(
+                    self.prices.delete().where(self.prices.c.collection_id == cid)
+                ).rowcount
+                connection.execute(self.collections.delete().where(self.collections.c.id == cid))
+            time.sleep(pause)  # Leave room for collection writes and API reads.
+        return removed
+
     def collection_status(self):
         subquery = sa.select(sa.func.max(self.collections.c.id)).group_by(
             self.collections.c.provider
@@ -220,7 +242,54 @@ class MySQLStore:
             query = query.where(self.prices.c.observed_at <= filters["until"])
         return query
 
+    LATEST_KEYS = ("provider", "cloud", "sku", "region", "market", "gpu_model", "offer_id")
+
     def latest(self, **filters):
+        """Offers of each provider's newest successful collection.
+
+        The newest batches (a few thousand rows) are read once per batch set and kept in
+        memory; filters then select from them. Filtering in SQL instead let MySQL pick the
+        offer_id index and read every historical row of that offer (seconds once `prices`
+        held millions of rows). Payloads are parsed per call, so callers get fresh objects.
+        """
+        if filters.get("since") is not None or filters.get("until") is not None:
+            return self._latest_query(**filters)
+        rows, columns = self._latest_rows()
+        keys = [k for k in self.LATEST_KEYS if filters.get(k) is not None]
+        if any(k not in columns for k in keys):
+            return self._latest_query(**filters)
+        return [
+            Offer.model_validate_json(row[-1])
+            for row in rows
+            if all(row[columns.index(k)] == filters[k] for k in keys)
+        ]
+
+    def _latest_rows(self):
+        batches = (
+            sa.select(sa.func.max(self.collections.c.id))
+            .where(self.collections.c.status == "ok")
+            .group_by(self.collections.c.provider)
+        )
+        columns = [k for k in self.LATEST_KEYS if k in self.prices.c]
+        with self.engine.connect() as connection:
+            batch_ids = tuple(sorted(row[0] for row in connection.execute(batches)))
+            cached = getattr(self, "_latest_cache", None)
+            if cached and cached[0] == batch_ids:
+                return cached[1], columns
+            rows = []
+            if batch_ids:
+                query = (
+                    sa.select(*(self.prices.c[k] for k in columns), self.prices.c.payload)
+                    .where(self.prices.c.collection_id.in_(batch_ids))
+                    .order_by(
+                        *(self.prices.c[k] for k in ["provider", "cloud", "sku", "region", "market"])
+                    )
+                )
+                rows = [tuple(row) for row in connection.execute(query)]
+        self._latest_cache = (batch_ids, rows)
+        return rows, columns
+
+    def _latest_query(self, **filters):
         batches = (
             sa.select(sa.func.max(self.collections.c.id))
             .where(self.collections.c.status == "ok")
