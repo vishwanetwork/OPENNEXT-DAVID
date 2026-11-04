@@ -32,6 +32,7 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         history_task = None
         list_history_task = None
         rental_task = None
+        retention_task = None
         try:
             svc.acquire()
             if config.spotbot_background_enabled:
@@ -42,10 +43,16 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
                     history_task = asyncio.create_task(svc.run_history())
                 if config.enabled("aws") and config.spotbot_aws_list_history_enabled:
                     list_history_task = asyncio.create_task(svc.run_list_history())
+                if config.spotbot_price_retention_enabled:
+                    retention_task = asyncio.create_task(svc.run_price_retention())
             app.state.worker_task = task
             app.state.rental_task = rental_task
             yield
         finally:
+            if retention_task:
+                retention_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await retention_task
             if rental_task:
                 rental_task.cancel()
                 with suppress(asyncio.CancelledError):

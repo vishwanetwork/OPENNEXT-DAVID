@@ -1,6 +1,7 @@
 """Transactional MySQL storage using SQLAlchemy Core and PyMySQL."""
 
 import hashlib
+import time
 from datetime import timedelta
 
 import sqlalchemy as sa
@@ -195,6 +196,27 @@ class MySQLStore:
                 )
             if records:
                 connection.execute(self.prices.insert(), records)
+
+    def collection_index(self):
+        """`(id, provider, observed_at, status)` of every collection, for retention."""
+        c = self.collections.c
+        with self.engine.connect() as connection:
+            return [
+                tuple(row)
+                for row in connection.execute(sa.select(c.id, c.provider, c.observed_at, c.status))
+            ]
+
+    def remove_collections(self, ids, pause=0.05):
+        """Delete collections and their price rows, one short transaction each."""
+        removed = 0
+        for cid in ids:
+            with self.engine.begin() as connection:
+                removed += connection.execute(
+                    self.prices.delete().where(self.prices.c.collection_id == cid)
+                ).rowcount
+                connection.execute(self.collections.delete().where(self.collections.c.id == cid))
+            time.sleep(pause)  # Leave room for collection writes and API reads.
+        return removed
 
     def collection_status(self):
         subquery = sa.select(sa.func.max(self.collections.c.id)).group_by(
