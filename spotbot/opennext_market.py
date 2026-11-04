@@ -436,9 +436,15 @@ class SpotMarket:
         kwargs.setdefault("timeout", BOT_TIMEOUT)
         return await self.client.request(method, self.bot_url + path, headers=headers, **kwargs)
 
-    async def offers(self, *, with_quota=True):
+    async def _catalog(self, refresh_prices):
+        # Instance hardware is stable. Model reads can reuse its last snapshot even
+        # while a separate public-price refresh is in flight.
+        if not refresh_prices and self._loaded is not None:
+            return [o.raw for o in self._offers.values()]
         async with self._lock:
-            if self._loaded is None or time.monotonic() - self._loaded > CACHE_SECONDS:
+            if self._loaded is None or (
+                refresh_prices and time.monotonic() - self._loaded > CACHE_SECONDS
+            ):
                 values, offset = [], 0
                 while True:
                     response = await self.bot(
@@ -464,7 +470,10 @@ class SpotMarket:
                     build_offers(values, self.regions, accounts=self.accounts),
                     time.monotonic(),
                 )
-            values = [o.raw for o in self._offers.values()]
+            return [o.raw for o in self._offers.values()]
+
+    async def offers(self, *, with_quota=True, refresh_prices=True):
+        values = await self._catalog(refresh_prices)
         # Model compatibility uses the cached hardware catalog, not live account quota.
         # Release the catalog lock before slow quota reads so they cannot block it.
         policy = await self.pricing_policy.get() if self.pricing_policy else None

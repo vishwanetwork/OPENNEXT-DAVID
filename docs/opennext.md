@@ -219,6 +219,8 @@ to enable indexed customer lookups; older bots retain a compatibility fallback.
 ### Local Autopilot testing
 
 The model-options read uses the cached hardware catalog without live quota lookup.
+Compatibility retains hardware metadata across price-cache expiry; price quotes and
+purchase admission still refresh pricing independently.
 Slow quota checks do not hold the catalog lock. The adapter bounds the complete
 model-options request to eight seconds and the native preset read to six seconds.
 Native deployments must expose `/v1/inference/presets`; missing support returns an

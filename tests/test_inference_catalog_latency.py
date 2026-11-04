@@ -62,6 +62,26 @@ async def test_slow_quota_lookup_does_not_hold_the_catalog_lock(env):
         await public
 
 
+async def test_compatibility_reuses_hardware_but_a_price_quote_refreshes_prices(env):
+    client, _, calls = env
+    market = await primed_market(client)
+    market._loaded -= 120
+    market.inference_presets = AsyncMock(return_value={"presets": []})
+    before = sum(call.url.path == "/v1/prices/latest" for call in calls)
+    options = await client.get("/api/marketplace/inference-presets", params={
+        "offerId": "spotbot-us-west-2-g6.xlarge"
+    })
+    assert options.status_code == 200
+    assert sum(call.url.path == "/v1/prices/latest" for call in calls) == before
+    quote = await client.post("/api/marketplace/inference-quote", json={
+        "offerId": "spotbot-us-west-2-g6.xlarge", "durationHours": 1,
+        "inferencePresetId": None
+    })
+    assert quote.status_code == 200
+    assert sum(call.url.path == "/v1/prices/latest" for call in calls) == before + 1
+    assert not any(call.url.path == "/v1/capacity/availability" for call in calls)
+
+
 @pytest.mark.parametrize("failure", [TimeoutError(), ValueError("unavailable")])
 async def test_unavailable_model_service_never_fabricates_compatible_models(env, failure):
     client, _, _ = env
