@@ -436,7 +436,7 @@ class SpotMarket:
         kwargs.setdefault("timeout", BOT_TIMEOUT)
         return await self.client.request(method, self.bot_url + path, headers=headers, **kwargs)
 
-    async def offers(self):
+    async def offers(self, *, with_quota=True):
         async with self._lock:
             if self._loaded is None or time.monotonic() - self._loaded > CACHE_SECONDS:
                 values, offset = [], 0
@@ -464,29 +464,30 @@ class SpotMarket:
                     build_offers(values, self.regions, accounts=self.accounts),
                     time.monotonic(),
                 )
-            policy = await self.pricing_policy.get() if self.pricing_policy else None
-            result = build_offers(
-                [o.raw for o in self._offers.values()], self.regions, policy, self.accounts
+            values = [o.raw for o in self._offers.values()]
+        # Model compatibility uses the cached hardware catalog, not live account quota.
+        # Release the catalog lock before slow quota reads so they cannot block it.
+        policy = await self.pricing_policy.get() if self.pricing_policy else None
+        result = build_offers(values, self.regions, policy, self.accounts)
+        ids = [o.raw["offer_id"] for o in result.values() if o.raw.get("offer_id")]
+        quotas = {}
+        if with_quota and ids:
+            try:
+                response = await self.bot("POST", "/v1/capacity/availability", json=ids)
+                response.raise_for_status()
+                quotas = response.json()["offers"]
+            except (httpx.HTTPError, KeyError, ValueError):
+                pass
+        for item in result.values():
+            item.row["quota"] = quotas.get(item.raw.get("offer_id")) or dict(
+                maxInstances=None,
+                maxGpus=None,
+                usageKnown=False,
+                capacityGuaranteed=False,
+                capacityStatus="unknown",
+                basis="quota_estimate",
             )
-            ids = [o.raw["offer_id"] for o in result.values() if o.raw.get("offer_id")]
-            quotas = {}
-            if ids:
-                try:
-                    response = await self.bot("POST", "/v1/capacity/availability", json=ids)
-                    response.raise_for_status()
-                    quotas = response.json()["offers"]
-                except (httpx.HTTPError, KeyError, ValueError):
-                    pass
-            for item in result.values():
-                item.row["quota"] = quotas.get(item.raw.get("offer_id")) or dict(
-                    maxInstances=None,
-                    maxGpus=None,
-                    usageKnown=False,
-                    capacityGuaranteed=False,
-                    capacityStatus="unknown",
-                    basis="quota_estimate",
-                )
-            return result
+        return result
 
     async def preflight(self, doc):
         """Check the original server specification against live provider quota and price."""
@@ -615,7 +616,7 @@ class SpotMarket:
 
     async def inference_presets(self, offer):
         response = await self.bot(
-            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"])
+            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"]), timeout=6
         )
         response.raise_for_status()
         return response.json()

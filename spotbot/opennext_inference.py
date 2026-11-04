@@ -1,5 +1,6 @@
 """Customer-owned model quotes and service controls for the Terminal."""
 
+import asyncio
 from typing import Literal
 
 import httpx
@@ -28,11 +29,12 @@ def install(app, ctx):
     @app.get("/api/marketplace/inference-presets")
     async def presets(offerId: str):
         try:
-            offer = (await market.offers()).get(offerId) if market else None
-            if not offer:
-                return error(404, "This offer is unavailable.")
-            return no_store(await market.inference_presets(offer))
-        except (httpx.HTTPError, ValueError, KeyError):
+            async with asyncio.timeout(8):
+                offer = (await market.offers(with_quota=False)).get(offerId) if market else None
+                if not offer:
+                    return error(404, "This offer is unavailable.")
+                return no_store(await market.inference_presets(offer))
+        except (httpx.HTTPError, ValueError, KeyError, TimeoutError):
             return error(
                 503,
                 "Model options are temporarily unavailable. You can purchase a GPU without preinstallation.",
@@ -42,7 +44,7 @@ def install(app, ctx):
     async def quote(request: Request):
         try:
             body = Quote.model_validate_json(await request.body())
-            offer = (await market.offers()).get(body.offerId) if market else None
+            offer = (await market.offers(with_quota=False)).get(body.offerId) if market else None
             if not offer:
                 return error(404, "This offer is unavailable.")
             offer = await market.prepare_offer(offer, body.inferencePresetId)
