@@ -70,3 +70,38 @@ async def test_unknown_usage_never_reports_fake_inventory(capacity_env):
     )
     result = await availability(svc, offer)
     assert result["maxInstances"] is None and result["maxGpus"] is None
+
+
+async def test_page_loads_use_the_snapshot_and_refresh_it_in_the_background(
+    capacity_env, monkeypatch
+):
+    import asyncio
+
+    from spotbot import capacity
+
+    service, offer, _, _, usage = capacity_env
+    provider = service.providers["aws"]
+    reads, clock = [], [1000.0]
+    original = provider._quota_usage
+
+    def counted(*args, **kwargs):
+        reads.append(1)
+        return original(*args, **kwargs)
+
+    provider._quota_usage = counted
+    monkeypatch.setattr(capacity.time, "monotonic", lambda: clock[0])
+    assert (await availability(service, offer))["usedVcpus"] == 192 and len(reads) == 1
+    usage["p"] = 384
+    await availability(service, offer)
+    assert len(reads) == 1  # Fresh: no AWS reads.
+    clock[0] += capacity.FRESH_SECONDS + 1
+    stale = await availability(service, offer)
+    assert stale["usedVcpus"] == 192  # Answered from the snapshot at once...
+    await asyncio.sleep(0)
+    assert len(reads) == 2  # ...while one background refresh reads AWS.
+    assert (await availability(service, offer))["usedVcpus"] == 384
+    clock[0] += capacity.STALE_SECONDS + 1
+    usage["p"] = 576
+    assert (await availability(service, offer))["usedVcpus"] == 576  # Too old: read now.
+    assert (await availability(service, offer, force=True))["usedVcpus"] == 576
+    assert len(reads) == 4  # Purchase admission always reads AWS.

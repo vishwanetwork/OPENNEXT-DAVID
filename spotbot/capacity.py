@@ -24,35 +24,15 @@ async def availability(service, offer, *, force=False, documents=None):
         if provider is None:
             raise ValueError("aws_account_not_enrolled")
     rows, generations = documents or await asyncio.to_thread(rental_documents, service)
-    if not hasattr(service, "_capacity_cache"):
-        service._capacity_cache = {}
+    family = provider._quota_family(offer.sku)
+    if not family:
+        raise ValueError("unsupported_instance_quota_family")
+    snapshot = await quota_snapshot(service, provider, account, offer.region, family, force)
 
     def check():
-        ec2 = provider._client(offer.region)
-        family = provider._quota_family(offer.sku)
-        key = (account, offer.region, family)
-        cached = service._capacity_cache.get(key)
-        if not force and cached and time.monotonic() - cached[0] < 10:
-            _, specs, used, known, seen, quota, checked = cached
-            known = dict(known)
-        else:
-            specs, _ = provider._instance_types(ec2)
-            seen = set()
-            used, known = provider._quota_usage(ec2, specs, seen=seen)
-            quota = provider._client(offer.region, "service-quotas").get_service_quota(
-                ServiceCode="ec2", QuotaCode="L-3819A6DF" if family == "g" else "L-7212CCBC"
-            )["Quota"]["Value"]
-            checked = timestamp()
-            service._capacity_cache[key] = (
-                time.monotonic(),
-                specs,
-                used,
-                dict(known),
-                seen,
-                quota,
-                checked,
-            )
-        if not family or offer.sku not in specs:
+        _, specs, used, known, seen, quota, checked = snapshot
+        known = dict(known)
+        if offer.sku not in specs:
             raise ValueError("unsupported_instance_quota_family")
         reserved = 0
         for row in rows:
@@ -107,7 +87,57 @@ async def availability(service, offer, *, force=False, documents=None):
             basis="quota_estimate",
         )
 
-    return await provider._execute(check)
+    return check()
+
+
+# A quota snapshot (instance types, usage and the Spot quota of one account, Region and
+# instance family) costs several paginated AWS calls, serialized per account. Page loads use
+# a snapshot up to STALE_SECONDS old and refresh it in the background once it is older than
+# FRESH_SECONDS; purchase admission (force=True) always reads AWS. checkedAt shows the age.
+FRESH_SECONDS = 15
+STALE_SECONDS = 300
+
+
+async def quota_snapshot(service, provider, account, region, family, force=False):
+    key = (account, region, family)
+    cache = service.__dict__.setdefault("_capacity_cache", {})
+    inflight = service.__dict__.setdefault("_capacity_inflight", {})
+
+    def read():
+        ec2 = provider._client(region)
+        specs, _ = provider._instance_types(ec2)
+        seen = set()
+        used, known = provider._quota_usage(ec2, specs, seen=seen)
+        quota = provider._client(region, "service-quotas").get_service_quota(
+            ServiceCode="ec2", QuotaCode="L-3819A6DF" if family == "g" else "L-7212CCBC"
+        )["Quota"]["Value"]
+        return specs, used, dict(known), seen, quota, timestamp()
+
+    async def refresh():
+        try:
+            entry = (time.monotonic(), *(await provider._execute(read)))
+            cache[key] = entry
+            return entry
+        finally:
+            if inflight.get(key) is asyncio.current_task():
+                inflight.pop(key)
+
+    def start():
+        task = asyncio.ensure_future(refresh())
+        inflight[key] = task
+        # A background refresh that fails keeps the previous snapshot; nobody awaits it.
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        return task
+
+    if force:
+        return await refresh()
+    cached = cache.get(key)
+    age = time.monotonic() - cached[0] if cached else None
+    if cached and age < STALE_SECONDS:
+        if age >= FRESH_SECONDS and key not in inflight:
+            start()
+        return cached
+    return await asyncio.shield(inflight.get(key) or start())
 
 
 async def admit(service, rules):
