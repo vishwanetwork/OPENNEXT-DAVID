@@ -32,12 +32,13 @@ def main():
     assert len(command.encode()) < 3500, 'Terminal command exceeds its input budget'
     print(json.dumps({'event': 'terminal_connecting'}), flush=True)
     # Raw auth files, environment variables and credentials remain on the production host.
-    ws = websocket.create_connection(url, timeout=20, header={
+    ws = websocket.create_connection(url, timeout=45, header={
         '1Panel-Token': token, '1Panel-Timestamp': timestamp}, origin=HOST)
     print(json.dumps({'event': 'terminal_connected'}), flush=True)
     try:
         ws.send(json.dumps({'type': 'cmd', 'data': base64.b64encode(command.encode()).decode()}))
         output = ''
+        progress_seen = False
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             message = ws.recv()
@@ -47,10 +48,13 @@ def main():
             if value.get('type') != 'cmd':
                 continue
             output += base64.b64decode(value.get('data', '')).decode(errors='replace')
+            if not progress_seen and 'OPENNEXT_KYB_PROGRESS_START' in output and 'OPENNEXT_KYB_PROGRESS_END' in output:
+                progress_seen = True
+                print(json.dumps({'event': 'guest_query_in_progress'}), flush=True)
             if START in output and END in output.split(START, 1)[1]:
                 result = json.loads(output.split(START, 1)[1].split(END, 1)[0])
                 if result.get('event') != 'production_kyb_inspection':
-                    print(json.dumps({'event': 'guest_inspection_failed', 'errorType': result.get('errorType')}), flush=True)
+                    print(json.dumps({'event': 'guest_inspection_failed', 'errorType': result.get('errorType'), 'phase': result.get('phase')}), flush=True)
                     raise RuntimeError('Production inspection failed')
                 assert {row['email'] for row in result['accounts']} == {
                     'harry@vishwalab.com', 'david.lee@vishwalab.com', 'evan@vishwanetwork.xyz'}

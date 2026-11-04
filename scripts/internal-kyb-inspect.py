@@ -2,8 +2,11 @@ import json,os,sqlite3
 from pathlib import Path
 from spotbot.config import Settings
 from spotbot.opennext_ops import KYB,identity
+PHASE='initializing'
 TARGETS=('harry@vishwalab.com','david.lee@vishwalab.com','evan@vishwanetwork.xyz')
 def inspect():
+ global PHASE
+ PHASE='finding_account_service'
  settings=[]
  for process in Path('/proc').iterdir():
   if not process.name.isdecimal():continue
@@ -12,7 +15,7 @@ def inspect():
    env=dict(item.decode().split('=',1) for item in (process/'environ').read_bytes().split(b'\0') if b'=' in item)
    settings.append(Settings(_env_file=None,**{k.lower():v for k,v in env.items() if k.lower() in Settings.model_fields}))
   except (PermissionError,FileNotFoundError,ProcessLookupError):continue
- if len(settings)!=1:
+ if not settings:
   import urllib.request
   candidates=[]
   for process in Path('/proc').iterdir():
@@ -23,12 +26,16 @@ def inspect():
     itemenv=dict(item.decode().split('=',1) for item in (process/'environ').read_bytes().split(b'\0') if b'=' in item)
     if itemenv.get('API_ORIGIN'):candidates.append(itemenv)
    except (PermissionError,FileNotFoundError,ProcessLookupError):continue
+  PHASE='resolving_account_service'
   assert candidates,'API client not found'
   conf=candidates[0];origin=conf['API_ORIGIN'].rstrip('/');token=conf.get('OPENNEXT_ADMIN_TOKEN','')
   headers={'Host':'admin.opennextlab.ai','Origin':'https://admin.opennextlab.ai'}
   if token:headers['Authorization']='Bearer '+token
+  PHASE='reading_authorized_kyb_states'
+  print('OPENNEXT_KYB_PROGRESS_START'+json.dumps({'phase':PHASE})+'OPENNEXT_KYB_PROGRESS_END',flush=True)
   request=urllib.request.Request(origin+'/api/admin/buyer-kyb',headers=headers)
   with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,timeout=15) as response:body=json.load(response)
+  PHASE='validating_kyb_response'
   cases=body.get('cases');assert isinstance(cases,list),'KYB service response unavailable'
   rows=[]
   for email in TARGETS:
@@ -58,5 +65,5 @@ def inspect():
   result['accounts'].append({'email':email,'registered':bool(user),'role':user['role'] if user else None,'onboardingCompleted':bool(user.get('onboardingCompleted')) if user else None,'kybStatus':case.get('status') if case else None,'country':(case.get('company') or {}).get('country') if case else None})
  return result
 try:result=inspect()
-except Exception as exc:result={'event':'inspection_failed','errorType':type(exc).__name__}
+except Exception as exc:result={'event':'inspection_failed','errorType':type(exc).__name__,'phase':PHASE}
 print('OPENNEXT_KYB_RESULT_START'+json.dumps(result)+'OPENNEXT_KYB_RESULT_END',flush=True)
