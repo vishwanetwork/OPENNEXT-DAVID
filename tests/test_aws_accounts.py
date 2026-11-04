@@ -15,6 +15,7 @@ from spotbot.aws_provider import AWSProvider
 from spotbot.config import Settings
 from spotbot.providers import ProviderError
 from spotbot.rental_accounts import RentalAccounts
+from spotbot.rentals import CLOSED_RENTAL_SECONDS
 from tests.test_aws import FakeAWS
 from tests.test_rentals import Cloud, cycle, deliver
 from tests.test_rentals import rental_env as rental_env  # noqa: F401
@@ -208,7 +209,7 @@ async def test_replacement_and_cleanup_use_same_account_while_old_instance_survi
     await env.engine.release(row["id"], "tenant-a")
     env.clock.advance(11)
     await cycle(env, 15)
-    env.clock.advance(61)
+    env.clock.advance(CLOSED_RENTAL_SECONDS + 1)  # Retention runs at the closed-rental cadence.
     await cycle(env, 3)
     assert env.engine.get(row["id"], "tenant-a")["state"] == "CLOSED"
     assert env.cloud.deleted_snapshots
