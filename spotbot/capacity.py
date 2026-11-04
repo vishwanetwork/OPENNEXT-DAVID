@@ -1,10 +1,19 @@
 """Live, account-scoped quota estimates. These are never a promise of Spot inventory."""
 
+import asyncio
 import hashlib
 import time
 
 from spotbot.models import timestamp
 from spotbot.providers import ProviderError
+
+
+def rental_documents(service):
+    """Rentals and generations for usage counting; synchronous, so callers run it in a thread."""
+    return (
+        service.rentals.db.list("rental"),
+        {g["id"]: g for g in service.rentals.db.list("generation")},
+    )
 
 
 async def availability(service, offer, *, force=False, documents=None):
@@ -14,10 +23,7 @@ async def availability(service, offer, *, force=False, documents=None):
         provider = provider.fulfillment_providers().get(account)
         if provider is None:
             raise ValueError("aws_account_not_enrolled")
-    rows, generations = documents or (
-        service.rentals.db.list("rental"),
-        {g["id"]: g for g in service.rentals.db.list("generation")},
-    )
+    rows, generations = documents or await asyncio.to_thread(rental_documents, service)
     if not hasattr(service, "_capacity_cache"):
         service._capacity_cache = {}
 
@@ -105,7 +111,7 @@ async def availability(service, offer, *, force=False, documents=None):
 
 
 async def admit(service, rules):
-    candidates = service.rentals.candidates(rules)
+    candidates = await asyncio.to_thread(service.rentals.candidates, rules)
     if not candidates:
         raise ValueError("no_eligible_offer")
     for offer in candidates[:8]:
@@ -120,7 +126,8 @@ def install(app, service, auth):
 
     @app.get("/v1/capacity/availability", dependencies=auth)
     async def get_availability(offer_id: str):
-        offer = service.store.get_offer(offer_id)
+        # Database reads stay off the event loop, which serves every other request.
+        offer = await asyncio.to_thread(service.store.get_offer, offer_id)
         if not offer or offer.provider != "aws" or offer.market != "spot":
             raise HTTPException(404, "offer_not_found")
         try:
@@ -133,13 +140,10 @@ def install(app, service, auth):
         if len(offer_ids) > 200 or any(len(i) > 200 for i in offer_ids):
             raise HTTPException(400, "too_many_offers")
         result = {}
-        documents = (
-            service.rentals.db.list("rental"),
-            {g["id"]: g for g in service.rentals.db.list("generation")},
-        )
+        documents = await asyncio.to_thread(rental_documents, service)
         for offer_id in dict.fromkeys(offer_ids):
             try:
-                offer = service.store.get_offer(offer_id)
+                offer = await asyncio.to_thread(service.store.get_offer, offer_id)
                 if not offer or offer.provider != "aws" or offer.market != "spot":
                     raise ValueError("offer_not_found")
                 result[offer_id] = await availability(service, offer, documents=documents)
