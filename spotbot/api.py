@@ -190,12 +190,16 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         available_only=False,
         can_attempt_only=False,
         account_routes=False,
+        region=None,
+        sku=None,
     ):
         offers = svc.store.latest(
             provider=provider,
             cloud=cloud,
             market=market,
             gpu_model=gpu_model(model) if model else None,
+            region=region,
+            sku=sku,
         )
         rows = [
             svc.providers[o.provider].public_offer(
@@ -221,11 +225,14 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         available_only: bool = False,
         can_attempt_only: bool = False,
         account_routes: bool = False,
+        region: str | None = Query(None, min_length=1, max_length=64),
+        sku: str | None = Query(None, min_length=1, max_length=128),
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
         rows = latest_offers(
-            provider, cloud, market, gpu, available_only, can_attempt_only, account_routes
+            provider, cloud, market, gpu, available_only, can_attempt_only, account_routes,
+            region=region, sku=sku,
         )
         selected = rows[offset : offset + limit]
         groups = [

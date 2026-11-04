@@ -52,6 +52,21 @@ def test_api_auth_grouping_history_and_gpu_filters(service_factory):
         assert compressed.json() == latest
 
 
+def test_latest_catalog_filters_region_and_sku_before_rendering_offers(service_factory):
+    svc, app = client_setup(service_factory)
+    offer = svc.store.latest()[0]
+    params = dict(provider=offer.provider, market=offer.market,
+                  region=offer.region, sku=offer.sku)
+    with TestClient(app) as client:
+        body = client.get("/v1/prices/latest", params=params, headers=AUTH).json()
+        rows = [row for group in body["groups"] for row in group["offers"]]
+        assert rows and all(row["region"] == offer.region and row["sku"] == offer.sku
+                            for row in rows)
+        for changed in [dict(params, region="missing-region"), dict(params, sku="missing-sku")]:
+            assert client.get("/v1/prices/latest", params=changed,
+                              headers=AUTH).json()["total"] == 0
+
+
 def test_api_order_idempotency_redaction_handoff_and_live_guard(service_factory):
     svc, app = client_setup(service_factory)
     offer = next(o for o in svc.store.latest() if o.provider == "shadeform" and o.market == "spot")

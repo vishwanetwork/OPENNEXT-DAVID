@@ -410,6 +410,7 @@ class SpotMarket:
         self.storage_rate = storage_rate
         self.pricing_policy = None
         self._offers, self._loaded, self._lock = {}, None, asyncio.Lock()
+        self._model_offers = {}
 
     @classmethod
     def from_settings(cls, settings, client):
@@ -436,9 +437,15 @@ class SpotMarket:
         kwargs.setdefault("timeout", BOT_TIMEOUT)
         return await self.client.request(method, self.bot_url + path, headers=headers, **kwargs)
 
-    async def offers(self):
+    async def _catalog(self, refresh_prices):
+        # Instance hardware is stable. Model reads can reuse its last snapshot even
+        # while a separate public-price refresh is in flight.
+        if not refresh_prices and self._loaded is not None:
+            return [o.raw for o in self._offers.values()]
         async with self._lock:
-            if self._loaded is None or time.monotonic() - self._loaded > CACHE_SECONDS:
+            if self._loaded is None or (
+                refresh_prices and time.monotonic() - self._loaded > CACHE_SECONDS
+            ):
                 values, offset = [], 0
                 while True:
                     response = await self.bot(
@@ -464,29 +471,33 @@ class SpotMarket:
                     build_offers(values, self.regions, accounts=self.accounts),
                     time.monotonic(),
                 )
-            policy = await self.pricing_policy.get() if self.pricing_policy else None
-            result = build_offers(
-                [o.raw for o in self._offers.values()], self.regions, policy, self.accounts
+            return [o.raw for o in self._offers.values()]
+
+    async def offers(self, *, with_quota=True, refresh_prices=True):
+        values = await self._catalog(refresh_prices)
+        # Model compatibility uses the cached hardware catalog, not live account quota.
+        # Release the catalog lock before slow quota reads so they cannot block it.
+        policy = await self.pricing_policy.get() if self.pricing_policy else None
+        result = build_offers(values, self.regions, policy, self.accounts)
+        ids = [o.raw["offer_id"] for o in result.values() if o.raw.get("offer_id")]
+        quotas = {}
+        if with_quota and ids:
+            try:
+                response = await self.bot("POST", "/v1/capacity/availability", json=ids)
+                response.raise_for_status()
+                quotas = response.json()["offers"]
+            except (httpx.HTTPError, KeyError, ValueError):
+                pass
+        for item in result.values():
+            item.row["quota"] = quotas.get(item.raw.get("offer_id")) or dict(
+                maxInstances=None,
+                maxGpus=None,
+                usageKnown=False,
+                capacityGuaranteed=False,
+                capacityStatus="unknown",
+                basis="quota_estimate",
             )
-            ids = [o.raw["offer_id"] for o in result.values() if o.raw.get("offer_id")]
-            quotas = {}
-            if ids:
-                try:
-                    response = await self.bot("POST", "/v1/capacity/availability", json=ids)
-                    response.raise_for_status()
-                    quotas = response.json()["offers"]
-                except (httpx.HTTPError, KeyError, ValueError):
-                    pass
-            for item in result.values():
-                item.row["quota"] = quotas.get(item.raw.get("offer_id")) or dict(
-                    maxInstances=None,
-                    maxGpus=None,
-                    usageKnown=False,
-                    capacityGuaranteed=False,
-                    capacityStatus="unknown",
-                    basis="quota_estimate",
-                )
-            return result
+        return result
 
     async def preflight(self, doc):
         """Check the original server specification against live provider quota and price."""
@@ -615,10 +626,39 @@ class SpotMarket:
 
     async def inference_presets(self, offer):
         response = await self.bot(
-            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"])
+            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"]), timeout=6
         )
         response.raise_for_status()
         return response.json()
+
+    async def model_offer(self, reference):
+        """Resolve one hardware row without fetching the complete price catalog."""
+        cached = self._offers.get(reference) or self._model_offers.get(reference)
+        if cached:
+            return cached
+        region = next((r for r in self.regions if reference.startswith(f"spotbot-{r}-")), None)
+        if region is None:
+            return None
+        sku = reference.removeprefix(f"spotbot-{region}-")
+        if not sku or len(sku) > 128:
+            return None
+        values, offset = [], 0
+        while True:
+            response = await self.bot("GET", "/v1/prices/latest", params=dict(
+                provider="aws", market="spot", region=region, sku=sku,
+                can_attempt_only="true", account_routes="true", limit=PAGE, offset=offset,
+            ), timeout=6)
+            response.raise_for_status()
+            body = response.json()
+            page = [row for group in body["groups"] for row in group["offers"]]
+            values.extend(page)
+            offset += PAGE
+            if not page or offset >= body["total"]:
+                break
+        offer = build_offers(values, self.regions, accounts=self.accounts).get(reference)
+        if offer:
+            self._model_offers[reference] = offer
+        return offer
 
     async def connection(self, rental_id):
         """The gateway's customer SSH entry point, once the gateway serves the rental."""

@@ -218,6 +218,17 @@ to enable indexed customer lookups; older bots retain a compatibility fallback.
 
 ### Local Autopilot testing
 
+The model-options read uses cached hardware without live quota lookup. Cold reads
+use the native `/v1/prices/latest` `region` and `sku` filters, rather than loading
+the full provider catalog. The filtered result does not mark the full catalog fresh.
+Compatibility retains hardware metadata across price-cache expiry; price quotes and
+purchase admission still refresh pricing independently.
+Slow quota checks do not hold the catalog lock. The adapter bounds the complete
+model-options request to eight seconds and the native preset read to six seconds.
+Native deployments must expose `/v1/inference/presets`; missing support returns an
+unavailable response rather than inventing enabled presets. A pinned, validated
+`SPOTBOT_INFERENCE_PRESETS` configuration is still required for model preinstallation.
+
 `PYTHONPATH=. .venv/bin/python examples/local_opennext.py --skip-kyb --port 4191`
 starts a loopback-only adapter. Set `SPOTBOT_OPENNEXT_LEGACY_ORIGIN` and
 `SPOTBOT_OPENNEXT_PUBLIC_URL` to local HTTP origins, plus the usual bot/gateway credentials
