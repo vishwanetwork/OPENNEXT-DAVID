@@ -2,8 +2,11 @@
 
 Status: implemented in the model-inference development branches. Automated tests
 cover control-plane behavior and TLS forwarding. A paid GPU model acceptance run
-has not been performed; presets remain disabled until an operator validates an
-immutable runtime image on the intended GPU hardware.
+on B300 on 2026-11-03 reached GPU delivery but failed during model runtime startup;
+it did not generate tokens. Production presets remain disabled pending acceptance.
+An operator may explicitly enable the 7B test preset for test purchases while
+retaining runtime hardware checks and readiness gating. Such enrollment is not a
+claim that each GPU/runtime combination has passed live inference acceptance.
 
 ## Accepted product rules
 
@@ -61,6 +64,8 @@ contexts, more concurrent requests and quantized checkpoints require separate pr
 | Preset | Precision | Total nominal VRAM | System RAM | vCPUs | GPUs used by model | Model disk |
 | --- | --- | --- | --- | --- | --- | --- |
 | R1 Distill Qwen 7B | FP16 | 24 GB | 16 GiB | 4 | 1, 2, 4 | 100 GiB |
+| R1 Distill Qwen 14B | BF16 | 48 GB | 32 GiB | 4 | 1, 2, 4, 8 | 100 GiB |
+| R1 Distill Qwen 32B | BF16 | 96 GB | 64 GiB | 8 | 1, 2, 4, 8 | 150 GiB |
 | R1 Distill Llama 70B | BF16 | 192 GB | 64 GiB | 8 | 1, 2, 4, 8 | 250 GiB |
 | Full R1 671B | Native FP8 | 1,120 GB | 512 GiB | 32 | 8 | 1,024 GiB |
 
@@ -72,7 +77,7 @@ GPUs remain available through SSH. A larger machine is not rejected just because
 the model's attention-head layout cannot use every installed GPU at once.
 
 All profiles require the managed x86_64 Linux runtime and at least a 100 GiB root
-volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (70B BF16), and
+volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (14B, 32B and 70B BF16), and
 9.0 (the managed 671B FP8 recipe). These checks do not replace the validated GPU
 allowlist, correct driver/container pairing, fast interconnect evaluation, or a
 paid hardware acceptance run. API-reported L4 22,888 MiB is treated as marketed
@@ -87,6 +92,12 @@ Examples meeting the memory floor include 1 x L4 for 7B, 2 x H200 or 4 x H100 fo
 70B, and 8 x H200 or 8 x B300 for 671B. They remain unavailable until the specific
 GPU/runtime combination is enabled after validation. A 16 GB T4 is not eligible
 for the single-GPU 7B FP16 profile; a separate 4-bit preset could have different rules.
+
+The 14B and 32B presets (added 2026-11-04) follow the same rule: their manifests hold
+29.54 GB and 65.53 GB, so the floors are 48 GB (one L40S, two L4 or two A10G) and 96 GB
+(two L40S, four L4, two H100, one H200 or one B300). A single 80 GB H100 is rejected for
+32B. Both models have 40 query and 8 KV heads, so 1, 2, 4 and 8-way tensor parallelism
+are valid. Each preset passes an explicit dtype to vLLM.
 
 Source basis: the [DeepSeek model card](https://huggingface.co/deepseek-ai/DeepSeek-R1)
 distinguishes the full 671B MoE weights from the distilled checkpoints; activated
@@ -226,6 +237,38 @@ The base AMI must already contain working NVIDIA drivers, Docker, and the NVIDIA
 container toolkit. Missing runtime components cause an explicit preparation failure;
 the system does not run arbitrary package installers as a fallback.
 
+### Test Bot enrollment
+
+The shared test Bot can explicitly enable only `deepseek-r1-distill-7b` using
+`.env.inference.test.example` (the production candidate `.env.inference.example`
+stays disabled). The official runtime digest resolves to CUDA 13.0.2 and an amd64
+image; the actual host driver must still pass the guest CUDA probe. Keep 70B and
+671B absent/disabled. Enroll only intended NVIDIA test targets in
+`validated_gpu_models`; in this test rollout that field is an operator-approved
+test allowlist, not a completed benchmark record. Checkout still requires the
+VRAM, host memory, CPU architecture and CPU count floors. The guest must pass CUDA
+checks and generate a token before the inference endpoint becomes ready.
+
+Deploy a gateway image containing `spotbot.gateway_inference` before enabling
+the Bot configuration. Preserve its existing credentials, database and network
+rules. A configured HTTP domain alone does not prove that an older gateway can
+forward managed inference. No prebuilt model AMI is required for the cold-download
+path; do not reference an AMI deleted during earlier acceptance cleanup.
+
+Model option reads use one scoped Bot request on a cold cache: the optional
+`include_inference=true` latest-price response bundles admission for the returned
+hardware. Cached hardware needs only one admission request on manual refresh.
+Only these idempotent metadata reads retry a transport failure once, within the
+existing eight-second route deadline. Prices and accepted purchases still use
+fresh server validation; cached options never authorize a purchase.
+
+Rental maintenance must not repeatedly decode every generation in a tenant for
+each closed rental. SQL workflow history queries filter by both tenant and rental
+before decoding JSON; cleanup reuses its per-rental generation/backup reads and
+yields between rentals. This preserves final cost and retention cleanup for closed
+orders while keeping health, model reads and other requests responsive. DynamoDB
+preserves the same parent/tenant filtering semantics through its existing read path.
+
 Keep GPU port 8000 restricted to the gateway. Configure its HTTPS wildcard domain,
 set `SPOTBOT_GATEWAY_INFERENCE_READ_TIMEOUT_SECONDS=600`, and configure the public
 reverse proxy with `proxy_buffering off` and a read timeout greater than 600 seconds.
@@ -314,7 +357,20 @@ original base image and disk layout.
 A completed image means **artifacts prepared**, not model inference validated.
 Actual model loading and token generation still require the intended GPU. EBS
 snapshot blocks may also need initialization on first access, so a warm image does
-not promise instantaneous readiness. The 7B candidate stays disabled until the
+not promise instantaneous readiness.
+
+To keep that first access fast, every snapshot-backed disk of a model rental (prepared
+image or backup) is created with an EBS Provisioned Rate for Volume Initialization of
+300 MiB/s, and every disk of a model rental gets 400 MiB/s gp3 throughput (default 3,000
+IOPS; weights are read in large sequential blocks). EBS bills the rate once per launch,
+per GiB of snapshot data (about $0.0036/GiB at 300 MiB/s in us-east-1), so a 7B image
+costs roughly $0.16 and a 70B image roughly $0.60 per launch, plus about $0.015 per
+disk-hour of extra throughput. EBS refuses a provisioned rate when the Region's
+5,000 MiB/s concurrent quota or capacity is exhausted; such a refused launch creates no
+instance and is retried once with the same client token and ordinary lazy disks.
+
+The image builder waits up to one hour per 50 GiB of model disk (at least two hours)
+for the first, full snapshot, so a 70B image is not abandoned and deleted mid-snapshot. The 7B candidate stays disabled until the
 operator explicitly enables an approved GPU acceptance run.
 
 ## Quota display and concurrent admission

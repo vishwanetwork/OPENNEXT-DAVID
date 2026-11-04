@@ -1,9 +1,11 @@
-"""Resolve the 7B test checkpoint without starting or charging for a GPU."""
+"""Resolve a preset's pinned checkpoint without starting or charging for a GPU."""
 
 import argparse
 import json
 import re
 import urllib.request
+
+from spotbot.inference import PRESETS
 
 
 def read(url, headers=None):
@@ -54,6 +56,7 @@ def main():
         "--image",
         help="Validated immutable vLLM image, or numbered release tag; omitted resolves current stable candidate",
     )
+    parser.add_argument("--preset", choices=list(PRESETS), default="deepseek-r1-distill-7b")
     parser.add_argument("--validated-gpu-model", action="append", required=True)
     parser.add_argument(
         "--enable",
@@ -68,7 +71,7 @@ def main():
             f"Image metadata lookup failed ({type(exc).__name__}); pass --image with a pinned digest or numbered release"
         )
     with urllib.request.urlopen(
-        "https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B", timeout=30
+        "https://huggingface.co/api/models/" + PRESETS[args.preset]["repo"], timeout=30
     ) as response:
         revision = json.load(response)["sha"]
     if not re.fullmatch(r"[a-f0-9]{40}", revision):
@@ -81,7 +84,7 @@ def main():
     )
     print(
         "SPOTBOT_INFERENCE_PRESETS='"
-        + json.dumps({"deepseek-r1-distill-7b": pins}, separators=(",", ":"))
+        + json.dumps({args.preset: pins}, separators=(",", ":"))
         + "'"
     )
 

@@ -360,7 +360,7 @@ class RentalEngine:
         return sorted(
             [
                 g
-                for g in self.db.list("generation", row["tenant_id"])
+                for g in self.db.list("generation", row["tenant_id"], rental_id=row["id"])
                 if g["rental_id"] == row["id"]
             ],
             key=lambda g: g["generation"],
@@ -368,7 +368,7 @@ class RentalEngine:
 
     def backups(self, row):
         return sorted(
-            [b for b in self.db.list("backup", row["tenant_id"]) if b["rental_id"] == row["id"]],
+            self.db.list("backup", row["tenant_id"], rental_id=row["id"]),
             key=lambda b: b["created_at"],
             reverse=True,
         )
@@ -746,6 +746,9 @@ class RentalEngine:
                 self.event_consumer_error = type(exc).__name__
                 logger.warning("Interruption queue polling failed; continuing lifecycle checks")
             for entry in self.db.list("rental"):
+                # Closed rentals still need retention cleanup, but a large legacy
+                # history must not monopolize the event loop between account rows.
+                await asyncio.sleep(0)
                 if entry["rfq"].get("account", "default") != self.settings.spotbot_aws_account_name:
                     continue
                 if (
@@ -1617,7 +1620,8 @@ class RentalEngine:
                 self.save(backup, "backup_deleted")
         # A server terminated by the fast path may still be shutting down after the rental moved
         # on; record when it actually stopped so billing ends and its disks can be released.
-        for gen in self.generations(row):
+        generations = self.generations(row)
+        for gen in generations:
             if gen.get("terminate_requested_at") and gen["state"] != "STOPPED":
                 instance = await self.backend.instance(gen)
                 if not instance or instance["State"]["Name"] == "terminated":
@@ -1628,12 +1632,13 @@ class RentalEngine:
         # replacement runs. Without a final snapshot they stay until retention ends.
         current = self.current(row)
         safe_old = current and current.get("verified_at") and row["state"] == "ACTIVE"
-        for gen in self.generations(row):
+        backups = self.backups(row)
+        for gen in generations:
             if gen["state"] != "STOPPED":
                 continue
             complete = any(
                 b["generation_id"] == gen["id"] and b["final"] and b["state"] == "AVAILABLE"
-                for b in self.backups(row)
+                for b in backups
             )
             replaced = safe_old and gen["id"] != current["id"]
             if not (retention_ended or (complete and (final or replaced))):

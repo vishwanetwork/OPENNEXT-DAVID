@@ -56,6 +56,50 @@ async def test_model_read_rejects_regions_outside_the_enrolled_catalog(env):
     assert not any(call.url.path == "/v1/prices/latest" for call in calls)
 
 
+async def test_cold_options_use_one_rpc_but_manual_refresh_reads_current_admission(env):
+    client, _, calls = env
+    market = client._transport.app.state.ops.paid_purchases.market
+    original = market.bot
+    first = {"presets": [{"id": "test", "enabled": False}]}
+
+    async def bundled(method, path, **kwargs):
+        response = await original(method, path, **kwargs)
+        if path == "/v1/prices/latest":
+            body = response.json()
+            for group in body["groups"]:
+                for row in group["offers"]:
+                    row["offer_id"] = "native-offer"
+                    row["inference_presets"] = first
+            return httpx.Response(200, json=body, request=response.request)
+        return response
+
+    market.bot = bundled
+    refreshed = {"presets": [{"id": "test", "enabled": True}]}
+    market.inference_presets = AsyncMock(return_value=refreshed)
+    params = {"offerId": "spotbot-us-west-2-g6.xlarge"}
+    assert (await client.get("/api/marketplace/inference-presets", params=params)).json() == first
+    market.inference_presets.assert_not_awaited()
+    assert len(calls) == 1
+    assert calls[0].url.params["include_inference"] == "true"
+    assert (await client.get("/api/marketplace/inference-presets", params=params)).json() == refreshed
+    market.inference_presets.assert_awaited_once()
+
+
+@pytest.mark.parametrize("failure", [httpx.ReadTimeout("slow"), httpx.ConnectError("offline")])
+async def test_model_read_retries_only_transient_transport_failures_once(env, failure):
+    client, _, _ = env
+    market = client._transport.app.state.ops.paid_purchases.market
+    success = httpx.Response(200, json={"presets": []})
+    market.bot = AsyncMock(side_effect=[failure, success])
+    assert await market._model_read("/v1/inference/presets", params={}) is success
+    assert market.bot.await_count == 2
+    assert all(call.args[0] == "GET" for call in market.bot.await_args_list)
+    market.bot = AsyncMock(side_effect=failure)
+    with pytest.raises(type(failure)):
+        await market._model_read("/v1/inference/presets", params={})
+    assert market.bot.await_count == 2
+
+
 async def test_slow_quota_lookup_does_not_hold_the_catalog_lock(env):
     client, _, _ = env
     market = await primed_market(client)

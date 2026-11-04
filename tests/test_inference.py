@@ -336,3 +336,42 @@ def test_snapshot_must_match_approved_pins_and_reserve_model_disk(model_env):
     changed.rfq.data_disks = []
     with pytest.raises(ValueError, match="volume_missing"):
         env.engine.create(changed, "tenant-a", "wrong-disk")
+
+
+def test_mid_size_presets_pick_the_smallest_layout_that_fits():
+    s = configured()
+    s.spotbot_inference_presets = json.dumps(
+        {
+            "deepseek-r1-distill-14b": dict(PINS, validated_gpu_models=["L40S", "L4", "B300"]),
+            "deepseek-r1-distill-32b": dict(
+                PINS, validated_gpu_models=["L40S", "L4", "H100", "B300"]
+            ),
+        }
+    )
+    # 14B (29.5 GB of weights) needs 48 GB: one L40S, two L4 or one B300.
+    assert selection(s, "deepseek-r1-distill-14b", "L40S", 1, 48).tensor_parallel == 1
+    assert selection(s, "deepseek-r1-distill-14b", "L4", 4, 24).tensor_parallel == 2
+    assert selection(s, "deepseek-r1-distill-14b", "B300", 8, 288).disk_gib == 100
+    with pytest.raises(ValueError, match="inference_insufficient_vram"):
+        selection(s, "deepseek-r1-distill-14b", "L4", 1, 24)
+    # 32B (65.5 GB) needs 96 GB: never a single 80 GB H100.
+    assert selection(s, "deepseek-r1-distill-32b", "L40S", 4, 48).tensor_parallel == 2
+    assert selection(s, "deepseek-r1-distill-32b", "L4", 4, 24).tensor_parallel == 4
+    assert selection(s, "deepseek-r1-distill-32b", "H100", 8, 80).tensor_parallel == 2
+    spec = selection(s, "deepseek-r1-distill-32b", "B300", 8, 288)
+    assert spec.tensor_parallel == 1 and spec.disk_gib == 150
+    with pytest.raises(ValueError, match="inference_insufficient_vram"):
+        selection(s, "deepseek-r1-distill-32b", "H100", 1, 80)
+
+
+def test_every_preset_serves_with_an_explicit_dtype():
+    from spotbot.guest_inference import HARDWARE, REPOS
+
+    assert set(HARDWARE) == set(REPOS) == set(PRESETS)
+    assert {k: v["dtype"] for k, v in HARDWARE.items()} == {
+        "deepseek-r1-distill-7b": "float16",
+        "deepseek-r1-distill-14b": "bfloat16",
+        "deepseek-r1-distill-32b": "bfloat16",
+        "deepseek-r1-distill-70b": "bfloat16",
+        "deepseek-r1-671b": "auto",
+    }

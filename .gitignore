@@ -4,6 +4,7 @@
 !.env.gateway.example
 !.env.acceptance.example
 !.env.inference.example
+!.env.inference.test.example
 .venv/
 data/
 __pycache__/

@@ -66,13 +66,18 @@ class WorkflowStore:
             ).fetchone()
         return json.loads(row[0]) if row else None
 
-    def list(self, kind, tenant_id=None):
+    def list(self, kind, tenant_id=None, *, rental_id=None):
         if hasattr(self.store, "engine"):
             import sqlalchemy as sa
 
             q = sa.select(self.table.c.payload).where(self.table.c.kind == kind)
             if tenant_id is not None:
                 q = q.where(self.table.c.tenant_id == tenant_id)
+            if rental_id is not None:
+                parent = sa.func.json_extract(self.table.c.payload, "$.rental_id")
+                if self.store.engine.dialect.name == "mysql":
+                    parent = sa.func.json_unquote(parent)
+                q = q.where(parent == rental_id)
             with self.store.engine.connect() as c:
                 values = list(c.execute(q).scalars())
         elif hasattr(self.store, "client"):
@@ -83,9 +88,16 @@ class WorkflowStore:
                 if tenant_id is not None:
                     q += " AND tenant_id=?"
                     params.append(tenant_id)
+                if rental_id is not None:
+                    q += " AND json_extract(payload, '$.rental_id')=?"
+                    params.append(rental_id)
                 values = [r[0] for r in c.execute(q, params)]
         docs = [json.loads(value) for value in values]
-        return [d for d in docs if tenant_id is None or d["tenant_id"] == tenant_id]
+        return [
+            d for d in docs
+            if (tenant_id is None or d["tenant_id"] == tenant_id)
+            and (rental_id is None or d.get("rental_id") == rental_id)
+        ]
 
     def save(self, doc, expected=0, *, event=None):
         """Compare-and-swap and an optional outbox event commit together."""

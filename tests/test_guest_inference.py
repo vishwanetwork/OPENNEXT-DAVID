@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from spotbot import guest_inference as guest
 
 
@@ -181,3 +183,78 @@ def test_exited_engine_fails_before_waiting_for_preparation_deadline(tmp_path, m
     state = json.loads((tmp_path / "state.json").read_text())
     assert state["state"] == "failed" and state["error"] == "model_start_failed"
     assert len(logs) == 1 and removed == [guest.unit(spec)]
+
+
+@pytest.mark.parametrize(
+    "preset,dtype",
+    [
+        ("deepseek-r1-distill-7b", "float16"),
+        ("deepseek-r1-distill-14b", "bfloat16"),
+        ("deepseek-r1-distill-32b", "bfloat16"),
+        ("deepseek-r1-distill-70b", "bfloat16"),
+    ],
+)
+def test_engine_serves_each_preset_with_its_dtype(tmp_path, preset, dtype):
+    spec = dict(
+        spec=dict(
+            preset_id=preset,
+            image="pinned-image",
+            tensor_parallel=1,
+            max_model_len=8192,
+            max_num_seqs=1,
+        ),
+        backend_token="k",
+    )
+    args = guest.engine_args(spec, tmp_path, tmp_path / "models", "test")
+    assert args[args.index("--dtype") + 1] == dtype
+
+
+def test_download_fetches_shards_in_parallel_and_reports_progress(tmp_path):
+    """Run the guest download script against a fake hub: all shards land, progress is exact."""
+    import subprocess
+    import sys
+    import textwrap
+
+    hub = tmp_path / "fake" / "huggingface_hub"
+    hub.mkdir(parents=True)
+    (hub / "__init__.py").write_text(
+        textwrap.dedent(
+            """
+            import os, threading, time
+            from types import SimpleNamespace
+            active = [0, 0]
+            lock = threading.Lock()
+            FILES = [SimpleNamespace(rfilename=f"model-{i}.safetensors", size=10 + i) for i in range(6)]
+            FILES += [SimpleNamespace(rfilename="config.json", size=3), SimpleNamespace(rfilename="x.bin", size=99)]
+            class HfApi:
+                def model_info(self, repo, revision, files_metadata):
+                    return SimpleNamespace(sha=revision, siblings=FILES)
+            def hf_hub_download(repo, name, revision, local_dir):
+                with lock:
+                    active[0] += 1
+                    active[1] = max(active[1], active[0])
+                time.sleep(0.05)
+                size = next(f.size for f in FILES if f.rfilename == name)
+                os.makedirs(local_dir, exist_ok=True)
+                open(os.path.join(local_dir, name), "wb").write(b"x" * size)
+                with lock:
+                    active[0] -= 1
+                open(os.path.join(os.environ["PEAK"]), "w").write(str(active[1]))
+            """
+        )
+    )
+    models = tmp_path / "models"
+    (models / "model").mkdir(parents=True)
+    script = guest.DOWNLOAD.replace("/models", str(models))
+    peak = tmp_path / "peak"
+    subprocess.run(
+        [sys.executable, "-c", script, "repo", "a" * 40],
+        check=True,
+        env={"PYTHONPATH": str(tmp_path / "fake"), "PEAK": str(peak)},
+    )
+    assert json.loads((models / "progress.json").read_text()) == {
+        "downloaded_bytes": sum(10 + i for i in range(6)) + 3,
+        "total_bytes": sum(10 + i for i in range(6)) + 3,
+    }
+    assert not (models / "model" / "x.bin").exists()
+    assert int(peak.read_text()) > 1
