@@ -1,6 +1,7 @@
 'use client';
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/api/query-keys';
 import { useApi } from '@/components/providers/api-context';
 import { fetchCuratedRfqs, fetchPublicMarket, fetchShowcase, fetchTickerHistory } from './api';
 import { validTickerRows } from './lib/ticker';
@@ -18,7 +19,7 @@ export function useCuratedRfqs() {
 export function usePublicMarket() {
   const api = useApi();
   return useQuery({
-    queryKey: ['marketplace', 'public'],
+    queryKey: queryKeys.site.publicMarket,
     queryFn: () => fetchPublicMarket(api),
     staleTime: 30_000,
     refetchInterval: 30_000,

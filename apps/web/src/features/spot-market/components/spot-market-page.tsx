@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { LucideIcon } from '@/components/icons';
+import { AsyncButton } from '@/components/ui/async-feedback';
 import { useToast } from '@/components/ui/toast';
 import { useOpenModal, useWorkspaceStore } from '@/terminal-kit';
 import { useOpenQuoteRequest } from '@/features/quotes';
@@ -15,7 +16,7 @@ import {
   TERMS,
   type SpotRow,
 } from '../inventory';
-import { useSpotCheckout, useSpotInventory, usePrunedSelections } from '../hooks';
+import { useSpotCheckout, useSpotInventory, usePrunedSelections, usePublicMarket } from '../hooks';
 import { useSpotMarketStore } from '../store';
 import { FilterGroup, PriceFilter } from './filters';
 import { CardView, TableView } from './listings';
@@ -26,6 +27,7 @@ import '../spot-market.css';
 export function SpotMarketPage() {
   const ui = useSpotMarketStore();
   const inventory = useSpotInventory();
+  const market = usePublicMarket();
   const checkout = useSpotCheckout(inventory);
   const openModal = useOpenModal();
   const toast = useToast();
@@ -100,6 +102,14 @@ export function SpotMarketPage() {
           <LucideIcon name="sliders-horizontal" />
           Filters{count ? ` (${count})` : ''}
         </button>
+        <AsyncButton
+          className="btn secondary small"
+          busy={market.isFetching}
+          busyLabel="Refreshing offers…"
+          onClick={() => void market.refetch()}
+        >
+          Refresh offers
+        </AsyncButton>
         <span className="onx-spot-result-count" role="status">
           {filtered.length} offer{filtered.length === 1 ? '' : 's'}
         </span>

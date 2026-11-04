@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useRegistrationIntent } from '@/features/auth';
 import { useSessionStore } from '@/lib/session-store';
 import { initialWorkspace, useWorkspaceStore } from '@/terminal-kit';
 import { renderTerminal, signIn } from '@/test/render';
 import { BuyerKybOnboardingPrompt } from './index';
+import { serviceFixture, snapshotFixture } from './test-fixtures';
+import type { BuyerKybSnapshot } from '@/lib/buyer-kyb';
 
 beforeEach(() => {
   signIn();
@@ -52,5 +54,36 @@ describe('first Buyer Terminal entry prompt', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     act(() => signIn());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('registration prompt respects server KYB status', () => {
+  it('does not prompt a freshly registered Buyer whose KYB is already approved', async () => {
+    completeRegistration();
+    renderTerminal(<BuyerKybOnboardingPrompt />, {
+      slots: { services: { buyerKyb: serviceFixture('Approved') } },
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(useRegistrationIntent.getState().buyerKybAccount).toBe(''));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('waits for the status response and still prompts a Buyer without a case', async () => {
+    const response = Promise.withResolvers<BuyerKybSnapshot>();
+    completeRegistration();
+    renderTerminal(<BuyerKybOnboardingPrompt />, {
+      slots: {
+        services: {
+          buyerKyb: {
+            load: () => response.promise,
+            submit: async () => snapshotFixture('Reviewing'),
+          },
+        },
+      },
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await act(async () => response.resolve(snapshotFixture()));
+    expect(await screen.findByRole('button', { name: 'Complete KYB' })).toBeInTheDocument();
+    expect(useRegistrationIntent.getState().buyerKybAccount).toBe('u1');
   });
 });
