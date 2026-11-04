@@ -89,6 +89,8 @@ export interface CheckoutDraft {
   floatingAcceptance?: z.infer<typeof FloatingSpotAcceptance>;
   inferenceQuote?: InferenceQuote;
   inferenceBillingAcknowledged?: boolean;
+  /** Model being quoted for this server; shown as selected until the quote settles. */
+  quotingPresetId?: string;
   owner: string;
   key: string;
   row: SpotRow;
@@ -500,6 +502,7 @@ export class SpotCheckout {
     const draft = this.pending();
     if (!draft || draft.busy || draft.paymentSubmitted || draft.stage !== 'review') return;
     draft.busy = true;
+    draft.quotingPresetId = presetId || undefined;
     draft.error = '';
     this.notify();
     try {
@@ -517,6 +520,7 @@ export class SpotCheckout {
       if (this.pending() === draft) this.showError((error as Error).message);
     } finally {
       draft.busy = false;
+      draft.quotingPresetId = undefined;
       this.notify();
     }
   }
