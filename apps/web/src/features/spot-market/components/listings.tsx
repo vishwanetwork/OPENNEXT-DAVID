@@ -3,7 +3,6 @@
 import { LucideIcon } from '@/components/icons';
 import { formatSpec, usd, type SpotRow } from '../inventory';
 import { GpuThumbnail } from './gpu-thumbnail';
-import { QuotaAvailability } from './quota-availability';
 
 export interface RowActions {
   onBuy: (row: SpotRow) => void;
@@ -75,8 +74,6 @@ export function TableView({ rows, actions }: { rows: SpotRow[]; actions: RowActi
                 </td>
                 <td className="onx-spot-number">
                   <span>{row.gpuCount} GPUs</span> / instance
-                  <br />
-                  <QuotaAvailability row={row} />
                 </td>
                 <td>
                   <PriceCell row={row} />
@@ -119,7 +116,6 @@ export function CardView({ rows, actions }: { rows: SpotRow[]; actions: RowActio
                   </h2>
                   <span>{row.gpuCount} GPUs</span>
                   <small>per instance</small>
-                  <QuotaAvailability row={row} />
                 </div>
                 <p>
                   <LucideIcon name="map-pin" />
