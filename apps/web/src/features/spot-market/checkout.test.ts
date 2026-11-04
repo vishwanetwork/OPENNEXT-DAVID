@@ -176,6 +176,36 @@ const confirmation = (input: PurchaseInput) => ({
   totalCents: input.expectedPricing.totalCents,
 });
 
+it('keeps the chosen model visible while its quote is in progress', async () => {
+  const gate = Promise.withResolvers<void>();
+  const env = setup({
+    agreementRequired: false,
+    rows: [agent],
+    demo: false,
+    service: {
+      getCreditBalance: async () => wallet(),
+      inferenceQuote: async () => {
+        await gate.promise;
+        return {
+          pricing: checkoutTotals({ instanceHourly: 14.43 }),
+          modelStorageHourlyCents: 3,
+          inferencePresetId: 'deepseek-r1-distill-14b',
+          billingStart: 'gpu_delivery',
+        };
+      },
+    },
+  });
+  const quoting = env.engine.selectInference('deepseek-r1-distill-14b');
+  expect(env.engine.pending()).toMatchObject({
+    busy: true,
+    quotingPresetId: 'deepseek-r1-distill-14b',
+  });
+  gate.resolve();
+  await quoting;
+  expect(env.engine.pending()?.quotingPresetId).toBeUndefined();
+  expect(env.engine.pending()?.inferenceQuote?.inferencePresetId).toBe('deepseek-r1-distill-14b');
+});
+
 it('quotes model storage, requires preparation billing consent and sends the frozen selection', async () => {
   const sent: PurchaseInput[] = [];
   const env = setup({

@@ -41,8 +41,12 @@ export function ModelOptions() {
     refetchInterval: false,
   });
   if (!draft || draft.row.sourceKind !== 'agent') return null;
-  const selected = draft.inferenceQuote?.inferencePresetId ?? '';
-  const preset = models.data?.presets.find((p) => p.id === selected);
+  const quoting = draft.quotingPresetId;
+  const selected = quoting ?? draft.inferenceQuote?.inferencePresetId ?? '';
+  const preset = quoting ? undefined : models.data?.presets.find((p) => p.id === selected);
+  const quotingLabel = quoting
+    ? (models.data?.presets.find((p) => p.id === quoting)?.label ?? 'the model')
+    : '';
   const modelGpuCount = draft.inferenceQuote?.modelGpuCount ?? preset?.modelGpuCount;
   return (
     <fieldset disabled={draft.busy} aria-busy={models.isFetching || draft.busy}>
@@ -59,7 +63,16 @@ export function ModelOptions() {
       <p className="form-note">
         Model options are loaded once per offer. Refresh to check for changes.
       </p>
-      {models.isPending ? <AsyncFeedback>Loading compatible models…</AsyncFeedback> : null}
+      {models.isPending ? (
+        <AsyncFeedback>
+          Loading compatible models for this server. This can take a few seconds…
+        </AsyncFeedback>
+      ) : null}
+      {quoting ? (
+        <AsyncFeedback>
+          Checking {quotingLabel} on this server and updating the price…
+        </AsyncFeedback>
+      ) : null}
       {models.isError ? (
         <p className="form-note">
           Model options could not be loaded. Refresh to retry. GPU-only purchases remain available.
@@ -124,7 +137,7 @@ export function ModelOptions() {
           estimate is not a readiness guarantee.
         </p>
       ) : null}
-      {selected ? (
+      {selected && !quoting ? (
         <label className="form-label">
           <span>
             <input
