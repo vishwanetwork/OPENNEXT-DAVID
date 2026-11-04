@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
-import { AsyncFeedback } from '@/components/ui/async-feedback';
+import { AsyncButton, AsyncFeedback } from '@/components/ui/async-feedback';
 import { spotMarketApi } from '../api';
 import { useSpotCheckout } from '../hooks';
 
@@ -31,7 +31,13 @@ export function ModelOptions() {
     queryFn: ({ signal }) => spotMarketApi.inferencePresets(api, offerId, signal),
     enabled: Boolean(offerId) && draft?.row.sourceKind === 'agent',
     retry: false,
-    staleTime: 30000,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    retryOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: false,
   });
   if (!draft || draft.row.sourceKind !== 'agent') return null;
   const selected = draft.inferenceQuote?.inferencePresetId ?? '';
@@ -40,10 +46,22 @@ export function ModelOptions() {
   return (
     <fieldset disabled={draft.busy} aria-busy={models.isFetching || draft.busy}>
       <legend>Optional model preinstallation</legend>
+      <AsyncButton
+        className="btn secondary small"
+        busy={models.isFetching}
+        busyLabel="Refreshing models…"
+        disabled={draft.busy}
+        onClick={() => void models.refetch()}
+      >
+        Refresh model options
+      </AsyncButton>
+      <p className="form-note">
+        Model options are loaded once per offer. Refresh to check for changes.
+      </p>
       {models.isPending ? <AsyncFeedback>Loading compatible models…</AsyncFeedback> : null}
       {models.isError ? (
         <p className="form-note">
-          Model options are unavailable. GPU-only purchases remain available.
+          Model options could not be loaded. Refresh to retry. GPU-only purchases remain available.
         </p>
       ) : null}
       <label className="form-label">
