@@ -40,6 +40,31 @@ def test_version_and_atomic_event_contract(storage, monkeypatch):
     check_workflows(storage, monkeypatch)
 
 
+def test_related_history_filters_parent_and_tenant_before_returning(storage, monkeypatch):
+    import json
+    db = WorkflowStore(storage)
+    ids = []
+    for tenant, parent in [("one", "rental-a"), ("one", "rental-b"), ("two", "rental-a")]:
+        row = dict(id=str(uuid4()), kind="generation", tenant_id=tenant,
+                   rental_id=parent, version=0, history="x" * 10000)
+        db.save(row)
+        ids.append(row["id"])
+    original = json.loads
+    decoded = []
+    def decode(value, *args, **kwargs):
+        result = original(value, *args, **kwargs)
+        if isinstance(result, dict) and result.get("kind") == "generation":
+            decoded.append(result["id"])
+        return result
+    monkeypatch.setattr("spotbot.storage.workflows.json.loads", decode)
+    rows = db.list("generation", "one", rental_id="rental-a")
+    assert [r["id"] for r in rows] == [ids[0]]
+    if not hasattr(storage, "client"):
+        assert decoded == [ids[0]]  # SQL filters before decoding unrelated history.
+    assert db.list("generation", "missing", rental_id="rental-a") == []
+    assert db.list("generation", "one", rental_id="missing") == []
+
+
 def test_rental_directory_backfills_pages_and_isolates_customers(storage, monkeypatch):
     from spotbot.storage import rental_directory as directory
     db = WorkflowStore(storage)

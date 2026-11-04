@@ -254,6 +254,13 @@ Only these idempotent metadata reads retry a transport failure once, within the
 existing eight-second route deadline. Prices and accepted purchases still use
 fresh server validation; cached options never authorize a purchase.
 
+Rental maintenance must not repeatedly decode every generation in a tenant for
+each closed rental. SQL workflow history queries filter by both tenant and rental
+before decoding JSON; cleanup reuses its per-rental generation/backup reads and
+yields between rentals. This preserves final cost and retention cleanup for closed
+orders while keeping health, model reads and other requests responsive. DynamoDB
+preserves the same parent/tenant filtering semantics through its existing read path.
+
 Keep GPU port 8000 restricted to the gateway. Configure its HTTPS wildcard domain,
 set `SPOTBOT_GATEWAY_INFERENCE_READ_TIMEOUT_SECONDS=600`, and configure the public
 reverse proxy with `proxy_buffering off` and a read timeout greater than 600 seconds.
