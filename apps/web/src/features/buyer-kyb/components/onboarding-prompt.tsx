@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRegistrationIntent } from '@/features/auth';
 import { useSessionStore } from '@/lib/session-store';
 import { ModalFrame, useIsDemo, useOpenModal, useWorkspaceStore } from '@/terminal-kit';
+import { useBuyerKyb } from '../hooks';
 import '../buyer-kyb.css';
 
 /** First completed registration only; existing sign-ins never create this UI intent. */
@@ -15,6 +16,7 @@ export function BuyerKybOnboardingPrompt() {
   const modal = useWorkspaceStore((state) => state.modal);
   const demo = useIsDemo();
   const openModal = useOpenModal();
+  const kyb = useBuyerKyb();
   const owned = Boolean(
     status === 'verified' &&
       user?.role === 'buyer' &&
@@ -23,9 +25,10 @@ export function BuyerKybOnboardingPrompt() {
       !demo,
   );
   useEffect(() => {
-    if (pendingAccount && !owned) clear();
-  }, [pendingAccount, owned, clear]);
-  if (!owned || modal) return null;
+    if (pendingAccount && (!owned || kyb.approved)) clear();
+  }, [pendingAccount, owned, kyb.approved, clear]);
+  // Await the authoritative status before asking an already verified Buyer to reapply.
+  if (!owned || modal || kyb.approved || (kyb.connected && kyb.query.isPending)) return null;
   const dismiss = () => {
     clear();
   };

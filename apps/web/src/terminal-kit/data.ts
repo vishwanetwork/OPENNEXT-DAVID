@@ -3,8 +3,8 @@
 /**
  * Server records of the terminal, owned by TanStack Query. Every `/api/*` read used by the
  * workspace has exactly one hook here; features derive their views with `useMemo`/`select`
- * and refresh after writes with `useInvalidateWorkspace()`. The legacy 30 s refresh loop is
- * `refetchInterval` (visible tab only); a failed refetch keeps the last snapshot.
+ * and refresh after writes with `useInvalidateWorkspace()`. Account-owned views refresh
+ * every 30 s while visible. The public offer catalog is session-cached and manually refreshed.
  */
 import { useCallback, useEffect, useMemo } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,9 +45,15 @@ export function usePublicMarket() {
   return useQuery({
     queryKey: queryKeys.marketplace.public,
     queryFn: () => workspaceApi.publicMarket(api),
-    staleTime: 15_000,
+    staleTime: 'static',
+    gcTime: Infinity,
+    refetchOnMount: false,
+    retryOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: false,
+    retry: false,
     placeholderData: keepPreviousData,
-    ...REFRESH,
   });
 }
 
@@ -235,7 +241,7 @@ export function useNotifications(): WorkspaceNotification[] {
   );
 }
 
-/** Refetches every account and marketplace record (after a server write, role switch…). */
+/** Invalidates workspace records after writes; explicitly refreshed catalogs remain cached. */
 export function useInvalidateWorkspace() {
   const client = useQueryClient();
   return useCallback(
