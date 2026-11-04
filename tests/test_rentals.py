@@ -15,7 +15,7 @@ from spotbot.api import create_app
 from spotbot.models import Offer
 from spotbot.providers import ProviderError
 from spotbot.rental_models import AgentReport, GatewayAck, RentalRequest, RevisionRequest
-from spotbot.rentals import CLOSED_RENTAL_SECONDS, RentalEngine
+from spotbot.rentals import CLOSED_RENTAL_SECONDS, CLOSED_RENTALS_PER_TICK, RentalEngine
 
 
 class Clock:
@@ -1361,3 +1361,21 @@ async def test_closed_rentals_are_stepped_at_the_cleanup_cadence(rental_env):
     env.clock.advance(CLOSED_RENTAL_SECONDS + 1)
     await cycle(env, 3)
     assert steps.count(row["id"]) == first + 1
+
+
+async def test_due_closed_rentals_are_spread_across_ticks(rental_env, monkeypatch):
+    env = rental_env
+    rows = [env.engine.create(env.request, "tenant-a", f"closed-{n}")[0] for n in range(6)]
+    for row in rows:
+        row.update(state="CLOSED", closed_at=env.clock.now().isoformat(), end_requested=True)
+        env.engine.save(row)
+    stepped = []
+
+    async def step(value):
+        stepped.append(value["id"])
+
+    monkeypatch.setattr(env.engine, "_step", step)
+    await env.engine.tick()
+    assert len(stepped) == CLOSED_RENTALS_PER_TICK
+    await env.engine.tick()
+    assert sorted(stepped) == sorted(r["id"] for r in rows)
