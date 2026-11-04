@@ -105,3 +105,28 @@ async def test_page_loads_use_the_snapshot_and_refresh_it_in_the_background(
     assert (await availability(service, offer))["usedVcpus"] == 576  # Too old: read now.
     assert (await availability(service, offer, force=True))["usedVcpus"] == 576
     assert len(reads) == 4  # Purchase admission always reads AWS.
+
+
+def test_batch_route_reads_the_newest_batch_once(capacity_env):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from spotbot import capacity
+
+    service, offer, _, _, _ = capacity_env
+    spot = SimpleNamespace(**vars(offer), offer_id="o-spot", provider="aws", market="spot")
+    reads = []
+
+    def latest(**filters):
+        reads.append(filters)
+        return [spot]
+
+    service.store = SimpleNamespace(
+        latest=latest, get_offer=lambda _: pytest.fail("no per-offer lookups")
+    )
+    app = FastAPI()
+    capacity.install(app, service, [])
+    body = TestClient(app).post("/v1/capacity/availability", json=["o-spot", "o-gone", "o-spot"])
+    offers = body.json()["offers"]
+    assert offers["o-spot"]["maxInstances"] == 3 and offers["o-gone"]["usageKnown"] is False
+    assert reads == [dict(provider="aws", market="spot")]

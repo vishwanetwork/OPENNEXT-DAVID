@@ -171,10 +171,15 @@ def install(app, service, auth):
             raise HTTPException(400, "too_many_offers")
         result = {}
         documents = await asyncio.to_thread(rental_documents, service)
+        # One read of the newest AWS Spot batch instead of one lookup per offer.
+        latest = {
+            o.offer_id: o
+            for o in await asyncio.to_thread(service.store.latest, provider="aws", market="spot")
+        }
         for offer_id in dict.fromkeys(offer_ids):
             try:
-                offer = await asyncio.to_thread(service.store.get_offer, offer_id)
-                if not offer or offer.provider != "aws" or offer.market != "spot":
+                offer = latest.get(offer_id)
+                if not offer:
                     raise ValueError("offer_not_found")
                 result[offer_id] = await availability(service, offer, documents=documents)
             except (ProviderError, ValueError, KeyError):
