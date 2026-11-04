@@ -27,7 +27,7 @@ configuration and storage. An image does not need to contain customer data. Howe
 `latest` image may not contain the Console account/review and paid-purchase functionality.
 
 - The Bot/gateway source image is pinned to
-  `ghcr.io/vishwanetwork/spot-order-bot:67b0c1c6bb13cf04d137a1733b2f1ddc5c44bbf9`.
+  `ghcr.io/vishwanetwork/spot-order-bot:88cef0fbb2f909db79be7b51735ce4502f88449a`.
 - Select a reviewed web image by full Git SHA or digest. It must include the new frontend and
   the adapter built using `SPOTBOT_SOURCE=image`. `lock-images` checks the adapter imports,
   Unicode PDF generation, zero fixed service fee and frontend account/paid-purchase code before accepting it.
