@@ -231,8 +231,10 @@ the system does not run arbitrary package installers as a fallback.
 
 ### Test Bot enrollment
 
-The shared test Bot can explicitly enable only `deepseek-r1-distill-7b` using the
-immutable revision and runtime digest in `.env.inference.example`. Keep 70B and
+The shared test Bot can explicitly enable only `deepseek-r1-distill-7b` using
+`.env.inference.test.example` (the production candidate `.env.inference.example`
+stays disabled). The official runtime digest resolves to CUDA 13.0.2 and an amd64
+image; the actual host driver must still pass the guest CUDA probe. Keep 70B and
 671B absent/disabled. Enroll only intended NVIDIA test targets in
 `validated_gpu_models`; in this test rollout that field is an operator-approved
 test allowlist, not a completed benchmark record. Checkout still requires the
