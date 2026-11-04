@@ -1,0 +1,26 @@
+name: Scoped production KYB maintenance
+on:
+  push:
+    branches: ['feature/internal-kyb-maintenance-20261104']
+    paths:
+      - '.github/workflows/internal-kyb-maintenance.yml'
+      - 'scripts/internal-kyb-maintenance.py'
+      - 'scripts/internal-kyb-inspect.py'
+permissions:
+  contents: read
+concurrency:
+  group: internal-kyb-maintenance
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned terminal client
+        run: python3 -m pip install --disable-pip-version-check websocket-client==1.9.0
+      - name: Inspect only the production container and authorized accounts
+        env:
+          ONEPANEL_HOST: ${{ vars.ONEPANEL_HOST }}
+          ONEPANEL_API_KEY: ${{ secrets.ONEPANEL_API_KEY }}
+        run: python3 scripts/internal-kyb-maintenance.py
