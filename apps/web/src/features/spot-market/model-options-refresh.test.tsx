@@ -6,6 +6,7 @@ import { json, mockFetch, renderTerminal, signIn, testQueryClient } from '@/test
 import { SpotCheckoutProvider, useSpotCheckout, useSpotInventory } from './hooks';
 import { ModelOptions } from './components/model-options';
 import { usePublicMarket } from '@/terminal-kit';
+import { usePublicMarket as useSitePublicMarket } from '@/features/site/hooks';
 
 const offer = {
   id: 'spotbot-us-west-2-p5.4xlarge',
@@ -92,7 +93,7 @@ describe('manual model option refresh', () => {
       if (path.includes('/marketplace/public')) return json(200, { rfqs: [], supplies: [offer] });
       return json(200, { orders: [], instances: [] });
     });
-    mount();
+    const { queryClient } = mount();
     await choose();
     expect(await screen.findByRole('option', { name: 'DeepSeek 7B' })).toBeEnabled();
     vi.useFakeTimers();
@@ -110,6 +111,29 @@ describe('manual model option refresh', () => {
     await act(async () => {});
     expect(screen.getByRole('option', { name: 'DeepSeek 7B' })).toBeEnabled();
     expect(reads).toBe(1);
+    vi.useRealTimers();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ['marketplace'] });
+    });
+    expect(reads).toBe(1);
+  });
+
+  it('distinguishes a disabled model preset from a failed catalog request', async () => {
+    mockFetch((path) =>
+      path.includes('inference-presets')
+        ? json(200, {
+            presets: [{ ...preset, enabled: false, reason: 'inference_preset_not_enabled' }],
+          })
+        : path.includes('/marketplace/public')
+          ? json(200, { rfqs: [], supplies: [offer] })
+          : json(200, { orders: [], instances: [] }),
+    );
+    mount();
+    await choose();
+    expect(
+      await screen.findByRole('option', { name: 'DeepSeek 7B — model not enabled yet' }),
+    ).toBeDisabled();
+    expect(screen.queryByText(/Model options could not be loaded/)).not.toBeInTheDocument();
   });
 
   it('does not retry a failed read until the user refreshes and shows refresh progress', async () => {
@@ -171,6 +195,39 @@ it('keeps the public offer catalog until an explicit refresh', async () => {
   await act(async () => {});
   expect(reads).toBe(1);
   vi.useRealTimers();
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['marketplace'] });
+  });
+  expect(reads).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh offers' }));
   await waitFor(() => expect(reads).toBe(2));
+});
+
+function CatalogValues() {
+  const terminal = usePublicMarket();
+  const site = useSitePublicMarket();
+  return (
+    <>
+      <span>Terminal {String(terminal.data?.supplies[0]?.perGpuHourly ?? '')}</span>
+      <span>Site {String(site.data?.supplies[0]?.perGpuHourly ?? '')}</span>
+    </>
+  );
+}
+it('keeps the manually refreshed Terminal catalog separate from the polling homepage', async () => {
+  let reads = 0;
+  mockFetch(() => json(200, { rfqs: [], supplies: [{ ...offer, perGpuHourly: ++reads }] }));
+  vi.useFakeTimers();
+  focusManager.setFocused(true);
+  renderTerminal(<CatalogValues />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(screen.getByText('Terminal 1')).toBeInTheDocument();
+  expect(screen.getByText('Site 2')).toBeInTheDocument();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_001);
+  });
+  expect(reads).toBe(3);
+  expect(screen.getByText('Site 3')).toBeInTheDocument();
+  expect(screen.getByText('Terminal 1')).toBeInTheDocument();
 });

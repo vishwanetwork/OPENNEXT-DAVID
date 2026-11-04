@@ -172,7 +172,7 @@ not a complete cross-service event ledger.
 
 - Overview derives available metrics from provider, pricing, marketplace, top-up and contact
   responses. Missing services show `—` / **Awaiting backend**, never a fabricated zero. Queries
-  refresh account-owned views every 30 seconds while visible, retain a previous snapshot on transient failure and
+  refresh every 30 seconds while visible, retain a previous snapshot on transient failure and
   clear private data on authorization loss.
 - A **price observation is not inventory**. Collected prices come from `/api/pricing/prices`;
   the separate Terminal feed comes from approved `/api/marketplace/public` offers through the

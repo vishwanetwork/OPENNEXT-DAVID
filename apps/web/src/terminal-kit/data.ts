@@ -45,7 +45,7 @@ export function usePublicMarket() {
   return useQuery({
     queryKey: queryKeys.marketplace.public,
     queryFn: () => workspaceApi.publicMarket(api),
-    staleTime: Infinity,
+    staleTime: 'static',
     gcTime: Infinity,
     refetchOnMount: false,
     retryOnMount: false,
@@ -241,7 +241,7 @@ export function useNotifications(): WorkspaceNotification[] {
   );
 }
 
-/** Refetches every account and marketplace record (after a server write, role switch…). */
+/** Invalidates workspace records after writes; explicitly refreshed catalogs remain cached. */
 export function useInvalidateWorkspace() {
   const client = useQueryClient();
   return useCallback(

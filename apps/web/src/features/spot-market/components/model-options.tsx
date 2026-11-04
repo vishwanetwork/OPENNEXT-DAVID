@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/components/providers/api-context';
 import { AsyncButton, AsyncFeedback } from '@/components/ui/async-feedback';
+import { queryKeys } from '@/lib/api/query-keys';
 import { spotMarketApi } from '../api';
 import { useSpotCheckout } from '../hooks';
 
@@ -27,7 +28,7 @@ export function ModelOptions() {
   const api = useApi();
   const offerId = draft?.row.id ?? '';
   const models = useQuery({
-    queryKey: ['marketplace', 'inference-presets', offerId],
+    queryKey: queryKeys.modelOptions(offerId),
     queryFn: ({ signal }) => spotMarketApi.inferencePresets(api, offerId, signal),
     enabled: Boolean(offerId) && draft?.row.sourceKind === 'agent',
     retry: false,
@@ -75,7 +76,11 @@ export function ModelOptions() {
           {models.data?.presets.map((p) => (
             <option key={p.id} value={p.id} disabled={!p.enabled}>
               {p.label}
-              {p.enabled ? '' : ' — unavailable for this offer'}
+              {p.enabled
+                ? ''
+                : p.reason === 'inference_preset_not_enabled'
+                  ? ' — model not enabled yet'
+                  : ' — unavailable for this offer'}
             </option>
           ))}
         </select>

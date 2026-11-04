@@ -15,6 +15,8 @@ export const queryKeys = {
     ticker: ['pricing', 'ticker'] as const,
   },
   news: ['news'] as const,
+  // Explicitly refreshed hardware compatibility must not follow workspace invalidations.
+  modelOptions: (offerId: string) => ['model-options', offerId] as const,
   marketplace: {
     all: ['marketplace'] as const,
     public: ['marketplace', 'public'] as const,
@@ -44,6 +46,7 @@ export const queryKeys = {
     topup: (identity: string, id: string) => ['account', 'topup', identity, id] as const,
   },
   site: {
+    publicMarket: ['site', 'public-market'] as const,
     curatedRfqs: ['site', 'homepage-rfqs'] as const,
     showcase: ['site', 'demo-showcase'] as const,
   },
