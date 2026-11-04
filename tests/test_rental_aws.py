@@ -325,6 +325,14 @@ def openssh_key(kind="ssh-ed25519", size=32, comment="customer@laptop"):
     return f"{kind} {base64.b64encode(blob).decode()} {comment}"
 
 
+def user_data(payload):
+    """The boot script as cloud-init reads it: launches gzip it once it nears 16 KiB."""
+    import gzip
+
+    value = payload["UserData"]
+    return gzip.decompress(value).decode() if isinstance(value, bytes) else value
+
+
 async def test_customer_public_key_is_installed_at_boot_without_an_ec2_key_pair(native_backend):
     import base64
     import subprocess
@@ -336,7 +344,7 @@ async def test_customer_public_key_is_installed_at_boot_without_an_ec2_key_pair(
     await backend.launch({"id": "rental"}, gen, env.offer, rules)
     payload = next(p for _, m, p in calls if m == "run_instances")
     assert "KeyName" not in payload
-    script = payload["UserData"]
+    script = user_data(payload)
     assert base64.b64encode(key.encode()).decode() in script
     # Written inside the agent-managed block; a restored disk keeps its block.
     assert 'grep -qxF "# BEGIN spotbot managed keys"' in script
@@ -360,7 +368,7 @@ async def test_key_pair_and_public_key_can_be_combined(native_backend):
     gen = dict(id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40)
     await backend.launch({"id": "rental"}, gen, env.offer, rules)
     payload = next(p for _, m, p in calls if m == "run_instances")
-    assert payload["KeyName"] == rules.ssh_key_name and "authorized_keys" in payload["UserData"]
+    assert payload["KeyName"] == rules.ssh_key_name and "authorized_keys" in user_data(payload)
 
 
 @pytest.mark.parametrize(
@@ -387,3 +395,76 @@ def test_rfq_keys_are_optional_because_keys_can_be_set_later(rental_env):
     accepted = model.model_validate({**rfq, "ssh_key_name": None, "ssh_public_key": openssh_key()})
     assert accepted.ssh_public_key.startswith("ssh-ed25519 ")
 
+
+def model_rules(env):
+    from spotbot.inference import InferenceSpec
+
+    spec = InferenceSpec(
+        preset_id="deepseek-r1-distill-7b",
+        revision="a" * 40,
+        image="vllm/vllm-openai@sha256:" + "b" * 64,
+        tensor_parallel=1,
+        disk_gib=100,
+        preparation_seconds=1800,
+    )
+    return env.request.rfq.model_copy(update={"inference": spec})
+
+
+async def test_model_rental_disks_initialize_at_a_provisioned_rate(native_backend):
+    env, backend, calls, image = native_backend
+    gen = dict(
+        id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40
+    )
+    await backend.launch({"id": "rental"}, gen, env.offer, env.request.rfq)
+    plain = next(p for _, m, p in calls if m == "run_instances")["BlockDeviceMappings"]
+    assert all(
+        "Throughput" not in m["Ebs"] and "VolumeInitializationRate" not in m["Ebs"] for m in plain
+    )
+    calls.clear()
+    await backend.launch({"id": "rental"}, gen, env.offer, model_rules(env))
+    disks = {
+        m["DeviceName"]: m["Ebs"]
+        for m in next(p for _, m, p in calls if m == "run_instances")["BlockDeviceMappings"]
+    }
+    # Snapshot-backed disks fill at the provisioned rate; every disk reads at least that fast.
+    assert disks["/dev/sda1"]["VolumeInitializationRate"] == 300
+    assert all(d["Throughput"] == 400 and "Iops" not in d for d in disks.values())
+    assert all(
+        "VolumeInitializationRate" not in d for d in disks.values() if not d.get("SnapshotId")
+    )
+
+
+async def test_refused_initialization_rate_falls_back_to_lazy_disks(native_backend):
+    from spotbot.providers import ProviderError
+
+    env, backend, calls, image = native_backend
+    original = backend.call
+    refusals = []
+
+    async def call(region, method, **kwargs):
+        mappings = kwargs.get("BlockDeviceMappings", [])
+        if method == "run_instances" and any(
+            "VolumeInitializationRate" in m["Ebs"] for m in mappings
+        ):
+            refusals.append(kwargs["ClientToken"])
+            raise ProviderError("aws_VolumeInitializationRateLimitExceeded")
+        return await original(region, method, **kwargs)
+
+    backend.call = call
+    gen = dict(
+        id="generation", generation=1, region="us-west-2", image_id="ami-base", agent_token="a" * 40
+    )
+    assert await backend.launch({"id": "rental"}, gen, env.offer, model_rules(env)) == "i-12345678"
+    launched = next(p for _, m, p in calls if m == "run_instances")
+    assert refusals == [launched["ClientToken"]] == ["generation"]
+    assert all("VolumeInitializationRate" not in m["Ebs"] for m in launched["BlockDeviceMappings"])
+    assert all(m["Ebs"]["Throughput"] == 400 for m in launched["BlockDeviceMappings"])
+
+    async def no_capacity(region, method, **kwargs):
+        if method == "run_instances":
+            raise ProviderError("aws_InsufficientInstanceCapacity", retryable=True)
+        return await original(region, method, **kwargs)
+
+    backend.call = no_capacity
+    with pytest.raises(ProviderError, match="InsufficientInstanceCapacity"):
+        await backend.launch({"id": "rental"}, gen, env.offer, model_rules(env))

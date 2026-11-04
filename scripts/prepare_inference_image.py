@@ -333,7 +333,10 @@ def main():
                 raise TimeoutError("cpu_build_deadline_exceeded")
             time.sleep(15)
         # The CPU is stopped before snapshots are created; pending snapshots incur no CPU runtime.
-        snapshot_deadline = time.time() + 7200
+        # A first, full snapshot takes roughly an hour per 50-100 GiB of model disk, so larger
+        # presets wait longer instead of failing and deleting a nearly complete image.
+        hours = max(2, -(-PRESETS[args.preset]["disk_gib"] // 50))
+        snapshot_deadline = time.time() + hours * 3600
         while time.time() < snapshot_deadline:
             try:
                 image = ec2.describe_images(ImageIds=[state["image_id"]])["Images"][0]

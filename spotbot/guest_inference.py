@@ -19,15 +19,28 @@ ROOT = Path("/var/lib/spotbot/inference")
 MODELS = Path("/data/sdf/spotbot-models")
 REPOS = {
     "deepseek-r1-distill-7b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    "deepseek-r1-distill-14b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+    "deepseek-r1-distill-32b": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
     "deepseek-r1-distill-70b": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "deepseek-r1-671b": "deepseek-ai/DeepSeek-R1",
 }
 # Conservative single-host admission policy for 8192 context / one sequence at 85% VRAM.
 # These are platform operating floors, not universal minimums for every quantization.
 HARDWARE = {
-    "deepseek-r1-distill-7b": dict(vram_gb=24, host_gib=16, vcpus=4, tp=[1, 2, 4], cc=[7, 5]),
-    "deepseek-r1-distill-70b": dict(vram_gb=192, host_gib=64, vcpus=8, tp=[1, 2, 4, 8], cc=[8, 0]),
-    "deepseek-r1-671b": dict(vram_gb=1120, host_gib=512, vcpus=32, tp=[8], cc=[9, 0]),
+    "deepseek-r1-distill-7b": dict(
+        vram_gb=24, host_gib=16, vcpus=4, tp=[1, 2, 4], cc=[7, 5], dtype="float16"
+    ),
+    # Qwen2.5-14B/32B: 40 query and 8 KV heads, so 1, 2, 4 and 8-way tensor parallelism.
+    "deepseek-r1-distill-14b": dict(
+        vram_gb=48, host_gib=32, vcpus=4, tp=[1, 2, 4, 8], cc=[8, 0], dtype="bfloat16"
+    ),
+    "deepseek-r1-distill-32b": dict(
+        vram_gb=96, host_gib=64, vcpus=8, tp=[1, 2, 4, 8], cc=[8, 0], dtype="bfloat16"
+    ),
+    "deepseek-r1-distill-70b": dict(
+        vram_gb=192, host_gib=64, vcpus=8, tp=[1, 2, 4, 8], cc=[8, 0], dtype="bfloat16"
+    ),
+    "deepseek-r1-671b": dict(vram_gb=1120, host_gib=512, vcpus=32, tp=[8], cc=[9, 0], dtype="auto"),
 }
 
 
@@ -44,7 +57,8 @@ def runtime_probe(cfg):
     )
 
 
-DOWNLOAD = """import fnmatch,json,os,sys
+DOWNLOAD = """import fnmatch,json,os,sys,threading
+from concurrent.futures import ThreadPoolExecutor
 from huggingface_hub import HfApi,hf_hub_download
 repo,revision=sys.argv[1:]
 info=HfApi().model_info(repo,revision=revision,files_metadata=True)
@@ -57,11 +71,17 @@ assert total < os.statvfs('/models').f_bavail*os.statvfs('/models').f_frsize + s
 done=0
 with open('/models/progress.tmp','w') as h:json.dump({'downloaded_bytes':0,'total_bytes':total},h)
 os.replace('/models/progress.tmp','/models/progress.json')
-for f in files:
+lock=threading.Lock()
+def fetch(f):
+ global done
  hf_hub_download(repo,f.rfilename,revision=revision,local_dir='/models/model')
- done+=f.size
- with open('/models/progress.tmp','w') as h:json.dump({'downloaded_bytes':done,'total_bytes':total},h)
- os.replace('/models/progress.tmp','/models/progress.json')
+ with lock:
+  done+=f.size
+  with open('/models/progress.tmp','w') as h:json.dump({'downloaded_bytes':done,'total_bytes':total},h)
+  os.replace('/models/progress.tmp','/models/progress.json')
+# Shards download in parallel; one connection per file is far below the instance's bandwidth.
+with ThreadPoolExecutor(8) as pool:
+ list(pool.map(fetch,sorted(files,key=lambda f:-f.size)))
 """
 
 
@@ -249,11 +269,7 @@ def engine_args(spec, directory, model_dir, name):
         "--gpu-memory-utilization",
         "0.85",
         "--dtype",
-        "float16"
-        if cfg["preset_id"].endswith("-7b")
-        else "bfloat16"
-        if cfg["preset_id"].endswith("70b")
-        else "auto",
+        HARDWARE[cfg["preset_id"]]["dtype"],
         "--ssl-keyfile",
         "/run/spotbot/key.pem",
         "--ssl-certfile",

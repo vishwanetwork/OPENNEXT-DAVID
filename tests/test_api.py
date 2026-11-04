@@ -81,7 +81,9 @@ def test_latest_can_bundle_model_admission_without_extra_offer_reads(service_fac
         response = client.get("/v1/prices/latest", params=params, headers=AUTH)
         assert response.status_code == 200, response.text
         presets = response.json()["groups"][0]["offers"][0]["inference_presets"]["presets"]
-        assert len(presets) == 3
+        from spotbot.inference import PRESETS
+
+        assert [p["id"] for p in presets] == list(PRESETS)
         assert all(not p["enabled"] for p in presets)
         assert "sha256" not in str(presets)  # Runtime pins are not part of this read-only response.
         svc.store.get_offer.assert_not_called()

@@ -64,6 +64,8 @@ contexts, more concurrent requests and quantized checkpoints require separate pr
 | Preset | Precision | Total nominal VRAM | System RAM | vCPUs | GPUs used by model | Model disk |
 | --- | --- | --- | --- | --- | --- | --- |
 | R1 Distill Qwen 7B | FP16 | 24 GB | 16 GiB | 4 | 1, 2, 4 | 100 GiB |
+| R1 Distill Qwen 14B | BF16 | 48 GB | 32 GiB | 4 | 1, 2, 4, 8 | 100 GiB |
+| R1 Distill Qwen 32B | BF16 | 96 GB | 64 GiB | 8 | 1, 2, 4, 8 | 150 GiB |
 | R1 Distill Llama 70B | BF16 | 192 GB | 64 GiB | 8 | 1, 2, 4, 8 | 250 GiB |
 | Full R1 671B | Native FP8 | 1,120 GB | 512 GiB | 32 | 8 | 1,024 GiB |
 
@@ -75,7 +77,7 @@ GPUs remain available through SSH. A larger machine is not rejected just because
 the model's attention-head layout cannot use every installed GPU at once.
 
 All profiles require the managed x86_64 Linux runtime and at least a 100 GiB root
-volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (70B BF16), and
+volume. Minimum device compute capabilities are 7.5 (7B FP16), 8.0 (14B, 32B and 70B BF16), and
 9.0 (the managed 671B FP8 recipe). These checks do not replace the validated GPU
 allowlist, correct driver/container pairing, fast interconnect evaluation, or a
 paid hardware acceptance run. API-reported L4 22,888 MiB is treated as marketed
@@ -90,6 +92,12 @@ Examples meeting the memory floor include 1 x L4 for 7B, 2 x H200 or 4 x H100 fo
 70B, and 8 x H200 or 8 x B300 for 671B. They remain unavailable until the specific
 GPU/runtime combination is enabled after validation. A 16 GB T4 is not eligible
 for the single-GPU 7B FP16 profile; a separate 4-bit preset could have different rules.
+
+The 14B and 32B presets (added 2026-11-04) follow the same rule: their manifests hold
+29.54 GB and 65.53 GB, so the floors are 48 GB (one L40S, two L4 or two A10G) and 96 GB
+(two L40S, four L4, two H100, one H200 or one B300). A single 80 GB H100 is rejected for
+32B. Both models have 40 query and 8 KV heads, so 1, 2, 4 and 8-way tensor parallelism
+are valid. Each preset passes an explicit dtype to vLLM.
 
 Source basis: the [DeepSeek model card](https://huggingface.co/deepseek-ai/DeepSeek-R1)
 distinguishes the full 671B MoE weights from the distilled checkpoints; activated
@@ -349,7 +357,20 @@ original base image and disk layout.
 A completed image means **artifacts prepared**, not model inference validated.
 Actual model loading and token generation still require the intended GPU. EBS
 snapshot blocks may also need initialization on first access, so a warm image does
-not promise instantaneous readiness. The 7B candidate stays disabled until the
+not promise instantaneous readiness.
+
+To keep that first access fast, every snapshot-backed disk of a model rental (prepared
+image or backup) is created with an EBS Provisioned Rate for Volume Initialization of
+300 MiB/s, and every disk of a model rental gets 400 MiB/s gp3 throughput (default 3,000
+IOPS; weights are read in large sequential blocks). EBS bills the rate once per launch,
+per GiB of snapshot data (about $0.0036/GiB at 300 MiB/s in us-east-1), so a 7B image
+costs roughly $0.16 and a 70B image roughly $0.60 per launch, plus about $0.015 per
+disk-hour of extra throughput. EBS refuses a provisioned rate when the Region's
+5,000 MiB/s concurrent quota or capacity is exhausted; such a refused launch creates no
+instance and is retried once with the same client token and ordinary lazy disks.
+
+The image builder waits up to one hour per 50 GiB of model disk (at least two hours)
+for the first, full snapshot, so a 70B image is not abandoned and deleted mid-snapshot. The 7B candidate stays disabled until the
 operator explicitly enables an approved GPU acceptance run.
 
 ## Quota display and concurrent admission

@@ -10,6 +10,13 @@ from pathlib import Path
 from spotbot.models import timestamp, utcnow
 from spotbot.providers import ProviderError
 
+# Disks of model-inference rentals come from prepared model images or backups: EBS fetches
+# their snapshot blocks at this provisioned rate (the maximum, billed per GiB of snapshot data)
+# instead of lazily on first read, and gp3 throughput is raised so reads keep up with it.
+# Model weights are read sequentially in large blocks, so the default 3,000 IOPS suffice.
+MODEL_DISK_INITIALIZATION_MIBPS = 300
+MODEL_DISK_THROUGHPUT_MIBPS = 400
+
 
 def tags(rental_id, generation, **extra):
     values = {
@@ -344,6 +351,10 @@ class AWSRecovery:
             }
             if old.get("SnapshotId"):
                 mapping["Ebs"]["SnapshotId"] = old["SnapshotId"]
+            if rules.inference:
+                mapping["Ebs"]["Throughput"] = MODEL_DISK_THROUGHPUT_MIBPS
+                if old.get("SnapshotId"):
+                    mapping["Ebs"]["VolumeInitializationRate"] = MODEL_DISK_INITIALIZATION_MIBPS
             if keys.get(device):
                 # Same key as the source snapshot keeps the EBS lineage, so the next capture is
                 # incremental instead of a full copy of a re-encrypted disk.
@@ -415,7 +426,18 @@ class AWSRecovery:
             payload["UserData"] = gzip.compress(payload["UserData"].encode(), 9, mtime=0)
         if len(payload["UserData"]) >= 16384:
             raise ProviderError("bootstrap_payload_too_large")
-        response = await self.call(region, "run_instances", mutation=True, **payload)
+        try:
+            response = await self.call(region, "run_instances", mutation=True, **payload)
+        except ProviderError as exc:
+            initialized = [m["Ebs"] for m in mappings if "VolumeInitializationRate" in m["Ebs"]]
+            if not initialized or "initialization" not in exc.code.lower():
+                raise
+            # EBS refuses a provisioned rate when its Regional rate quota or capacity is used
+            # up. A refused request creates no instance, so the same client token launches
+            # once more with ordinary lazily-initialized disks rather than losing the offer.
+            for ebs in initialized:
+                del ebs["VolumeInitializationRate"]
+            response = await self.call(region, "run_instances", mutation=True, **payload)
         instances = response.get("Instances", [])
         if len(instances) != 1 or not instances[0].get("InstanceId"):
             raise ProviderError("invalid_create_response", ambiguous=True)

@@ -22,6 +22,26 @@ PRESETS = {
         minimum_gpus=1,
         estimated_minutes=30,
     ),
+    # Weights 29.54 GB and 65.53 GB (Hugging Face manifests, 2026-11-04); the VRAM floors keep
+    # weights at most about 80% of 85% usable memory, as for 7B and 70B.
+    "deepseek-r1-distill-14b": dict(
+        label="DeepSeek R1 Distill 14B",
+        repo="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+        precision="bfloat16",
+        disk_gib=100,
+        minimum_vram_gb=48,
+        minimum_gpus=1,
+        estimated_minutes=35,
+    ),
+    "deepseek-r1-distill-32b": dict(
+        label="DeepSeek R1 Distill 32B",
+        repo="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        precision="bfloat16",
+        disk_gib=150,
+        minimum_vram_gb=96,
+        minimum_gpus=1,
+        estimated_minutes=45,
+    ),
     "deepseek-r1-distill-70b": dict(
         label="DeepSeek R1 Distill 70B",
         repo="deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
@@ -71,7 +91,13 @@ class Pins(BaseModel):
 
 class InferenceSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    preset_id: Literal["deepseek-r1-distill-7b", "deepseek-r1-distill-70b", "deepseek-r1-671b"]
+    preset_id: Literal[
+        "deepseek-r1-distill-7b",
+        "deepseek-r1-distill-14b",
+        "deepseek-r1-distill-32b",
+        "deepseek-r1-distill-70b",
+        "deepseek-r1-671b",
+    ]
     revision: str = Field(pattern=r"^[a-f0-9]{40}$")
     image: str = Field(pattern=r"^(?:docker\.io/)?vllm/vllm-openai@sha256:[a-f0-9]{64}$")
     tensor_parallel: int = Field(ge=1, le=64)
