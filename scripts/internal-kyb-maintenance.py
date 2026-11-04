@@ -1,5 +1,6 @@
 """Run a fixed, read-only inspection inside the authorized production container."""
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -26,11 +27,14 @@ def main():
     url = HOST.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
     url += '/api/v2/hosts/terminal/container?' + query
     source = Path(__file__).with_name('internal-kyb-inspect.py').read_bytes()
-    payload = 'import base64;exec(base64.b64decode(' + repr(base64.b64encode(source).decode()) + '))'
+    payload = 'import base64,gzip;exec(gzip.decompress(base64.b64decode(' + repr(base64.b64encode(gzip.compress(source)).decode()) + ')))'
     command = '/opt/spotbot/bin/python -c ' + shlex.quote(payload) + '\r'
+    assert len(command.encode()) < 3500, 'Terminal command exceeds its input budget'
+    print(json.dumps({'event': 'terminal_connecting'}), flush=True)
     # Raw auth files, environment variables and credentials remain on the production host.
     ws = websocket.create_connection(url, timeout=20, header={
         '1Panel-Token': token, '1Panel-Timestamp': timestamp}, origin=HOST)
+    print(json.dumps({'event': 'terminal_connected'}), flush=True)
     try:
         ws.send(json.dumps(dict(type='cmd', data=base64.b64encode(command.encode()).decode())))
         output = ''
@@ -45,7 +49,9 @@ def main():
             output += base64.b64decode(value.get('data', '')).decode(errors='replace')
             if START in output and END in output.split(START, 1)[1]:
                 result = json.loads(output.split(START, 1)[1].split(END, 1)[0])
-                assert result.get('event') == 'production_kyb_inspection', 'Production inspection failed'
+                if result.get('event') != 'production_kyb_inspection':
+                    print(json.dumps({'event': 'guest_inspection_failed', 'errorType': result.get('errorType')}), flush=True)
+                    raise RuntimeError('Production inspection failed')
                 assert {row['email'] for row in result['accounts']} == {
                     'harry@vishwalab.com', 'david.lee@vishwalab.com', 'evan@vishwanetwork.xyz'}
                 print(json.dumps(result), flush=True)
