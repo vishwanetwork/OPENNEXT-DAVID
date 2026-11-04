@@ -232,7 +232,8 @@ wiring. There are no registries, no `register*` functions and no DOM events betw
 ### State
 
 - **Server state** is TanStack Query only ([ADR 0004](ADR/0004-server-state-query-ui-state-zustand.md)).
-  Keys come from `src/lib/api/query-keys.ts`; the legacy 30 s refresh is `refetchInterval`
+  Public GPU offers and per-offer model options are session-cached with explicit refresh controls.
+  Keys come from `src/lib/api/query-keys.ts`; the account-owned 30 s refresh is `refetchInterval`
   (visible tab only), writes call `useInvalidateWorkspace()`. Errors surface through
   `describeError()` (`src/lib/api/errors.ts`) and `useApiErrorToast()`.
 - **UI state** lives in zustand stores: the kit workspace store plus feature stores (`seller`,

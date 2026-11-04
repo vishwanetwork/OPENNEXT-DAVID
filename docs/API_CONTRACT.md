@@ -665,10 +665,20 @@ changes cannot reprice accepted purchases, delayed provisioning, instances or id
 
 ## Optional inference presets and Spot quota estimates
 
+The GPU Market offer catalog is also session-cached after its first load and uses
+`Refresh offers` for subsequent reads. Purchase acceptance still validates current
+prices, quota and model configuration on the server.
+
 The Bot/OpenNEXT adapter owns these routes. They do not allocate or bill for token
 usage separately; model preparation uses the purchased GPU service window.
 
 - GET `/api/marketplace/inference-presets?offerId=...` returns `{presets: [...]}`.
+  The browser caches the first result per offer for the current page session. It
+  does not poll, refetch on focus/reconnect, or retry on dialog remount, including
+  failed reads. `Refresh model options` performs an explicit read. Reads use the
+  hardware catalog without a live quota call and have an eight-second adapter
+  deadline. The native Bot must expose `/v1/inference/presets`; unavailable or
+  missing upstream support never produces fabricated compatible presets.
   Each preset has `id`, `label`, `model`, `precision`, `diskGiB`, `estimatedMinutes`,
   `billingStart: "gpu_delivery"`, `enabled`, and nullable `reason`. Unvalidated
   runtime/hardware combinations remain disabled. No operator image credentials,
