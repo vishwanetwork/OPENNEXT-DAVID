@@ -227,14 +227,33 @@ def create_app(settings: Settings | None = None, service: Service | None = None)
         account_routes: bool = False,
         region: str | None = Query(None, min_length=1, max_length=64),
         sku: str | None = Query(None, min_length=1, max_length=128),
+        include_inference: bool = False,
         limit: int = Query(100, ge=1, le=1000),
         offset: int = Query(0, ge=0),
     ):
         rows = latest_offers(
-            provider, cloud, market, gpu, available_only, can_attempt_only, account_routes,
-            region=region, sku=sku,
+            provider,
+            cloud,
+            market,
+            gpu,
+            available_only,
+            can_attempt_only,
+            account_routes,
+            region=region,
+            sku=sku,
         )
         selected = rows[offset : offset + limit]
+        if include_inference:
+            from spotbot.inference_api import offer_presets
+            from spotbot.models import Offer
+
+            # Resolve from rows already read, not three additional database reads per preset.
+            selected = [
+                dict(row, inference_presets=offer_presets(svc, Offer.model_validate(row)))
+                if row["provider"] == "aws"
+                else row
+                for row in selected
+            ]
         groups = [
             {"provider": name, "offers": [o for o in selected if o["provider"] == name]}
             for name in svc.providers

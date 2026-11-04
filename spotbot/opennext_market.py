@@ -283,7 +283,8 @@ def purchased(rental):
     )
     # Earlier purchases have no `service_seconds`; their window ran from the acquisition deadline.
     seconds = (
-        (rfq.get("funding") or {}).get("purchased_seconds") or rfq.get("service_seconds")
+        (rfq.get("funding") or {}).get("purchased_seconds")
+        or rfq.get("service_seconds")
         or (at(rfq["expires_at"]) - at(rfq["acquisition_deadline"])).total_seconds()
     )
     return {
@@ -377,8 +378,11 @@ def instance_view(row, ssh=None, billing=None):
     if row.get("inference"):
         result["inference"] = row["inference"]
     if rfq.get("funding"):
-        result.update(pricingVersion="spot-hourly-v1", serviceEnd=None,
-                      orderId=rfq["upstream_order_id"].removeprefix("opennext-"))
+        result.update(
+            pricingVersion="spot-hourly-v1",
+            serviceEnd=None,
+            orderId=rfq["upstream_order_id"].removeprefix("opennext-"),
+        )
     return result
 
 
@@ -625,11 +629,34 @@ class SpotMarket:
         return priced(offer, spec, self.storage_rate, initial_images=value.get("initial_image_ids"))
 
     async def inference_presets(self, offer):
-        response = await self.bot(
-            "GET", "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"]), timeout=6
+        response = await self._model_read(
+            "/v1/inference/presets", params=dict(offer_id=offer.raw["offer_id"])
         )
         response.raise_for_status()
         return response.json()
+
+    async def _model_read(self, path, *, params):
+        # Only idempotent, narrowly scoped metadata reads may retry. Two bounded
+        # attempts fit inside the route's eight-second deadline; orders never use this.
+        for attempt in range(2):
+            try:
+                return await self.bot(
+                    "GET", path, params=params, timeout=httpx.Timeout(3, connect=2)
+                )
+            except (httpx.TimeoutException, httpx.NetworkError):
+                if attempt:
+                    raise
+
+    async def model_options(self, reference):
+        # Cold reads carry admission in the same response as hardware. Subsequent
+        # explicit refreshes read admission again, so a configuration change is visible.
+        cached = reference in self._offers or reference in self._model_offers
+        offer = await self.model_offer(reference)
+        if not offer:
+            return None
+        if not cached and "inference_presets" in offer.raw:
+            return offer.raw["inference_presets"]
+        return await self.inference_presets(offer)
 
     async def model_offer(self, reference):
         """Resolve one hardware row without fetching the complete price catalog."""
@@ -644,10 +671,20 @@ class SpotMarket:
             return None
         values, offset = [], 0
         while True:
-            response = await self.bot("GET", "/v1/prices/latest", params=dict(
-                provider="aws", market="spot", region=region, sku=sku,
-                can_attempt_only="true", account_routes="true", limit=PAGE, offset=offset,
-            ), timeout=6)
+            response = await self._model_read(
+                "/v1/prices/latest",
+                params=dict(
+                    provider="aws",
+                    market="spot",
+                    region=region,
+                    sku=sku,
+                    can_attempt_only="true",
+                    account_routes="true",
+                    limit=PAGE,
+                    offset=offset,
+                    include_inference="true",
+                ),
+            )
             response.raise_for_status()
             body = response.json()
             page = [row for group in body["groups"] for row in group["offers"]]

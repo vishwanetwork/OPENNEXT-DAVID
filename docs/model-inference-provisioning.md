@@ -2,8 +2,11 @@
 
 Status: implemented in the model-inference development branches. Automated tests
 cover control-plane behavior and TLS forwarding. A paid GPU model acceptance run
-has not been performed; presets remain disabled until an operator validates an
-immutable runtime image on the intended GPU hardware.
+on B300 on 2026-11-03 reached GPU delivery but failed during model runtime startup;
+it did not generate tokens. Production presets remain disabled pending acceptance.
+An operator may explicitly enable the 7B test preset for test purchases while
+retaining runtime hardware checks and readiness gating. Such enrollment is not a
+claim that each GPU/runtime combination has passed live inference acceptance.
 
 ## Accepted product rules
 
@@ -225,6 +228,29 @@ the combination production-supported until the end-to-end checks below succeed.
 The base AMI must already contain working NVIDIA drivers, Docker, and the NVIDIA
 container toolkit. Missing runtime components cause an explicit preparation failure;
 the system does not run arbitrary package installers as a fallback.
+
+### Test Bot enrollment
+
+The shared test Bot can explicitly enable only `deepseek-r1-distill-7b` using the
+immutable revision and runtime digest in `.env.inference.example`. Keep 70B and
+671B absent/disabled. Enroll only intended NVIDIA test targets in
+`validated_gpu_models`; in this test rollout that field is an operator-approved
+test allowlist, not a completed benchmark record. Checkout still requires the
+VRAM, host memory, CPU architecture and CPU count floors. The guest must pass CUDA
+checks and generate a token before the inference endpoint becomes ready.
+
+Deploy a gateway image containing `spotbot.gateway_inference` before enabling
+the Bot configuration. Preserve its existing credentials, database and network
+rules. A configured HTTP domain alone does not prove that an older gateway can
+forward managed inference. No prebuilt model AMI is required for the cold-download
+path; do not reference an AMI deleted during earlier acceptance cleanup.
+
+Model option reads use one scoped Bot request on a cold cache: the optional
+`include_inference=true` latest-price response bundles admission for the returned
+hardware. Cached hardware needs only one admission request on manual refresh.
+Only these idempotent metadata reads retry a transport failure once, within the
+existing eight-second route deadline. Prices and accepted purchases still use
+fresh server validation; cached options never authorize a purchase.
 
 Keep GPU port 8000 restricted to the gateway. Configure its HTTPS wildcard domain,
 set `SPOTBOT_GATEWAY_INFERENCE_READ_TIMEOUT_SECONDS=600`, and configure the public

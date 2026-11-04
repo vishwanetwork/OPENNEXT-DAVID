@@ -67,6 +67,26 @@ def test_latest_catalog_filters_region_and_sku_before_rendering_offers(service_f
                               headers=AUTH).json()["total"] == 0
 
 
+def test_latest_can_bundle_model_admission_without_extra_offer_reads(service_factory):
+    from unittest.mock import Mock
+
+    svc, app = client_setup(service_factory)
+    source = svc.store.latest()[0]
+    aws = source.model_copy(update={"provider": "aws", "cloud": "aws"})
+    svc.settings.spotbot_enabled_providers += ",aws"
+    svc.store.record_collection("aws", [aws])
+    svc.store.get_offer = Mock(side_effect=AssertionError("Unexpected repeated offer lookup"))
+    with TestClient(app) as client:
+        params = {"provider": "aws", "include_inference": True, "sku": aws.sku}
+        response = client.get("/v1/prices/latest", params=params, headers=AUTH)
+        assert response.status_code == 200, response.text
+        presets = response.json()["groups"][0]["offers"][0]["inference_presets"]["presets"]
+        assert len(presets) == 3
+        assert all(not p["enabled"] for p in presets)
+        assert "sha256" not in str(presets)  # Runtime pins are not part of this read-only response.
+        svc.store.get_offer.assert_not_called()
+
+
 def test_api_order_idempotency_redaction_handoff_and_live_guard(service_factory):
     svc, app = client_setup(service_factory)
     offer = next(o for o in svc.store.latest() if o.provider == "shadeform" and o.market == "spot")
