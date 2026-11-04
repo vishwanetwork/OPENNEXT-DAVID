@@ -4,10 +4,10 @@ import gzip
 import hashlib
 import json
 import os
-from pathlib import Path
 import shlex
 import time
 import urllib.parse
+from pathlib import Path
 
 import websocket
 
@@ -22,8 +22,8 @@ START, END = 'OPENNEXT_KYB_RESULT_START', 'OPENNEXT_KYB_RESULT_END'
 def main():
     timestamp = str(int(time.time()))
     token = hashlib.md5(('1panel' + KEY + timestamp).encode()).hexdigest()
-    query = urllib.parse.urlencode(dict(source='container', containerid='opennext-homepage',
-                                       command='/bin/sh', user='root', cols=240, rows=50))
+    query = urllib.parse.urlencode({'source': 'container', 'containerid': 'opennext-homepage',
+                                       'command': '/bin/sh', 'user': 'root', 'cols': 240, 'rows': 50})
     url = HOST.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)
     url += '/api/v2/hosts/terminal/container?' + query
     source = Path(__file__).with_name('internal-kyb-inspect.py').read_bytes()
@@ -36,7 +36,7 @@ def main():
         '1Panel-Token': token, '1Panel-Timestamp': timestamp}, origin=HOST)
     print(json.dumps({'event': 'terminal_connected'}), flush=True)
     try:
-        ws.send(json.dumps(dict(type='cmd', data=base64.b64encode(command.encode()).decode())))
+        ws.send(json.dumps({'type': 'cmd', 'data': base64.b64encode(command.encode()).decode()}))
         output = ''
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
@@ -55,7 +55,7 @@ def main():
                 assert {row['email'] for row in result['accounts']} == {
                     'harry@vishwalab.com', 'david.lee@vishwalab.com', 'evan@vishwanetwork.xyz'}
                 print(json.dumps(result), flush=True)
-                ws.send(json.dumps(dict(type='cmd', data=base64.b64encode(b'exit\r').decode())))
+                ws.send(json.dumps({'type': 'cmd', 'data': base64.b64encode(b'exit\r').decode()}))
                 return
         raise TimeoutError('Production inspection exceeded its deadline')
     finally:
