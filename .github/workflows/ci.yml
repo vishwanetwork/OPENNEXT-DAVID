@@ -112,4 +112,4 @@ jobs:
       - run: pytest -q
       # The production web runs the bundled adapter on MySQL: run its suites there too.
       - name: Adapter suites on MySQL
-        run: pytest -q -p tests.mysql_backend tests/test_opennext*.py tests/test_funding*.py tests/test_workflows.py tests/test_rental_funding.py tests/test_local_opennext.py
+        run: python -m pytest -q -p tests.mysql_backend tests/test_opennext*.py tests/test_funding*.py tests/test_workflows.py tests/test_rental_funding.py tests/test_local_opennext.py
