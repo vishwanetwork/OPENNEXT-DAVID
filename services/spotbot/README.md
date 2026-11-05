@@ -1,5 +1,10 @@
 # SpotOrderBot
 
+> This service lives in the OpenNEXT repository at `services/spotbot/`; it was imported with its
+> history from `vishwanetwork/spot-order-bot`. The web image bundles its adapter
+> (`SPOTBOT_SOURCE=local`), and `depoly/k8s` deploys the Bot and the gateway. Run the commands
+> below from this directory.
+
 SpotOrderBot provides GPU price history and capacity procurement for an upstream scheduler. It collects vendor prices and availability, accepts requests for a specific offer with a price ceiling, creates instances, and publishes SSH and HTTP connection records for a gateway.
 
 The implementation uses Python and FastAPI with selectable SQLite, MySQL, or Amazon DynamoDB storage. AWS EC2 Spot, Lambda, Vultr, and Shadeform are supported. The application-wide live-order switch is disabled in the example configuration; individual orders now default to `dry_run=false`. Check `/health` for the deployed service's live and simulation switches.

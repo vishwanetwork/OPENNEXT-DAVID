@@ -17,6 +17,10 @@ One Next.js 16 application that serves three sites, plus an API contract package
 The backend is a separate service reached through `/api/*`. Today it is the old Node server in
 `legacy/`; it will be replaced by a **Python backend owned by another team**.
 
+The repository also holds the **SpotOrderBot** (`services/spotbot/`, Python): the core Bot, the
+gateway and the adapter that the production web image bundles in front of the legacy API. It
+was imported with its history from `vishwanetwork/spot-order-bot`; changes now happen here.
+
 ## Directory map
 
 ```
@@ -56,6 +60,8 @@ legacy/                       OLD implementation + interim backend. READ-ONLY (s
 docs/                         ARCHITECTURE, CONVENTIONS, API_CONTRACT, ADR/, reviews
 scripts/dev.cjs               local runner (legacy API + next dev)
 docker/, Dockerfile, docker-compose.yml   single-container production image (port 4188)
+services/spotbot/             SpotOrderBot (Python): core Bot, gateway, adapter; own README and tests
+depoly/                       production deployment: Docker Compose package and depoly/k8s (Kubernetes)
 ```
 
 ### Where do I put …
@@ -110,6 +116,11 @@ pnpm test           # vitest (web + contracts)
 pnpm test:legacy    # original backend tests (must stay green; you should not touch legacy/)
 pnpm format         # prettier
 pnpm build          # production build
+
+# SpotOrderBot (from services/spotbot)
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev,mysql,dynamodb]'
+.venv/bin/ruff check spotbot tests examples
+.venv/bin/pytest -q
 ```
 
 ## Definition of done

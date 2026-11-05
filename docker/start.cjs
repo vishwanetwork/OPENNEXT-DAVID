@@ -4,7 +4,7 @@
  * container so the existing single-container deployment keeps working. When the Python
  * backend replaces the legacy API, run it as its own service and point API_ORIGIN at it.
  *
- * Bundled adapter: an image built with SPOTBOT_SOURCE=image also contains the SpotOrderBot
+ * Bundled adapter: an image built with SPOTBOT_SOURCE=local (or image) also contains the SpotOrderBot
  * adapter and ClamAV. With OPENNEXT_ADAPTER=1 the container runs the legacy API on
  * 127.0.0.1:4189, ClamAV on 127.0.0.1:3310, the adapter on 127.0.0.1:4191 in front of the
  * legacy API, and the front-end pointed at the adapter. The adapter keeps its database and the
@@ -111,7 +111,7 @@ function runAdapter() {
 function start({ legacy = true } = {}) {
   if (process.env.OPENNEXT_ADAPTER === '1') {
     if (!fs.existsSync(SPOTBOT)) {
-      console.error('[adapter] OPENNEXT_ADAPTER=1 needs an image built with SPOTBOT_SOURCE=image');
+      console.error('[adapter] OPENNEXT_ADAPTER=1 needs an image built with SPOTBOT_SOURCE=local');
       process.exit(1);
     }
     if (legacy) runLegacy();

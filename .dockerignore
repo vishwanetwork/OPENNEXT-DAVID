@@ -16,3 +16,13 @@ depoly/backups
 .env
 .env.*
 !.env.example
+# SpotOrderBot: only pyproject.toml and the spotbot package are copied into the web image.
+services/spotbot/.venv
+services/spotbot/data
+services/spotbot/logs
+services/spotbot/tests
+services/spotbot/.env
+services/spotbot/.env.*
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
