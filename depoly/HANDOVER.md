@@ -83,29 +83,55 @@ Make both changes the day before the move.
 
 Both changes only add access. Remove the old address `44.248.155.24` a week after the move.
 
+## Which data to move
+
+| Data                                                                                  | Move it?                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **web data** (`/app/.opennext-data`: accounts, Credit, orders, KYB, Console settings) | **Recommended.** It is one command and small. You may skip it if nobody holds Credit or has a bank transfer pending (check Payment review and Credit in the Console). Users then sign in again, pending KYB is resubmitted and the Console settings are entered again. |
+| **bot and gateway databases**                                                         | **Not needed if no rental is running at the move.** Start with two empty databases; the applications create their tables. Keep a dump as an archive of past orders and rentals. If a rental is running, load that dump instead.                                        |
+
+If you move the web data, keep `SPOTBOT_OPENNEXT_FILES_KEY` and `SPOTBOT_OPENNEXT_CONSOLE_KEY`
+unchanged. They decrypt the KYB files and the stored provider credentials.
+
+The dump below leaves out the price history: about 25 MB instead of 5 GB. The bot collects prices
+again by itself.
+
 ## Moving day (about 30 minutes)
 
 The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.155.24` (user
 `admin`, with sudo). Lower the DNS TTL of the public names to 60 s the day before.
 
-1. **Stop the old applications.**
-   - Web host: `docker stop opennext-homepage`.
-   - Bot host: `docker stop spot-order-bot spot-order-gateway`.
-2. **Export.** Run as root:
+1. **Stop the web** (`docker stop opennext-homepage` on the web host). No new orders can start.
+2. **Check that no rental is running.** Each of these must print nothing. Use account
+   `860165147463` in `us-west-2`, `us-east-1` and `us-east-2`, and account `413287184831` in
+   `us-west-2`:
 
    ```sh
-   # Web host: settings and data
+   aws ec2 describe-instances --region <region> --filters Name=instance-lifecycle,Values=spot \
+     Name=instance-state-name,Values=pending,running --query 'Reservations[].Instances[].InstanceId' --output text
+   ```
+
+   If one is running, wait until it ends, or plan to load the databases (step 5).
+
+3. **Stop the bot and the gateway** (`docker stop spot-order-bot spot-order-gateway` on the bot host).
+4. **Export.** Run as root:
+
+   ```sh
+   # Web host: settings, and the data unless you skip it
    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' opennext-homepage > web.env
    docker cp opennext-homepage:/app/.opennext-data - | gzip > web-data.tar.gz
 
-   # Bot host: settings, AWS config and both databases
+   # Bot host: settings, AWS config, and both databases without the price history
    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' spot-order-bot > bot.env
    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' spot-order-gateway > gateway.env
    cp /opt/spot-order-bot/reference-pricing/config aws-config   # or /opt/spot-order-bot/aws/config
    for db in spot_order_bot spot_order_gateway; do
      docker exec 1Panel-mysql-ej72 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot \
        --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF \
-       --default-character-set=utf8mb4 --databases "$0"' "$db" | gzip > "$db.sql.gz"
+       --default-character-set=utf8mb4 \
+       --ignore-table=spot_order_bot.prices --ignore-table=spot_order_bot.collections \
+       --ignore-table=spot_order_bot.aws_spot_changes --ignore-table=spot_order_bot.aws_spot_coverage \
+       --databases "$0"' "$db" | gzip > "$db.sql.gz"
    done
    ```
 
@@ -114,22 +140,25 @@ The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.15
    - These files hold every secret. Copy them over SSH only. Never commit them or paste them
      anywhere.
 
-3. **Load.**
-   - Restore both databases into the new MySQL. Create one user per database, each limited to its
-     own database.
-   - Unpack `web-data.tar.gz` into the web volume. Its top directory is `.opennext-data`. The files
-     must belong to uid 1000.
-4. **Start** web, bot and gateway on the new platform with the settings above, and check that each
+5. **Prepare the data.**
+   - In the new MySQL, create the databases `spot_order_bot` and `spot_order_gateway`. Create one
+     user for each, limited to its own database.
+   - Leave both databases empty. If a rental is running, or you want the old records, restore the
+     two dumps into them instead.
+   - Unpack `web-data.tar.gz` into the web volume, unless you skip it. Its top directory is
+     `.opennext-data`. The files must belong to uid 1000.
+
+6. **Start** web, bot and gateway on the new platform with the settings above, and check that each
    health endpoint answers.
-5. **Switch DNS** to the new platform. Until then, the applications still look for each other at
+7. **Switch DNS** to the new platform. Until then, the applications still look for each other at
    the old hosts. Then check:
    - the gateway's `/health` shows `"bot_reachable": true`;
    - sign in on `terminal.opennextlab.ai`;
-   - the market lists offers;
-   - Instances shows the running rentals;
-   - SSH into a rental through `gpu-ssh.test.vishwalab.com`.
+   - the market lists offers. The bot needs a few minutes to collect prices when it starts empty;
+   - if you loaded the databases, SSH into a running rental through `gpu-ssh.test.vishwalab.com`.
 
-Customer SSH sessions drop during the window. GPU servers keep running and reconnect by themselves.
+If rentals were running and you loaded the databases, customer SSH sessions drop during the window.
+The GPU servers keep running and reconnect by themselves.
 
 **Rollback:** point DNS back and start the old containers again. Anything written on the new
 platform in between is lost. Keep the old hosts untouched for a week.
