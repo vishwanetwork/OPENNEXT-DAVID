@@ -24,7 +24,7 @@ class WorkflowStore:
             self.table = sa.Table(
                 "workflow_records",
                 metadata,
-                sa.Column("id", sa.String(36), primary_key=True),
+                sa.Column("id", sa.String(60), primary_key=True),
                 sa.Column("kind", sa.String(24), nullable=False),
                 sa.Column("tenant_id", sa.String(100), nullable=False),
                 sa.Column("version", sa.Integer, nullable=False),

@@ -1,7 +1,7 @@
 # Handover: moving OpenNEXT to the new platform
 
 OpenNEXT is three applications, all built from this repository. Deploy all three on the new
-platform under new domain names for the bot and the gateway, and move the web data. The AWS
+platform under new domain names for the bot and the gateway. All three start with empty storage. The AWS
 accounts that supply GPUs do not change: `860165147463` and the B300 account `413287184831`.
 
 ## The three applications
@@ -13,13 +13,14 @@ accounts that supply GPUs do not change: `860165147463` and the B300 account `41
 | **gateway** | `ghcr.io/vishwanetwork/opennext-spotbot:<sha>` | `spotbot gateway --host 0.0.0.0 --port 18084` | 18084, plus TCP `22100-22199` for customer SSH | `GET /health` on 18084    |
 
 `.github/workflows/images.yml` publishes both images for every commit on `main`, tagged with the
-commit SHA. Deploy all three from the same commit.
+commit SHA. Deploy all three from the same commit. The web needs a commit that includes the MySQL
+fix for KYB case ids (pull request #34) to run its adapter on MySQL.
 
-| Application | Data                                                                              | Runs as   |
-| ----------- | --------------------------------------------------------------------------------- | --------- |
-| web         | a persistent volume at `/app/.opennext-data`: accounts, Credit, orders, KYB files | uid 1000  |
-| bot         | MySQL database `spot_order_bot`                                                   | uid 10001 |
-| gateway     | MySQL database `spot_order_gateway`                                               | uid 10002 |
+| Application | Data                                                                                                                                                                                      | Runs as   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| web         | MySQL database `spot_order_adapter` (Credit, orders, KYB reviews, Console settings), and a persistent volume at `/app/.opennext-data` (accounts and top-ups of the legacy API, KYB files) | uid 1000  |
+| bot         | MySQL database `spot_order_bot`                                                                                                                                                           | uid 10001 |
+| gateway     | MySQL database `spot_order_gateway`                                                                                                                                                       | uid 10002 |
 
 **Rules**
 
@@ -60,6 +61,8 @@ moving day (see below), and use them as they are, with these changes.
 | ----------- | --------------------------- | ---------------------------------------------------------------------------------------- |
 | bot         | `SPOTBOT_MYSQL_URL`         | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_bot?charset=utf8mb4`     |
 | gateway     | `SPOTBOT_GATEWAY_MYSQL_URL` | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_gateway?charset=utf8mb4` |
+| web         | `SPOTBOT_STORAGE_BACKEND`   | `mysql` (the bundled adapter; without it, it uses SQLite on the volume)                  |
+| web         | `SPOTBOT_MYSQL_URL`         | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_adapter?charset=utf8mb4` |
 
 **Domain names**
 
@@ -110,13 +113,20 @@ Both changes only add access. Remove the old address `44.248.155.24` a week afte
 
 ## Which data to move
 
-| Data                                                                                  | Move it?                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **web data** (`/app/.opennext-data`: accounts, Credit, orders, KYB, Console settings) | **Recommended.** It is one command and small. You may skip it if nobody holds Credit or has a bank transfer pending (check Payment review and Credit in the Console). Users then sign in again, pending KYB is resubmitted and the Console settings are entered again. |
-| **bot and gateway databases**                                                         | **Start empty.** The applications create their tables. No rental is running at the move, so nothing needs them. Keep a dump as an archive of past orders and rentals, and load it only if you want those records on the new platform.                                  |
+**Nothing.** All three applications start with empty storage. The bot and the gateway create their
+tables in MySQL; the web creates its tables in MySQL and its files on the volume.
 
-If you move the web data, keep `SPOTBOT_OPENNEXT_FILES_KEY` and `SPOTBOT_OPENNEXT_CONSOLE_KEY`
-unchanged. They decrypt the KYB files and the stored provider credentials.
+This is safe because, at the time of the move:
+
+- no rental is running (checked on moving day, below);
+- no buyer has passed KYB, nobody holds Credit, and no bank transfer is pending. Check Buyer KYB,
+  Credit and Payment review in the Console before the move.
+
+Users sign in again, and their accounts are created anew. Enter the Console settings again.
+
+Keep archives of the old data anyway; moving day below writes them. Today the web's adapter keeps
+its data in SQLite, on the old volume. That cannot be loaded into the new MySQL database as it is,
+so the archive is for reference only.
 
 ## Moving day (about 30 minutes)
 
@@ -145,7 +155,7 @@ The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.15
 4. **Export.** Run as root:
 
    ```sh
-   # Web host: settings, and the data unless you skip it
+   # Web host: settings, and an archive of the data
    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' opennext-homepage > web.env
    docker cp opennext-homepage:/app/.opennext-data - | gzip > web-data.tar.gz
 
@@ -171,10 +181,10 @@ The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.15
      anywhere.
 
 5. **Prepare the data.**
-   - In the new MySQL, create the empty databases `spot_order_bot` and `spot_order_gateway`. Create
-     one user for each, limited to its own database.
-   - Unpack `web-data.tar.gz` into the web volume, unless you skip it. Its top directory is
-     `.opennext-data`. The files must belong to uid 1000.
+   - In the new MySQL, create the empty databases `spot_order_bot`, `spot_order_gateway` and
+     `spot_order_adapter`. Create one user for each, limited to its own database. The applications
+     create their tables when they start.
+   - Give the web an empty volume at `/app/.opennext-data`, writable by uid 1000.
 6. **Start** web, bot and gateway on the new platform, and check that each health endpoint answers.
    On the gateway, `/health` also shows `"bot_reachable": true`.
 7. **Point the `opennextlab.ai` names at the new web.** Then check:
