@@ -1,0 +1,1008 @@
+"""OpenNEXT backend adapter.
+
+The OpenNEXT web app forwards every `/api/*` request to one backend (`API_ORIGIN`). This
+service implements the endpoints SpotOrderBot owns and passes every other request, unchanged,
+to the existing OpenNEXT API until the Python backend replaces it:
+
+- `GET /api/admin/instances` lists protected rental allocations across tenants for the
+  Operations Console. Authorization and admin-host scoping are delegated to the existing
+  administrator session check (`GET /api/admin/pricing/session`), so both backends accept
+  exactly the same sessions.
+- With a bot API configured (`spotbot.opennext_market`), `GET /api/marketplace/public` adds the
+  bot's Spot offers to the public supply rows, `POST /api/marketplace/spot-purchases` turns a
+  Spot purchase into a protected rental, and `GET /api/marketplace/me` adds the signed-in
+  customer's rentals to their instances. Customer sessions and CSRF tokens are verified with
+  the existing API (`GET /api/auth/session`).
+
+Serve it on a private listener reached only by the OpenNEXT web server, never through a
+host-routing reverse proxy: the pass-through keeps the browser's `Host` header.
+"""
+
+import asyncio
+import hashlib
+import http.cookiejar
+import json
+import logging
+import secrets
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from pydantic import ValidationError
+from starlette.background import BackgroundTask
+
+from spotbot.models import timestamp, utcnow
+from spotbot.opennext_autopilot import install as install_autopilot
+from spotbot.opennext_console import install as install_console
+from spotbot.opennext_files import Vault
+from spotbot.opennext_inference import install as install_inference
+from spotbot.opennext_keys import InstanceKeysRequest, KeyLibrary, KeyRequest, fingerprint, key_view
+from spotbot.opennext_ledger import CreditLedger, adjusted_account, billing_view
+from spotbot.opennext_market import (
+    Offer,
+    PurchaseRequest,
+    SpotMarket,
+    checkout_totals,
+    customer_ref,
+    order_reference,
+    purchased,
+    rfq_for,
+)
+from spotbot.opennext_notify import Mailer, Notifier
+from spotbot.opennext_ops import Operations, direct_pay_key
+from spotbot.opennext_ops_api import install as install_operations
+from spotbot.opennext_pricing import PricingPolicy
+from spotbot.storage import create_store
+from spotbot.storage.workflows import WorkflowStore
+
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "proxy-connection",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+}
+METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+# Console lifecycle: Running excludes Connecting and End (docs/API_CONTRACT.md in OpenNEXT).
+LIFECYCLE = {
+    "QUEUED": "Connecting",
+    "WAITING_CAPACITY": "Connecting",
+    "PROVISIONING": "Connecting",
+    "VERIFYING": "Connecting",
+    "DELIVERING": "Connecting",
+    "RECOVERING": "Connecting",
+    "ACTIVE": "Running",
+    "ACTION_REQUIRED": "Attention",
+    "NEEDS_RECONCILIATION": "Attention",
+    "ENDING": "End",
+    "CLOSED": "End",
+}
+MAX_PAGE = 200
+# Request headers not forwarded when this adapter reads and rewrites an existing API response.
+REWRITE_DROPPED = {"accept-encoding", "content-type", "if-none-match", "if-modified-since"}
+logger = logging.getLogger(__name__)
+
+
+def legacy_origin(value):
+    url = urlsplit(value or "")
+    if (
+        url.scheme not in {"http", "https"}
+        or not url.hostname
+        or url.path not in {"", "/"}
+        or url.query
+        or url.fragment
+        or url.username
+    ):
+        raise ValueError("SPOTBOT_OPENNEXT_LEGACY_ORIGIN must be an http(s) origin without a path")
+    return value.rstrip("/")
+
+
+def instance_view(row, gen):
+    """Safe administrator view of one rental: no agent tokens, server IPs or credentials."""
+    rfq = row.get("rfq", {})
+    offer = (gen or {}).get("offer") or {}
+    return {
+        "id": row["id"],
+        "tenantId": row["tenant_id"],
+        "orderId": rfq.get("upstream_order_id"),
+        "rfqId": rfq.get("rfq_id"),
+        "model": rfq.get("gpu_model"),
+        "gpuCount": rfq.get("gpu_count"),
+        "term": "Spot",
+        "region": (gen or {}).get("region") or (rfq.get("regions") or [None])[0],
+        "zone": offer.get("availability_zone"),
+        "instanceType": offer.get("sku"),
+        "instanceId": (gen or {}).get("instance_id"),
+        "generation": row.get("generation", 0),
+        "state": row["state"],
+        "lifecycle": LIFECYCLE.get(row["state"], "Attention"),
+        "error": row.get("error"),
+        "degraded": row.get("degraded"),
+        "priceCeilingHourlyUsd": rfq.get("max_price_hourly"),
+        "estimatedCostUsd": row.get("estimated_cost_usd"),
+        "budgetUsd": rfq.get("budget_usd"),
+        "createdAt": row["created_at"],
+        "expiresAt": rfq.get("expires_at"),
+        "closedAt": row.get("closed_at"),
+    }
+
+
+def same_origin(request):
+    """The browser's Origin names the Host it sent the request to."""
+    raw = request.headers.get("origin", "")
+    try:
+        return bool(raw) and urlsplit(raw).netloc.lower() == request.headers.get("host", "").lower()
+    except ValueError:
+        return False
+
+
+def create_opennext_app(settings, *, origin, store=None, client=None, market=None, vault=None):
+    origin = legacy_origin(origin)
+    db = WorkflowStore(store or create_store(settings))
+    own_client = client is None
+    client = client or httpx.AsyncClient(
+        timeout=httpx.Timeout(60, connect=5), follow_redirects=False, trust_env=False
+    )
+    # Never keep upstream cookies: a shared jar would send one browser's session with every
+    # later request. Cookies only travel in each browser request's own headers.
+    client.cookies.jar.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
+    market = market or SpotMarket.from_settings(settings, client)
+    pricing = PricingPolicy(db, settings.spotbot_opennext_spot_markup_bps if settings else 0)
+    if isinstance(market, SpotMarket):
+        market.pricing_policy = pricing
+    ledger = CreditLedger(db)
+    library = KeyLibrary(db)
+    public_url = settings.spotbot_opennext_public_url if settings else ""
+    ops = Operations(
+        db,
+        vault or Vault.from_settings(settings),
+        public_url,
+        settings.spotbot_opennext_kyb_retention_days if settings else 365,
+    )
+    notifier = (
+        Notifier(
+            db,
+            market,
+            ledger,
+            Mailer.from_settings(settings) if settings else None,
+            public_url,
+            ops=ops,
+            provision=lambda doc: provision(doc),
+        )
+        if market
+        else None
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        # Bills usage and sends order notices while customers are away; one adapter instance.
+        task = asyncio.create_task(notifier.run()) if notifier else None
+        console_task = asyncio.create_task(console.run())
+        # Disabling new purchases must not disable existing agreement settlement.
+        funding_task = asyncio.create_task(funding_worker.run()) if settings and market else None
+        yield
+        console_task.cancel()
+        if funding_task:
+            funding_task.cancel()
+        if task:
+            task.cancel()
+        await asyncio.gather(console_task, *([task] if task else []),
+                             *([funding_task] if funding_task else []), return_exceptions=True)
+        if own_client:
+            await client.aclose()
+
+    app = FastAPI(
+        title="SpotOrderBot OpenNEXT API",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+
+    def raw(items):
+        # Raw pairs keep repeated headers such as several Set-Cookie values.
+        return [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in items]
+
+    def headers(request):
+        # Keep the browser's Host, Origin, cookies and CSRF header; the existing API checks them.
+        return [(k, v) for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP]
+
+    def error(status, message, **extra):
+        return JSONResponse(
+            {"error": message, **extra}, status_code=status, headers={"Cache-Control": "no-store"}
+        )
+
+    def rentals():
+        rows = sorted(db.list("rental"), key=lambda r: r["created_at"], reverse=True)
+        return [
+            instance_view(
+                row,
+                db.get("generation", row["current_generation_id"])
+                if row.get("current_generation_id")
+                else None,
+            )
+            for row in rows
+        ]
+
+    async def admin_session(request):
+        """`(scope, None)` for a signed-in administrator, else `(None, error response)`.
+
+        The scope is a non-secret digest of the administrator session cookie, so it changes
+        with every sign-in and cached private views can be tied to one operator session.
+        """
+        try:
+            session = await client.get(
+                origin + "/api/admin/pricing/session", headers=headers(request)
+            )
+        except httpx.HTTPError:
+            return None, error(503, "The administrator session service is unavailable.")
+        if session.status_code == 404:
+            return None, error(404, "Not found")  # Not the admin host.
+        if session.status_code != 200:
+            return None, error(503, "The administrator session service is unavailable.")
+        access = session.json().get("access") or {}
+        if access.get("mutable") is not True:
+            return None, error(
+                401, access.get("reason") or "Administrator sign-in required", access=access
+            )
+        cookie = request.cookies.get("on_pricing_admin", "")
+        return "ops-" + hashlib.sha256(cookie.encode()).hexdigest()[:24], None
+
+    @app.get("/api/admin/instances")
+    async def admin_instances(
+        request: Request, status: str = "", cursor: str = "", limit: int = 50
+    ):
+        _, failed = await admin_session(request)
+        if failed:
+            return failed
+        wanted = status.strip().lower()
+        if wanted and wanted not in {v.lower() for v in LIFECYCLE.values()}:
+            return error(400, "Unknown status filter", code="INVALID_STATUS")
+        if not (1 <= limit <= MAX_PAGE) or (cursor and not cursor.isdigit()):
+            return error(400, "Invalid cursor or limit", code="INVALID_PAGE")
+        if market is not None:
+            try:
+                rows = await market.rentals()
+                views = [
+                    instance_view(row, {"region": (row.get("connection") or {}).get("region")})
+                    for row in rows
+                ]
+            except (httpx.HTTPError, ValueError, KeyError):
+                return error(503, "The Spot Bot is temporarily unavailable.")
+        else:
+            views = await asyncio.to_thread(rentals)
+        if wanted:
+            views = [v for v in views if v["lifecycle"].lower() == wanted]
+        start = int(cursor or 0)
+        page = views[start : start + limit]
+        return JSONResponse(
+            {
+                "instances": page,
+                "nextCursor": str(start + limit) if start + limit < len(views) else None,
+                "asOf": timestamp(),
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def legacy_get(request, path):
+        """Read an existing API response for this browser request, unencoded."""
+        forwarded = [(k, v) for k, v in headers(request) if k.lower() not in REWRITE_DROPPED]
+        return await client.get(
+            origin + path, headers=[*forwarded, ("accept-encoding", "identity")]
+        )
+
+    def relay(upstream, body=None):
+        """The existing API's response; with `body`, the same status and headers, new JSON."""
+        content = upstream.content if body is None else json.dumps(body).encode()
+        dropped = HOP_BY_HOP | {"content-encoding"}
+        if body is not None:
+            dropped |= {"content-type", "etag", "last-modified"}
+        out = [(k, v) for k, v in upstream.headers.multi_items() if k.lower() not in dropped]
+        if body is not None:
+            out.append(("content-type", "application/json; charset=utf-8"))
+        response = Response(content, status_code=upstream.status_code)
+        response.raw_headers = raw([*out, ("content-length", str(len(content)))])
+        return response
+
+    async def session_user(request):
+        """The verified customer session, or None for signed-out and demo sessions."""
+        response = await legacy_get(request, "/api/auth/session")
+        if response.status_code != 200:
+            raise httpx.HTTPError("session_unavailable")
+        body = response.json()
+        user = body.get("user") if isinstance(body, dict) else None
+        if body.get("demo") or not isinstance(user, dict) or not isinstance(user.get("id"), str):
+            return None
+        return user
+
+    @app.get("/api/marketplace/public")
+    async def public_market(request: Request):
+        try:
+            upstream = await legacy_get(request, request.url.path)
+        except httpx.HTTPError:
+            return error(502, "The OpenNEXT service is temporarily unavailable.")
+        if market is None or upstream.status_code != 200:
+            return relay(upstream)
+        try:
+            body = upstream.json()
+            offers = await market.offers()
+            body["supplies"] = [*(body.get("supplies") or []), *(o.row for o in offers.values())]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            logger.exception("opennext_spot_offers_unavailable")
+            return relay(upstream)
+        return relay(upstream, body)
+
+    @app.get("/api/marketplace/me")
+    async def workspace(request: Request):
+        try:
+            upstream = await legacy_get(request, request.url.path)
+        except httpx.HTTPError:
+            return error(502, "The OpenNEXT service is temporarily unavailable.")
+        if market is None or upstream.status_code != 200:
+            return relay(upstream)
+        try:
+            body = upstream.json()
+            user = await session_user(request)
+            if user is None:
+                return relay(upstream)
+            rows = await market.rentals(customer_ref(user["id"]))
+            async with ledger.lock(user["id"]):
+                await ledger.reconcile(user["id"], rows)
+                billing = await billing_views(user["id"], rows)
+            body["instances"] = [
+                *(body.get("instances") or []),
+                *await market.instances(user["id"], rows, billing),
+            ]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            logger.exception("opennext_spot_instances_unavailable")
+            return relay(upstream)
+        return relay(upstream, body)
+
+    async def billing_views(user_id, rows):
+        by_id = {r["id"]: r for r in rows}
+        return {
+            c["rental_id"]: billing_view(c, by_id[c["rental_id"]])
+            for c in await ledger.charges(user_id)
+            if c.get("rental_id") in by_id and c.get("pricing_version") != "spot-hourly-v1"
+        }
+
+    async def credit(request, user_id):
+        """The account's Credit from the existing API less open Spot charges, or None."""
+        response = await legacy_get(request, "/api/billing/account")
+        if response.status_code != 200:
+            return None
+        account = response.json()
+        if account.get("demo") or account.get("accountId") != user_id:
+            return None
+        charges = await ledger.reconcile(user_id, await market.rentals(customer_ref(user_id)))
+        from spotbot.funding_ledger import guard
+
+        checkpoint = await asyncio.to_thread(guard, db, user_id)
+        charges = await ledger.charges(user_id)
+        result = adjusted_account(account, charges, await ops.credits(user_id))
+        result["_creditGuardVersion"] = checkpoint.get("version", 0)
+        return result
+
+    @app.get("/api/billing/account")
+    async def billing_account(request: Request):
+        try:
+            upstream = await legacy_get(request, request.url.path)
+        except httpx.HTTPError:
+            return error(502, "The OpenNEXT service is temporarily unavailable.")
+        if market is None or upstream.status_code != 200:
+            return relay(upstream)
+        try:
+            account = upstream.json()
+            user_id = account.get("accountId")
+            if account.get("demo") or account.get("confirmed") is not True or not user_id:
+                return relay(upstream)
+            async with ledger.lock(user_id):
+                rows = await market.rentals(customer_ref(user_id))
+                charges = await ledger.reconcile(user_id, rows)
+            credits = await ops.credits(user_id)
+            notices = [*await ops.notifications(user_id), *await notifier.notifications(user_id)]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+            # Without the charges the balance would overstate what can be spent.
+            logger.exception("opennext_credit_unavailable")
+            return error(503, "Your available Credit could not be confirmed.")
+        return relay(upstream, adjusted_account(account, charges, credits, notices))
+
+    async def confirmation(rental, user_id):
+        bought = purchased(rental)
+        charge = await ledger.find(user_id, rental["rfq"].get("upstream_order_id", ""))
+        total = (
+            charge["cents"]
+            if charge
+            else checkout_totals(bought["cents"] / 100, bought["hours"])["totalCents"]
+        )
+        return JSONResponse(
+            {
+                "confirmed": True,
+                "offerId": bought["offerId"],
+                "orderId": rental["id"],
+                "currency": "USD",
+                "durationHours": bought["hours"],
+                "totalCents": total,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/api/marketplace/spot-purchases")
+    async def spot_purchase(request: Request):
+        if market is None:
+            return error(503, "Spot purchasing is not available yet. No order was created.")
+        try:
+            user = await session_user(request)
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return error(503, "Your session could not be verified. No order was created.")
+        if user is None:
+            return error(401, "Sign in to a Buyer account before purchasing capacity.")
+        if (
+            not same_origin(request)
+            or not isinstance(user.get("csrfToken"), str)
+            or not (
+                secrets.compare_digest(
+                    request.headers.get("x-csrf-token", "").encode(), user["csrfToken"].encode()
+                )
+            )
+        ):
+            return error(403, "Your session verification failed. Refresh and try again.")
+        if user.get("role") != "buyer":
+            return error(403, "A Buyer account is required to purchase capacity.")
+        if not await ops.kyb_approved(user["id"]):
+            return error(
+                403,
+                "Complete business verification before purchasing capacity. No order was created.",
+                code="KYB_REQUIRED",
+            )
+        try:
+            purchase = PurchaseRequest.model_validate_json(await request.body())
+        except ValidationError as exc:
+            fields = {e["loc"] for e in exc.errors()}
+            if ("sshPublicKey",) in fields:
+                message = (
+                    "Enter a valid OpenSSH public key, or leave it empty and add one later. "
+                    "No order was created."
+                )
+            elif ("durationHours",) in fields:
+                message = (
+                    "Enter a duration from 1 to 720 hours, with up to two decimal places. "
+                    "No order was created."
+                )
+            else:
+                message = "The purchase request is invalid. No order was created."
+            return error(400, message, code="INVALID_PURCHASE")
+        reference = order_reference(user["id"], purchase.idempotencyKey)
+        async with ledger.lock(user["id"]):
+            return await place_order(request, user, purchase, reference)
+
+    async def place_order(request, user, purchase, reference):
+        try:
+            existing = await market.find(user["id"], reference)
+            if existing:
+                bought = purchased(existing)
+                if (bought["offerId"], bought["hours"]) != (
+                    purchase.offerId,
+                    purchase.durationHours,
+                ) or (existing["rfq"].get("inference") or {}).get(
+                    "preset_id"
+                ) != purchase.inferencePresetId:
+                    return error(
+                        409,
+                        "This purchase reference was already used.",
+                        code="IDEMPOTENCY_CONFLICT",
+                    )
+                return await confirmation(existing, user["id"])
+            held = await ledger.find(user["id"], reference)
+            if (not held and funding_service.ctx.settings
+                    and funding_service.ctx.settings.spotbot_floating_enabled):
+                return error(409, "Review a floating Spot quote and its budget limits before purchasing.",
+                             code="FLOATING_CONSENT_REQUIRED")
+            if held and held["state"] in {"billed", "refunded"}:
+                return error(
+                    409,
+                    "This purchase attempt is closed. Start a new purchase.",
+                    code="IDEMPOTENCY_CONFLICT",
+                )
+            if held and not (held.get("pricing_snapshot") and held.get("offer_snapshot")):
+                return error(
+                    503,
+                    "An earlier purchase is still pending. Check your instances before creating another order.",
+                )
+            if held and held.get("pricing_snapshot") and held.get("offer_snapshot"):
+                if (
+                    held["offer_id"] != purchase.offerId
+                    or held["pricing_snapshot"]["durationHours"] != purchase.durationHours
+                    or (held["pricing_snapshot"].get("inference") or {}).get("preset_id")
+                    != purchase.inferencePresetId
+                ):
+                    return error(
+                        409,
+                        "This purchase reference was already used.",
+                        code="IDEMPOTENCY_CONFLICT",
+                    )
+                offer = Offer(held["offer_snapshot"], frozen=held["pricing_snapshot"])
+            else:
+                offer = (await market.offers()).get(purchase.offerId)
+                if offer and purchase.inferencePresetId:
+                    if not purchase.inferenceBillingAcknowledged:
+                        return error(
+                            400,
+                            "Confirm that model preparation uses paid GPU time before purchasing.",
+                        )
+                    offer = await market.prepare_offer(offer, purchase.inferencePresetId)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            return error(503, "Spot offers are temporarily unavailable. No order was created.")
+        if offer is None:
+            return error(
+                409,
+                "This Spot offer is no longer available. Choose another offer.",
+                code="OFFER_UNAVAILABLE",
+            )
+        totals = checkout_totals(
+            offer.instance_hourly,
+            purchase.durationHours,
+            offer.pricing.get("serviceFeeBps", 500) if held else 0,
+        )
+        if totals != purchase.expectedPricing.model_dump():
+            return error(
+                409,
+                "The offer price changed. Review the current price before paying.",
+                code="PRICE_CHANGED",
+            )
+        if held is None:
+            try:
+                account = await credit(request, user["id"])
+            except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+                account = None
+            if account is None:
+                return error(
+                    503, "Your available Credit could not be confirmed. No order was created."
+                )
+            if round(account["availableCredit"] * 100) < totals["totalCents"]:
+                return error(
+                    409,
+                    "Insufficient Credit. Add credit to complete this purchase. No order was created.",
+                    code="INSUFFICIENT_CREDIT",
+                )
+        email = user.get("email")
+        from spotbot.storage.workflows import ConflictError
+
+        try:
+            charge = await ledger.hold(
+                user["id"], reference, totals["totalCents"], offer.id,
+                hourly_cents=offer.cents,
+                pricing_snapshot=dict(offer.pricing, durationHours=purchase.durationHours),
+                offer_snapshot=offer.raw,
+                email=email if isinstance(email, str) and "@" in email else None,
+                expected_guard=account.get("_creditGuardVersion") if held is None else None,
+            )
+        except ConflictError:
+            return error(409, "Your Credit changed. Refresh your balance before purchasing.",
+                         code="CREDIT_CHANGED")
+        if charge["state"] not in {"held", "charged"}:
+            return error(
+                409,
+                "This purchase attempt is closed. Start a new purchase.",
+                code="IDEMPOTENCY_CONFLICT",
+            )
+        if charge["cents"] != totals["totalCents"]:
+            return error(
+                409,
+                "This purchase reference already holds a different price.",
+                code="IDEMPOTENCY_CONFLICT",
+            )
+        if charge.get("offer_snapshot") and charge.get("pricing_snapshot"):
+            offer = Offer(charge["offer_snapshot"], frozen=charge["pricing_snapshot"])
+            if (
+                offer.cents != totals["hourlyCents"]
+                or charge["pricing_snapshot"]["durationHours"] != purchase.durationHours
+                or offer.id != purchase.offerId
+            ):
+                return error(
+                    409, "This purchase reference was already used.", code="IDEMPOTENCY_CONFLICT"
+                )
+        rfq = rfq_for(offer, purchase, user["id"], utcnow(), market.storage_rate)
+        try:
+            response = await market.create(rfq)
+            if response.status_code == 409:
+                # A concurrent request with the same reference may have created it.
+                existing = await market.find(user["id"], reference)
+                if existing:
+                    await ledger.settle(charge, existing["id"])
+                    return await confirmation(existing, user["id"])
+                if response.json().get("detail") in {"quota_insufficient", "no_eligible_offer"}:
+                    await ledger.refund(charge, "quota_admission_rejected")
+                    return error(
+                        409,
+                        "The remaining quota changed before this order was accepted. No Credit was charged. Refresh the market and choose an available offer.",
+                        code="QUOTA_EXHAUSTED",
+                    )
+            if response.status_code not in {200, 201}:
+                logger.error(
+                    "opennext_spot_purchase_rejected status=%s body=%s",
+                    response.status_code,
+                    response.text[:500],
+                )
+                await ledger.refund(charge, "rental_rejected")
+                return error(502, "The Spot order was not accepted. No Credit was charged.")
+            rental = response.json()["rental"]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            # The outcome is unknown: the charge stays held until the rental appears (settled)
+            # or does not (refunded), and a retry with the same reference cannot order twice.
+            return error(
+                503, "The order status is uncertain. Check your instances before trying again."
+            )
+        await ledger.settle(charge, rental["id"])
+        return await confirmation(rental, user["id"])
+
+    def csrf_ok(request, user):
+        token = user.get("csrfToken")
+        return (
+            same_origin(request)
+            and isinstance(token, str)
+            and secrets.compare_digest(
+                request.headers.get("x-csrf-token", "").encode(), token.encode()
+            )
+        )
+
+    async def customer(request, *, write):
+        """`(user, None)` for a verified customer session, else `(None, error response)`."""
+        try:
+            user = await session_user(request)
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return None, error(503, "Your session could not be verified. Please try again.")
+        if user is None:
+            return None, error(401, "Sign in to continue.")
+        if write and not csrf_ok(request, user):
+            return None, error(403, "Your session verification failed. Refresh and try again.")
+        return user, None
+
+    async def json_body(request, model):
+        try:
+            return model.model_validate_json(await request.body()), None
+        except ValidationError as exc:
+            invalid_key = any(e["msg"].endswith("invalid_ssh_public_key") for e in exc.errors())
+            return None, error(
+                400,
+                "Enter a valid OpenSSH public key." if invalid_key else "The request is invalid.",
+                code="INVALID_REQUEST",
+            )
+
+    def no_store(body):
+        return JSONResponse(body, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/account/ssh-keys")
+    async def list_keys(request: Request):
+        user, failed = await customer(request, write=False)
+        if failed:
+            return failed
+        return no_store({"keys": [key_view(r) for r in await library.list(user["id"])]})
+
+    @app.post("/api/account/ssh-keys")
+    async def add_key(request: Request):
+        user, failed = await customer(request, write=True)
+        if failed:
+            return failed
+        body, failed = await json_body(request, KeyRequest)
+        if failed:
+            return failed
+        try:
+            record = await library.add(user["id"], body.label, body.publicKey)
+        except ValueError:
+            return error(409, "You can save up to 50 SSH keys.", code="TOO_MANY_KEYS")
+        return no_store({"confirmed": True, "key": key_view(record)})
+
+    @app.delete("/api/account/ssh-keys/{key_id}")
+    async def remove_key(request: Request, key_id: str):
+        user, failed = await customer(request, write=True)
+        if failed:
+            return failed
+        try:
+            await library.remove(user["id"], key_id)
+        except LookupError:
+            return error(404, "This SSH key was not found.")
+        return no_store({"confirmed": True, "id": key_id})
+
+    def keys_view(value):
+        return {
+            "keys": [
+                {"publicKey": k, "fingerprint": fingerprint(k), "comment": " ".join(k.split()[2:])}
+                for k in value["keys"]
+            ],
+            "version": value["version"],
+            "installed": bool(value.get("installed")),
+        }
+
+    async def own_rental(request, rental_id, *, write):
+        """`(user, rental, None)` for the signed-in customer's own Spot rental."""
+        if market is None:
+            return None, None, error(404, "Not found")
+        user, failed = await customer(request, write=write)
+        if failed:
+            return None, None, failed
+        try:
+            rental = await market.owned(user["id"], rental_id)
+        except httpx.HTTPError:
+            return None, None, error(503, "Instances are temporarily unavailable.")
+        if rental is None:
+            return None, None, error(404, "This instance was not found.")
+        return user, rental, None
+
+    @app.get("/api/marketplace/instances/{rental_id}/ssh-keys")
+    async def instance_keys(request: Request, rental_id: str):
+        _, rental, failed = await own_rental(request, rental_id, write=False)
+        if failed:
+            return failed
+        try:
+            return no_store(keys_view(await market.keys(rental["id"])))
+        except (httpx.HTTPError, ValueError):
+            return error(503, "SSH keys are temporarily unavailable.")
+
+    @app.api_route("/api/marketplace/instances/{rental_id}/ssh-keys", methods=["PUT", "POST"])
+    async def set_instance_keys(request: Request, rental_id: str):
+        _, rental, failed = await own_rental(request, rental_id, write=True)
+        if failed:
+            return failed
+        body, failed = await json_body(request, InstanceKeysRequest)
+        if failed:
+            return failed
+        try:
+            return no_store(keys_view(await market.keys(rental["id"], body.keys)))
+        except ValueError:
+            return error(409, "This instance has ended; its SSH keys can no longer change.")
+        except httpx.HTTPError:
+            return error(503, "SSH keys could not be updated. Please try again.")
+
+    @app.post("/api/marketplace/instances/{rental_id}/end")
+    async def end_instance(request: Request, rental_id: str):
+        user, rental, failed = await own_rental(request, rental_id, write=True)
+        if failed:
+            return failed
+        try:
+            confirmed = (await request.json()).get("confirmation") == "END"
+        except ValueError:
+            confirmed = False
+        if not confirmed:
+            return error(400, "Type END to confirm.", code="CONFIRMATION_REQUIRED")
+        try:
+            ended = await market.release(rental["id"])
+        except httpx.HTTPError:
+            return error(503, "The instance could not be ended. Please try again.")
+        billing = await billing_views(user["id"], [ended])
+        return no_store(
+            {
+                "confirmed": True,
+                "instance": (await market.instances(user["id"], [ended], billing))[0],
+            }
+        )
+
+    async def provision(doc):
+        """Hold a confirmed Direct Pay payment for its order and create the rental.
+
+        Idempotent and retried by the notifier until the bot answers: the RFQ reference is
+        derived from the payment, so a retry finds the rental instead of ordering twice.
+        """
+        state = (doc.get("provisioning") or {}).get("state")
+        if (
+            market is None
+            or doc["status"] != "Confirmed"
+            or state not in {"queued", "held", "redeeming"}
+        ):
+            return doc
+        user_id, reference = doc["account"], doc["order_reference"]
+        async with ledger.lock(user_id):
+            charge = await ledger.hold(
+                user_id,
+                reference,
+                doc["amount_cents"],
+                doc["offer_id"],
+                hourly_cents=doc["hourly_cents"],
+                pricing_snapshot=doc.get("pricing_snapshot"),
+                service_fee_bps=(doc.get("pricing_snapshot") or {}).get("serviceFeeBps", 500),
+                offer_snapshot=doc.get("offer"),
+                email=doc["email"] or None,
+            )
+            if (charge.get("offer_id"), charge.get("cents"), charge.get("hourly_cents")) != (
+                doc["offer_id"],
+                doc["amount_cents"],
+                doc["hourly_cents"],
+            ):
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                return await ops.add_notice(
+                    doc,
+                    "Payment requires a new purchase",
+                    "This reference belongs to a different purchase. Your full payment is in Credit. "
+                    "Please choose another instance.",
+                )
+            if charge["state"] == "billed" and charge.get("rental_id"):
+                return await ops.set_provisioning(
+                    doc, state="submitted", rental_id=charge["rental_id"]
+                )
+            if charge["state"] not in {"held", "charged"}:
+                doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                return await ops.add_notice(
+                    doc,
+                    "Instance purchase attempt closed",
+                    "This purchase attempt has already been released or refunded to Credit. "
+                    "Start a new purchase to request another instance.",
+                )
+            if state in {"queued", "redeeming"}:
+                doc = await ops.set_provisioning(doc, state="held")
+            try:
+                rental = await market.find(user_id, reference)
+                if rental is None:
+                    purchase = SimpleNamespace(
+                        durationHours=doc["duration_hours"],
+                        idempotencyKey=direct_pay_key(doc["idempotency_key"]),
+                        sshPublicKey=doc["ssh_public_key"],
+                    )
+                    rfq = rfq_for(
+                        Offer(doc["offer"], frozen=doc.get("pricing_snapshot")),
+                        purchase,
+                        user_id,
+                        utcnow(),
+                        market.storage_rate,
+                    )
+                    response = await market.create(rfq)
+                    if response.status_code == 409:
+                        rental = await market.find(user_id, reference)
+                        if rental is None and response.json().get("detail") in {
+                            "quota_insufficient",
+                            "no_eligible_offer",
+                        }:
+                            await ledger.refund(charge, "quota_admission_rejected")
+                            doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                            return await ops.add_notice(
+                                doc,
+                                "Quota unavailable; payment added to Credit",
+                                "The remaining provider quota changed before your instance could be accepted. Your full payment is in Credit. Please choose another instance.",
+                            )
+                    elif response.status_code not in {200, 201}:
+                        logger.error("opennext_direct_pay_rejected status=%s", response.status_code)
+                        await ledger.refund(charge, "rental_rejected")
+                        doc = dict(doc, provisioning={**doc["provisioning"], "state": "failed"})
+                        return await ops.add_notice(
+                            doc,
+                            "Instance could not be started",
+                            "We could not start an instance for your payment. The full amount "
+                            "is in your Credit; you can use it for another purchase.",
+                        )
+                    else:
+                        rental = response.json()["rental"]
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                attempts = (doc["provisioning"].get("attempts") or 0) + 1
+                return await ops.set_provisioning(doc, attempts=attempts)
+            if rental is None:
+                return doc
+            await ledger.settle(charge, rental["id"])
+            return await ops.set_provisioning(doc, state="submitted", rental_id=rental["id"])
+
+    background = set()
+
+    async def provision_now(transfer_id):
+        """Start provisioning in the background; the operator's decision does not wait on the
+        bot, and the notifier retries whatever this attempt does not finish."""
+
+        async def run():
+            try:
+                doc = await ops.get_transfer(transfer_id)
+                if doc:
+                    await provision(doc)
+            except Exception:
+                logger.exception("opennext_direct_pay_provisioning_deferred")
+
+        task = asyncio.create_task(run())
+        background.add(task)
+        task.add_done_callback(background.discard)
+        return task
+
+    console = install_console(
+        app,
+        SimpleNamespace(
+            db=db,
+            settings=settings,
+            market=market,
+            ops=ops,
+            notifier=notifier,
+            pricing=pricing,
+            ledger=ledger,
+            origin=origin,
+            client=client,
+            headers=headers,
+            admin_session=admin_session,
+            same_origin=same_origin,
+            no_store=no_store,
+            error=error,
+        ),
+    )
+    install_autopilot(
+        app,
+        SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental),
+    )
+    install_inference(
+        app, SimpleNamespace(market=market, error=error, no_store=no_store, own_rental=own_rental)
+    )
+    install_operations(
+        app,
+        SimpleNamespace(
+            ops=ops,
+            ledger=ledger,
+            market=market,
+            error=error,
+            no_store=no_store,
+            customer=customer,
+            own_rental=own_rental,
+            admin_session=admin_session,
+            same_origin=same_origin,
+            provision_now=provision_now,
+            accounts=console.accounts,
+            audit=lambda event, **fields: logger.info(
+                "opennext_audit event=%s %s", event, " ".join(f"{k}={v}" for k, v in fields.items())
+            ),
+        ),
+    )
+
+    from spotbot.funding_api import install as install_funding
+    from spotbot.funding_service import FundingService
+    from spotbot.funding_worker import FundingWorker
+
+    funding_service = FundingService(SimpleNamespace(
+        db=db, market=market, ops=ops, legacy_ledger=ledger, settings=settings,
+        accounts=console.accounts, credit=credit, customer=customer, no_store=no_store,
+        error=error, mailer=notifier.mailer if notifier else None,
+    ))
+    funding_worker = FundingWorker(funding_service)
+    install_funding(app, funding_service)
+    app.state.funding = funding_service
+    app.state.funding_worker = funding_worker
+
+    @app.api_route("/api/{path:path}", methods=METHODS)
+    async def passthrough(request: Request, path: str):
+        target = (
+            origin + request.url.path + (("?" + request.url.query) if request.url.query else "")
+        )
+        upstream = client.build_request(
+            request.method,
+            target,
+            headers=headers(request),
+            content=request.stream() if request.method not in {"GET", "HEAD"} else None,
+        )
+        try:
+            response = await client.send(upstream, stream=True)
+        except httpx.HTTPError:
+            return error(502, "The OpenNEXT service is temporarily unavailable.")
+        out = [(k, v) for k, v in response.headers.multi_items() if k.lower() not in HOP_BY_HOP]
+        if request.method == "HEAD" or response.status_code in {204, 304}:
+            await response.aclose()
+            empty = Response(status_code=response.status_code)
+            empty.raw_headers = raw(out)
+            return empty
+
+        async def body():
+            # Raw bytes keep any content encoding the existing API applied.
+            if response.is_stream_consumed:
+                yield response.content
+                return
+            async for chunk in response.aiter_raw():
+                yield chunk
+
+        streamed = StreamingResponse(
+            body(),
+            status_code=response.status_code,
+            background=BackgroundTask(response.aclose),
+        )
+        streamed.raw_headers = raw(out)
+        return streamed
+
+    app.state.notifier = notifier
+    app.state.ops = ops
+    return app

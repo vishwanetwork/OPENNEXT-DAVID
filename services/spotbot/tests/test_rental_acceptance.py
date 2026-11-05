@@ -1,0 +1,383 @@
+"""No-cloud tests for the opt-in acceptance runner and cleanup guarantees."""
+
+import asyncio
+import copy
+import json
+import os
+from datetime import timedelta
+from uuid import uuid4
+
+import httpx
+import pytest
+
+from spotbot.models import utcnow
+from spotbot.rental_acceptance import (
+    Acceptance,
+    AcceptanceError,
+    AcceptanceSettings,
+    plan,
+    remote_script,
+    storage_deletion_reported,
+)
+from spotbot.rental_models import RentalRequest
+
+BOT_TOKEN = "staging-bot-token-" * 3
+GATEWAY_TOKEN = "staging-gateway-token-" * 3
+
+
+@pytest.fixture
+def scenario(tmp_path):
+    key = tmp_path / "dummy-test-key"
+    key.write_text("test fixture, not an SSH key")
+    settings = AcceptanceSettings(
+        _env_file=None,
+        bot_url="https://bot.example.com",
+        gateway_url="https://gateway.example.com",
+        bot_token=BOT_TOKEN,
+        gateway_token=GATEWAY_TOKEN,
+        tenant_id="staging",
+        ssh_key_path=key,
+        known_hosts_path=tmp_path / "known-hosts",
+        trust_new_host_keys=True,
+    ).model_copy(update={"poll_seconds": 0.001, "cleanup_timeout_seconds": 0.05})
+    request = RentalRequest(
+        rfq=dict(
+            rfq_id="rfq",
+            rfq_version=1,
+            upstream_order_id="test-order",
+            regions=["us-west-2"],
+            gpu_model="H100",
+            gpu_count=1,
+            min_gpu_memory_gib=80,
+            price_unit="instance_hour",
+            max_price_hourly="3",
+            budget_usd="30",
+            ssh_key_name="customer",
+            acquisition_deadline=utcnow() + timedelta(minutes=30),
+            expires_at=utcnow() + timedelta(hours=2),
+            data_disks=[dict(device="/dev/sdf", size_gib=10)],
+            http_port=8000,
+            backup=dict(final_retention_seconds=60),
+        )
+    )
+    state = dict(
+        created=False,
+        generation=1,
+        closed=False,
+        create_keys=[],
+        release=0,
+        timeout_once=False,
+        corrupt=False,
+        ssh_failure=False,
+        storage_deleted=True,
+        cancel=False,
+        busy_backups=0,
+        api_calls=[],
+    )
+    run_id = str(uuid4())
+
+    async def handler(http):
+        path = http.url.path
+        state["api_calls"].append((http.method, path))
+        if http.url.host.startswith("r-"):
+            return httpx.Response(
+                200 if http.headers.get("x-spotbot-access-token") == "private-http-token" else 401
+            )
+        assert http.headers["x-spotbot-tenant"] == "staging"
+        if path == "/v1/rentals" and http.method == "POST":
+            state["create_keys"].append(http.headers["idempotency-key"])
+            created = not state["created"]
+            state["created"] = True
+            if state["timeout_once"] and len(state["create_keys"]) == 1:
+                raise httpx.ReadTimeout("simulated timeout", request=http)
+            return httpx.Response(
+                200, json={"created": created, "rental": {"id": runner.rental_id}}
+            )
+        if path.endswith("/release"):
+            state.update(closed=True, release=state["release"] + 1)
+            return httpx.Response(200, json={"state": "ENDING"})
+        if path.endswith("/recover"):
+            state["generation"] += 1
+            return httpx.Response(200, json={"state": "RECOVERING"})
+        if path.endswith("/backups"):
+            if http.method == "POST":
+                if state["busy_backups"]:
+                    state["busy_backups"] -= 1
+                    return httpx.Response(409, json={"detail": "backup_already_running"})
+                return httpx.Response(200, json={"id": "backup"})
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"id": "backup", "state": "DELETED" if state["closed"] else "AVAILABLE"}
+                    ]
+                },
+            )
+        if path.endswith("/generations"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "state": "STOPPED" if state["closed"] else "READY",
+                            "instance_id": "i-staging",
+                            "volumes": [{"volume_id": "vol-root"}, {"volume_id": "vol-data"}],
+                            "deleted_volumes": ["vol-root", "vol-data"]
+                            if state["storage_deleted"]
+                            else [],
+                        }
+                    ]
+                },
+            )
+        if path.endswith("/connection"):
+            assert http.headers["authorization"] == "Bearer " + GATEWAY_TOKEN
+            return httpx.Response(
+                200,
+                json={
+                    "ready": True,
+                    "generation": state["generation"],
+                    "ssh": {"host": "ssh.example.com", "port": 22000, "user": "ubuntu"},
+                    "http": f"https://r-{run_id}.gpu.example.com",
+                    "http_access_token": "private-http-token",
+                },
+            )
+        assert http.headers["authorization"] == "Bearer " + BOT_TOKEN
+        if not state["created"]:
+            return httpx.Response(404)
+        return httpx.Response(
+            200,
+            json={
+                "state": "CLOSED" if state["closed"] else "ACTIVE",
+                "generation": state["generation"],
+            },
+        )
+
+    async def ssh(connection, script):
+        compile(script, "guest-check", "exec")
+        if state["cancel"]:
+            raise asyncio.CancelledError()
+        if state["ssh_failure"]:
+            raise AcceptanceError("ssh_validation_failed")
+        files = [
+            dict(
+                path=f"/var/lib/spotbot-acceptance/{run_id}/marker.dat",
+                sha256="a" * 64,
+                mode=0o640,
+                uid=0,
+                gid=0,
+            ),
+            dict(
+                path=f"/data/sdf/.spotbot-acceptance/{run_id}/marker.dat",
+                sha256="b" * 64,
+                mode=0o640,
+                uid=0,
+                gid=0,
+            ),
+        ]
+        if state["corrupt"] and state["generation"] > 1:
+            files[1]["sha256"] = "c" * 64
+        return dict(files=files, gpu="NVIDIA H100, 81559\n")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    runner = Acceptance(settings, request, run_id, tmp_path / "report.json", client=client, ssh=ssh)
+    return runner, state, client
+
+
+@pytest.mark.parametrize("backups,generations,clean", [
+    ([], [], True),
+    ([], [{"state": "REJECTED", "instance_id": None}], True),
+    ([], [{"state": "NEEDS_RECONCILIATION", "instance_id": None}], False),
+    ([], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": []}], False),
+    ([], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": [{"volume_id": "vol-root"}], "deleted_volumes": []}], False),
+    ([{"state": "AVAILABLE"}], [], False),
+    ([{"state": "DELETED"}], [{"state": "STOPPED", "instance_id": "i-allocated", "volumes": [{"volume_id": "vol-root"}], "deleted_volumes": ["vol-root"]}], True),
+])
+def test_cleanup_distinguishes_no_allocation_from_unknown_or_retained_resources(backups, generations, clean):
+    assert storage_deletion_reported(backups, generations) is clean
+
+
+def test_retained_storage_names_every_billable_resource():
+    from spotbot.rental_acceptance import retained_storage
+
+    backups = [
+        {"id": "gone", "state": "DELETED", "snapshots": {"/dev/sda1": "snap-old"}},
+        {
+            "id": "final",
+            "state": "AVAILABLE",
+            "region": "us-west-2",
+            "snapshots": {"/dev/sda1": "snap-root", "/dev/sdf": "snap-data"},
+            "images": {"us-west-2": "ami-final"},
+        },
+    ]
+    generations = [
+        {"generation": 1, "state": "STOPPED", "instance_id": "i-1", "volumes": [{"volume_id": "vol-a"}], "deleted_volumes": ["vol-a"]},
+        {"generation": 2, "state": "STOPPED", "instance_id": "i-2", "volumes": [], "region": "us-west-2"},
+        {"generation": 3, "state": "REJECTED", "instance_id": None},
+    ]
+    assert retained_storage(backups, generations) == [
+        dict(kind="backup", id="final", state="AVAILABLE", region="us-west-2",
+             snapshot_ids=["snap-data", "snap-root"], image_ids=["ami-final"]),
+        dict(kind="generation", generation=2, region="us-west-2", state="STOPPED",
+             instance_id="i-2", volume_ids=[], inventory_complete=False),
+    ]
+
+
+async def test_unreachable_bot_during_cleanup_is_reported_as_unknown_inventory(scenario):
+    runner, state, client = scenario
+    original = runner.storage
+
+    async def unreachable():
+        raise httpx.ConnectError("bot unavailable")
+
+    runner.storage = unreachable
+    try:
+        with pytest.raises(AcceptanceError, match="cleanup_requires_operator"):
+            await runner.execute()
+        result = json.loads(runner.report_path.read_text())
+        assert result["retained_storage"] == "unknown_query_bot_for_rental"
+        assert result["rental_id"] == runner.rental_id
+    finally:
+        runner.storage = original
+        await client.aclose()
+
+
+async def test_manual_backup_waits_for_a_scheduled_backup_already_running(scenario):
+    runner, state, client = scenario
+    state["busy_backups"] = 2
+    try:
+        result = await runner.execute()
+        assert result["status"] == "passed"
+        posts = [p for m, p in state["api_calls"] if m == "POST" and p.endswith("/backups")]
+        assert len(posts) == 3 and state["release"] == 1
+    finally:
+        await client.aclose()
+
+
+async def test_other_backup_conflicts_still_fail_and_release(scenario):
+    runner, state, client = scenario
+    original = client._transport.handler
+
+    async def handler(http):
+        if http.method == "POST" and http.url.path.endswith("/backups"):
+            return httpx.Response(409, json={"detail": "disk_inventory_not_ready"})
+        return await original(http)
+
+    client._transport.handler = handler
+    try:
+        with pytest.raises(AcceptanceError, match="bot_http_409:disk_inventory_not_ready"):
+            await runner.execute()
+        assert state["release"] == 1
+    finally:
+        await client.aclose()
+
+
+async def test_success_preserves_idempotency_and_verifies_final_cleanup(scenario):
+    runner, state, client = scenario
+    try:
+        state["timeout_once"] = True
+        result = await runner.execute()
+        assert result["status"] == "passed" and result["cleanup"] == "storage_deletion_reported"
+        assert result["retained_storage"] == []
+        assert result["generation"] == 2 and result["http_verified"]
+        assert len(state["create_keys"]) == 2 and len(set(state["create_keys"])) == 1
+        assert state["release"] == 1
+        content = runner.report_path.read_text()
+        assert (
+            "private-http-token" not in content
+            and BOT_TOKEN not in content
+            and GATEWAY_TOKEN not in content
+        )
+        assert os.stat(runner.report_path).st_mode & 0o777 == 0o600
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.parametrize("fault", ["ssh_failure", "corrupt", "cancel"])
+async def test_ssh_failure_corruption_and_cancellation_release_compute(scenario, fault):
+    runner, state, client = scenario
+    state[fault] = True
+    try:
+        with pytest.raises(asyncio.CancelledError if fault == "cancel" else AcceptanceError):
+            await runner.execute()
+        result = json.loads(runner.report_path.read_text())
+        assert result["status"] == "failed" and result["cleanup"] == "storage_deletion_reported"
+        assert state["closed"] and state["release"] == 1
+    finally:
+        await client.aclose()
+
+
+async def test_incomplete_storage_cleanup_is_not_reported_as_success(scenario):
+    runner, state, client = scenario
+    state["storage_deleted"] = False
+    try:
+        with pytest.raises(AcceptanceError, match="cleanup_requires_operator"):
+            await runner.execute()
+        result = json.loads(runner.report_path.read_text())
+        assert result["status"] == "failed" and result["cleanup"] == "unconfirmed"
+        assert result["retained_storage"] == [
+            dict(
+                kind="generation",
+                generation=None,
+                region=None,
+                state="STOPPED",
+                instance_id="i-staging",
+                volume_ids=["vol-data", "vol-root"],
+                inventory_complete=True,
+            )
+        ]
+        assert state["closed"]
+    finally:
+        await client.aclose()
+
+
+async def test_existing_run_and_strict_key_failure_do_not_mutate_cloud(scenario):
+    runner, state, client = scenario
+    try:
+        runner.settings.trust_new_host_keys = False
+        with pytest.raises(AcceptanceError, match="preverified_known_hosts"):
+            await runner.execute()
+        assert state["api_calls"] == []
+        runner.settings.trust_new_host_keys = True
+        state["created"] = True
+        with pytest.raises(AcceptanceError, match="already_exists"):
+            await runner.execute()
+        assert state["create_keys"] == [] and state["release"] == 0
+    finally:
+        await client.aclose()
+
+
+async def test_plan_is_offline_and_rejects_long_retention(scenario):
+    runner, state, client = scenario
+    result = plan(runner.request, runner.run_id)
+    assert not result["execution_enabled"] and not state["api_calls"]
+    request = copy.deepcopy(runner.request)
+    request.rfq.backup.final_retention_seconds = 604800
+    with pytest.raises(AcceptanceError):
+        plan(request, runner.run_id)
+    await client.aclose()
+
+
+async def test_guest_script_really_writes_and_reads_back_files(tmp_path, scenario, monkeypatch, capsys):
+    import pathlib
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    runner, _, _ = scenario
+    base = tmp_path / "guest"
+    real_path = pathlib.Path
+    # Isolate guest absolute paths inside the test directory; execute the script itself.
+    module = SimpleNamespace(Path=lambda p: real_path(base, str(p).lstrip("/")))
+    with monkeypatch.context() as patch:
+        patch.setitem(sys.modules, "pathlib", module)
+        patch.setattr(os.path, "ismount", lambda p: True)
+        patch.setattr(os, "sync", lambda: None)
+        patch.setattr(subprocess, "check_output", lambda *a, **k: b"NVIDIA H100, 81559\n")
+        exec(remote_script(runner.request.rfq, runner.run_id, True), {})
+        written = json.loads(capsys.readouterr().out)
+        exec(remote_script(runner.request.rfq, runner.run_id, False), {})
+        restored = json.loads(capsys.readouterr().out)
+    assert written == restored
+    assert len(written["files"]) == 2
+    assert all(f["mode"] == 0o640 for f in written["files"])
+    await scenario[2].aclose()
