@@ -16,11 +16,11 @@ accounts that supply GPUs do not change: `860165147463` and the B300 account `41
 commit SHA. Deploy all three from the same commit. The web needs a commit that includes the MySQL
 fix for KYB case ids (pull request #34) to run its adapter on MySQL.
 
-| Application | Data                                                                                                                                                                                      | Runs as   |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| web         | MySQL database `spot_order_adapter` (Credit, orders, KYB reviews, Console settings), and a persistent volume at `/app/.opennext-data` (accounts and top-ups of the legacy API, KYB files) | uid 1000  |
-| bot         | MySQL database `spot_order_bot`                                                                                                                                                           | uid 10001 |
-| gateway     | MySQL database `spot_order_gateway`                                                                                                                                                       | uid 10002 |
+| Application | Data                                                                                                                                                                                                          | Runs as   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| web         | MySQL database `spot_order_adapter`: the adapter's records and the legacy API's documents (accounts, Credit top-ups, marketplace, leads). A persistent volume at `/app/.opennext-data` for the KYB files only | uid 1000  |
+| bot         | MySQL database `spot_order_bot`                                                                                                                                                                               | uid 10001 |
+| gateway     | MySQL database `spot_order_gateway`                                                                                                                                                                           | uid 10002 |
 
 **Rules**
 
@@ -61,7 +61,7 @@ moving day (see below), and use them as they are, with these changes.
 | ----------- | --------------------------- | ---------------------------------------------------------------------------------------- |
 | bot         | `SPOTBOT_MYSQL_URL`         | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_bot?charset=utf8mb4`     |
 | gateway     | `SPOTBOT_GATEWAY_MYSQL_URL` | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_gateway?charset=utf8mb4` |
-| web         | `SPOTBOT_STORAGE_BACKEND`   | `mysql` (the bundled adapter; without it, it uses SQLite on the volume)                  |
+| web         | `SPOTBOT_STORAGE_BACKEND`   | `mysql`. The adapter and the legacy API then both keep their data in `SPOTBOT_MYSQL_URL` |
 | web         | `SPOTBOT_MYSQL_URL`         | `mysql+pymysql://<user>:<password>@<mysql-host>:3306/spot_order_adapter?charset=utf8mb4` |
 
 **Domain names**
@@ -114,7 +114,7 @@ Both changes only add access. Remove the old address `44.248.155.24` a week afte
 ## Which data to move
 
 **Nothing.** All three applications start with empty storage. The bot and the gateway create their
-tables in MySQL; the web creates its tables in MySQL and its files on the volume.
+tables in MySQL, and so does the web. The web's volume only receives the KYB files buyers upload.
 
 This is safe because, at the time of the move:
 
@@ -124,9 +124,8 @@ This is safe because, at the time of the move:
 
 Users sign in again, and their accounts are created anew. Enter the Console settings again.
 
-Keep archives of the old data anyway; moving day below writes them. Today the web's adapter keeps
-its data in SQLite, on the old volume. That cannot be loaded into the new MySQL database as it is,
-so the archive is for reference only.
+Keep archives of the old data anyway; moving day below writes them. Today the web keeps its data
+in JSON files and SQLite on the old volume; that archive is for reference only.
 
 ## Moving day (about 30 minutes)
 
@@ -184,7 +183,8 @@ The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.15
    - In the new MySQL, create the empty databases `spot_order_bot`, `spot_order_gateway` and
      `spot_order_adapter`. Create one user for each, limited to its own database. The applications
      create their tables when they start.
-   - Give the web an empty volume at `/app/.opennext-data`, writable by uid 1000.
+   - Give the web an empty volume at `/app/.opennext-data`, writable by uid 1000. It holds the KYB files;
+     the price caches and virus signatures there are rebuilt after a restart.
 6. **Start** web, bot and gateway on the new platform, and check that each health endpoint answers.
    On the gateway, `/health` also shows `"bot_reachable": true`.
 7. **Point the `opennextlab.ai` names at the new web.** Then check:

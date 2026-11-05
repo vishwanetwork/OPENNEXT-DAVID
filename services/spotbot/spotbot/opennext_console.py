@@ -30,9 +30,12 @@ class ConsoleBackend:
     def __init__(self, ctx):
         self.ctx, self.db, self.market, self.ops = ctx, ctx.db, ctx.market, ctx.ops
         settings = ctx.settings
+        # With MySQL the legacy API keeps its documents in this same database.
+        mysql = bool(settings and settings.spotbot_storage_backend == "mysql")
         self.snapshots = LegacySnapshots(
             (settings.spotbot_opennext_legacy_data_dir if settings else "")
-            or os.environ.get("OPENNEXT_DATA_DIR", "")
+            or os.environ.get("OPENNEXT_DATA_DIR", ""),
+            engine=getattr(getattr(self.db, "store", None), "engine", None) if mysql else None,
         )
         self.bridge = CollectorBridge(
             self.db,
@@ -74,7 +77,7 @@ class ConsoleBackend:
 
     async def activity(self):
         rows = await self.documents("console_audit")
-        if self.snapshots.directory is not None:
+        if self.snapshots.available:
             legacy = await asyncio.to_thread(self.snapshots.read, "marketplace.json")
             for event in legacy.get("audit", []):
                 if not isinstance(event, dict) or not event.get("at"):

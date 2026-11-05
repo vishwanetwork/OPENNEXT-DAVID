@@ -1,6 +1,5 @@
 'use strict';
-const fs = require('node:fs/promises');
-const path = require('node:path');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 const crypto = require('node:crypto');
 const countries = require('./OpenNEXT-countries.js');
 const {feePolicy, FEE_POLICY_VERSION, transactionAmounts} = require('./OpenNEXT-transaction-fees.cjs');
@@ -19,17 +18,17 @@ function regionCountry(value){
   if(regions[label])return regions[label];if(/^us-|^US (East|West)/i.test(label))return 'United States';if(/^ca-/i.test(label))return 'Canada';if(/^cn-/i.test(label))return 'China';
   const cities={Frankfurt:'Germany',Tokyo:'Japan',Seoul:'South Korea',Mumbai:'India',Sydney:'Australia',London:'United Kingdom',Paris:'France',Stockholm:'Sweden',Zurich:'Switzerland',Jakarta:'Indonesia',Oregon:'United States','N. Virginia':'United States',Ohio:'United States',California:'United States'};return cities[label]||label;
 }
-function createMarketplaceService({dataDir, now=()=>Date.now(), agentAdapter=null, externalService=null, provenanceKind='first_party', onRfqSubmitted=null}={}) {
-  if(!dataDir)throw Error('A private marketplace data directory is required.');
-  const file=path.join(dataDir,'marketplace.json');
+function createMarketplaceService({dataDir, documents, now=()=>Date.now(), agentAdapter=null, externalService=null, provenanceKind='first_party', onRfqSubmitted=null}={}) {
+  if(!dataDir&&!documents)throw Error('A private marketplace data directory is required.');
+  const store=documents||createFileDocumentStore(dataDir),DOC='marketplace.json';
   const fresh=()=>({version:2,rfqs:[],supplies:[],kyb:[],interests:[],instances:[],quotes:[],orders:[],notifications:[],audit:[],homepageReviews:[],submissionRequests:[]});
   let pending=Promise.resolve(), loaded;
   const timestamp=()=>new Date(now()).toISOString();
   const uid=prefix=>prefix+'-'+crypto.randomBytes(8).toString('hex').toUpperCase();
   if(!['first_party','demo'].includes(provenanceKind))throw Error('Invalid first-party provenance scope.');
   const provenance=(record,previous)=>({kind:provenanceKind,sourceId:provenanceKind==='demo'?'opennext-demo':'opennext',sourceName:provenanceKind==='demo'?'OpenNEXT Demo':'OpenNEXT',sourceUrl:null,sourceRecordId:record.id,observedAt:record.updatedAt||record.createdAt||timestamp(),importedAt:previous?.importedAt||record.createdAt||timestamp(),batchId:null});
-  async function read(){if(!loaded)loaded=(async()=>{try{const value=JSON.parse(await fs.readFile(file,'utf8'));if(value.version!==2)throw Error('Unsupported marketplace schema');if(value.homepageReviews===undefined)value.homepageReviews=[];if(value.submissionRequests===undefined)value.submissionRequests=[];for(const key of Object.keys(fresh()).filter(k=>k!=='version'))if(!Array.isArray(value[key]))throw Error('Invalid marketplace schema');migrateOpenPricing(value);for(const r of [...value.rfqs,...value.supplies])r.provenance=provenance(r,r.provenance);for(const r of value.rfqs){r.reviewRevision=Number.isInteger(r.reviewRevision)&&r.reviewRevision>0?r.reviewRevision:1;if(!r.reviewStatus&&['Open','Quoted','Reviewing'].includes(r.status)){r.status='Reviewing';r.reviewStatus='Reviewing';r.reviewSubmittedAt=timestamp();r.reviewReason='Operations review is required before publication.';for(const q of value.quotes.filter(q=>q.rfqId===r.id&&q.status==='Pending'))q.status='Needs refresh';}}return value;}catch(error){if(error.code==='ENOENT')return fresh();throw error;}})();return loaded;}
-  async function change(fn){const operation=pending.then(async()=>{const draft=clone(await read()),result=await fn(draft);for(const row of [...draft.rfqs,...draft.supplies])row.provenance=provenance(row,row.provenance);syncFeatured(draft);await fs.mkdir(dataDir,{recursive:true});const temp=file+'.'+crypto.randomBytes(5).toString('hex')+'.tmp';try{await fs.writeFile(temp,JSON.stringify(draft),{mode:0o600,flag:'wx'});await fs.rename(temp,file);}catch(error){await fs.unlink(temp).catch(()=>{});throw error;}loaded=Promise.resolve(draft);return clone(result);});pending=operation.catch(()=>{});return operation;}
+  async function read(){if(!loaded)loaded=(async()=>{try{const value=JSON.parse(await store.read(DOC));if(value.version!==2)throw Error('Unsupported marketplace schema');if(value.homepageReviews===undefined)value.homepageReviews=[];if(value.submissionRequests===undefined)value.submissionRequests=[];for(const key of Object.keys(fresh()).filter(k=>k!=='version'))if(!Array.isArray(value[key]))throw Error('Invalid marketplace schema');migrateOpenPricing(value);for(const r of [...value.rfqs,...value.supplies])r.provenance=provenance(r,r.provenance);for(const r of value.rfqs){r.reviewRevision=Number.isInteger(r.reviewRevision)&&r.reviewRevision>0?r.reviewRevision:1;if(!r.reviewStatus&&['Open','Quoted','Reviewing'].includes(r.status)){r.status='Reviewing';r.reviewStatus='Reviewing';r.reviewSubmittedAt=timestamp();r.reviewReason='Operations review is required before publication.';for(const q of value.quotes.filter(q=>q.rfqId===r.id&&q.status==='Pending'))q.status='Needs refresh';}}return value;}catch(error){if(error.code==='ENOENT')return fresh();throw error;}})();return loaded;}
+  async function change(fn){const operation=pending.then(async()=>{const draft=clone(await read()),result=await fn(draft);for(const row of [...draft.rfqs,...draft.supplies])row.provenance=provenance(row,row.provenance);syncFeatured(draft);await store.write(DOC,JSON.stringify(draft));loaded=Promise.resolve(draft);return clone(result);});pending=operation.catch(()=>{});return operation;}
   const authorized=user=>{if(!user?.id||!user.onboardingCompleted||!['buyer','seller'].includes(userRole(user)))throw fail(403,'Complete verified account onboarding first.');};
   const role=(user,required)=>{authorized(user);if(userRole(user)!==required.toLowerCase())throw fail(403,required+' account required.');};
   const owner=(rows,id,user)=>{const row=rows.find(r=>r.id===id);if(!row||row.ownerId!==user.id)throw fail(404,'Record not found.');return row;};

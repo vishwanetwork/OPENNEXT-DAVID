@@ -11,5 +11,8 @@
     "dev": "node OpenNEXT-preview-server.cjs",
     "check": "node scripts/check.cjs",
     "test": "node --test"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6"
   }
 }

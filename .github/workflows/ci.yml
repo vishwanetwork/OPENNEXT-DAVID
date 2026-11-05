@@ -113,3 +113,14 @@ jobs:
       # The production web runs the bundled adapter on MySQL: run its suites there too.
       - name: Adapter suites on MySQL
         run: python -m pytest -q -p tests.mysql_backend tests/test_opennext*.py tests/test_funding*.py tests/test_workflows.py tests/test_rental_funding.py tests/test_local_opennext.py
+      # The legacy API keeps its state documents in the same MySQL database.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Legacy state documents on MySQL
+        working-directory: legacy
+        env:
+          OPENNEXT_TEST_MYSQL_URL: mysql://root:local-test-only@127.0.0.1:13306
+        run: |
+          npm ci --no-audit --no-fund
+          node --test tests/document-store.test.cjs
