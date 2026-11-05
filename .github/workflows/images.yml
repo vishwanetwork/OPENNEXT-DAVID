@@ -1,0 +1,55 @@
+name: Images
+
+# Builds the two Kubernetes images from one commit and pushes them under that commit's full SHA.
+# It never deploys: depoly/k8s pins these tags explicitly. deploy.yml (1Panel) is unaffected.
+#   opennext-web     Next.js front-end, legacy API, the SpotOrderBot adapter and ClamAV
+#   opennext-spotbot the core Bot and the gateway (same image, different command)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        include:
+          - name: opennext-web
+            context: .
+            file: ./Dockerfile
+          - name: opennext-spotbot
+            context: services/spotbot
+            file: services/spotbot/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name
+        id: meta
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          # Ignored by the Bot image. Hosts are repository variables, defaulting to production.
+          build-args: |
+            SPOTBOT_SOURCE=local
+            SITE_HOST=${{ vars.SITE_HOST || 'opennextlab.ai' }}
+            TERMINAL_HOST=${{ vars.TERMINAL_HOST || 'terminal.opennextlab.ai' }}
+            ADMIN_HOST=${{ vars.ADMIN_HOST || 'admin.opennextlab.ai' }}

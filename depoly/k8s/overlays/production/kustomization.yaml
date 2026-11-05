@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Render with `python3 depoly/k8s/opennext_k8s.py render --tag <full commit SHA>`, which pins
+# both images to that commit (RELEASE below) and refuses unfilled REPLACE_WITH_ values.
+resources:
+  - ../../base
+  - ingress.yaml
+images:
+  - name: opennext-web
+    newName: ghcr.io/vishwanetwork/opennext-web
+    newTag: RELEASE
+  - name: opennext-spotbot
+    newName: ghcr.io/vishwanetwork/opennext-spotbot
+    newTag: RELEASE
+patches:
+  # GHCR packages are private: every pod pulls with the ghcr-pull secret (see README).
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: ghcr-pull
+  # Load balancer health checks per Service (AWS Load Balancer Controller).
+  - target:
+      kind: Service
+      name: web
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          alb.ingress.kubernetes.io/healthcheck-path: /api/pricing/status
+  - target:
+      kind: Service
+      name: spotbot
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          alb.ingress.kubernetes.io/healthcheck-path: /health
+  - target:
+      kind: Service
+      name: spotbot-gateway
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          alb.ingress.kubernetes.io/healthcheck-path: /health

@@ -1,0 +1,18 @@
+AWS 账号 ID：
+区域：
+角色 ARN：
+B300 Spot 配额名称 / 配额代码：
+已批准 vCPU / 当前已用 vCPU：
+VPC ID：
+获批子网 ID / 可用区：
+GPU 安全组 ID：
+SSH Key Pair 名称：
+基础 AMI ID（未准备请注明）：
+AMI 的 SSH 用户 / 所需根盘大小：
+EBS 加密方式 / KMS Key ARN：
+恢复 CloudFormation 栈名称：
+InterruptionQueueUrl：
+InterruptionRuleName：
+DeadLetterQueueUrl：
+告警通知方式（如有）：
+组织权限 / 网络 / KMS 限制（如有）：

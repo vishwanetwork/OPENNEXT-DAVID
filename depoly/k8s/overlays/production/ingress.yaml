@@ -1,0 +1,77 @@
+# HTTPS through one ALB (AWS Load Balancer Controller). Hostnames are the ones in use today:
+# running GPU servers call the Bot at spotbot.test.vishwalab.com and customers already hold
+# r-<rental>.test.vishwalab.com model endpoints, so these names must move unchanged.
+# Customer SSH does not pass through here: gpu-ssh.test.vishwalab.com points at the gateway
+# node's Elastic IP (see README).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opennext
+  annotations:
+    alb.ingress.kubernetes.io/group.name: opennext
+    alb.ingress.kubernetes.io/group.order: '10'
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # Comma-separated ACM certificates covering every host below and *.test.vishwalab.com.
+    alb.ingress.kubernetes.io/certificate-arn: REPLACE_WITH_ACM_CERTIFICATE_ARNS
+    # Model responses may stream for up to the gateway's 600 s read timeout.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=650
+spec:
+  ingressClassName: alb
+  rules:
+    - host: opennextlab.ai
+      http: &web
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http
+    - host: terminal.opennextlab.ai
+      http: *web
+    - host: admin.opennextlab.ai
+      http: *web
+    # Guest agents on running GPU servers and the web's legacy pricing call the Bot here.
+    - host: spotbot.test.vishwalab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spotbot
+                port:
+                  name: http
+---
+# Customer model endpoints, r-<rental>.test.vishwalab.com. Ingress hosts only allow a leading
+# wildcard, so the r-* match is an ALB condition; it is evaluated after the hosts above.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opennext-models
+  annotations:
+    alb.ingress.kubernetes.io/group.name: opennext
+    alb.ingress.kubernetes.io/group.order: '900'
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: REPLACE_WITH_ACM_CERTIFICATE_ARNS
+    alb.ingress.kubernetes.io/conditions.spotbot-gateway: >-
+      [{"field": "host-header", "hostHeaderConfig": {"values": ["r-*.test.vishwalab.com"]}}]
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spotbot-gateway
+                port:
+                  name: http

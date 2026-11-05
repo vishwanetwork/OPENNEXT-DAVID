@@ -45,9 +45,64 @@ jobs:
           python -m unittest discover -s depoly/tests -v
           bash -n depoly/build-image.sh depoly/metadata-isolation.sh depoly/rental-check.sh depoly/aws/prepare-recovery.sh
           sh -n depoly/mysql-init.sh
+      - name: Kubernetes manifests and migration scripts
+        run: |
+          python -m unittest discover -s depoly/k8s/tests -v
+          bash -n depoly/k8s/scripts/*.sh
+          for overlay in depoly/k8s/overlays/*/; do kubectl kustomize "$overlay" > /dev/null; done
       - name: Build
         run: pnpm --filter @opennext/web build
         env:
           SITE_HOST: opennextlab.ai
           TERMINAL_HOST: terminal.opennextlab.ai
           ADMIN_HOST: admin.opennextlab.ai
+
+  # SpotOrderBot (services/spotbot): the core Bot, the gateway and the adapter the web image bundles.
+  spotbot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        python: ['3.11', '3.12']
+    defaults:
+      run:
+        working-directory: services/spotbot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e '.[dev,mysql,dynamodb]'
+      - run: ruff check spotbot tests examples
+      - run: pytest -q
+
+  spotbot-databases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-test-only
+        ports:
+          - 13306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -plocal-test-only"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 18000:8000
+    env:
+      SPOTBOT_TEST_MYSQL_URL: mysql+pymysql://root:local-test-only@127.0.0.1:13306
+      SPOTBOT_TEST_DYNAMODB_ENDPOINT: http://127.0.0.1:18000
+    defaults:
+      run:
+        working-directory: services/spotbot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev,mysql,dynamodb]'
+      - run: pytest -q

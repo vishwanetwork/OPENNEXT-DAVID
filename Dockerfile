@@ -1,12 +1,16 @@
 # syntax=docker/dockerfile:1
 # Builds the Next.js front-end (standalone output) and bundles the interim legacy API.
-# With SPOTBOT_SOURCE=image it also bundles the SpotOrderBot adapter (Spot purchases, Credit
+# With SPOTBOT_SOURCE=local it also bundles the SpotOrderBot adapter (Spot purchases, Credit
 # charges, Buyer KYB, bank transfers, payment review, instance usage, notices) and ClamAV,
-# taken from the private spot-order-bot image; the container runs them when OPENNEXT_ADAPTER=1.
+# built from services/spotbot in this checkout; SPOTBOT_SOURCE=image takes it from a pinned
+# spot-order-bot image instead. The container runs them when OPENNEXT_ADAPTER=1.
 ARG SPOTBOT_SOURCE=none
 ARG SPOTBOT_IMAGE=ghcr.io/vishwanetwork/spot-order-bot:88cef0fbb2f909db79be7b51735ce4502f88449a
 
-# Adapter source: the spot-order-bot image (its /app), or nothing for the plain image.
+# Adapter source: services/spotbot, the spot-order-bot image (its /app), or nothing.
+FROM node:22-alpine AS spotbot-local
+COPY services/spotbot/pyproject.toml /app/pyproject.toml
+COPY services/spotbot/spotbot /app/spotbot
 FROM ${SPOTBOT_IMAGE} AS spotbot-image
 FROM node:22-alpine AS spotbot-none
 RUN mkdir -p /app
