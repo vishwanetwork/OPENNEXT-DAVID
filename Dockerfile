@@ -2,8 +2,8 @@
 # Builds the Next.js front-end (standalone output) and bundles the interim legacy API.
 # With SPOTBOT_SOURCE=local it also bundles the SpotOrderBot adapter (Spot purchases, Credit
 # charges, Buyer KYB, bank transfers, payment review, instance usage, notices) and ClamAV,
-# built from services/spotbot in this checkout; SPOTBOT_SOURCE=image takes it from a pinned
-# spot-order-bot image instead. The container runs them when OPENNEXT_ADAPTER=1.
+# built from services/spotbot in this checkout (what production deploys); SPOTBOT_SOURCE=image
+# takes it from a pinned spot-order-bot image instead (the depoly/ kit). The container runs them when OPENNEXT_ADAPTER=1.
 ARG SPOTBOT_SOURCE=none
 ARG SPOTBOT_IMAGE=ghcr.io/vishwanetwork/spot-order-bot:88cef0fbb2f909db79be7b51735ce4502f88449a
 
@@ -52,7 +52,7 @@ COPY legacy/*.cjs legacy/*.js legacy/*.html legacy/*.css ./legacy/
 COPY legacy/admin ./legacy/admin
 COPY legacy/data ./legacy/data
 COPY docker/start.cjs docker/clamd.conf docker/freshclam.conf ./docker/
-# Bundled adapter (only when built with SPOTBOT_SOURCE=image): Python, the spotbot package in a
+# Bundled adapter (only when built with SPOTBOT_SOURCE=local or image): Python, the spotbot package in a
 # virtual environment, and ClamAV. Signatures live in the data volume, refreshed by freshclam.
 COPY --from=spotbot /app /opt/spotbot-src
 RUN if [ -f /opt/spotbot-src/pyproject.toml ]; then \

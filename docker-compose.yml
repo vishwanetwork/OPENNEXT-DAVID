@@ -1,6 +1,6 @@
 # One container runs the Next.js front-end (port 4188) and the interim legacy API
 # (127.0.0.1:4189 inside the container). With OPENNEXT_ADAPTER=1 (an image built with
-# SPOTBOT_SOURCE=image) it also runs the SpotOrderBot adapter and ClamAV; see docker/start.cjs.
+# SPOTBOT_SOURCE=local) it also runs the SpotOrderBot adapter and ClamAV; see docker/start.cjs.
 services:
   web:
     build: .
@@ -44,7 +44,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       OPENNEXT_RFQ_NOTIFY_TO: ${OPENNEXT_RFQ_NOTIFY_TO:-}
       OPENNEXT_ADMIN_URL: ${OPENNEXT_ADMIN_URL:-https://admin.opennextlab.ai/}
-      # Bundled SpotOrderBot adapter (image built with SPOTBOT_SOURCE=image); 1 runs it in front
+      # Bundled SpotOrderBot adapter (image built with SPOTBOT_SOURCE=local); 1 runs it in front
       # of the legacy API, with ClamAV for Buyer KYB uploads (OPENNEXT_CLAMAV=0 turns that off).
       OPENNEXT_ADAPTER: ${OPENNEXT_ADAPTER:-0}
       OPENNEXT_CLAMAV: ${OPENNEXT_CLAMAV:-1}

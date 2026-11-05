@@ -1,0 +1,53 @@
+# Core Bot on the bot host. Host network, API on 127.0.0.1:18082 behind OpenResty
+# (spotbot.test.vishwalab.com). Every setting comes from $SPOTBOT_HOME/.env; the AWS config
+# with the cross-account profiles is mounted read-only. Run one instance only.
+#
+# release.sh starts it with SPOTBOT_IMAGE=opennext-spotbot:<commit>. The project and container
+# names are the ones the host already runs, so a release replaces the running container and
+# keeps its volume.
+name: spotbot
+services:
+  spotbot:
+    image: ${SPOTBOT_IMAGE:?set SPOTBOT_IMAGE}
+    container_name: spot-order-bot
+    restart: unless-stopped
+    network_mode: host
+    env_file: ${SPOTBOT_HOME:-/opt/spot-order-bot}/.env
+    environment:
+      AWS_CONFIG_FILE: /app/aws/config
+    command: [spotbot, serve, --host, 127.0.0.1, --port, '18082']
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - spotbot-data:/app/data
+      - type: bind
+        source: ${SPOTBOT_HOME:-/opt/spot-order-bot}/aws/config
+        target: /app/aws/config
+        read_only: true
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  spotbot-data:

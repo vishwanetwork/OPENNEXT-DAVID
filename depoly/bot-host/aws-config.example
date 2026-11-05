@@ -1,0 +1,14 @@
+# $SPOTBOT_HOME/aws/config, mounted read-only into the Bot as /app/aws/config.
+# Owner 10001 (the image's spotbot user), mode 0400. It holds no keys: the default profile is
+# the host's EC2 instance role (SpotOrderBotEC2Role in 860165147463), and each extra account is
+# a role the Bot assumes from it. SPOTBOT_AWS_PRICE_PROFILE and the "profile" fields of
+# SPOTBOT_AWS_ACCOUNTS name these profiles.
+
+[profile spotbot-b300]
+role_arn = arn:aws:iam::413287184831:role/SpotOrderBotCrossAccountRole
+credential_source = Ec2InstanceMetadata
+# The external ID the role's trust policy requires. Keep it out of the repository.
+external_id = REPLACE_WITH_EXTERNAL_ID
+region = us-west-2
+duration_seconds = 3600
+role_session_name = spotbot-b300
