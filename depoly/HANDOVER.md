@@ -1,155 +1,163 @@
-# Handover: moving the Bot, gateway and web to the new platform
+# Handover: moving OpenNEXT to the new platform
 
-This guide is for whoever runs the new platform. It covers:
+OpenNEXT is three applications, all built from this repository. Deploy all three on the new
+platform and move their data. The AWS accounts that supply GPUs do not change: `860165147463`
+and the B300 account `413287184831`.
 
-- what runs today;
-- what the new platform must provide;
-- how the live data and secrets reach you;
-- the order of the cutover, so customers and running GPU servers keep working.
+## The three applications
 
-Everything you need is in this repository, except the secrets and the data. You export those
-yourself from the old hosts on the day; see [Secrets and data](#secrets-and-data).
+| Application | Image                                          | Command                                       | Port                                           | Health check              |
+| ----------- | ---------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ------------------------- |
+| **web**     | `ghcr.io/vishwanetwork/opennext-web:<sha>`     | image default                                 | 4188                                           | `GET /api/pricing/status` |
+| **bot**     | `ghcr.io/vishwanetwork/opennext-spotbot:<sha>` | `spotbot serve --host 0.0.0.0 --port 8000`    | 8000                                           | `GET /health`             |
+| **gateway** | `ghcr.io/vishwanetwork/opennext-spotbot:<sha>` | `spotbot gateway --host 0.0.0.0 --port 18084` | 18084, plus TCP `22100-22199` for customer SSH | `GET /health` on 18084    |
 
-## Where everything is
+`.github/workflows/images.yml` publishes both images for every commit on `main`, tagged with the
+commit SHA. Deploy all three from the same commit.
 
-| Path                                                    | What it is                                                                                                                                     |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `services/spotbot/`                                     | Source of the core Bot and the gateway; its `Dockerfile` builds the image both run                                                             |
-| `Dockerfile` (root)                                     | The web image: front-end, legacy API and the bundled adapter (`SPOTBOT_SOURCE=local`)                                                          |
-| [`bot-host/`](bot-host/README.md)                       | **How the Bot and gateway run today** (Docker Compose): commands, ports, users, health checks, mounts, deploy, rollback. The reference runtime |
-| `bot-host/compose.bot.yaml`, `compose.gateway.yaml`     | The exact runtime of each process                                                                                                              |
-| `bot-host/openresty/`                                   | The live HTTPS sites: host names, timeouts, body limits                                                                                        |
-| `bot-host/aws-config.example`                           | The Bot's AWS profile chain                                                                                                                    |
-| `services/spotbot/.env.example`, `.env.gateway.example` | Every setting, documented                                                                                                                      |
-| `.github/workflows/deploy.yml`                          | How production web is built and deployed today (1Panel)                                                                                        |
-| `docs/SPOTBOT_ADAPTER.md`                               | The web container's adapter settings                                                                                                           |
-| [`k8s/`](k8s/README.md)                                 | A ready Kustomize deployment of all three services for EKS, with the migration scripts. Use it, or translate the runtime above into your own   |
-| `k8s/scripts/export-*.sh`, `import.sh`                  | Export the live data and settings from the old hosts; load them into the cluster                                                               |
-| `k8s/scripts/aws-access.sh`                             | The two AWS changes in the GPU accounts (plan by default, `--apply` to change)                                                                 |
+| Application | Data                                                                              | Runs as   |
+| ----------- | --------------------------------------------------------------------------------- | --------- |
+| web         | a persistent volume at `/app/.opennext-data`: accounts, Credit, orders, KYB files | uid 1000  |
+| bot         | MySQL database `spot_order_bot`                                                   | uid 10001 |
+| gateway     | MySQL database `spot_order_gateway`                                               | uid 10002 |
 
-## Access you need
+**Rules**
 
-You run every step, including the exports on the old hosts and the AWS changes in the GPU
-accounts. Ask the account owners for this access before you start.
+- Run **one copy of each application**, never two. Each is the only writer of its data. Stop the
+  old copy before starting the new one.
+- The **gateway** needs a public IP where TCP ports `22100-22199` are open to the internet. Each
+  rental gets one of these ports for SSH.
+- The **bot and the gateway** must reach the internet from **one fixed IP**. GPU servers only accept
+  SSH (22) and port 8000 from an allow-listed address.
 
-| Access                                                       | For                                                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SSH with sudo to the bot host `44.248.155.24` (user `admin`) | `export-bot-host.sh`, and any release there before the cutover (`bot-host/deploy.sh`)                                                                                                                                                                                                                                     |
-| Root on the web host `18.188.54.73`                          | `export-web-host.sh`, stopping `opennext-homepage`                                                                                                                                                                                                                                                                        |
-| AWS CLI profile `default`: GPU account `860165147463`        | `aws-access.sh`: read and update the trust policy of `SpotOrderBotEC2Role` (`iam:GetRole`, `iam:UpdateAssumeRolePolicy`); add and later remove ingress on `spotbot-gpu` in `us-west-2`, `us-east-1` and `us-east-2` (`ec2:DescribeSecurityGroups`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`) |
-| AWS CLI profile `b300-admin`: B300 account `413287184831`    | `aws-access.sh`: the same three EC2 actions on `spotbot-b300-gpu` in `us-west-2`                                                                                                                                                                                                                                          |
-| DNS for `opennextlab.ai` and `vishwalab.com`                 | Lowering TTLs and switching the names in the window                                                                                                                                                                                                                                                                       |
-| The new cluster and MySQL administrator                      | `import.sh`, `deploy.sh`, `verify.sh`                                                                                                                                                                                                                                                                                     |
+`bot-host/compose.bot.yaml` and `bot-host/compose.gateway.yaml` show exactly how the bot and the
+gateway run today.
 
-Other profile names work too. Run `aws-access.sh` with `BOT_PROFILE=<name>`, and with
-`SG_TARGETS="<profile>:<region>:<group> ..."`.
+## Public names
 
-Run `aws-access.sh` without `--apply` first. It changes nothing and prints every change it
-would make. The changes only add access; nothing in use today is removed until the
-"Afterwards" step.
+Keep these names. Customers and the running GPU servers already use them.
 
-## What runs today
+| Name                                                                | Goes to                                                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `opennextlab.ai`, `terminal.opennextlab.ai`, `admin.opennextlab.ai` | web, port 4188                                                                  |
+| `spotbot.test.vishwalab.com`                                        | bot, port 8000                                                                  |
+| `gpu-gateway.test.vishwalab.com`, `r-*.test.vishwalab.com`          | gateway, port 18084. Read timeout 650 s, no response buffering, body up to 1 GB |
+| `gpu-ssh.test.vishwalab.com`                                        | the gateway's public IP (DNS only, no HTTP)                                     |
 
-| Process                   | Where                          | Image              | State                                                              |
-| ------------------------- | ------------------------------ | ------------------ | ------------------------------------------------------------------ |
-| Web (`opennext-homepage`) | 1Panel web host `18.188.54.73` | root `Dockerfile`  | `/app/.opennext-data`: accounts, Credit, adapter SQLite, KYB files |
-| Core Bot                  | bot host `44.248.155.24`       | `services/spotbot` | MySQL `spot_order_bot` on the bot host                             |
-| Gateway                   | bot host `44.248.155.24`       | `services/spotbot` | MySQL `spot_order_gateway` on the bot host                         |
+## Settings
 
-| Public name                             | Goes to                                                 | Who uses it                                                   |
-| --------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------- |
-| `opennextlab.ai`, `terminal.`, `admin.` | web, port 4188                                          | customers, operators                                          |
-| `spotbot.test.vishwalab.com`            | Bot, port 8000 in the image (18082 on the host today)   | the web adapter, the legacy API, **every running GPU server** |
-| `gpu-gateway.test.vishwalab.com`        | gateway API, port 18084                                 | the web adapter                                               |
-| `r-<rental>.test.vishwalab.com`         | gateway, port 18084 (proxy timeout 650 s, no buffering) | customers' model endpoints                                    |
-| `gpu-ssh.test.vishwalab.com`            | gateway, TCP `22100-22199`, one port per rental         | customers' SSH                                                |
+Each application's settings are environment variables. Take them from the running containers on
+moving day (see below), and use them as they are, with three changes:
 
-The public names must not change. Running GPU servers and customers already hold them.
+1. **bot:** in `SPOTBOT_MYSQL_URL`, set the new MySQL host, user and password.
+2. **gateway:** in `SPOTBOT_GATEWAY_MYSQL_URL`, set the new MySQL host, user and password.
+3. **bot, AWS access:**
+   - The bot must call AWS as the role `arn:aws:iam::860165147463:role/SpotOrderBotEC2Role`. Give
+     the bot credentials for that role as its default AWS profile.
+   - Mount the AWS config file read-only at `/app/aws/config`, and set
+     `AWS_CONFIG_FILE=/app/aws/config`.
+   - In that file, the `spotbot-b300` profile says `credential_source = Ec2InstanceMetadata`.
+     Replace that line with `source_profile = default`.
 
-## What the new platform must provide
+The applications call each other by their public names, so nothing else needs to change.
 
-1. **One replica of each process, never two.** Each is the single writer of its state. Deploys
-   must stop the old copy before starting the new one (Kubernetes: `Recreate`).
-2. **A fixed public address for the gateway's SSH ports `22100-22199`**, reachable from the
-   internet. A load balancer would need one listener per port. `k8s/` uses host networking on
-   one node with an Elastic IP.
-3. **A fixed egress address shared by the Bot and the gateway.** GPU servers accept SSH (22) and
-   the health port (8000) only from the allow-listed address, today `44.248.155.24`.
-   `k8s/scripts/aws-access.sh` adds the new address next to it.
-4. **AWS identity.** The Bot calls AWS as `SpotOrderBotEC2Role` in account `860165147463`, and from
-   there assumes the B300 account's role. The new platform needs a role that may assume
-   `SpotOrderBotEC2Role`; `aws-access.sh` adds that trust. Nothing else in the GPU accounts changes.
-5. **MySQL 8**, with the two databases restored from the dump.
-6. **A persistent volume** for the web data directory.
-7. **HTTPS routing** for the names above, with the timeouts and body limits in
-   `bot-host/openresty/`.
-8. **Internal addresses.** The services may call each other on the private network: web to Bot and
-   gateway, gateway to Bot, Bot to gateway (events). `k8s/` sets these URLs. The Bot's
-   public name must still work, for the GPU servers.
+## AWS changes (same accounts)
 
-## Secrets and data
+Make both changes the day before the move.
 
-Secrets never go in this repository or in chat. On the day, the export scripts write two
-private bundles on the old hosts:
+1. **Trust.** Add your platform's role to the trust policy of `SpotOrderBotEC2Role` in
+   `860165147463`, so it can assume that role:
 
-- **Bot bundle**, from `k8s/scripts/export-bot-host.sh` on the bot host:
-  - the effective environment of the Bot and the gateway;
-  - both MySQL dumps;
-  - the AWS config;
-  - checksums.
-- **Web bundle**, from `k8s/scripts/export-web-host.sh` on the web host:
-  - the web container's environment;
-  - its data directory;
-  - checksums.
+   ```json
+   {
+     "Sid": "OpenNEXTNewPlatform",
+     "Effect": "Allow",
+     "Principal": { "AWS": "<your role ARN>" },
+     "Action": "sts:AssumeRole"
+   }
+   ```
 
-Copy them over SSH to the operator machine and keep them on encrypted storage. `k8s/scripts/import.sh`
-turns them into Kubernetes Secrets, creates the database users, loads the dumps and restores the
-volume. It prints no secret values. If you do not use `k8s/`, the env files in the bundles are
-plain `KEY=VALUE` lists. Use them as they are, except for the internal URLs above.
+2. **Firewall.** Allow your fixed egress IP on TCP 22 and TCP 8000 in these security groups:
+   - account `860165147463`: `spotbot-gpu` in `us-west-2`, `us-east-1` and `us-east-2`;
+   - account `413287184831`: `spotbot-b300-gpu` in `us-west-2`.
 
-## Cutover
+Both changes only add access. Remove the old address `44.248.155.24` a week after the move.
 
-The full commands are in [`k8s/README.md`](k8s/README.md#cutover). In short:
+## Moving day (about 30 minutes)
 
-1. **Rehearse.**
-   - Build the platform. Run the exports with `--allow-running`.
-   - **Before importing, defuse the copies.** A rehearsal Bot holds the live AWS identity and the
-     same rentals as the real one, and the rehearsal web holds real customer emails.
-     - In `bot.env`, set `SPOTBOT_RENTALS_ENABLED=false`, which stops the rental worker and its
-       AWS interruption queue consumer, and `SPOTBOT_LIVE_ORDERS_ENABLED=false`.
-     - In `web.env`, empty `SMTP_HOST` and `SPOTBOT_OPENNEXT_SMTP_HOST`.
-   - Import, deploy, and check inside the cluster with `k8s/scripts/verify.sh`. Price
-     collection, sign-in, the market and the Console should all work.
-   - Nothing public changes in this step. Afterwards, delete the `opennext` namespace, with its workloads and web volume, and both
-     databases. The real copy is taken in the window and must start clean: `import.sh` refuses to run
-     over existing workloads or web data.
-2. **Prepare.**
-   - Run `aws-access.sh --apply` with the new role and address. This adds to the allow lists and
-     takes nothing away.
-   - Lower the TTL of every public name to 60 s a day ahead.
-   - Note the release commit; its images must exist.
-3. **Window.** Expect about 30 minutes. Customer SSH sessions drop. GPU servers keep running and
-   retry.
-   1. Stop the old web, Bot and gateway containers.
-   2. Export both bundles.
-   3. Import.
-   4. Deploy, then run `verify.sh`.
-   5. Switch DNS: the web, Bot and gateway names to the new ingress, and `gpu-ssh` to the
-      gateway's public address.
-   6. Run `verify.sh --public`, sign in, open Instances, SSH into a rental, and call a model
-      endpoint.
-4. **Rollback.**
-   - Before DNS moves, start the old containers again.
-   - After DNS moves, point DNS back and start them. Anything written on the new platform in
-     between is lost, so decide quickly.
-   - The old hosts stay untouched for a week.
-5. **Afterwards.** Remove `44.248.155.24` from the GPU security groups and retire the old hosts.
+The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.155.24` (user
+`admin`, with sudo). Lower the DNS TTL of the public names to 60 s the day before.
 
-## Before the window
+1. **Stop the old applications.**
+   - Web host: `docker stop opennext-homepage`.
+   - Bot host: `docker stop spot-order-bot spot-order-gateway`.
+2. **Export.** Run as root:
 
-- The old bot host must keep running until the cutover. Releases there go through
-  `bot-host/deploy.sh` (see its README). Do not deploy to it during the window.
-- The export reads the live containers' settings, so a change made on the old hosts before the
-  export carries over. One made after it does not.
-- Check that the new platform's clock is synchronised, and that it can reach AWS APIs in
-  `us-west-2`, `us-east-1` and `us-east-2`.
+   ```sh
+   # Web host: settings and data
+   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' opennext-homepage > web.env
+   docker cp opennext-homepage:/app/.opennext-data - | gzip > web-data.tar.gz
+
+   # Bot host: settings, AWS config and both databases
+   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' spot-order-bot > bot.env
+   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' spot-order-gateway > gateway.env
+   cp /opt/spot-order-bot/reference-pricing/config aws-config   # or /opt/spot-order-bot/aws/config
+   for db in spot_order_bot spot_order_gateway; do
+     docker exec 1Panel-mysql-ej72 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot \
+       --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF \
+       --default-character-set=utf8mb4 --databases "$0"' "$db" | gzip > "$db.sql.gz"
+   done
+   ```
+
+   - The env files also contain the image's own variables (`PATH`, `HOME`, `LANG`, `HOSTNAME`,
+     `PYTHON_*`, `NODE_VERSION`, `YARN_VERSION`, `GPG_KEY`). Drop them.
+   - These files hold every secret. Copy them over SSH only. Never commit them or paste them
+     anywhere.
+
+3. **Load.**
+   - Restore both databases into the new MySQL. Create one user per database, each limited to its
+     own database.
+   - Unpack `web-data.tar.gz` into the web volume. Its top directory is `.opennext-data`. The files
+     must belong to uid 1000.
+4. **Start** web, bot and gateway on the new platform with the settings above, and check that each
+   health endpoint answers.
+5. **Switch DNS** to the new platform. Until then, the applications still look for each other at
+   the old hosts. Then check:
+   - the gateway's `/health` shows `"bot_reachable": true`;
+   - sign in on `terminal.opennextlab.ai`;
+   - the market lists offers;
+   - Instances shows the running rentals;
+   - SSH into a rental through `gpu-ssh.test.vishwalab.com`.
+
+Customer SSH sessions drop during the window. GPU servers keep running and reconnect by themselves.
+
+**Rollback:** point DNS back and start the old containers again. Anything written on the new
+platform in between is lost. Keep the old hosts untouched for a week.
+
+## After the move
+
+- Merging into `main` still runs `.github/workflows/deploy.yml`, which updates the **old** web
+  container on 1Panel. Replace that step with a deploy to the new platform, or disable it.
+- Deploy new versions of the bot and the gateway from the same images, tagged with the commit SHA.
+
+## Rehearsal (recommended)
+
+You can test the whole move without stopping anything:
+
+1. Run the export commands while the old applications keep running.
+2. Before starting the copies, change their settings so they cannot touch the real ones:
+   - In `bot.env`, set `SPOTBOT_RENTALS_ENABLED=false` and `SPOTBOT_LIVE_ORDERS_ENABLED=false`. The
+     copy then cannot touch live rentals or buy servers.
+   - In `web.env`, empty `SMTP_HOST` and `SPOTBOT_OPENNEXT_SMTP_HOST`. The copy then sends no email.
+   - Point the copies at each other, not at the public names, which still reach the real
+     applications:
+     - `SPOTBOT_GATEWAY_WEBHOOK_URL` in `bot.env` goes to the copied gateway, `<gateway>/v1/gateway/events`;
+     - `SPOTBOT_GATEWAY_BOT_URL` in `gateway.env` goes to the copied bot;
+     - `SPOTBOT_OPENNEXT_BOT_URL` and `SPOTBOT_OPENNEXT_GATEWAY_URL` in `web.env` go to the copied
+       bot and gateway.
+
+     The gateway accepts an `http://` bot address only on loopback or on a name ending in `.svc`
+     or `.svc.cluster.local`. Otherwise use `https://`.
+
+3. Leave DNS alone.
+4. Delete the copies' data before the real move.
