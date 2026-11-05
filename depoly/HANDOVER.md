@@ -180,11 +180,23 @@ The old hosts are the web host `18.188.54.73` (root) and the bot host `44.248.15
      anywhere.
 
 5. **Prepare the data.**
-   - In the new MySQL, create the empty databases `spot_order_bot`, `spot_order_gateway` and
-     `spot_order_adapter`. Create one user for each, limited to its own database. The applications
-     create their tables when they start.
+   - In the new MySQL, create the three databases and one user for each. Use the users and
+     passwords from the settings. Each user needs all privileges on its own database, because
+     every application creates its tables when it starts:
+
+     ```sql
+     CREATE DATABASE spot_order_bot CHARACTER SET utf8mb4;
+     CREATE USER 'spotbot'@'%' IDENTIFIED BY '<password>';
+     GRANT ALL PRIVILEGES ON spot_order_bot.* TO 'spotbot'@'%';
+     -- the same for spot_order_gateway (user spotgateway) and spot_order_adapter (user spotadapter)
+     ```
+
+     The applications never create databases. They create missing tables but do not alter existing
+     ones.
+
    - Give the web an empty volume at `/app/.opennext-data`, writable by uid 1000. It holds the KYB files;
      the price caches and virus signatures there are rebuilt after a restart.
+
 6. **Start** web, bot and gateway on the new platform, and check that each health endpoint answers.
    On the gateway, `/health` also shows `"bot_reachable": true`.
 7. **Point the `opennextlab.ai` names at the new web.** Then check:
