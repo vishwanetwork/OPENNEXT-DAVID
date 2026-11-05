@@ -1,7 +1,7 @@
 # OpenNEXT test site
 
-One OpenNEXT container from `vishwanetwork/OPENNEXT-DAVID`, built with the bundled SpotOrderBot
-adapter and ClamAV (`SPOTBOT_SOURCE=image`, run with `OPENNEXT_ADAPTER=1`, as production would),
+One OpenNEXT container from this repository, built with the bundled SpotOrderBot
+adapter and ClamAV (`SPOTBOT_SOURCE=local`, run with `OPENNEXT_ADAPTER=1`, as production would),
 plus Mailpit, on the bot test host, against the staging bot.
 
 | URL | What |
@@ -15,13 +15,15 @@ Secrets live only on the host, in `/opt/opennext-test/{web,adapter,mailpit}.env`
 the administrator token (`OPENNEXT_ADMIN_TOKEN` in `web.env`) and the Mailpit login
 (`MP_UI_AUTH` in `mailpit.env`, `user:password`).
 
-Deploy: build `spot-order-bot:<sha>` from this repository, then `opennext-test-web:<sha>` from
-the web repository with `SPOTBOT_SOURCE=image`, `SPOTBOT_IMAGE=spot-order-bot:<sha>` and the
-three test hosts as build arguments, then
+Deploy from a checkout of this repository on the operator machine:
 
 ```sh
-cd /opt/opennext-test && sudo WEB_RELEASE=<sha> docker compose up -d --remove-orphans
+bash depoly/bot-host/deploy.sh <commit> test-web
 ```
+
+It builds `opennext-test-web:<commit>` on the host with `SPOTBOT_SOURCE=local` and the three
+test hosts, copies `compose.yaml` and `start-test.cjs` from this directory to
+`/opt/opennext-test`, and restarts the site. See `depoly/bot-host/README.md`.
 
 `start-test.cjs` enables email-code sign-in through Mailpit for this site only (production
 uses OAuth), then runs the image's own `docker/start.cjs`. The adapter keeps its own SQLite

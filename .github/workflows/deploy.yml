@@ -54,15 +54,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve immutable SpotOrderBot image
-        id: spotbot
-        env:
-          SPOTBOT_IMAGE_OVERRIDE: ${{ vars.SPOTBOT_IMAGE }}
-        run: node scripts/resolve-spotbot-image.cjs >> "$GITHUB_OUTPUT"
-
-      # Repository variable SPOTBOT_SOURCE=image bundles the SpotOrderBot adapter from the
-      # private ghcr.io/vishwanetwork/spot-order-bot package; this workflow needs read access
-      # to it (package settings -> Manage Actions access). Unset, the image is unchanged.
+      # SPOTBOT_SOURCE=local bundles the SpotOrderBot adapter from services/spotbot in this
+      # same commit, so the adapter and the front-end always ship together.
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -71,8 +64,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.image }}
           build-args: |
-            SPOTBOT_SOURCE=${{ vars.SPOTBOT_SOURCE || 'none' }}
-            SPOTBOT_IMAGE=${{ steps.spotbot.outputs.image }}
+            SPOTBOT_SOURCE=local
 
   deploy:
     runs-on: ubuntu-latest

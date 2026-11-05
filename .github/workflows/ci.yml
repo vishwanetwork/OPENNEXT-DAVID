@@ -50,6 +50,10 @@ jobs:
           python -m unittest discover -s depoly/k8s/tests -v
           bash -n depoly/k8s/scripts/*.sh
           for overlay in depoly/k8s/overlays/*/; do kubectl kustomize "$overlay" > /dev/null; done
+      - name: Bot host compose files and scripts
+        run: |
+          python -m unittest discover -s depoly/bot-host/tests -v
+          bash -n depoly/bot-host/*.sh
       - name: Build
         run: pnpm --filter @opennext/web build
         env:

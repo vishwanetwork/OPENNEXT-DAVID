@@ -2,11 +2,12 @@
 
 The Terminal's Spot purchases, Credit charges, instance SSH keys, END, usage and billing, Buyer
 KYB, bank transfers, payment review and order notices are served by the SpotOrderBot adapter
-(`spotbot opennext-api`, repository `vishwanetwork/spot-order-bot`). It sits in front of the
+(`spotbot opennext-api`, in `services/spotbot`). It sits in front of the
 legacy API: it answers those routes and passes every other request through unchanged.
 
 Instead of a separate service, the OpenNEXT image can carry it. Built with
-`SPOTBOT_SOURCE=image`, the image installs the spotbot package and ClamAV. With
+`SPOTBOT_SOURCE=local`, the image installs the spotbot package from `services/spotbot` in the
+same commit, and ClamAV. With
 `OPENNEXT_ADAPTER=1`, `docker/start.cjs` runs these processes, all on loopback:
 
 | Process    | Address                         |
@@ -22,20 +23,14 @@ the data volume (`/app/.opennext-data/spotbot`, `/app/.opennext-data/clamav`). W
 
 ## Enabling it in production
 
-1. Merge the spot-order-bot pull request that adds `.github/workflows/image.yml`. Each merge then
-   publishes `ghcr.io/vishwanetwork/spot-order-bot:latest`, which is private.
-2. Let this repository's workflow read that package. On GitHub, open the `spot-order-bot` package,
-   go to Package settings → Manage Actions access, and add `OPENNEXT-DAVID` with Read.
-3. Set the repository variable `SPOTBOT_SOURCE=image` (Settings → Secrets and variables → Actions →
-   Variables). From the next deploy, the image bundles the adapter; the site does not change yet.
-   The adapter version is pinned by `ARG SPOTBOT_IMAGE` in `Dockerfile`. Deployment reads that
-   exact default; it never resolves the floating `latest` tag. To select another published
-   version, set the repository variable `SPOTBOT_IMAGE` to the full image name with a 40-character
-   commit tag or a `sha256` digest. Mutable tags and malformed overrides fail the build.
-   Publish the selected bot image before deploying OpenNEXT. Deploy that bot version as well
-   to enable its indexed customer queries; an older bot retains the legacy lookup fallback.
-4. Merge, or run the Build and Deploy workflow, so production runs the bundled image.
-5. Add these variables to the `opennext-homepage` container (1Panel → Containers → edit), then
+Production builds (`.github/workflows/deploy.yml`) always use `SPOTBOT_SOURCE=local`, so the
+adapter ships with the front-end from the same commit. The repository variables
+`SPOTBOT_SOURCE` and `SPOTBOT_IMAGE` are no longer read. `SPOTBOT_SOURCE=image` still builds
+from a pinned `ghcr.io/vishwanetwork/spot-order-bot` image, for the `depoly/` kit only.
+
+The adapter must still be switched on in the container:
+
+1. Add these variables to the `opennext-homepage` container (1Panel → Containers → edit), then
    restart it:
 
    | Variable                                                             | Value                                                  |
@@ -51,7 +46,7 @@ the data volume (`/app/.opennext-data/spotbot`, `/app/.opennext-data/clamav`). W
    Keep a copy of `SPOTBOT_OPENNEXT_FILES_KEY` outside the server: without it, the stored KYB
    documents cannot be read.
 
-6. Check the result:
+2. Check the result:
    - `https://terminal.opennextlab.ai/api/marketplace/public` lists rows with `"sourceType":"spotbot"`.
    - `/api/buyer-kyb/me` answers 401 when signed out, instead of 404.
    - The container log shows `Uvicorn running on http://127.0.0.1:4191` and `clamd` self-checking.
@@ -63,5 +58,5 @@ Rollback: set `OPENNEXT_ADAPTER=0` (or remove it) and restart. The site returns 
 API alone; the adapter's data stays in the volume.
 
 Test site: the same image runs on the bot test host (`opennext-terminal.test.vishwalab.com`,
-deployment in spot-order-bot `deploy/opennext-test/`). It uses email-code sign-in and a Mailpit
+files in `services/spotbot/deploy/opennext-test/`, deployed with `depoly/bot-host/deploy.sh`). It uses email-code sign-in and a Mailpit
 inbox.

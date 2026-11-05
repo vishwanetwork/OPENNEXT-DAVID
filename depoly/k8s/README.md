@@ -6,6 +6,8 @@ running production data into it. It replaces two hosts:
 - the 1Panel web container (`opennext-homepage`), which runs the front-end and the bundled adapter;
 - the Bot host, which runs the core Bot and the gateway.
 
+To hand the services over to a new platform, start with [`../HANDOVER.md`](../HANDOVER.md).
+
 Everything builds from this repository: the web app in `apps/web`, and the SpotOrderBot in
 `services/spotbot` (imported with its history from `vishwanetwork/spot-order-bot`).
 

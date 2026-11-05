@@ -15,7 +15,8 @@ GATEWAY_CONTAINER=${GATEWAY_CONTAINER:-spot-order-gateway}
 MYSQL_CONTAINER=${MYSQL_CONTAINER:-1Panel-mysql-ej72}
 BOT_DB=${BOT_DB:-spot_order_bot}
 GATEWAY_DB=${GATEWAY_DB:-spot_order_gateway}
-AWS_CONFIG=${AWS_CONFIG:-/opt/spot-order-bot/reference-pricing/config}
+# Default: whatever file the Bot container mounts as its AWS config, in either host layout.
+AWS_CONFIG=${AWS_CONFIG:-}
 
 out="" allow_running=0
 while [ $# -gt 0 ]; do
@@ -35,6 +36,11 @@ for c in "$BOT_CONTAINER" "$GATEWAY_CONTAINER"; do
     exit 1
   fi
 done
+
+if [ -z "$AWS_CONFIG" ]; then
+  AWS_CONFIG=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/aws/config"}}{{.Source}}{{end}}{{end}}' "$BOT_CONTAINER")
+fi
+[ -f "$AWS_CONFIG" ] || { echo "no AWS config found for $BOT_CONTAINER; set AWS_CONFIG" >&2; exit 1; }
 
 umask 077
 mkdir -p "$out"
