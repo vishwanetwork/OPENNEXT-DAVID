@@ -477,3 +477,13 @@ def test_sql_order_and_event_roll_back_together(storage, offer, order_request, m
         storage.create_order(order_request, offer, "rollback")
     assert storage.get_order_by_key("rollback") is None
     assert storage.events() == []
+
+
+def test_workflow_records_fit_the_adapters_longest_ids(storage):
+    """KYB case ids are `KYB-` plus a UUID (40 characters); MySQL must not truncate or reject them."""
+    from spotbot.storage.workflows import WorkflowStore
+
+    workflows = WorkflowStore(storage)
+    case_id = "KYB-" + str(uuid4())
+    workflows.save(dict(id=case_id, kind="opennext_kyb_case", tenant_id="opennext", state="draft"))
+    assert workflows.get("opennext_kyb_case", case_id)["id"] == case_id
