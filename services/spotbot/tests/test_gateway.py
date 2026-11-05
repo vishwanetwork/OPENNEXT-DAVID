@@ -442,6 +442,13 @@ def test_gateway_config_uses_independent_storage_and_credentials(tmp_path, monke
     with pytest.raises(ValidationError):
         GatewaySettings(**dict(values, bot_url="http://metadata.internal"))
     with pytest.raises(ValidationError):
+        GatewaySettings(**dict(values, bot_url="http://spotbot"))
+    for internal in (
+        "http://spotbot.opennext.svc:8000",
+        "http://spotbot.opennext.svc.cluster.local:8000/",
+    ):
+        assert GatewaySettings(**dict(values, bot_url=internal)).bot_url == internal.rstrip("/")
+    with pytest.raises(ValidationError):
         GatewaySettings(**dict(values, api_key=values["bot_token"]))
     with pytest.raises(ValidationError):
         GatewaySettings(**dict(values, http_token_secret=values["api_key"]))

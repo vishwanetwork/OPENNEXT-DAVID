@@ -9,6 +9,13 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def private_host(host):
+    """Loopback, or a Kubernetes Service name, which only resolves inside the cluster."""
+    return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(
+        (".svc", ".svc.cluster.local")
+    )
+
+
 class GatewaySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SPOTBOT_GATEWAY_",
@@ -54,12 +61,9 @@ class GatewaySettings(BaseSettings):
             or url.query
             or url.fragment
             or url.path not in {"", "/"}
-            or (
-                url.scheme != "https"
-                and not (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"})
-            )
+            or (url.scheme != "https" and not (url.scheme == "http" and private_host(url.hostname)))
         ):
-            raise ValueError("Bot URL requires HTTPS or loopback HTTP and no path")
+            raise ValueError("Bot URL requires HTTPS, or HTTP to loopback or a cluster Service")
         return value.rstrip("/")
 
     @field_validator("allowed_target_cidrs")
