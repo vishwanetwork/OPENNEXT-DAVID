@@ -7,8 +7,8 @@ This guide is for whoever runs the new platform. It covers:
 - how the live data and secrets reach you;
 - the order of the cutover, so customers and running GPU servers keep working.
 
-Everything you need is in this repository, except the secrets and the data. Those come as a
-private bundle on the day; see [Secrets and data](#secrets-and-data).
+Everything you need is in this repository, except the secrets and the data. You export those
+yourself from the old hosts on the day; see [Secrets and data](#secrets-and-data).
 
 ## Where everything is
 
@@ -26,6 +26,27 @@ private bundle on the day; see [Secrets and data](#secrets-and-data).
 | [`k8s/`](k8s/README.md)                                 | A ready Kustomize deployment of all three services for EKS, with the migration scripts. Use it, or translate the runtime above into your own   |
 | `k8s/scripts/export-*.sh`, `import.sh`                  | Export the live data and settings from the old hosts; load them into the cluster                                                               |
 | `k8s/scripts/aws-access.sh`                             | The two AWS changes in the GPU accounts (plan by default, `--apply` to change)                                                                 |
+
+## Access you need
+
+You run every step, including the exports on the old hosts and the AWS changes in the GPU
+accounts. Ask the account owners for this access before you start.
+
+| Access                                                       | For                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SSH with sudo to the bot host `44.248.155.24` (user `admin`) | `export-bot-host.sh`, and any release there before the cutover (`bot-host/deploy.sh`)                                                                                                                                                                                                                                     |
+| Root on the web host `18.188.54.73`                          | `export-web-host.sh`, stopping `opennext-homepage`                                                                                                                                                                                                                                                                        |
+| AWS CLI profile `default`: GPU account `860165147463`        | `aws-access.sh`: read and update the trust policy of `SpotOrderBotEC2Role` (`iam:GetRole`, `iam:UpdateAssumeRolePolicy`); add and later remove ingress on `spotbot-gpu` in `us-west-2`, `us-east-1` and `us-east-2` (`ec2:DescribeSecurityGroups`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`) |
+| AWS CLI profile `b300-admin`: B300 account `413287184831`    | `aws-access.sh`: the same three EC2 actions on `spotbot-b300-gpu` in `us-west-2`                                                                                                                                                                                                                                          |
+| DNS for `opennextlab.ai` and `vishwalab.com`                 | Lowering TTLs and switching the names in the window                                                                                                                                                                                                                                                                       |
+| The new cluster and MySQL administrator                      | `import.sh`, `deploy.sh`, `verify.sh`                                                                                                                                                                                                                                                                                     |
+
+Other profile names work too. Run `aws-access.sh` with `BOT_PROFILE=<name>`, and with
+`SG_TARGETS="<profile>:<region>:<group> ..."`.
+
+Run `aws-access.sh` without `--apply` first. It changes nothing and prints every change it
+would make. The changes only add access; nothing in use today is removed until the
+"Afterwards" step.
 
 ## What runs today
 
