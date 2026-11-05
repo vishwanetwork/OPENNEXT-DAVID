@@ -1,0 +1,108 @@
+# Gateway: customer SSH entry points (one TCP port per rental) and customer model endpoints
+# (r-<rental>.<domain>). It runs on the node's own network so the whole SSH port range is
+# reachable on that node's fixed public address without a load balancer listener per port, and
+# so its egress to GPU servers comes from that same address, which their security groups allow.
+# Exactly one replica, on the node labelled opennext.io/gateway=true.
+apiVersion: v1
+kind: Service
+metadata:
+  name: spotbot-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: spotbot-gateway
+  ports:
+    - name: http
+      port: 18084
+      targetPort: 18084
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spotbot-gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spotbot-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spotbot-gateway
+    spec:
+      hostNetwork: true
+      # Host networking still resolves cluster Service names, such as the Bot's.
+      dnsPolicy: ClusterFirstWithHostNet
+      automountServiceAccountToken: false
+      nodeSelector:
+        opennext.io/gateway: 'true'
+      tolerations:
+        - key: opennext.io/gateway
+          operator: Exists
+          effect: NoSchedule
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: opennext-spotbot
+          command: [spotbot, gateway, --host, 0.0.0.0, --port, '18084']
+          ports:
+            - name: http
+              containerPort: 18084
+          envFrom:
+            - secretRef:
+                name: spotbot-gateway-env
+          env:
+            - name: SPOTBOT_GATEWAY_BOT_URL
+              value: http://spotbot.opennext.svc:8000
+            - name: SPOTBOT_GATEWAY_SSH_BIND
+              value: 0.0.0.0
+            # The gateway never uses AWS; never let it reach the node's instance role.
+            - name: AWS_EC2_METADATA_DISABLED
+              value: 'true'
+            - name: AWS_SHARED_CREDENTIALS_FILE
+              value: /nonexistent
+            - name: AWS_CONFIG_FILE
+              value: /nonexistent
+            - name: PYTHONDONTWRITEBYTECODE
+              value: '1'
+          readinessProbe:
+            tcpSocket:
+              port: 18084
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 18084
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /app/gateway-data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # With MySQL storage the gateway keeps nothing on disk; the live volume is empty.
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

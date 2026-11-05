@@ -1,0 +1,110 @@
+# Web: Next.js front-end, the interim legacy API, the SpotOrderBot adapter and ClamAV in one
+# container (docker/start.cjs). Accounts, Credit, the adapter's SQLite database and encrypted
+# KYB documents live on one volume, so this is exactly one replica.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: http
+      port: 4188
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # node
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: opennext-web
+          ports:
+            - name: http
+              containerPort: 4188
+          envFrom:
+            - secretRef:
+                name: web-env
+          env:
+            - name: OPENNEXT_ADAPTER
+              value: '1'
+            - name: OPENNEXT_DATA_DIR
+              value: /app/.opennext-data
+            - name: OPENNEXT_PRICING_DATA_DIR
+              value: /app/.opennext-data
+            - name: OPENNEXT_TRUST_PROXY
+              value: '1'
+            # The adapter reaches the Bot and the gateway inside the cluster.
+            - name: SPOTBOT_OPENNEXT_BOT_URL
+              value: http://spotbot.opennext.svc:8000
+            - name: SPOTBOT_OPENNEXT_GATEWAY_URL
+              value: http://spotbot-gateway.opennext.svc:18084
+            - name: AWS_EC2_METADATA_DISABLED
+              value: 'true'
+            - name: AWS_SHARED_CREDENTIALS_FILE
+              value: /nonexistent
+            - name: AWS_CONFIG_FILE
+              value: /nonexistent
+          readinessProbe:
+            httpGet:
+              path: /api/pricing/status
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/pricing/status
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1536Mi # ClamAV's signature database alone is about 1 GiB
+            limits:
+              memory: 3Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /app/.opennext-data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: web-data
