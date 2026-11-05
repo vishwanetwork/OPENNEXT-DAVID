@@ -10,6 +10,8 @@ The host is the bot test host `44.248.155.24` (Debian, 1Panel, OpenResty). Produ
 `terminal.opennextlab.ai` runs elsewhere (see [Production web](#production-web)), but its adapter
 calls this Bot and gateway, so they serve production too.
 
+To hand the services over to a new platform, start with [`../HANDOVER.md`](../HANDOVER.md).
+
 `depoly/k8s/` describes the planned move to Kubernetes. This directory keeps the current hosts
 working and is the reference for what each service needs.
 
