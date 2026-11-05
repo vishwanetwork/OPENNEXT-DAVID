@@ -1,7 +1,7 @@
 'use strict';
 
-const fs = require('node:fs');
 const path = require('node:path');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 const {gunzipSync} = require('node:zlib');
 const http = require('node:http');
 const https = require('node:https');
@@ -163,11 +163,9 @@ function matches(spec, filters) {
     (!filters.formFactor || String(spec.form || '').toLowerCase().startsWith(String(filters.formFactor).toLowerCase()));
 }
 
-function createCapacityPriceService({env = process.env, dataDir, fetchImpl = globalThis.fetch, clock = Date.now} = {}) {
-  const directory = path.resolve(dataDir || env.OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data'));
-  fs.mkdirSync(directory, {recursive: true, mode: 0o700});
-  const stateFile = path.join(directory, 'capacity-state.json');
-  const logFile = path.join(directory, 'capacity-segments.jsonl');
+function createCapacityPriceService({env = process.env, dataDir, documents, fetchImpl = globalThis.fetch, clock = Date.now} = {}) {
+  const store = documents || createFileDocumentStore(path.resolve(dataDir || env.OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data')));
+  const stateFile = 'capacity-state.json', logFile = 'capacity-segments.jsonl';
   const botKey = env.OPENNEXT_SPOTBOT_API_KEY || '';
   const botUrl = env.OPENNEXT_SPOTBOT_URL || '';
   if (botUrl) {
@@ -197,7 +195,7 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
     else for (const field of ['memory', 'form', 'area']) if (spec[field] == null && quote[field] != null) spec[field] = quote[field];
   }
   try {
-    const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    const saved = JSON.parse(store.readSync(stateFile));
     if ([2, 3].includes(saved.version)) {
       for (const [key, spec] of Object.entries(saved.groups || {})) groups.set(key, spec);
       for (const segment of saved.open || []) open.set(segmentKey(segment.g, segment.t), segment);
@@ -208,7 +206,7 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
     }
   } catch {}
   try {
-    for (const line of fs.readFileSync(logFile, 'utf8').split('\n')) {
+    for (const line of (store.readSync(logFile) || '').split('\n')) {
       if (!line) continue;
       try {const [g, t, v, f, l] = JSON.parse(line); if (TERMS.includes(t) && [v, f, l].every(Number.isFinite)) addClosed({g, t, v, f, l});} catch {}
     }
@@ -217,11 +215,9 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
   for (const [key, segment] of open) if (archive.get(segment.g)?.some(s => s.t === segment.t && s.f === segment.f)) open.delete(key);
 
   function persist() {
-    if (appends.length) {fs.appendFileSync(logFile, appends.map(s => JSON.stringify([s.g, s.t, s.v, s.f, s.l])).join('\n') + '\n', {mode: 0o600}); appends = [];}
-    const temp = stateFile + '.tmp';
-    fs.writeFileSync(temp, JSON.stringify({version: 3, groups: Object.fromEntries(groups), open: [...open.values()],
-      latest, lastSync, publicFetchedAt, imported: [...imported], spotHistory: Object.fromEntries(spotHistory), listHistory: Object.fromEntries(listHistory)}), {mode: 0o600});
-    fs.renameSync(temp, stateFile);
+    if (appends.length) {store.appendLater(logFile, appends.map(s => JSON.stringify([s.g, s.t, s.v, s.f, s.l])).join('\n') + '\n'); appends = [];}
+    store.writeLater(stateFile, JSON.stringify({version: 3, groups: Object.fromEntries(groups), open: [...open.values()],
+      latest, lastSync, publicFetchedAt, imported: [...imported], spotHistory: Object.fromEntries(spotHistory), listHistory: Object.fromEntries(listHistory)}));
   }
   function compact(now) {
     lastCompaction = now;
@@ -231,9 +227,7 @@ function createCapacityPriceService({env = process.env, dataDir, fetchImpl = glo
     if (kept.length === closedCount) return;
     archive.clear(); closedCount = 0; appends = [];
     for (const segment of kept) addClosed(segment);
-    const temp = logFile + '.tmp';
-    fs.writeFileSync(temp, kept.map(s => JSON.stringify([s.g, s.t, s.v, s.f, s.l]) + '\n').join(''), {mode: 0o600});
-    fs.renameSync(temp, logFile);
+    store.writeLater(logFile, kept.map(s => JSON.stringify([s.g, s.t, s.v, s.f, s.l]) + '\n').join(''));
     const used = new Set([...archive.keys(), ...[...open.values()].map(s => s.g), ...Object.values(latest).flat().map(q => q.group)]);
     for (const key of groups.keys()) if (!used.has(key)) groups.delete(key);
   }

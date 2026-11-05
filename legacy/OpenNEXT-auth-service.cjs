@@ -1,8 +1,8 @@
 'use strict';
 
-const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 const fail = (status, message) => Object.assign(new Error(message), {status});
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const equal = (a, b) => {
@@ -28,10 +28,9 @@ const FLOW_COOKIE = 'opennext_auth_flow';
  * Production multi-instance deployments should replace file persistence with a transactional
  * database and shared rate limiting, retaining the unique welcome-credit grant per account.
  */
-function createAuthService({dataDir, adapter = {}, sessionSecret = process.env.OPENNEXT_AUTH_SESSION_SECRET, secureCookies = process.env.NODE_ENV === 'production', publicOrigin, now = () => Date.now()} = {}) {
-  const directory = path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data'));
-  const filename = path.join(directory, 'auth-state.json');
-  const secretFile = path.join(directory, 'auth-session.key');
+function createAuthService({dataDir, documents, adapter = {}, sessionSecret = process.env.OPENNEXT_AUTH_SESSION_SECRET, secureCookies = process.env.NODE_ENV === 'production', publicOrigin, now = () => Date.now()} = {}) {
+  const store = documents || createFileDocumentStore(path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data')));
+  const STATE = 'auth-state.json', SECRET = 'auth-session.key';
   const flows = new Map(), limits = new Map();
   let chain = Promise.resolve(), secretPromise;
   const serial = task => {const pending = chain.then(task); chain = pending.catch(() => {}); return pending;};
@@ -62,18 +61,17 @@ function createAuthService({dataDir, adapter = {}, sessionSecret = process.env.O
         if (Buffer.byteLength(sessionSecret) < 32) throw fail(503, 'Authentication configuration is unavailable.');
         return sessionSecret;
       }
-      await fs.mkdir(directory, {recursive: true});
       try {
-        const stored = await fs.readFile(secretFile, 'utf8');
+        const stored = await store.read(SECRET);
         if (Buffer.byteLength(stored) < 32) throw fail(503, 'Authentication configuration is unavailable.');
         return stored;
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
         const generated = crypto.randomBytes(48).toString('base64url');
-        try {await fs.writeFile(secretFile, generated, {flag: 'wx', mode: 0o600}); return generated;}
+        try {await store.create(SECRET, generated); return generated;}
         catch (writeError) {
           if (writeError.code !== 'EEXIST') throw writeError;
-          const stored = await fs.readFile(secretFile, 'utf8');
+          const stored = await store.read(SECRET);
           if (Buffer.byteLength(stored) < 32) throw fail(503, 'Authentication configuration is unavailable.');
           return stored;
         }
@@ -88,16 +86,14 @@ function createAuthService({dataDir, adapter = {}, sessionSecret = process.env.O
   }
   async function read() {
     try {
-      const state = JSON.parse(await fs.readFile(filename, 'utf8'));
+      const state = JSON.parse(await store.read(STATE));
       if (state.version !== 1 || !Array.isArray(state.users) || !Array.isArray(state.sessions)) throw new Error('Invalid authentication storage.');
       return state;
     } catch (error) {if (error.code === 'ENOENT') return {version: 1, users: [], sessions: []}; throw fail(503, 'Account storage is temporarily unavailable.');}
   }
   async function write(state) {
-    await fs.mkdir(directory, {recursive: true});
-    const temporary = filename + '.' + crypto.randomUUID() + '.tmp';
-    try {await fs.writeFile(temporary, JSON.stringify(state), {flag: 'wx', mode: 0o600}); await fs.rename(temporary, filename);}
-    catch {await fs.unlink(temporary).catch(() => {}); throw fail(503, 'Account changes could not be saved. Please try again.');}
+    try {await store.write(STATE, JSON.stringify(state));}
+    catch {throw fail(503, 'Account changes could not be saved. Please try again.');}
   }
   function publicUser(user, session) {
     return {id: user.id, email: user.email, name: user.name, role: user.role, onboardingCompleted: !!user.onboardingCompleted,

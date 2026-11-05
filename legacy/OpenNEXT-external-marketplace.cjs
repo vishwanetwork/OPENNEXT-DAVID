@@ -1,7 +1,6 @@
 'use strict';
 
-const fs=require('node:fs/promises');
-const path=require('node:path');
+const {createFileDocumentStore}=require('./OpenNEXT-document-store.cjs');
 const crypto=require('node:crypto');
 const countries=require('./OpenNEXT-countries.js');
 const fail=(status,message)=>Object.assign(new Error(message),{status});
@@ -60,12 +59,12 @@ function regionMatches(row,region){
   return area.type==='europe'?(area.unionOnly?europeanUnion:europe).has(selected):area.countries.includes(selected);
 }
 
-function createExternalMarketplace({dataDir,now=()=>Date.now(),checkedBatch=null}={}){
-  if(!dataDir)throw Error('A private external-marketplace directory is required.');
-  const file=path.join(dataDir,'external-marketplace.json');let loaded,pending=Promise.resolve();
+function createExternalMarketplace({dataDir,documents,now=()=>Date.now(),checkedBatch=null}={}){
+  if(!dataDir&&!documents)throw Error('A private external-marketplace directory is required.');
+  const store=documents||createFileDocumentStore(dataDir),DOC='external-marketplace.json';let loaded,pending=Promise.resolve();
   const time=()=>new Date(now()).toISOString();
   const fresh=()=>({version:1,records:[],batches:[],audit:[]});
-  async function persist(db){await fs.mkdir(dataDir,{recursive:true});const temp=file+'.'+crypto.randomBytes(6).toString('hex')+'.tmp';try{await fs.writeFile(temp,JSON.stringify(db),{mode:0o600,flag:'wx'});await fs.rename(temp,file);}catch(error){await fs.unlink(temp).catch(()=>{});throw error;}}
+  async function persist(db){await store.write(DOC,JSON.stringify(db));}
   function event(db,row,action,actor,detail=''){const entry={at:time(),recordId:row.id,action,actor,detail,revision:row.reviewRevision};row.audit||=[];row.audit.push(entry);db.audit.push(entry);if(db.audit.length>10000)db.audit.splice(0,db.audit.length-10000);}
   function expire(db){let changed=false;for(const row of db.records)if(row.expiresAt&&Date.parse(row.expiresAt)<=now()&&['Approved','Reviewing'].includes(row.status)){row.status=row.reviewStatus='Expired';row.updatedAt=time();event(db,row,'Expired','Source expiry');changed=true;}return changed;}
   function applyImport(db,input,operator,approval=null){
@@ -91,7 +90,7 @@ function createExternalMarketplace({dataDir,now=()=>Date.now(),checkedBatch=null
     if(!seenBatch)db.batches.push({sourceId,batchId,importedAt:time(),actor:operator,approval:approval?.reason||null});
     expire(db);return {received:normalized.length,results};
   }
-  async function read(){if(!loaded)loaded=(async()=>{let db;try{db=JSON.parse(await fs.readFile(file,'utf8'));if(db.version!==1||!Array.isArray(db.records)||!Array.isArray(db.batches)||!Array.isArray(db.audit))throw Error('Invalid external marketplace store.');}catch(error){if(error.code!=='ENOENT')throw error;db=fresh();}let changed=expire(db);if(checkedBatch&&!db.batches.some(row=>row.sourceId===checkedBatch.sourceId&&row.batchId===checkedBatch.batchId)){if(checkedBatch.expectedCount!==undefined&&checkedBatch.records?.length!==checkedBatch.expectedCount)throw Error('The approved source batch has an unexpected record count.');applyImport(db,checkedBatch,'User-approved source import',{reason:text(checkedBatch.approvalReason,2000,true)});changed=true;}if(changed)await persist(db);return db;})();return loaded;}
+  async function read(){if(!loaded)loaded=(async()=>{let db;try{db=JSON.parse(await store.read(DOC));if(db.version!==1||!Array.isArray(db.records)||!Array.isArray(db.batches)||!Array.isArray(db.audit))throw Error('Invalid external marketplace store.');}catch(error){if(error.code!=='ENOENT')throw error;db=fresh();}let changed=expire(db);if(checkedBatch&&!db.batches.some(row=>row.sourceId===checkedBatch.sourceId&&row.batchId===checkedBatch.batchId)){if(checkedBatch.expectedCount!==undefined&&checkedBatch.records?.length!==checkedBatch.expectedCount)throw Error('The approved source batch has an unexpected record count.');applyImport(db,checkedBatch,'User-approved source import',{reason:text(checkedBatch.approvalReason,2000,true)});changed=true;}if(changed)await persist(db);return db;})();return loaded;}
   async function change(fn){const operation=pending.then(async()=>{const db=clone(await read()),result=await fn(db);expire(db);await persist(db);loaded=Promise.resolve(db);return clone(result);});pending=operation.catch(()=>{});return operation;}
   async function importRecords(input,operator='Administrator'){return change(db=>applyImport(db,input,text(operator,160,true)));}
   async function review(id,input,operator='Administrator'){return change(db=>{const row=db.records.find(row=>row.id===id);if(!row)throw fail(404,'External record not found.');if(!Number.isInteger(input.expectedRevision)||input.expectedRevision!==row.reviewRevision)throw fail(409,'The source record changed. Refresh before reviewing.');if(!['Approved','Rejected','Withdrawn'].includes(input.status))throw fail(400,'Choose Approve, Reject or Withdraw.');if(['Approved','Rejected'].includes(input.status)&&(row.status!=='Reviewing'||row.expiresAt&&Date.parse(row.expiresAt)<=now()))throw fail(409,'Only a current record awaiting review may be approved or rejected.');if(row.status===input.status)throw fail(409,'This record already has that decision.');row.status=row.reviewStatus=input.status;row.reviewedAt=time();row.updatedAt=time();row.reviewedBy=text(operator,160,true);row.reviewReason=text(input.reason,2000,input.status!=='Approved');row.reviewRevision++;event(db,row,'Operations '+input.status.toLowerCase(),row.reviewedBy,row.reviewReason);return row;});}

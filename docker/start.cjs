@@ -45,11 +45,19 @@ function shutdown(code) {
 process.on('SIGTERM', () => shutdown(0));
 process.on('SIGINT', () => shutdown(0));
 
+/** The legacy API's state documents share the adapter's MySQL database unless set separately. */
+function legacyMysqlUrl() {
+  if (process.env.OPENNEXT_MYSQL_URL) return process.env.OPENNEXT_MYSQL_URL;
+  if (process.env.SPOTBOT_STORAGE_BACKEND === 'mysql' && process.env.SPOTBOT_MYSQL_URL) return process.env.SPOTBOT_MYSQL_URL;
+  return '';
+}
+
 function runLegacy() {
   run('api', process.execPath, [path.join(DOCKER, '..', 'legacy', 'OpenNEXT-preview-server.cjs')], {
     PORT: API_PORT,
     HOST: '127.0.0.1',
     OPENNEXT_TRUST_PROXY: '1',
+    OPENNEXT_MYSQL_URL: legacyMysqlUrl(),
   });
 }
 

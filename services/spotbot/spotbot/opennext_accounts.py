@@ -50,9 +50,8 @@ class Accounts:
         if not isinstance(users, list):
             raise OperationError(503, "The account directory is unavailable.")
         # Match the legacy service's uninitialized-ledger semantics, without creating files.
-        directory = self.snapshots.directory
-        if directory and not (directory / "credit-topups.json").exists():
-            if (directory / "credit-topups.initialized").exists():
+        if self.snapshots.available and not self.snapshots.exists("credit-topups.json"):
+            if self.snapshots.exists("credit-topups.initialized"):
                 raise OperationError(503, "The Credit ledger is unavailable.")
             legacy = {"version": 1, "demo": False, "credits": [], "requests": []}
         else:

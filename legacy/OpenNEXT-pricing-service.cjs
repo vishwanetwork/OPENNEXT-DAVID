@@ -1,7 +1,8 @@
 "use strict";
 
-const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { createFileDocumentStore } = require("./OpenNEXT-document-store.cjs");
 const crypto = require("node:crypto");
 const { PROVIDERS, AWS_REGIONS } = require("./OpenNEXT-pricing-registry.cjs");
 
@@ -171,17 +172,24 @@ function createPricingService(options = {}) {
   const clock = options.clock || (() => new Date());
   const isoNow = () => new Date(clock()).toISOString();
   const millisNow = () => new Date(clock()).getTime();
-  const statePath = path.join(dataDir, "pricing-state.json");
+  const STATE = "pricing-state.json", OBSERVATIONS = "pricing-observations.json";
+  // With a shared database the state (preferences, records, runs) lives there, while the observation
+  // history (up to MAX_OBSERVATIONS rows, hundreds of MB) and raw payloads stay a local cache.
+  const store = options.documents || createFileDocumentStore(dataDir);
+  const split = store.kind !== "file";
+  const cache = split ? createFileDocumentStore(options.cacheDir || process.env.OPENNEXT_CACHE_DIR || path.join(os.tmpdir(), "opennext-cache")) : store;
   const credentials = new Map();
   const pending = new Map();
   const controllers = new Set();
   let timer = null;
   let closed = false;
   let writeError = false;
-  fs.mkdirSync(path.join(dataDir, "raw"), { recursive: true, mode: 0o700 });
   let state = { version: 1, preferences: {}, records: [], observations: [], runs: [] };
   try {
-    const loaded = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const body = store.readSync(STATE);
+    if (body === null) throw Object.assign(new Error("No pricing state"), { code: "ENOENT" });
+    const loaded = JSON.parse(body);
+    if (split) { try { loaded.observations = JSON.parse(cache.readSync(OBSERVATIONS) || "[]"); } catch (_) { loaded.observations = []; } }
     if (loaded.version === 1 && Array.isArray(loaded.records) && Array.isArray(loaded.runs) && Array.isArray(loaded.observations)) {
       state = { version: 1, preferences: loaded.preferences || {}, records: loaded.records, observations: loaded.observations, runs: loaded.runs };
       for (const run of state.runs) if (run.status === "running") { run.status = "failed"; run.finishedAt = isoNow(); run.logs = ["Collection interrupted by server restart; cached observations preserved."]; }
@@ -190,9 +198,10 @@ function createPricingService(options = {}) {
 
   function persist() {
     try {
-      const tmp = `${statePath}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 });
-      fs.renameSync(tmp, statePath);
+      if (split) {
+        store.writeLater(STATE, JSON.stringify({ ...state, observations: [] }));
+        cache.writeLater(OBSERVATIONS, JSON.stringify(state.observations));
+      } else store.writeLater(STATE, JSON.stringify(state));
       writeError = false;
     } catch (_) { writeError = true; }
   }
@@ -249,7 +258,7 @@ function createPricingService(options = {}) {
     return { ...providerView(provider), credentialStorage: "server_memory_until_restart" };
   }
   function rawSnapshot(name, payload) {
-    try { fs.writeFileSync(path.join(dataDir, "raw", `${name}.json`), JSON.stringify(redactedPayload(payload)), { mode: 0o600 }); }
+    try { cache.writeLater(`raw/${name}.json`, JSON.stringify(redactedPayload(payload))); }
     catch (_) { writeError = true; }
   }
   async function fetchJson(url, headers = {}) {

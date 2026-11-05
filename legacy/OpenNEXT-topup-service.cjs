@@ -1,8 +1,8 @@
 'use strict';
 
-const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 const queues = new Map();
 const METHODS = ['credit_card', 'paypal', 'bank_transfer'];
 const fail = (status, message) => Object.assign(new Error(message), {status});
@@ -22,10 +22,11 @@ const text = (value, max, required = false, multiline = false) => {
 // with transactional storage before running multiple workers or a real debit
 // adapter. Real spending must share the same authoritative credit/debit ledger;
 // the current account view sums approved top-ups and authenticated promo credit.
-function createTopupService({dataDir, now = () => Date.now(), demo = false} = {}) {
-  const directory = path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data'));
-  const filename = path.join(directory, 'credit-topups.json');
-  const initializedFile = path.join(directory, 'credit-topups.initialized');
+function createTopupService({dataDir, documents, now = () => Date.now(), demo = false} = {}) {
+  const store = documents || createFileDocumentStore(path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data')));
+  const LEDGER = 'credit-topups.json', MARKER = 'credit-topups.initialized';
+  // Serialize per ledger across service instances sharing one store.
+  const filename = (store.directory || store.kind) + '/' + LEDGER;
   let seen = false;
   const serial = task => {
     const result = (queues.get(filename) || Promise.resolve()).then(task);
@@ -41,21 +42,21 @@ function createTopupService({dataDir, now = () => Date.now(), demo = false} = {}
   const publicRequest = request => {const {idempotencyKey, ...safe} = request; return clone(safe);};
   async function initialized() {
     try {
-      const marker = JSON.parse(await fs.readFile(initializedFile, 'utf8'));
+      const marker = JSON.parse(await store.read(MARKER));
       if (marker.version !== 1 || marker.demo !== !!demo) throw Error('Invalid ledger initialization marker');
       return true;
     } catch (error) {if (error.code === 'ENOENT') return false; throw error;}
   }
   async function ensureInitialized() {
     if (await initialized()) return;
-    try {await fs.writeFile(initializedFile, JSON.stringify({version: 1, demo: !!demo}), {flag: 'wx', mode: 0o600});}
+    try {await store.create(MARKER, JSON.stringify({version: 1, demo: !!demo}));}
     catch (error) {if (error.code !== 'EEXIST' || !(await initialized())) throw error;}
   }
   async function read() {
     let marked = false, loaded = false;
     try {
       marked = await initialized();
-      const content = await fs.readFile(filename, 'utf8'); loaded = true;
+      const content = await store.read(LEDGER); loaded = true;
       const state = JSON.parse(content);
       if (state.version !== 1 || state.demo !== !!demo || !Array.isArray(state.requests) || !Array.isArray(state.credits) || !Array.isArray(state.notifications)) throw Error('Invalid ledger');
       const ids = new Set();
@@ -80,16 +81,12 @@ function createTopupService({dataDir, now = () => Date.now(), demo = false} = {}
     }
   }
   async function write(state) {
-    const temporary = filename + '.' + crypto.randomUUID() + '.tmp';
     try {
-      await fs.mkdir(directory, {recursive: true});
-      await fs.writeFile(temporary, JSON.stringify(state), {flag: 'wx', mode: 0o600});
-      await fs.rename(temporary, filename); seen = true;
+      await store.write(LEDGER, JSON.stringify(state)); seen = true;
       // Create this only after the first atomic ledger save. A failed first save
       // remains retryable; a failed marker save recovers the already saved ledger.
       await ensureInitialized();
     } catch {
-      await fs.unlink(temporary).catch(() => {});
       throw fail(503, 'Credit records could not be saved. Refresh before trying again.');
     }
   }

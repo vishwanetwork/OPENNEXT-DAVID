@@ -1,8 +1,8 @@
 'use strict';
 
-const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 12000;
@@ -117,7 +117,7 @@ function createNewsService(options={}) {
     if(url.protocol!=='https:' || url.username || url.password || !source.id || !source.articleHosts.length) throw new Error('Invalid news source configuration.');
   }
   const dataDir=options.dataDir || env.OPENNEXT_DATA_DIR || path.join(__dirname,'.opennext-data');
-  const cacheFile=path.join(dataDir,'market-news.json');
+  const store=options.documents || createFileDocumentStore(dataDir),DOC='market-news.json';
   const fetchImpl=options.fetchImpl || globalThis.fetch;
   const now=options.now || Date.now;
   const setTimer=options.setTimeout || setTimeout,clearTimer=options.clearTimeout || clearTimeout;
@@ -127,8 +127,8 @@ function createNewsService(options={}) {
   const controllers=new Set();
   const ready=(async()=>{
     try {
-      const stat=await fs.stat(cacheFile);if(stat.size>4*MAX_FEED_BYTES)throw new Error('Invalid news cache.');
-      const saved=JSON.parse(await fs.readFile(cacheFile,'utf8'));
+      const body=await store.read(DOC);if(Buffer.byteLength(body)>4*MAX_FEED_BYTES)throw new Error('Invalid news cache.');
+      const saved=JSON.parse(body);
       if(saved.version!==1 || !Array.isArray(saved.articles))throw new Error('Invalid news cache.');
       articles=mergeArticles(saved.articles.filter(article=>{
         const source=sources.find(item=>item.id===article.sourceId);
@@ -150,10 +150,7 @@ function createNewsService(options={}) {
 
   async function persist() {
     try {
-      await fs.mkdir(dataDir,{recursive:true});
-      const temp=cacheFile+'.'+crypto.randomBytes(6).toString('hex')+'.tmp';
-      try {await fs.writeFile(temp,JSON.stringify({version:1,articles,fetchedAt,lastAttemptAt,sources:[...states.values()]})+'\n',{mode:0o600});await fs.rename(temp,cacheFile);}
-      finally {await fs.unlink(temp).catch(()=>{});}
+      await store.write(DOC,JSON.stringify({version:1,articles,fetchedAt,lastAttemptAt,sources:[...states.values()]})+'\n');
       cacheError=null;
     } catch {cacheError='News was refreshed in memory, but the cache could not be saved.';}
   }

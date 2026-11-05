@@ -46,8 +46,9 @@ WORKDIR /app
 COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
-# Interim backend (dependency-free Node service)
-COPY legacy/package.json ./legacy/
+# Interim backend (Node service; its one dependency is the MySQL driver)
+COPY legacy/package.json legacy/package-lock.json ./legacy/
+RUN cd legacy && npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY legacy/*.cjs legacy/*.js legacy/*.html legacy/*.css ./legacy/
 COPY legacy/admin ./legacy/admin
 COPY legacy/data ./legacy/data

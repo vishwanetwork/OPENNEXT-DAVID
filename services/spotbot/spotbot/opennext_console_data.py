@@ -18,19 +18,56 @@ def page(rows, cursor, limit):
 
 
 class LegacySnapshots:
-    """Never expose or change sessions, OAuth identities, login codes or private documents."""
+    """Never expose or change sessions, OAuth identities, login codes or private documents.
 
-    def __init__(self, directory):
+    The legacy API keeps each state document either as a file in a shared data directory or, with
+    MySQL, as a row of `legacy_documents` in the adapter's own database (see
+    legacy/OpenNEXT-document-store.cjs). Both are read the same way here.
+    """
+
+    TABLE_SQL = (
+        "CREATE TABLE IF NOT EXISTS legacy_documents ("
+        " name VARCHAR(191) NOT NULL PRIMARY KEY, body LONGTEXT NOT NULL, updated_at DATETIME(3) NOT NULL"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"
+    )
+    LIMIT = 32 * 1024 * 1024
+
+    def __init__(self, directory, engine=None):
         self.directory = Path(directory) if directory else None
+        self.engine = engine
+        if engine is not None:
+            with engine.begin() as c:
+                c.exec_driver_sql(self.TABLE_SQL)
+
+    @property
+    def available(self):
+        return self.engine is not None or self.directory is not None
+
+    def _row(self, name):
+        with self.engine.connect() as c:
+            row = c.exec_driver_sql(
+                "SELECT body FROM legacy_documents WHERE name = %s", (name,)
+            ).first()
+        return None if row is None else row[0]
+
+    def exists(self, name):
+        if self.engine is not None:
+            return self._row(name) is not None
+        return self.directory is not None and (self.directory / name).exists()
 
     def read(self, name):
-        if self.directory is None:
+        if not self.available:
             raise OperationError(503, "Configure the shared legacy data directory on the adapter.")
-        path = self.directory / name
         try:
-            with path.open("rb") as handle:
-                raw = handle.read(32 * 1024 * 1024 + 1)
-            if len(raw) > 32 * 1024 * 1024:
+            if self.engine is not None:
+                body = self._row(name)
+                if body is None:
+                    raise FileNotFoundError(name)
+                raw = body.encode()
+            else:
+                with (self.directory / name).open("rb") as handle:
+                    raw = handle.read(self.LIMIT + 1)
+            if len(raw) > self.LIMIT:
                 raise ValueError("snapshot_too_large")
             value = json.loads(raw)
             if not isinstance(value, dict):

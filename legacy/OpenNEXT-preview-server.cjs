@@ -19,6 +19,9 @@ const {createDemoService} = require('./OpenNEXT-demo-service.cjs');
 const {listCuratedRfqs} = require('./OpenNEXT-curated-rfqs.cjs');
 const {createReferenceCatalog} = require('./OpenNEXT-reference-catalog.cjs');
 const {createExternalMarketplace} = require('./OpenNEXT-external-marketplace.cjs');
+const {openDocumentStore} = require('./OpenNEXT-document-store.cjs');
+// Documents the pricing and capacity services read synchronously when they start.
+const PRELOAD = ['pricing-state.json', 'capacity-state.json', 'capacity-segments.jsonl'];
 const {listPacketDemands, PACKET_APPROVED_BATCH} = require('./OpenNEXT-packet-demand.cjs');
 
 // Only browser assets are served. Source-only configuration and local files
@@ -84,19 +87,20 @@ function createAppServer(options = {}) {
   const referenceCatalog = environment.OPENNEXT_REFERENCE_CATALOG_ENABLED === '0' ? {scope:'reference-only',supplies:[],rfqs:[],recent:[]} : createReferenceCatalog();
   const demo = options.demoService || createDemoService({enabled:demoEnabled, secureCookies:options.secureCookies, trustProxy:environment.OPENNEXT_TRUST_PROXY === '1'});
   const privateDataDir = options.dataDir || (options.env || process.env).OPENNEXT_DATA_DIR || (options.env || process.env).OPENNEXT_PRICING_DATA_DIR || path.join(__dirname, '.opennext-data');
-  const news = options.newsService || createNewsService({dataDir:privateDataDir, env:environment});
-  const pricing = options.pricingService || createPricingService({dataDir:options.dataDir});
-  const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir});
+  const documents = options.documents;
+  const news = options.newsService || createNewsService({dataDir:privateDataDir, documents, env:environment});
+  const pricing = options.pricingService || createPricingService({dataDir:options.dataDir, documents});
+  const capacity = options.capacityService || createCapacityPriceService({env:options.env || process.env, dataDir:options.dataDir, documents});
   const pricingRoute = createPricingRouter(pricing, {env:options.env || process.env, capacity});
-  const contacts = options.contactService || createContactService({dataDir:options.dataDir});
+  const contacts = options.contactService || createContactService({dataDir:options.dataDir, documents});
   const contactRoute = createContactRouter(contacts, {security:pricingRoute.security});
-  const auth = options.authService || createAuthService({dataDir:privateDataDir, adapter:options.authAdapter || createOAuthAdapter({env:options.env || process.env}), publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
-  const external = options.externalService === false || environment.OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED === '0' ? null : options.externalService || createExternalMarketplace({dataDir:privateDataDir,checkedBatch:{sourceId:PACKET_APPROVED_BATCH.sourceId,sourceName:PACKET_APPROVED_BATCH.sourceName,batchId:PACKET_APPROVED_BATCH.id,approvalReason:PACKET_APPROVED_BATCH.approvalReason,expectedCount:PACKET_APPROVED_BATCH.expectedCount,observedAt:PACKET_APPROVED_BATCH.observedAt,records:listPacketDemands()}});
+  const auth = options.authService || createAuthService({dataDir:privateDataDir, documents, adapter:options.authAdapter || createOAuthAdapter({env:options.env || process.env}), publicOrigin:options.publicOrigin, secureCookies:options.secureCookies});
+  const external = options.externalService === false || environment.OPENNEXT_EXTERNAL_MARKETPLACE_ENABLED === '0' ? null : options.externalService || createExternalMarketplace({dataDir:privateDataDir,documents,checkedBatch:{sourceId:PACKET_APPROVED_BATCH.sourceId,sourceName:PACKET_APPROVED_BATCH.sourceName,batchId:PACKET_APPROVED_BATCH.id,approvalReason:PACKET_APPROVED_BATCH.approvalReason,expectedCount:PACKET_APPROVED_BATCH.expectedCount,observedAt:PACKET_APPROVED_BATCH.observedAt,records:listPacketDemands()}});
   const rfqNotifier = options.rfqNotifier || createRfqNotifier({env:options.env || process.env});
-  const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, agentAdapter:options.agentAdapter, externalService:external, onRfqSubmitted:rfqNotifier.rfqSubmitted});
+  const marketplace = options.marketplaceService || createMarketplaceService({dataDir:privateDataDir, documents, agentAdapter:options.agentAdapter, externalService:external, onRfqSubmitted:rfqNotifier.rfqSubmitted});
   const marketplaceRoute = createMarketplaceRouter(marketplace, {auth, security:pricingRoute.security, env:options.env || process.env});
   const paymentRoute = createPaymentRouter({auth, checkoutAdapter:options.checkoutAdapter, allowedOrigins:options.checkoutOrigins});
-  const topups = options.topupService || createTopupService({dataDir:privateDataDir});
+  const topups = options.topupService || createTopupService({dataDir:privateDataDir, documents});
   const topupRoute = createTopupRouter(topups, {auth, security:pricingRoute.security, demoService:demo});
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -279,7 +283,7 @@ function createAppServer(options = {}) {
   server.externalMarketplace = external;
   server.news = news;
   server.on('close', () => {Promise.resolve(news.close?.()).catch(() => {});});
-  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); rfqNotifier.close?.(); demo.close().catch(() => {});});
+  server.on('close', () => {pricing.close().catch(() => {}); capacity.close().catch(() => {}); auth.close?.(); rfqNotifier.close?.(); demo.close().catch(() => {}); Promise.resolve(documents?.close?.()).catch(() => {});});
   return server;
 }
 
@@ -292,16 +296,21 @@ if (require.main === module) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error('PORT must be an integer between 0 and 65535');
   }
-  const server = createAppServer();
-  server.on('error', error => {console.error(error.message); process.exitCode = 1;});
-  server.listen(port, host, () => {
-    const actualPort = server.address().port;
-    console.log('OpenNEXT website: http://' + host + ':' + actualPort + '/');
-    console.log('Operations Console: http://' + host + ':' + actualPort + '/admin/');
-    server.pricing.startScheduler();
-    server.capacity.start();
-    server.news.start().catch(error => console.error('News refresh: ' + error.message));
-  });
+  (async () => {
+    // With OPENNEXT_MYSQL_URL every state document lives in MySQL; otherwise in the data directory.
+    const documents = process.env.OPENNEXT_MYSQL_URL ? await openDocumentStore({env: process.env, preload: PRELOAD}) : undefined;
+    if (documents) console.log('State documents: MySQL');
+    const server = createAppServer({documents});
+    server.on('error', error => {console.error(error.message); process.exitCode = 1;});
+    server.listen(port, host, () => {
+      const actualPort = server.address().port;
+      console.log('OpenNEXT website: http://' + host + ':' + actualPort + '/');
+      console.log('Operations Console: http://' + host + ':' + actualPort + '/admin/');
+      server.pricing.startScheduler();
+      server.capacity.start();
+      server.news.start().catch(error => console.error('News refresh: ' + error.message));
+    });
+  })().catch(error => {console.error('Startup failed: ' + error.message); process.exit(1);});
 }
 
 module.exports = {createAppServer};

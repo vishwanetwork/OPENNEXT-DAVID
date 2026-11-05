@@ -1,8 +1,8 @@
 'use strict';
 
-const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {createFileDocumentStore} = require('./OpenNEXT-document-store.cjs');
 const STATUSES = ['New', 'Contacted', 'Qualified', 'Closed'];
 const fail = (status, message) => Object.assign(new Error(message), {status});
 const clean = (value, label, max, required = true) => {
@@ -12,25 +12,21 @@ const clean = (value, label, max, required = true) => {
   return text;
 };
 
-function createContactService({dataDir, now = () => Date.now()} = {}) {
-  const directory = path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data'));
-  const filename = path.join(directory, 'contact-leads.json');
+function createContactService({dataDir, documents, now = () => Date.now()} = {}) {
+  const store = documents || createFileDocumentStore(path.resolve(dataDir || process.env.OPENNEXT_DATA_DIR || path.join(__dirname, '.opennext-data')));
+  const DOC = 'contact-leads.json';
   let chain = Promise.resolve();
   const serial = task => {const result = chain.then(task); chain = result.catch(() => {}); return result;};
   async function read() {
     try {
-      const data = JSON.parse(await fs.readFile(filename, 'utf8'));
+      const data = JSON.parse(await store.read(DOC));
       if (data.version !== 1 || !Array.isArray(data.leads)) throw fail(503, 'Contact storage is unavailable.');
       return data;
     } catch (error) {if (error.code === 'ENOENT') return {version: 1, leads: []}; throw fail(503, 'Contact storage is unavailable.');}
   }
   async function write(data) {
-    await fs.mkdir(directory, {recursive: true});
-    const temporary = filename + '.' + crypto.randomUUID() + '.tmp';
-    try {
-      await fs.writeFile(temporary, JSON.stringify(data, null, 2), {encoding: 'utf8', mode: 0o600, flag: 'wx'});
-      await fs.rename(temporary, filename);
-    } catch (error) {await fs.unlink(temporary).catch(() => {}); throw fail(503, 'Your request could not be saved. Please try again.');}
+    try {await store.write(DOC, JSON.stringify(data, null, 2));}
+    catch {throw fail(503, 'Your request could not be saved. Please try again.');}
   }
   return {
     create(input) {
